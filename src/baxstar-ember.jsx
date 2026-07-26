@@ -183,8 +183,6 @@ function sanitizeCaption(t) {
 
 /* ---------- GOOGLE DRIVE ICON ---------- */
 
-const BURST_WORDS = ["ZOWIE!", "POW!", "BAM!", "WHAM!", "ZING!", "SNAP!", "BOOM!", "KAPOW!"];
-
 // The artifact iframe can't prompt for mic permission — a top-level popup can.
 // This builds a tiny Ember-styled bridge window that owns the microphone and
 // posts transcripts + live levels back to the app.
@@ -394,10 +392,10 @@ export default function BaxstarEmber() {
   const bridgeLevelRef = useRef({ v: 0, wave: null, ts: 0 });
   const popupRef = useRef(null);        // the mic bridge window
   const gasRef = useRef(null);
-  const burstsRef = useRef(null);
+  const ventRef = useRef(null);
   const scopeRef = useRef(null);
   const prevLvlRef = useRef(0);
-  const lastBurstRef = useRef(0);
+  const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
   const ttsPathRef = useRef(null);      // "local" | "bridge" | "mp3" once proven
   const audioElRef = useRef(null);      // mp3 fallback element
@@ -764,18 +762,15 @@ export default function BaxstarEmber() {
         gasRef.current.style.filter = `hue-rotate(${hue}deg) brightness(${1 + lvl * 0.55}) saturate(${1 + lvl * 0.5})`;
       }
 
-      // Batman '66 burst on voice inflection (real mic input only)
-      if (fresh && burstsRef.current) {
-        if (target > 0.45 && prevLvlRef.current < 0.28 && t - lastBurstRef.current > 420) {
-          lastBurstRef.current = t;
+      // Pressure-release glow on voice inflection (real mic input only) —
+      // a brass ring vents outward from the instrument and settles
+      if (fresh && ventRef.current) {
+        if (target > 0.45 && prevLvlRef.current < 0.28 && t - lastVentRef.current > 420) {
+          lastVentRef.current = t;
           const el = document.createElement("span");
-          el.className = "burst";
-          el.textContent = BURST_WORDS[Math.floor(Math.random() * BURST_WORDS.length)];
-          el.style.left = 6 + Math.random() * 60 + "%";
-          el.style.top = 4 + Math.random() * 62 + "%";
-          el.style.setProperty("--rot", (Math.random() * 28 - 14).toFixed(1) + "deg");
-          burstsRef.current.appendChild(el);
-          setTimeout(() => el.remove(), 820);
+          el.className = "vent-ring";
+          ventRef.current.appendChild(el);
+          setTimeout(() => el.remove(), 950);
         }
         prevLvlRef.current = target;
       }
@@ -1234,15 +1229,15 @@ Look at the photo and write the caption. Output caption text only — no preambl
         @keyframes gasB { 0%,100%{transform:translate(0,0) rotate(0deg) scale(1);} 50%{transform:translate(-10px,8px) rotate(18deg) scale(1.1);} }
         @keyframes gasC { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(8px,10px) scale(1.14);} }
 
-        .burst { position:absolute; padding:9px 15px; font-weight:900; font-style:italic; font-size:13px; letter-spacing:.03em;
-          color:#1a0a06; text-shadow:0 1px 0 rgba(255,255,255,.35); white-space:nowrap;
-          background:radial-gradient(circle at 40% 35%, #ffd9a0, #ff9e3d 45%, #ff4d3d 85%);
-          clip-path:polygon(50% 0%,61% 12%,78% 5%,80% 22%,98% 22%,89% 38%,100% 50%,89% 62%,98% 78%,80% 78%,78% 95%,61% 88%,50% 100%,39% 88%,22% 95%,20% 78%,2% 78%,11% 62%,0% 50%,11% 38%,2% 22%,20% 22%,22% 5%,39% 12%);
-          animation:burstPop .78s cubic-bezier(.2,1.6,.4,1) forwards; }
-        @keyframes burstPop { 0%{transform:scale(.2) rotate(var(--rot,0deg)); opacity:0;}
-          18%{transform:scale(1.18) rotate(var(--rot)); opacity:1;}
-          70%{transform:scale(1) rotate(var(--rot)); opacity:1;}
-          100%{transform:scale(.88) rotate(var(--rot)); opacity:0;} }
+        .vent-ring { position:absolute; left:50%; top:50%; width:52px; height:52px;
+          margin:-26px 0 0 -26px; border-radius:50%; pointer-events:none;
+          border:1.5px solid rgba(255,191,94,.75);
+          box-shadow:0 0 14px rgba(255,158,61,.4), inset 0 0 10px rgba(255,158,61,.25);
+          animation:ventRelease .9s cubic-bezier(.22,.61,.36,1) forwards; }
+        @keyframes ventRelease {
+          0%   { transform:scale(.55); opacity:0; }
+          14%  { transform:scale(.75); opacity:.9; }
+          100% { transform:scale(2.1); opacity:0; } }
         .scope-bezel { position:relative; border-radius:14px; padding:14px 16px; cursor:pointer;
           background:linear-gradient(180deg,#1c1210,#0d0807);
           border:1px solid rgba(255,120,60,.3);
@@ -1554,7 +1549,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                     <div ref={gasRef} className="gas-wrap">
                       <div className="gas g1" /><div className="gas g2" /><div className="gas g3" /><div className="gas g4" />
                     </div>
-                    <div ref={burstsRef} className="pointer-events-none absolute z-10" style={{ inset: "-26px" }} />
+                    <div ref={ventRef} className="pointer-events-none absolute z-10" style={{ inset: "-26px" }} />
                   </div>
                 ) : (
                   <div className="scope-bezel mx-auto my-6" onClick={toggleMic} role="button" aria-label="Voice input">
