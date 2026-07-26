@@ -1172,7 +1172,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap');
         :root {
           --bg:#080606; --panel:#100b0b; --panel-2:#181010;
-          --line:rgba(255,90,60,.18); --line-hot:rgba(255,90,60,.5);
+          --line:rgba(201,168,106,.17); --line-hot:rgba(201,168,106,.45);
           --ember-red:#ff4d3d; --ember-orange:#ff9e3d; --ember-dark:#8a1f14;
           --ember-amber:#ffbf5e;
           --brass:#c9a86a; --copper:#b0714f; --gunmetal:#565660; --candle:#f2e3c2;
@@ -1202,12 +1202,23 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
         .panel { position:relative; border:1px solid var(--line); border-radius:16px;
           background:linear-gradient(180deg, var(--panel-2), var(--panel));
+          box-shadow:inset 0 1px 0 rgba(242,227,194,.05), inset 0 0 0 1px rgba(0,0,0,.3);
           transition:border-color .25s, box-shadow .25s; }
-        .panel:hover { border-color:rgba(255,110,70,.32); box-shadow:0 10px 34px rgba(0,0,0,.45), 0 0 24px rgba(255,77,61,.08); }
-        .panel::before, .panel::after { content:""; position:absolute; width:16px; height:16px; pointer-events:none; opacity:.6; }
-        .panel::before { top:-1px; left:-1px; border-top:2px solid var(--ember-red); border-left:2px solid var(--ember-red); border-top-left-radius:16px; }
-        .panel::after { bottom:-1px; right:-1px; border-bottom:2px solid var(--ember-orange); border-right:2px solid var(--ember-orange); border-bottom-right-radius:16px; }
-        .panel:hover { border-color:var(--line-hot); box-shadow:0 0 30px rgba(255,77,61,.12); }
+        .panel:hover { border-color:var(--line-hot);
+          box-shadow:inset 0 1px 0 rgba(242,227,194,.05), inset 0 0 0 1px rgba(0,0,0,.3),
+            0 10px 34px rgba(0,0,0,.45), 0 0 24px rgba(255,120,60,.09); }
+        /* hairline etched inner border — machined bezel */
+        .panel::before { content:""; position:absolute; inset:4px; border-radius:12px;
+          pointer-events:none; border:1px solid rgba(201,168,106,.08); }
+        /* corner rivets — brass, subtle */
+        .panel::after { content:""; position:absolute; inset:7px; pointer-events:none; opacity:.5;
+          background-image:
+            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent),
+            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent),
+            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent),
+            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent);
+          background-size:4px 4px; background-repeat:no-repeat;
+          background-position:left top, right top, left bottom, right bottom; }
         .bg-on .panel { background:linear-gradient(180deg, rgba(24,16,16,.82), rgba(16,11,11,.84)); backdrop-filter:blur(6px); }
         .notch { position:absolute; top:-1px; left:20px; width:56px; height:2px; border-radius:2px; }
         .notch.hot  { background:linear-gradient(90deg,var(--ember-red),var(--ember-dark));  box-shadow:0 0 12px var(--ember-red); }
