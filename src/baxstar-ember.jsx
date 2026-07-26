@@ -97,10 +97,10 @@ const BGS = [
     css: "radial-gradient(ellipse 60% 22% at 62% 78%, rgba(255,120,50,.35), transparent 70%), linear-gradient(180deg,#070404 0%,#0d0605 48%,#25100a 66%,#57200f 78%,#7a2f12 84%,#1a0c08 92%,#070404 100%)" },
   { id: "topo", label: "Night Topo",
     css: "repeating-radial-gradient(circle at 28% 42%, rgba(255,90,50,.06) 0 1px, transparent 1px 42px), repeating-radial-gradient(circle at 72% 30%, rgba(255,140,60,.05) 0 1px, transparent 1px 56px), radial-gradient(ellipse 70% 45% at 50% 30%, rgba(120,40,20,.25), transparent 70%), #060303" },
-  { id: "glacier", label: "Glacier Lake",
-    css: "radial-gradient(ellipse 70% 40% at 50% 70%, rgba(40,140,180,.22), transparent 70%), linear-gradient(180deg,#03111c 0%,#062433 55%,#04202f 78%,#02141f 100%)" },
-  { id: "aurora", label: "Violet Sky",
-    css: "radial-gradient(1.5px 1.5px at 20% 25%, rgba(255,255,255,.5), transparent 2px), radial-gradient(1.5px 1.5px at 65% 15%, rgba(255,255,255,.4), transparent 2px), radial-gradient(2px 2px at 85% 35%, rgba(255,255,255,.45), transparent 2.5px), radial-gradient(ellipse 60% 35% at 50% 60%, rgba(120,80,220,.28), transparent 70%), linear-gradient(180deg,#0a0918 0%,#171033 55%,#0b0716 100%)" },
+  { id: "glacier", label: "Brass Lantern",
+    css: "radial-gradient(ellipse 70% 40% at 50% 70%, rgba(201,168,106,.18), transparent 70%), linear-gradient(180deg,#0b0806 0%,#1a1108 55%,#140d06 78%,#0a0604 100%)" },
+  { id: "aurora", label: "Foundry Smoke",
+    css: "radial-gradient(1.5px 1.5px at 20% 25%, rgba(255,196,128,.45), transparent 2px), radial-gradient(1.5px 1.5px at 65% 15%, rgba(255,178,102,.38), transparent 2px), radial-gradient(2px 2px at 85% 35%, rgba(255,208,148,.4), transparent 2.5px), radial-gradient(ellipse 60% 35% at 50% 60%, rgba(176,113,79,.24), transparent 70%), linear-gradient(180deg,#0c0806 0%,#1b120b 55%,#0d0806 100%)" },
 ];
 
 /* ---------- DEMO DATA (shown until SYNC) ---------- */
@@ -1157,7 +1157,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
   const ACTIONS = [
     { label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
     { label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
-    { label: "Brief my day", dot: "var(--ember-ice)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
+    { label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
     { label: "Handoff draft", dot: "var(--ember-dark)", prompt: "Draft a dated Baxstar Handoff Log entry summarizing what we handled in this session (calls, emails, drafts, decisions). Format: INDEX one-liner, then full ENTRY block. Output as copyable text only — do not write anywhere." },
   ];
 
@@ -1174,7 +1174,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
           --bg:#080606; --panel:#100b0b; --panel-2:#181010;
           --line:rgba(255,90,60,.18); --line-hot:rgba(255,90,60,.5);
           --ember-red:#ff4d3d; --ember-orange:#ff9e3d; --ember-dark:#8a1f14;
-          --ember-amber:#ffbf5e; --ember-ice:#5dd8ff;
+          --ember-amber:#ffbf5e;
+          --brass:#c9a86a; --copper:#b0714f; --gunmetal:#565660; --candle:#f2e3c2;
           --ink:#f5ece8; --ink-dim:#a08a82; --ink-faint:#5a4a44;
         }
         .font-mono-x { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
@@ -1211,7 +1212,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .notch { position:absolute; top:-1px; left:20px; width:56px; height:2px; border-radius:2px; }
         .notch.hot  { background:linear-gradient(90deg,var(--ember-red),var(--ember-dark));  box-shadow:0 0 12px var(--ember-red); }
         .notch.warm { background:linear-gradient(90deg,var(--ember-orange),#ffcf5d);         box-shadow:0 0 12px var(--ember-orange); }
-        .notch.cool { background:linear-gradient(90deg,var(--ember-ice),#8de7ff);            box-shadow:0 0 12px var(--ember-ice); }
+        .notch.cool { background:linear-gradient(90deg,var(--brass),#e8d3a0);            box-shadow:0 0 12px rgba(201,168,106,.55); }
 
         @keyframes riseIn { from{opacity:0; transform:translateY(14px); filter:blur(8px);} to{opacity:1; transform:translateY(0); filter:blur(0);} }
         .reveal { opacity:0; animation:riseIn .7s cubic-bezier(.25,.46,.45,.94) forwards; }
@@ -1634,7 +1635,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               ))}
             </Panel>
 
-            <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--ember-ice)" delay="0.3s">
+            <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" delay="0.3s">
               {data.events.map((e, i) => (
                 <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail} />
               ))}
@@ -1777,7 +1778,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
-                        style={{ borderColor: "var(--line)", color: "var(--ember-ice)" }}>
+                        style={{ borderColor: "var(--line)", color: "var(--brass)" }}>
                         POSTS {postWindow.toUpperCase()}
                       </span>
                       {fishId && (
@@ -1894,7 +1895,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
             {/* --- GOOGLE DRIVE --- */}
             {studioTool === "drive" && (
             <Panel notch="cool" title="Google Drive" count={driveBusy ? "SEARCHING" : "AGENT OS"}
-              countColor={driveBusy ? "var(--ember-orange)" : "var(--ember-ice)"} delay="0.1s" grow scroll={false}>
+              countColor={driveBusy ? "var(--ember-orange)" : "var(--brass)"} delay="0.1s" grow scroll={false}>
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <button className="chip solid" onClick={() => window.open(HANDOFF_DOC_URL, "_blank", "noopener")}>
@@ -1931,7 +1932,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   ) : (
                     <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
                       style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
-                      <span className="font-mono-x mb-1 block text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-ice)" }}>DRIVE</span>
+                      <span className="font-mono-x mb-1 block text-[8.5px] tracking-[0.25em]" style={{ color: "var(--brass)" }}>DRIVE</span>
                       {m.content}
                     </div>
                   )
@@ -1940,7 +1941,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   <div className="flex items-center gap-2 self-start rounded-2xl rounded-bl-sm border px-4 py-3"
                     style={{ background: "#140d0d", borderColor: "var(--line)" }}>
                     <span className="spinner dark" />
-                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-ice)" }}>SEARCHING DRIVE…</span>
+                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--candle)" }}>SEARCHING DRIVE…</span>
                   </div>
                 )}
                 <div ref={driveEndRef} />
@@ -1966,7 +1967,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
             {/* --- AI HANDOFF --- */}
             {studioTool === "handoff" && (
-            <Panel notch="cool" title="AI Handoff" count="HUB PATTERN" countColor="var(--ember-ice)" delay="0.1s" grow scroll={false}>
+            <Panel notch="cool" title="AI Handoff" count="HUB PATTERN" countColor="var(--brass)" delay="0.1s" grow scroll={false}>
               <div className="text-[12px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
                 Package context → copy → open the other AI. Paste and go. No keys, no signups — uses your existing accounts.
               </div>
@@ -2129,7 +2130,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
             {/* --- SNIPPETS --- */}
             {studioTool === "snippets" && (
-            <Panel notch="cool" title="Snippets" count={`${SNIPPETS.length} SAVED`} countColor="var(--ember-ice)" delay="0.1s" grow>
+            <Panel notch="cool" title="Snippets" count={`${SNIPPETS.length} SAVED`} countColor="var(--brass)" delay="0.1s" grow>
               {SNIPPETS.map((s, i) => (
                 <Row key={i} who={s.title}>
                   <div className="mt-1 text-[12px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>{s.text}</div>
