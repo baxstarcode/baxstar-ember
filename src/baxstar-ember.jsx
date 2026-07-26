@@ -53,14 +53,14 @@ const HANDOFF = {
 };
 
 const TOOLS = [
-  { id: "chat",     icon: "💬", label: "Claude Chat" },
-  { id: "handoff",  icon: "🔀", label: "AI Handoff" },
-  { id: "captions", icon: "✍️", label: "Caption Studio" },
+  { id: "chat",     icon: "chat", label: "Claude Chat" },
+  { id: "handoff",  icon: "handoff", label: "AI Handoff" },
+  { id: "captions", icon: "quill", label: "Caption Studio" },
   { id: "drive",    icon: "drive", label: "Google Drive" },
-  { id: "html",     icon: "🌐", label: "HTML Viewer" },
-  { id: "filters",  icon: "🎛️", label: "Image Filters" },
+  { id: "html",     icon: "globe", label: "HTML Viewer" },
+  { id: "filters",  icon: "dials", label: "Image Filters" },
   { id: "github",   icon: "github", label: "GitHub" },
-  { id: "snippets", icon: "📋", label: "Snippets" },
+  { id: "snippets", icon: "clipboard", label: "Snippets" },
 ];
 
 // Known Baxstar repos — pick one, or type any owner/repo below it
@@ -235,23 +235,130 @@ function buildBridgeHtml() {
     + '</scr' + 'ipt></body></html>';
 }
 
-function GithubIcon() {
-  return (
-    <svg viewBox="0 0 16 16" style={{ width: "16px", height: "16px" }} fill="currentColor">
-      <path fillRule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.22.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-    </svg>
-  );
-}
+/* Engraved-line icon set — one style across every tool: thin brass linework,
+   stroke-only, currentColor so each icon takes its housing's metal tint. */
+const ICON_GLYPHS = {
+  chat: (
+    <path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-7l-4.5 4v-4A3 3 0 0 1 4 13z" />
+  ),
+  handoff: (
+    <>
+      <path d="M16 3.5h4.5V8" />
+      <path d="M3.5 20 20.5 3.5" />
+      <path d="M20.5 16v4.5H16" />
+      <path d="m14.5 14.5 6 6" />
+      <path d="m3.5 3.5 6 6" />
+    </>
+  ),
+  quill: (
+    <>
+      <path d="M20.2 3.8c-4.6-.9-8.9.7-11.6 4.1-1.9 2.4-2.9 5.6-3.1 9.3 3.7-.2 6.9-1.2 9.3-3.1 3.4-2.7 5-7 4.1-11.6z" />
+      <path d="M3.5 20.5 14 10" />
+    </>
+  ),
+  drive: (
+    <>
+      <path d="M12 4 3 19.5h18z" />
+      <path d="M7.6 11.75h8.8" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.9 3.4 2.9 13.6 0 17-2.9-3.4-2.9-13.6 0-17z" />
+    </>
+  ),
+  dials: (
+    <>
+      <path d="M6 4v3.5M6 11.5V20" />
+      <circle cx="6" cy="9.5" r="2" />
+      <path d="M12 4v8.5M12 16.5V20" />
+      <circle cx="12" cy="14.5" r="2" />
+      <path d="M18 4v1.5M18 9.5V20" />
+      <circle cx="18" cy="7.5" r="2" />
+    </>
+  ),
+  github: (
+    <>
+      <path d="M6 9v6" />
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="6.5" r="2.5" />
+      <path d="M18 9a9 9 0 0 1-9 9" />
+    </>
+  ),
+  clipboard: (
+    <>
+      <rect x="5.5" y="4.5" width="13" height="16" rx="2" />
+      <path d="M9 4.5V3h6v1.5" />
+      <path d="M9 10h6M9 13.5h6M9 17h3.5" />
+    </>
+  ),
+  spark: (
+    <path d="M13 3 5.5 13.5h4.5L11 21l7.5-10.5H14z" />
+  ),
+  palette: (
+    <>
+      <path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.4 0 2-.9 1.5-2-.6-1.3.2-2.5 1.7-2.5h2c1.9 0 3.3-1.4 3.3-3.5 0-5-3.8-9-8.5-9z" />
+      <circle cx="8" cy="9" r="1" />
+      <circle cx="12" cy="7" r="1" />
+      <circle cx="16" cy="9.5" r="1" />
+      <circle cx="7.5" cy="13.5" r="1" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <circle cx="9" cy="9.5" r="1.5" />
+      <path d="m3.5 16.5 5-4.5 4 3.5 3.5-3 4.5 4" />
+    </>
+  ),
+  folder: (
+    <path d="M3.5 6.5a2 2 0 0 1 2-2h4l2.5 2.5h6.5a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+  ),
+  file: (
+    <>
+      <path d="M6 4.5a2 2 0 0 1 2-2h5.5L18 7v12.5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z" />
+      <path d="M13.5 2.5V7H18" />
+      <path d="M9 12h6M9 15.5h6" />
+    </>
+  ),
+  mic: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0" />
+      <path d="M12 18v3.5M8.5 21.5h7" />
+    </>
+  ),
+  speaker: (
+    <>
+      <path d="M4 9.5h3.5L13 5v14l-5.5-4.5H4z" />
+      <path d="M16.5 9a4.5 4.5 0 0 1 0 6" />
+      <path d="M19 6.5a8 8 0 0 1 0 11" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5.5" y="10.5" width="13" height="10" rx="2" />
+      <path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3" />
+      <path d="M12 14.5v2.5" />
+    </>
+  ),
+  hook: (
+    <>
+      <path d="M12 3v9.5a4.5 4.5 0 0 0 9 0v-1.5l-2.5 2" />
+      <circle cx="12" cy="4" r="1.4" />
+    </>
+  ),
+};
 
-function DriveIcon() {
+function EmberIcon({ name, size = 18, strokeWidth = 1.5, style }) {
   return (
-    <svg viewBox="0 0 87.3 78" style={{ width: "16px", height: "14px" }}>
-      <path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/>
-      <path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"/>
-      <path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z"/>
-      <path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/>
-      <path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/>
-      <path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 13.75 23.8h27.45c0-1.55-.4-3.1-1.2-4.5z"/>
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor"
+      strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+      style={style} aria-hidden="true">
+      {ICON_GLYPHS[name] || null}
     </svg>
   );
 }
@@ -1321,7 +1428,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
               className="rounded-md border px-2 py-1 transition-colors"
               style={{ borderColor: "var(--line)", color: bg.choice !== "default" ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-              🖼 BG
+              <EmberIcon name="image" size={13} style={{ verticalAlign: "-2px", marginRight: "4px" }} />BG
             </button>
             <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
               className="rounded-md border px-2 py-1 transition-colors"
@@ -1376,7 +1483,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         {micArm && !listening && (
           <div className="font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
             style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
-            🎤 MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
+            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
           </div>
         )}
 
@@ -1471,7 +1578,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 {speaking && (
                   <button className="chip solid mt-2" onClick={stopSpeaking}>⏹ Stop Voice</button>
                 )}
-                <button className="chip ghost mt-2" onClick={testVoice}>🔊 VOICE TEST</button>
+                <button className="chip ghost mt-2" onClick={testVoice}><EmberIcon name="speaker" size={13} style={{ verticalAlign: "-2px", marginRight: "5px" }} />VOICE TEST</button>
                 {voiceDiag && (
                   <div className="font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]" style={{ color: "var(--ember-amber)" }}>
                     {voiceDiag}
@@ -1506,7 +1613,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
                     <span className="flex items-center gap-3">
-                      <button onClick={() => speak(response)} title="Read aloud" className="text-xs" style={{ color: "var(--ember-orange)" }}>🔊</button>
+                      <button onClick={() => speak(response)} title="Read aloud" className="text-xs" style={{ color: "var(--ember-orange)" }}><EmberIcon name="speaker" size={14} /></button>
                       <button onClick={() => { setResponse(""); stopSpeaking(); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
                     </span>
                   </div>
@@ -1552,7 +1659,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
             <div className="tool-grid">
               {TOOLS.map((t) => (
                 <button key={t.id} className={`tool-tile ${studioTool === t.id ? "on" : ""}`} onClick={() => setStudioTool(t.id)}>
-                  <span className="tic">{t.icon === "drive" ? <DriveIcon /> : t.icon === "github" ? <GithubIcon /> : t.icon}</span>
+                  <span className="tic"><EmberIcon name={t.icon} /></span>
                   {t.label}
                 </button>
               ))}
@@ -1575,7 +1682,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   <div className="upzone mt-1" onClick={() => fileRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}>
-                    <div className="text-3xl">🎣</div>
+                    <div style={{ color: "var(--ember-amber)", opacity: .7 }}><EmberIcon name="hook" size={34} strokeWidth={1.25} /></div>
                     <div className="mt-2 text-[13px] font-bold">Drop a fish photo, or click to upload</div>
                     <div className="mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
                       Vision auto-scans for species + Vexus / Summit gear
@@ -1646,7 +1753,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 </div>
 
                 <button className="big primary mt-5 w-full justify-center" disabled={!photo || analyzing || genBusy} onClick={generateCaption}>
-                  {genBusy ? <span className="spinner" /> : <span>⚡</span>}
+                  {genBusy ? <span className="spinner" /> : <EmberIcon name="spark" size={14} />}
                   {genBusy ? "GENERATING…" : "Generate Caption"}
                 </button>
                 {capErr && <div className="mt-2 text-xs font-semibold" style={{ color: "#ff8074" }}>{capErr}</div>}
@@ -1657,7 +1764,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
                 {!caption ? (
                   <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
-                    <div className="text-2xl opacity-40">✍️</div>
+                    <div className="opacity-40"><EmberIcon name="quill" size={30} strokeWidth={1.25} /></div>
                     <div className="text-[12px]" style={{ color: "var(--ink-faint)" }}>
                       Upload a photo and hit Generate.<br />Caption lands here, fully editable.
                     </div>
@@ -1669,7 +1776,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                       style={{ background: "#120c0c", color: "var(--ink)", minHeight: "230px", resize: "vertical" }} />
 
                     <div className="lockrow">
-                      <span>🔒</span> {LOCKED_TAG}
+                      <span style={{ display: "inline-flex" }}><EmberIcon name="lock" size={12} /></span> {LOCKED_TAG}
                       <span className="locktag font-mono-x">LOCKED · AUTO-APPENDED</span>
                     </div>
 
@@ -1741,7 +1848,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1" style={{ minHeight: "280px" }}>
                 {chatMsgs.length === 0 && !chatBusy && (
                   <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-                    <div className="text-2xl opacity-40">💬</div>
+                    <div className="opacity-40"><EmberIcon name="chat" size={30} strokeWidth={1.25} /></div>
                     <div className="text-[12px]" style={{ color: "var(--ink-faint)" }}>
                       Full Claude thread — knows the operation,<br />can reach Quo, Gmail, and Calendar.
                     </div>
@@ -1814,7 +1921,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1" style={{ minHeight: "280px" }}>
                 {driveMsgs.length === 0 && !driveBusy && (
                   <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-                    <div className="opacity-60" style={{ transform: "scale(2)" }}><DriveIcon /></div>
+                    <div className="opacity-60"><EmberIcon name="drive" size={32} strokeWidth={1.25} /></div>
                     <div className="mt-2 text-[12px]" style={{ color: "var(--ink-faint)" }}>
                       Search and read your Agent OS docs.<br />Read-only — writes stay in your normal Claude workflow.
                     </div>
@@ -1929,7 +2036,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 countColor={htmlRendered ? "#54e08a" : "var(--ink-faint)"} delay="0.2s" grow scroll={false}>
                 {!htmlRendered ? (
                   <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
-                    <div className="text-2xl opacity-40">🌐</div>
+                    <div className="opacity-40"><EmberIcon name="globe" size={30} strokeWidth={1.25} /></div>
                     <div className="text-[12px]" style={{ color: "var(--ink-faint)" }}>Rendered output shows here, sandboxed.</div>
                   </div>
                 ) : (
@@ -1947,7 +2054,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
             {studioTool === "filters" && (
             <Panel notch="cool" title="Baxstar Image Filters" count="PLANNED" countColor="var(--ember-amber)" delay="0.1s" grow scroll={false}>
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
-                <div className="text-3xl opacity-50">🎛️</div>
+                <div className="opacity-50"><EmberIcon name="dials" size={36} strokeWidth={1.25} /></div>
                 <div className="text-[15px] font-bold">Coming soon</div>
                 <div className="max-w-sm text-[12.5px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
                   A one-tap color grade for Baxstar photos before they hit Caption Studio — consistent warmth, contrast,
@@ -1997,7 +2104,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                       .sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "dir" ? -1 : 1))
                       .map((item) => (
                         <div key={item.path} className="fs-item" onClick={() => ghOpenItem(item)}>
-                          <span>{item.type === "dir" ? "📁" : "📄"}</span>
+                          <span style={{ display: "inline-flex", opacity: .8 }}><EmberIcon name={item.type === "dir" ? "folder" : "file"} size={14} /></span>
                           <span style={{ color: "var(--ink)" }}>{item.name}</span>
                         </div>
                       ))}
@@ -2009,7 +2116,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 countColor={ghFile ? "#54e08a" : "var(--ink-faint)"} delay="0.2s" grow scroll={false}>
                 {!ghFile ? (
                   <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
-                    <div className="opacity-50" style={{ transform: "scale(1.8)" }}><GithubIcon /></div>
+                    <div className="opacity-50"><EmberIcon name="github" size={30} strokeWidth={1.25} /></div>
                     <div className="mt-2 text-[12px]" style={{ color: "var(--ink-faint)" }}>Pick a repo, browse to a file, read it here.</div>
                   </div>
                 ) : (
@@ -2048,15 +2155,15 @@ Look at the photo and write the caption. Output caption text only — no preambl
         {/* ================= DOCK ================= */}
         <div className="reveal flex flex-wrap items-center justify-center gap-3 pb-1" style={{ animationDelay: "0.65s" }}>
           <div className="tabwrap">
-            <button className={`tab ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>⚡ OPS</button>
-            <button className={`tab ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}>🎨 BAXSTAR STUDIO</button>
+            <button className={`tab ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}><EmberIcon name="spark" size={14} style={{ verticalAlign: "-2px", marginRight: "6px" }} />OPS</button>
+            <button className={`tab ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}><EmberIcon name="palette" size={14} style={{ verticalAlign: "-2px", marginRight: "6px" }} />BAXSTAR STUDIO</button>
           </div>
           <div style={{ width: "1px", height: "26px", background: "var(--line)" }} />
           {ACTIONS.map((a) => (
             <button key={a.label} disabled={thinking} className={`big ${a.primary ? "primary" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
               {a.primary
-                ? (thinking ? <span className="spinner" /> : <span>⚡</span>)
+                ? (thinking ? <span className="spinner" /> : <EmberIcon name="spark" size={13} />)
                 : <span className="h-1.5 w-1.5 rounded-full" style={{ background: a.dot, boxShadow: `0 0 8px ${a.dot}` }} />}
               {a.label}
             </button>
