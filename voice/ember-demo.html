@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>EMBER — BAXSTAR MISSION CONTROL</title>
+<style>
+  body { margin:0; background:#080606; color:#f5ece8; font-family:-apple-system,Helvetica,sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:40px 20px; gap:18px; min-height:100vh; box-sizing:border-box; }
+  h1 { font-size:14px; letter-spacing:.35em; margin:0; color:#ff9e3d; }
+  .sub { font-size:10px; letter-spacing:.2em; color:#a08a82; }
+  .gas { width:150px; height:150px; border-radius:50%; position:relative; will-change:transform,filter;
+    background:radial-gradient(circle at 40% 35%, rgba(255,158,61,.95), rgba(255,77,61,.55) 55%, transparent 78%);
+    filter:blur(10px); transition:transform .05s linear; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+  button { background:linear-gradient(90deg,#ff4d3d,#ff6a4d); color:#fff; border:none; border-radius:10px;
+    padding:13px 22px; font-weight:800; letter-spacing:.06em; cursor:pointer; font-size:13px; }
+  button.ghost { background:transparent; border:1px solid rgba(255,120,60,.5); color:#ffb573; }
+  #bar { width:280px; height:10px; border:1px solid rgba(255,120,60,.4); border-radius:6px; overflow:hidden; }
+  #fill { height:100%; width:0%; background:linear-gradient(90deg,#ff4d3d,#ff9e3d); }
+  #st { font-size:11px; letter-spacing:.25em; color:#ffbf5e; min-height:14px; }
+  #tx { font-size:13px; color:#f5ece8; max-width:520px; text-align:center; min-height:18px; }
+  #log { width:min(560px,92vw); background:#100b0b; border:1px solid rgba(255,90,60,.25); border-radius:12px;
+    padding:12px 14px; font-family:ui-monospace,Menlo,monospace; font-size:10.5px; line-height:1.55;
+    color:#c9b6ae; max-height:300px; overflow-y:auto; white-space:pre-wrap; }
+  .ok { color:#7dd87d; } .bad { color:#ff8074; } .hi { color:#ffbf5e; }
+</style>
+</head>
+<body>
+  <h1>E M B E R</h1>
+  <div class="sub">BAXSTAR MISSION CONTROL — ONLINE</div>
+  <div class="gas" id="gas"></div>
+  <div id="st" style="font-size:12px;letter-spacing:.3em;color:#ffbf5e;min-height:16px">TAP MIC · THEN TALK TO ME</div>
+  <div id="bar"><div id="fill"></div></div>
+  <div class="row">
+    <button id="test">🔊 SAY HELLO</button>
+    <button id="mic" class="ghost">🎤 MIC ON</button>
+    <button id="stop" class="ghost">⏹ STOP</button>
+  </div>
+  <div id="tx"></div>
+  <div id="log" style="display:none"></div>
+
+<script>
+var logEl = document.getElementById('log');
+function log(msg, cls) {
+  var d = new Date();
+  var t = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);
+  var span = document.createElement('div');
+  if (cls) span.className = cls;
+  span.textContent = t + '  ' + msg;
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setSt(s){ document.getElementById('st').textContent = s; }
+
+/* ---------- environment report ---------- */
+log('UA: ' + navigator.userAgent.slice(0, 90));
+log('speechSynthesis: ' + (window.speechSynthesis ? 'present' : 'MISSING'), window.speechSynthesis ? 'ok' : 'bad');
+log('SpeechRecognition: ' + ((window.SpeechRecognition||window.webkitSpeechRecognition) ? 'present' : 'MISSING'));
+
+function voicesReport() {
+  var vs = speechSynthesis.getVoices();
+  var locals = vs.filter(function(v){ return v.localService; });
+  log('voices: ' + vs.length + ' total, ' + locals.length + ' local', 'hi');
+  if (locals[0]) log('best local: ' + locals[0].name + ' (' + locals[0].lang + ')', 'hi');
+  return locals;
+}
+if (window.speechSynthesis) {
+  speechSynthesis.onvoiceschanged = function(){ voicesReport(); };
+  setTimeout(voicesReport, 200);
+}
+
+/* ---------- voice out: local-first + mp3 fallback, fully logged ---------- */
+var curAudio = null;
+function pickLocal() {
+  var vs = speechSynthesis.getVoices().filter(function(v){ return v.localService && v.lang && v.lang.indexOf('en') === 0; });
+  var score = function(v){ var s=0;
+    if (/premium|enhanced|natural|neural/i.test(v.name)) s+=40;
+    if (/samantha|alex|aria|zira|david|daniel|karen|moira/i.test(v.name)) s+=25;
+    if (v.lang==='en-US') s+=10; return s; };
+  vs.sort(function(a,b){ return score(b)-score(a); });
+  return vs[0] || null;
+}
+function say(text) {
+  if (!window.speechSynthesis) { log('no speechSynthesis — going straight to MP3', 'bad'); return mp3(text); }
+  speechSynthesis.cancel(); speechSynthesis.resume();
+  var v = pickLocal();
+  var u = new SpeechSynthesisUtterance(text);
+  if (v) { u.voice = v; u.lang = v.lang; log('speaking on: ' + v.name); }
+  else { log('NO local voice found — trying default', 'bad'); }
+  u.rate = 1.03;
+  var started = false, fellBack = false;
+  function fallback(){ if (fellBack) return; fellBack = true; try{speechSynthesis.cancel();}catch(e){} mp3(text); }
+  u.onstart = function(){ started = true; setSt('SPEAKING'); log('utterance onstart ✓', 'ok'); pulse(0.5, 2500); };
+  u.onend = function(){ if (started) { setSt('READY'); log('utterance onend ✓', 'ok'); } };
+  u.onerror = function(e){ log('utterance onerror: ' + (e.error||'?'), 'bad'); if (!started) fallback(); else setSt('READY'); };
+  speechSynthesis.speak(u);
+  setTimeout(function(){ if (!started) { log('WATCHDOG: no onstart in 1.4s — falling back to MP3', 'bad'); fallback(); } }, 1400);
+}
+function mp3(text) {
+  var sources = [
+    'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=' + encodeURIComponent(text.slice(0,190)),
+    'https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=' + encodeURIComponent(text.slice(0,290))
+  ];
+  var i = 0;
+  function tryNext() {
+    if (i >= sources.length) { setSt('READY'); log('all MP3 sources failed', 'bad'); return; }
+    var src = sources[i++];
+    var host = src.split('/')[2];
+    log('MP3 try ' + i + ': ' + host);
+    var advanced = false;
+    function next(){ if (advanced) return; advanced = true; tryNext(); }
+    try {
+      curAudio = new Audio(src);
+      curAudio.onplaying = function(){ setSt('SPEAKING (MP3)'); log('mp3 playing ✓ (' + host + ')', 'ok'); pulse(0.5, 2500); };
+      curAudio.onended = function(){ setSt('READY'); log('mp3 ended ✓', 'ok'); };
+      curAudio.onerror = function(){ log('mp3 source failed: ' + host + (curAudio.error ? ' (code ' + curAudio.error.code + ')' : ''), 'bad'); next(); };
+      curAudio.play().catch(function(e){
+        log('mp3 play() rejected: ' + e.name + ' — ' + e.message, 'bad');
+        if (e.name === 'NotAllowedError') { setSt('READY'); log('autoplay blocked — click TEST again', 'bad'); }
+        else next();
+      });
+    } catch(e) { log('mp3 exception: ' + e.message, 'bad'); next(); }
+  }
+  tryNext();
+}
+function chime() {
+  try {
+    var C = window.AudioContext || window.webkitAudioContext;
+    var ctx = new C();
+    var play = function(){
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.12, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.5);
+      log('chime fired ✓', 'ok');
+      setTimeout(function(){ ctx.close(); }, 900);
+    };
+    var p = ctx.resume(); if (p && p.then) p.then(play); else play();
+  } catch(e) { log('chime exception: ' + e.message, 'bad'); }
+}
+
+/* ---------- mic in: continuous recognition + meter ---------- */
+var rec = null, active = false, an = null, data = null;
+function micOn() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { log('SpeechRecognition unsupported — use Chrome', 'bad'); return; }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function(s){
+    log('getUserMedia ✓ mic granted', 'ok');
+    var C = window.AudioContext || window.webkitAudioContext;
+    var ctx = new C();
+    an = ctx.createAnalyser(); an.fftSize = 256;
+    ctx.createMediaStreamSource(s).connect(an);
+    data = new Uint8Array(an.fftSize);
+    meterLoop();
+  }).catch(function(e){ log('getUserMedia DENIED: ' + e.name, 'bad'); });
+  rec = new SR();
+  rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = false;
+  rec.onresult = function(e){
+    for (var i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        var text = e.results[i][0].transcript.trim();
+        document.getElementById('tx').textContent = '“' + text + '”';
+        log('heard: ' + text, 'ok');
+        say(emberReply(text));
+      }
+    }
+  };
+  rec.onend = function(){ if (active) { try { rec.start(); } catch(e){} } };
+  rec.onerror = function(e){ log('recognition error: ' + e.error, 'bad'); };
+  try { rec.start(); active = true; setSt('LISTENING'); log('recognition started ✓', 'ok');
+    document.getElementById('mic').textContent = '🎤 MIC OFF';
+  } catch(e) { log('recognition start failed: ' + e.message, 'bad'); }
+}
+function micOff() {
+  active = false;
+  try { rec && rec.stop(); } catch(e){}
+  setSt('READY');
+  document.getElementById('mic').textContent = '🎤 MIC ON';
+  log('mic off');
+}
+
+/* ---------- gas visual ---------- */
+var gas = document.getElementById('gas'), lvl = 0, boost = 0, boostUntil = 0;
+function pulse(v, ms){ boost = v; boostUntil = Date.now() + ms; }
+function meterLoop() {
+  requestAnimationFrame(meterLoop);
+  var target = 0;
+  if (an) {
+    an.getByteTimeDomainData(data);
+    var sum = 0;
+    for (var i = 0; i < data.length; i++) { var d = (data[i]-128)/128; sum += d*d; }
+    target = Math.min(1, Math.sqrt(sum/data.length) * 4);
+  }
+  if (Date.now() < boostUntil) target = Math.max(target, boost * (0.7 + 0.3*Math.abs(Math.sin(Date.now()/120))));
+  lvl += (target - lvl) * 0.2;
+  document.getElementById('fill').style.width = (lvl*100) + '%';
+  gas.style.transform = 'scale(' + (1 + lvl*0.5) + ')';
+  gas.style.filter = 'blur(10px) hue-rotate(' + (Math.sin(Date.now()/200)*lvl*60) + 'deg) brightness(' + (1+lvl*0.6) + ')';
+}
+meterLoop();
+
+
+/* ---------- EMBER DEMO BRAIN (canned Baxstar responses) ---------- */
+function emberReply(t) {
+  var q = t.toLowerCase();
+  function has(){ for (var i=0;i<arguments.length;i++){ if (q.indexOf(arguments[i])>-1) return true; } return false; }
+  if (has('hello','hey','hi ','you there','wake up')) return "I'm here, Brady. Mission control online. What do you need?";
+  if (has('who are you','what are you','your name')) return "I'm Ember, your Baxstar command center. Fishing, pontoons, the golf sim — I keep it all in view.";
+  if (has('pontoon','rental','rate','pricing','price','cost')) return "Pontoon rentals run by season tier and length, one day through ten. Peak weekends hold as multi-day, then release to single day about fourteen days out. Want the exact rate for a date?";
+  if (has('fishing','trip','guide','walleye','bass','charter')) return "Baxstar guided trips are private water time with a five time Master Angler. Family and action trips shine with the five guest setup. Book online — that's the priority channel.";
+  if (has('booking','bookings','calendar','schedule','today','who')) return "Eighty two percent of your bookings land inside thirty days, median about six days out. The next two weeks basically are your season.";
+  if (has('golf','sim','simulator','lakes')) return "Lakes Golf Simulator runs twenty four seven, unstaffed. The weekday practice plan is a hundred forty nine a month, Monday through Thursday.";
+  if (has('camp','tech camp','summer')) return "Summer Tech Camp is Minecraft Education and LEGO Spike robotics. Four sessions, late July into August. Running again in twenty twenty seven for sure.";
+  if (has('weather','wind','forecast','fish today')) return "I can pull live weather once I'm fully wired in. For now — check the wind on the lake, and trust your gut. You're the Master Angler.";
+  if (has('email','gmail','message','text','quo','customer')) return "When I'm fully connected I'll read your Quo texts and Gmail and draft replies in your voice. Right now I'm in demo mode — showing what's coming.";
+  if (has('thank','thanks','good job','nice','awesome','love')) return "Anytime, Brady. This is just the start of what I'll do for Baxstar.";
+  if (has('wife','sarah','show','demo','proof')) return "Tell her this is the front door to both businesses — voice controlled, Baxstar smart. And it's only the beginning.";
+  return "I caught that. In demo mode I answer the big ones — try asking about pontoons, fishing trips, bookings, or the golf sim.";
+}
+
+/* ---------- buttons ---------- */
+document.getElementById('test').onclick = function(){
+  chime();
+  setTimeout(function(){ say('Ember online. Mission control ready, Brady. Tap the mic and talk to me.'); }, 650);
+};
+document.getElementById('mic').onclick = function(){ active ? micOff() : micOn(); };
+document.getElementById('stop').onclick = function(){
+  try { speechSynthesis.cancel(); } catch(e){}
+  try { curAudio && curAudio.pause(); } catch(e){}
+  setSt('READY'); log('stopped');
+};
+</script>
+</body>
+</html>
