@@ -1174,7 +1174,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
     <div className="min-h-screen w-full" style={{ background: "var(--bg)", color: "var(--ink)" }}>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap');
         :root {
           --bg:#080606; --panel:#100b0b; --panel-2:#181010;
           --line:rgba(255,90,60,.18); --line-hot:rgba(255,90,60,.5);
@@ -1183,7 +1183,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           --ink:#f5ece8; --ink-dim:#a08a82; --ink-faint:#5a4a44;
         }
         .font-mono-x { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
-        .font-display { font-family:"Big Shoulders Display",system-ui,sans-serif; }
+        .font-display { font-family:"Cinzel","Georgia",serif; }
 
         .atmo { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.5;
           background:
@@ -1284,7 +1284,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           border:1px solid rgba(255,90,60,.28);
           background:linear-gradient(180deg,#1e1210,#120b0a);
           box-shadow: inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.55), 0 6px 20px rgba(0,0,0,.5); }
-        .tab { font-family:"Big Shoulders Display",system-ui,sans-serif; font-size:15px; font-weight:800; letter-spacing:.14em; padding:12px 24px; border-radius:12px;
+        .tab { font-family:"Cinzel","Georgia",serif; font-size:14px; font-weight:700; letter-spacing:.14em; padding:12px 24px; border-radius:12px;
           color:var(--ink-dim); cursor:pointer; transition:all .18s; border:1px solid transparent; background:transparent;
           text-shadow:0 1px 0 rgba(0,0,0,.7); }
         .tab:hover { color:var(--ink); background:rgba(255,90,60,.06); }
@@ -2183,7 +2183,7 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
     <div className={`panel reveal flex flex-col px-5 py-4 ${grow ? "flex-1" : ""}`} style={{ animationDelay: delay, minHeight: 0 }}>
       <span className={`notch ${notch}`} />
       <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-dim)" }}>{title}</h3>
+        <h3 className="font-display text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-dim)" }}>{title}</h3>
         <span className="font-mono-x rounded-full border px-2.5 py-0.5 text-[10px] font-semibold"
           style={{ color: countColor, borderColor: "var(--line)", background: "rgba(255,90,60,.06)" }}>
           {count}
