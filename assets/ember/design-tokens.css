@@ -1,0 +1,131 @@
+:root {
+  /* Core surfaces */
+  --ember-bg: #070604;
+  --ember-bg-raised: #0A0907;
+  --ember-panel: #0D0C0A;
+  --ember-panel-alt: #12100D;
+  --ember-panel-hover: #17130F;
+  --ember-panel-line: #3D2A1C;
+
+  /* Metals */
+  --ember-brass: #B08D57;
+  --ember-brass-bright: #D6B36A;
+  --ember-brass-dark: #5F4428;
+  --ember-antique: #7C5B32;
+  --ember-copper: #A65A32;
+  --ember-bone: #C9B18A;
+
+  /* Energy and status */
+  --ember-active: #FF4D32;
+  --ember-active-bright: #FF7A45;
+  --ember-warning: #FFB13B;
+  --ember-cyan: #19D7E6;
+  --ember-danger: #D93C2B;
+
+  /* Readable text */
+  --ember-text: #F3E9D8;
+  --ember-text-soft: #D8C9B5;
+  --ember-text-muted: #B8A78F;
+  --ember-text-dim: #8B7A66;
+
+  /* Typography */
+  --ember-font-display: "Cinzel", Georgia, serif;
+  --ember-font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ember-display-weight: 700;
+  --ember-heading-weight: 700;
+  --ember-body-weight: 500;
+  --ember-label-weight: 700;
+
+  /* Spacing */
+  --ember-space-1: 4px;
+  --ember-space-2: 8px;
+  --ember-space-3: 12px;
+  --ember-space-4: 16px;
+  --ember-space-5: 20px;
+  --ember-space-6: 24px;
+  --ember-space-8: 32px;
+  --ember-space-10: 40px;
+  --ember-space-12: 48px;
+
+  /* Shape and depth */
+  --ember-radius-sm: 7px;
+  --ember-radius-md: 10px;
+  --ember-radius-lg: 13px;
+  --ember-border-thin: 1px;
+  --ember-border-strong: 2px;
+  --ember-shadow-panel: 0 10px 30px rgb(0 0 0 / 48%);
+  --ember-shadow-active: 0 0 18px rgb(255 77 50 / 42%);
+  --ember-shadow-cyan: 0 0 22px rgb(25 215 230 / 20%);
+
+  /* Motion */
+  --ember-ease-mechanical: cubic-bezier(.2, .8, .2, 1);
+  --ember-ease-sweep: cubic-bezier(.22, 1, .36, 1);
+  --ember-duration-fast: 140ms;
+  --ember-duration-control: 220ms;
+  --ember-duration-lock: 320ms;
+  --ember-duration-gauge: 600ms;
+}
+
+.ember-display {
+  color: var(--ember-text);
+  font-family: var(--ember-font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  line-height: 32px;
+}
+
+.ember-panel-heading {
+  color: var(--ember-text);
+  font-family: var(--ember-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+.ember-body {
+  color: var(--ember-text-soft);
+  font-family: var(--ember-font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 21px;
+}
+
+.ember-meta {
+  color: var(--ember-text-muted);
+  font-family: var(--ember-font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  line-height: 16px;
+}
+
+.ember-control-label {
+  color: var(--ember-text);
+  font-family: var(--ember-font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .035em;
+  line-height: 16px;
+}
+
+.ember-panel-frame {
+  background: var(--ember-panel);
+  border: 28px solid transparent;
+  border-image: url("./svg/frames/panel-frame.svg") 28 fill stretch;
+  box-shadow: var(--ember-shadow-panel);
+}
+
+.ember-focusable:focus-visible {
+  outline: 2px solid var(--ember-cyan);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ember-motion {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+}

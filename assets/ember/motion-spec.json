@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "motions": [
+    {
+      "name": "context-lever",
+      "trigger": "Draft Reply or Create Task state change",
+      "idleAngleDeg": -26,
+      "readyAngleDeg": -8,
+      "activeAngleDeg": 24,
+      "durationMs": 220,
+      "easing": "cubic-bezier(.2,.8,.2,1)",
+      "pendingReview": "Pulse the status point between 55% and 100% opacity every 900ms; do not move the lever again."
+    },
+    {
+      "name": "gauge-sweep",
+      "trigger": "Unread count, schedule load, or sync progress changes",
+      "rangeDeg": [-52, 52],
+      "durationMs": 600,
+      "easing": "cubic-bezier(.22,1,.36,1)"
+    },
+    {
+      "name": "codex-drum",
+      "trigger": "Model or effort selection",
+      "durationMs": 320,
+      "easing": "cubic-bezier(.2,.8,.2,1)",
+      "effect": "Translate selected label vertically 8px to 0 while fading from 60% to 100%; neighboring labels move in the opposite direction."
+    },
+    {
+      "name": "sync-gears",
+      "trigger": "SYNC starts",
+      "durationMs": 900,
+      "easing": "linear",
+      "effect": "Rotate paired gears continuously in opposite directions. Stop on success; reverse 18deg once on error."
+    },
+    {
+      "name": "tank-energy",
+      "trigger": "Ambient while viewport is at least 1180px wide",
+      "durationMs": 4200,
+      "easing": "ease-in-out",
+      "effect": "Animate a cyan highlight pseudo-element from translateY(18%) to translateY(-18%) and opacity .16 to .32. Do not animate the PNG itself."
+    },
+    {
+      "name": "tool-active",
+      "trigger": "Studio tool selection",
+      "durationMs": 140,
+      "easing": "cubic-bezier(.2,.8,.2,1)",
+      "effect": "Increase bronze logo brightness from 78% to 100%, raise module 2px, and add a 14px ember glow."
+    },
+    {
+      "name": "mic-pressure-vent",
+      "trigger": "Existing mic armed/listening/processing states",
+      "durationMs": "KEEP_EXISTING",
+      "easing": "KEEP_EXISTING",
+      "effect": "Retain the existing pressure-vent animation. The supplied mic orb is only the new shell."
+    }
+  ],
+  "reducedMotion": "When prefers-reduced-motion: reduce, disable continuous tank and gear animation; snap lever, drum, and needle state changes in 1ms."
+}

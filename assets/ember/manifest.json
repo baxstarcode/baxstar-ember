@@ -1,0 +1,196 @@
+{
+  "name": "ember-steampunk-asset-pack",
+  "version": "1.0.0",
+  "target": "single-file React JSX with Tailwind utilities and CSS variables",
+  "rasterBudgetBytes": 2097152,
+  "rasterTotalBytes": 1031251,
+  "assets": [
+    {
+      "path": "mockups/ember-ops-final.webp",
+      "format": "webp",
+      "dimensions": [1279, 800],
+      "bytes": 146298,
+      "role": "intent-reference",
+      "implementation": false,
+      "notes": "Final OPS visual reference with contextual Draft Reply and Create Task levers."
+    },
+    {
+      "path": "mockups/ember-studio-final.webp",
+      "format": "webp",
+      "dimensions": [1279, 800],
+      "bytes": 121616,
+      "role": "intent-reference",
+      "implementation": false,
+      "notes": "Final Studio visual reference with bronze Claude, Google Drive, and GitHub marks."
+    },
+    {
+      "path": "raster/skull-arch@2x.png",
+      "format": "png-alpha",
+      "dimensions": [1033, 500],
+      "bytes": 535786,
+      "role": "responsive-overlay",
+      "implementation": true,
+      "notes": "Painterly skeletal top architecture. Center over OPS chamber; hide below 980px."
+    },
+    {
+      "path": "raster/glass-tank@2x.png",
+      "format": "png-alpha",
+      "dimensions": [200, 880],
+      "bytes": 227551,
+      "role": "responsive-inline-element",
+      "implementation": true,
+      "notes": "Use once on each far edge; mirror right instance with scaleX(-1); hide below 1180px."
+    },
+    {
+      "path": "textures/iron-tile.svg",
+      "format": "svg",
+      "dimensions": [128, 128],
+      "role": "tileable-background",
+      "implementation": true,
+      "notes": "Repeat on both axes at native tile size; use beneath panel layer."
+    },
+    {
+      "path": "svg/frames/panel-frame.svg",
+      "format": "svg",
+      "dimensions": [160, 160],
+      "role": "9-slice-border-frame",
+      "implementation": true,
+      "notes": "CSS border-image slice: 28 fill stretch."
+    },
+    {
+      "path": "svg/frames/tool-module-frame.svg",
+      "format": "svg",
+      "dimensions": [144, 132],
+      "role": "scalable-tool-frame",
+      "implementation": true,
+      "notes": "Place behind each Studio tool; keep live icon and text as DOM content."
+    },
+    {
+      "path": "svg/frames/quick-action-frame.svg",
+      "format": "svg",
+      "dimensions": [168, 86],
+      "role": "scalable-control-frame",
+      "implementation": true,
+      "notes": "Use for mode tabs, quick actions, and Voice Test without rasterizing labels."
+    },
+    {
+      "path": "svg/controls/action-lever-idle.svg",
+      "format": "svg",
+      "dimensions": [96, 128],
+      "role": "interactive-state",
+      "implementation": true,
+      "state": "idle",
+      "notes": "Disabled context action; no selected communication."
+    },
+    {
+      "path": "svg/controls/action-lever-ready.svg",
+      "format": "svg",
+      "dimensions": [96, 128],
+      "role": "interactive-state",
+      "implementation": true,
+      "state": "ready",
+      "notes": "Enabled context action; selected communication available."
+    },
+    {
+      "path": "svg/controls/action-lever-active.svg",
+      "format": "svg",
+      "dimensions": [96, 128],
+      "role": "interactive-state",
+      "implementation": true,
+      "state": "active",
+      "notes": "Action is executing; return to ready for pending review."
+    },
+    {
+      "path": "svg/controls/mic-orb-shell.svg",
+      "format": "svg",
+      "dimensions": [240, 240],
+      "role": "interactive-shell",
+      "implementation": true,
+      "notes": "Wrap existing mic orb and preserve the current pressure-vent state machine."
+    },
+    {
+      "path": "svg/controls/gauge-face.svg",
+      "format": "svg",
+      "dimensions": [128, 128],
+      "role": "gauge-base",
+      "implementation": true,
+      "notes": "Stack below gauge-needle.svg."
+    },
+    {
+      "path": "svg/controls/gauge-needle.svg",
+      "format": "svg",
+      "dimensions": [128, 128],
+      "role": "gauge-moving-part",
+      "implementation": true,
+      "notes": "Rotate around 64px 87px from -52deg to 52deg."
+    },
+    {
+      "path": "svg/controls/codex-lock-shell.svg",
+      "format": "svg",
+      "dimensions": [264, 84],
+      "role": "selector-shell",
+      "implementation": true,
+      "notes": "Place behind live model, effort, or revenue values. Do not bake values into the SVG."
+    },
+    {
+      "path": "svg/controls/toggle-track.svg",
+      "format": "svg",
+      "dimensions": [112, 52],
+      "role": "toggle-shell",
+      "implementation": true,
+      "states": ["off", "on"],
+      "notes": "Use CSS to move/recolor the knob for VOICE ON and SYNC state."
+    },
+    {
+      "path": "svg/logos/claude-mark.svg",
+      "format": "svg",
+      "dimensions": [64, 64],
+      "role": "brand-mark",
+      "implementation": true,
+      "control": "Claude Chat",
+      "notes": "Set --ember-logo to #B08D57 inactive or #D6B36A active."
+    },
+    {
+      "path": "svg/logos/google-drive-mark.svg",
+      "format": "svg",
+      "dimensions": [72, 64],
+      "role": "brand-mark",
+      "implementation": true,
+      "control": "Google Drive",
+      "notes": "Set --ember-logo to #B08D57 inactive or #D6B36A active."
+    },
+    {
+      "path": "svg/logos/github-mark.svg",
+      "format": "svg",
+      "dimensions": [64, 64],
+      "role": "brand-mark",
+      "implementation": true,
+      "control": "GitHub",
+      "notes": "Set --ember-logo to #B08D57 inactive or #D6B36A active."
+    },
+    {
+      "path": "svg/ornaments/corner-gear.svg",
+      "format": "svg",
+      "dimensions": [96, 96],
+      "role": "corner-ornament-or-bg-picker-badge",
+      "implementation": true,
+      "notes": "Pointer-events none when decorative; preserve BG picker target when used as its badge."
+    },
+    {
+      "path": "svg/ornaments/pipe-junction.svg",
+      "format": "svg",
+      "dimensions": [128, 128],
+      "role": "responsive-corner-ornament",
+      "implementation": true,
+      "notes": "Use at frame junctions only; never behind text."
+    }
+  ],
+  "documents": [
+    "README.md",
+    "CLAUDE-HANDOFF.md",
+    "design-tokens.css",
+    "control-map.json",
+    "motion-spec.json",
+    "docs/integration-snippets.md"
+  ]
+}

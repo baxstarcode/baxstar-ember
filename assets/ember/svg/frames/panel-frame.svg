@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" fill="none">
+  <style>
+    .brass{stroke:var(--ember-brass,#B08D57)}
+    .dark{stroke:var(--ember-brass-dark,#5F4428)}
+    .plate{fill:var(--ember-panel,#0D0C0A)}
+  </style>
+  <rect x="2" y="2" width="156" height="156" rx="13" class="plate" stroke="#2A1E15" stroke-width="4"/>
+  <rect x="5.5" y="5.5" width="149" height="149" rx="10" class="dark" stroke-width="1.5"/>
+  <rect x="11.5" y="11.5" width="137" height="137" rx="7" class="brass" stroke-width="1"/>
+  <path d="M12 33V18a6 6 0 0 1 6-6h15M127 12h15a6 6 0 0 1 6 6v15M148 127v15a6 6 0 0 1-6 6h-15M33 148H18a6 6 0 0 1-6-6v-15" class="brass" stroke-width="3"/>
+  <g fill="#B08D57" stroke="#332115" stroke-width="1">
+    <circle cx="13" cy="13" r="3.2"/><circle cx="147" cy="13" r="3.2"/>
+    <circle cx="13" cy="147" r="3.2"/><circle cx="147" cy="147" r="3.2"/>
+  </g>
+  <g stroke="#7C5B32" stroke-width="1">
+    <path d="M39 7h82M39 153h82M7 39v82M153 39v82"/>
+  </g>
+</svg>

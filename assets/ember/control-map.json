@@ -1,0 +1,198 @@
+{
+  "version": "1.0.0",
+  "controls": [
+    {
+      "name": "OPS",
+      "role": "mode-tab",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "inactive|active",
+      "implementation": "Keep the existing tab handler and ID; use ember-active only for the selected mode."
+    },
+    {
+      "name": "Baxstar Studio",
+      "role": "mode-tab",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "inactive|active",
+      "implementation": "Keep the existing tab handler and ID; use ember-active only for the selected mode."
+    },
+    {
+      "name": "central mic orb",
+      "role": "voice-trigger",
+      "asset": "svg/controls/mic-orb-shell.svg",
+      "state": "idle|armed|listening|processing",
+      "implementation": "Retain the existing pressure-vent animation and click/voice behavior. Place current orb content above this shell."
+    },
+    {
+      "name": "Voice Test",
+      "role": "voice-diagnostic",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "idle|active",
+      "implementation": "Visual shell only; preserve the existing test routine."
+    },
+    {
+      "name": "What'd I miss",
+      "role": "quick-action",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "idle|hover|active|pending",
+      "implementation": "Preserve existing action, preset ID, and output destination."
+    },
+    {
+      "name": "Triage inbox",
+      "role": "quick-action",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "idle|hover|active|pending",
+      "implementation": "Preserve existing action, preset ID, and output destination."
+    },
+    {
+      "name": "Brief my day",
+      "role": "quick-action",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "idle|hover|active|pending",
+      "implementation": "Preserve existing action, preset ID, and output destination."
+    },
+    {
+      "name": "Handoff draft",
+      "role": "quick-action",
+      "asset": "svg/frames/quick-action-frame.svg",
+      "state": "idle|hover|active|pending",
+      "implementation": "Preserve existing action, preset ID, and output destination."
+    },
+    {
+      "name": "Calls & Voicemail",
+      "role": "panel",
+      "asset": "svg/frames/panel-frame.svg",
+      "state": "default|selected-item",
+      "implementation": "Apply as a scalable border shell. Never place ornament behind message text."
+    },
+    {
+      "name": "Inbox",
+      "role": "panel",
+      "asset": "svg/frames/panel-frame.svg",
+      "state": "default|selected-item",
+      "implementation": "Apply as a scalable border shell. Selected item supplies context to Draft Reply and Create Task."
+    },
+    {
+      "name": "Schedule",
+      "role": "panel",
+      "asset": "svg/frames/panel-frame.svg",
+      "state": "default",
+      "implementation": "Optional gauge uses gauge-face.svg plus gauge-needle.svg."
+    },
+    {
+      "name": "Today's Revenue",
+      "role": "panel",
+      "asset": "svg/controls/codex-lock-shell.svg",
+      "state": "default|updated",
+      "implementation": "Use the shell behind live revenue digits; do not rasterize the number."
+    },
+    {
+      "name": "Claude Chat",
+      "role": "studio-tool",
+      "asset": "svg/logos/claude-mark.svg",
+      "frame": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "AI Handoff",
+      "role": "studio-tool",
+      "asset": "svg/controls/action-lever-idle.svg",
+      "frame": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "Caption Studio",
+      "role": "studio-tool",
+      "asset": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "Google Drive",
+      "role": "studio-tool",
+      "asset": "svg/logos/google-drive-mark.svg",
+      "frame": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "HTML Viewer",
+      "role": "studio-tool",
+      "asset": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "Image Filters",
+      "role": "studio-tool",
+      "asset": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "GitHub",
+      "role": "studio-tool",
+      "asset": "svg/logos/github-mark.svg",
+      "frame": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "Snippets",
+      "role": "studio-tool",
+      "asset": "svg/frames/tool-module-frame.svg",
+      "state": "idle|active"
+    },
+    {
+      "name": "Haiku/Sonnet/Opus",
+      "role": "model-toggle",
+      "asset": "svg/controls/codex-lock-shell.svg",
+      "state": "one active",
+      "implementation": "Keep the current three buttons and model values; shell is visual only."
+    },
+    {
+      "name": "Low/Std/High",
+      "role": "effort-toggle",
+      "asset": "svg/controls/codex-lock-shell.svg",
+      "state": "one active",
+      "implementation": "Keep the current three buttons and effort values; shell is visual only."
+    },
+    {
+      "name": "SYNC",
+      "role": "sync-trigger",
+      "asset": "svg/controls/toggle-track.svg",
+      "state": "idle|syncing|success|error",
+      "implementation": "Preserve current sync behavior; rotate existing gear icon while syncing."
+    },
+    {
+      "name": "VOICE ON",
+      "role": "voice-toggle",
+      "asset": "svg/controls/toggle-track.svg",
+      "state": "off|on",
+      "implementation": "Move knob with CSS; preserve current toggle state and handler."
+    },
+    {
+      "name": "BG picker",
+      "role": "background-picker",
+      "asset": "svg/ornaments/corner-gear.svg",
+      "state": "closed|open",
+      "implementation": "Use a small gear badge without changing the existing picker."
+    },
+    {
+      "name": "Draft Reply",
+      "role": "context-action",
+      "assets": {
+        "idle": "svg/controls/action-lever-idle.svg",
+        "ready": "svg/controls/action-lever-ready.svg",
+        "active": "svg/controls/action-lever-active.svg"
+      },
+      "state": "idle|ready|active|pending-review",
+      "implementation": "Idle when no communication is selected. Ready when an Inbox or Calls & Voicemail item is selected. Generate an editable draft; never send automatically."
+    },
+    {
+      "name": "Create Task",
+      "role": "context-action",
+      "assets": {
+        "idle": "svg/controls/action-lever-idle.svg",
+        "ready": "svg/controls/action-lever-ready.svg",
+        "active": "svg/controls/action-lever-active.svg"
+      },
+      "state": "idle|ready|active|pending-review",
+      "implementation": "Idle when no source item is selected. Create an editable task proposal containing title, source, and suggested due date; require confirmation before saving."
+    }
+  ]
+}
