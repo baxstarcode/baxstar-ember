@@ -123,15 +123,43 @@ const DEMO = {
 
 /* ---------- CLAUDE API HELPERS ---------- */
 
+/* Where Ember sends its Claude traffic.
+   Unset  → calls the Anthropic API direct. That only works inside a Claude artifact,
+            where the platform injects credentials.
+   Hosted → set window.EMBER_API_PROXY to a server-side proxy that holds the key.
+            See docs/DEPLOY.md. Never put an API key in this file — it ships to the browser. */
+const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
+const API_ENDPOINT =
+  (typeof window !== "undefined" && window.EMBER_API_PROXY) || ANTHROPIC_DIRECT;
+const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
+
+const NO_PROXY_HINT =
+  "Ember has no brain here. Hosted builds need a key-holding proxy — set window.EMBER_API_PROXY (docs/DEPLOY.md).";
+
 async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers } = {}) {
   const body = { model, max_tokens: 1000, messages };
   if (useTools) body.mcp_servers = servers || MCP_SERVERS;
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  let res;
+  try {
+    res = await fetch(API_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // Network-level failure: CORS rejection hosted, or the proxy is down.
+    throw new Error(
+      USING_PROXY
+        ? "Can't reach the Ember proxy. Check it's deployed and its CORS allows this origin."
+        : NO_PROXY_HINT
+    );
+  }
+  if (!res.ok) {
+    if (!USING_PROXY && (res.status === 401 || res.status === 403)) {
+      throw new Error(`API ${res.status} — no credentials. ${NO_PROXY_HINT}`);
+    }
+    throw new Error(`API ${res.status}`);
+  }
   return res.json();
 }
 

@@ -1,0 +1,14 @@
+{
+  "name": "baxstar-ember",
+  "version": "4.1.0",
+  "private": true,
+  "description": "Brady Baxter's AI command center for Baxstar Fishing and Lakes Golf Simulator.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}
