@@ -362,12 +362,74 @@ function EmberIcon({ name, size = 18, strokeWidth = 1.5, style }) {
 }
 
 /* ============================================================
+   STEAMPUNK ASSET PACK (assets/ember) — see CLAUDE-HANDOFF.md
+   ============================================================ */
+
+const ASSETS = (typeof window !== "undefined" && window.EMBER_ASSET_ROOT) || "assets/ember";
+
+// Bronze brand marks for the three branded Studio tools — inlined so the
+// stroke/fill color can switch with tool state (imgs can't inherit CSS vars).
+function BrandMark({ tool, active, size = 22 }) {
+  const c = active ? "#D6B36A" : "#B08D57";
+  const fx = {
+    transition: "filter 140ms cubic-bezier(.2,.8,.2,1)",
+    filter: active ? "brightness(1) drop-shadow(0 0 7px rgba(255,120,60,.55))" : "brightness(.78)",
+  };
+  if (tool === "chat") return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={fx} aria-hidden="true">
+      <g stroke={c} strokeWidth="5" strokeLinecap="round">
+        <path d="M32 6v52M6 32h52M13.6 13.6l36.8 36.8M50.4 13.6 13.6 50.4" />
+        <path d="m21 8 22 48M56 21 8 43M43 8 21 56M56 43 8 21" strokeWidth="3" />
+      </g>
+      <circle cx="32" cy="32" r="6" fill={c} />
+    </svg>
+  );
+  if (tool === "drive") return (
+    <svg width={size + 3} height={size} viewBox="0 0 72 64" fill="none" style={fx} aria-hidden="true">
+      <path d="M27 5h18l24 42-9 15H12L3 47 27 5Z" stroke={c} strokeWidth="7" strokeLinejoin="round" />
+      <path d="M27 5 12 32m48 0H12m33-27-15 27 15 30" stroke={c} strokeWidth="5" strokeLinejoin="round" />
+    </svg>
+  );
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={fx} aria-hidden="true">
+      <path d="M32 4C16.5 4 4 16.9 4 32.8c0 12.7 8 23.5 19.1 27.3 1.4.3 1.9-.6 1.9-1.4v-5.5c-7.8 1.7-9.4-3.4-9.4-3.4-1.3-3.3-3.1-4.2-3.1-4.2-2.5-1.8.2-1.7.2-1.7 2.8.2 4.3 3 4.3 3 2.5 4.4 6.6 3.1 8.2 2.4.3-1.9 1-3.1 1.8-3.8-6.2-.7-12.8-3.2-12.8-14.2 0-3.1 1.1-5.7 2.9-7.7-.3-.7-1.3-3.6.3-7.6 0 0 2.4-.8 7.7 2.9a26.2 26.2 0 0 1 14 0c5.4-3.7 7.7-2.9 7.7-2.9 1.5 4 .6 6.9.3 7.6a11.2 11.2 0 0 1 2.9 7.7c0 11-6.6 13.4-12.9 14.1 1 1 1.9 2.8 1.9 5.6v8.2c0 .8.5 1.7 1.9 1.4A28.8 28.8 0 0 0 60 32.8C60 16.9 47.5 4 32 4Z" fill={c} />
+    </svg>
+  );
+}
+
+// Contextual action lever (Draft Reply / Create Task) — art per state from the
+// pack; status point pulses at 900ms during pending-review per motion-spec.
+function ContextLever({ side, label, state, onPull }) {
+  const img =
+    state === "active" ? "action-lever-active.svg"
+    : state === "idle" ? "action-lever-idle.svg"
+    : "action-lever-ready.svg"; // ready + pending-review share the ready art
+  return (
+    <button type="button" disabled={state === "idle" || state === "active"} onClick={onPull}
+      aria-label={`${label} for selected communication`}
+      className={`ctx-lever ${side}`}>
+      <img alt="" src={`${ASSETS}/svg/controls/${img}`} />
+      <span className={`lever-dot ${state}`} />
+      <span className="lever-label">{label}</span>
+    </button>
+  );
+}
+
+/* ============================================================
    MAIN COMPONENT
    ============================================================ */
 
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
   const [studioTool, setStudioTool] = useState("chat");
+
+  // steampunk context actions — selected Calls/Inbox item feeds the two levers
+  const [selectedComm, setSelectedComm] = useState(null); // { type:"vm"|"email", i }
+  const [leverBusy, setLeverBusy] = useState(null);       // "draft" | "task" | null
+  const [leverPending, setLeverPending] = useState(null); // pending-review pulse
+  const [draftEdit, setDraftEdit] = useState(null);       // editable lever draft text
+  const [draftCopied, setDraftCopied] = useState(false);
+  const [taskProposal, setTaskProposal] = useState(null); // { title, source, due, details }
 
   // ---- OPS state ----
   const [data, setData] = useState(DEMO);
@@ -834,6 +896,7 @@ export default function BaxstarEmber() {
       historyRef.current = [...historyRef.current.slice(-8), userMsg, { role: "assistant", content: answer }];
       setResponse(answer);
       speak(answer);
+      return answer;
     } catch (e) {
       setError("Command failed — check connection and try again.");
     } finally {
@@ -1152,6 +1215,73 @@ Look at the photo and write the caption. Output caption text only — no preambl
     } catch (e) { /* clipboard blocked — silent, chip just won't confirm */ }
   }
 
+  /* ---------- CONTEXT LEVERS: Draft Reply + Create Task ---------- */
+
+  const commItem = selectedComm
+    ? (selectedComm.type === "vm" ? data.voicemails[selectedComm.i] : data.emails[selectedComm.i]) || null
+    : null;
+
+  function leverState(kind) {
+    if (leverBusy === kind) return "active";
+    if (!commItem) return "idle";
+    if (leverPending === kind) return "pending";
+    return "ready";
+  }
+
+  function commLabel() {
+    if (!commItem) return "";
+    return selectedComm.type === "vm"
+      ? `call/voicemail from ${commItem.from}${commItem.line ? " (" + commItem.line + " line)" : ""}`
+      : `email from ${commItem.from}: "${commItem.subject}"`;
+  }
+
+  async function leverDraftReply() {
+    if (!commItem || leverBusy || thinking) return;
+    setLeverPending(null); setDraftEdit(null); setTaskProposal(null);
+    setLeverBusy("draft");
+    try {
+      const prompt = selectedComm.type === "vm"
+        ? `Draft a reply text to ${commItem.from} on the ${commItem.line || "Fishing"} Quo line responding to: "${commItem.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`
+        : `Draft a reply to the email from ${commItem.from}: "${commItem.subject}". Match Baxstar voice. Show me the draft — don't send yet.`;
+      const answer = await sendCommand(prompt);
+      if (answer) { setDraftEdit(answer); setLeverPending("draft"); setResponse(""); }
+    } finally {
+      setLeverBusy(null);
+    }
+  }
+
+  async function leverCreateTask() {
+    if (!commItem || leverBusy || thinking) return;
+    setLeverPending(null); setDraftEdit(null); setTaskProposal(null);
+    setLeverBusy("task");
+    try {
+      const src = commLabel();
+      const resp = await callClaude([{
+        role: "user",
+        content: `${BRADY_CONTEXT}\nFrom this item: ${src}${selectedComm.type === "vm" && commItem.vm ? ` Voicemail: "${commItem.vm}"` : ""}\nPropose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentary: {"title":"","due":"suggested due date in plain words","details":"one or two sentences"}`,
+      }], { useTools: false });
+      const parsed = extractJSON(extractText(resp));
+      setTaskProposal({
+        title: parsed.title || `Follow up: ${commItem.from}`,
+        source: src,
+        due: parsed.due || "tomorrow morning",
+        details: parsed.details || "",
+      });
+      setLeverPending("task");
+    } catch (e) {
+      setError("Task proposal failed — try again.");
+    } finally {
+      setLeverBusy(null);
+    }
+  }
+
+  async function confirmTaskProposal() {
+    if (!taskProposal || thinking) return;
+    const t = taskProposal;
+    setTaskProposal(null); setLeverPending(null);
+    await sendCommand(`Create a Quo task titled "${t.title}" due ${t.due}. Details: ${t.details || "—"} (Source: ${t.source})`);
+  }
+
   /* ---------- QUICK ACTIONS ---------- */
 
   const ACTIONS = [
@@ -1169,15 +1299,33 @@ Look at the photo and write the caption. Output caption text only — no preambl
     <div className="min-h-screen w-full" style={{ background: "var(--bg)", color: "var(--ink)" }}>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
         :root {
-          --bg:#080606; --panel:#100b0b; --panel-2:#181010;
-          --line:rgba(201,168,106,.17); --line-hot:rgba(201,168,106,.45);
-          --ember-red:#ff4d3d; --ember-orange:#ff9e3d; --ember-dark:#8a1f14;
-          --ember-amber:#ffbf5e;
-          --brass:#c9a86a; --copper:#b0714f; --gunmetal:#565660; --candle:#f2e3c2;
-          --ink:#f5ece8; --ink-dim:#a08a82; --ink-faint:#5a4a44;
+          --bg:#070604; --panel:#0D0C0A; --panel-2:#12100D;
+          --line:rgba(176,141,87,.22); --line-hot:rgba(176,141,87,.5);
+          --ember-red:#FF4D32; --ember-orange:#FF7A45; --ember-dark:#8a1f14;
+          --ember-amber:#FFB13B;
+          --brass:#B08D57; --copper:#A65A32; --gunmetal:#565660; --candle:#F3E9D8;
+          --ink:#F3E9D8; --ink-dim:#B8A78F; --ink-faint:#8B7A66;
+
+          /* asset-pack design tokens (design-tokens.css) */
+          --ember-bg:#070604; --ember-bg-raised:#0A0907;
+          --ember-panel:#0D0C0A; --ember-panel-alt:#12100D; --ember-panel-hover:#17130F;
+          --ember-panel-line:#3D2A1C;
+          --ember-brass:#B08D57; --ember-brass-bright:#D6B36A; --ember-brass-dark:#5F4428;
+          --ember-antique:#7C5B32; --ember-bone:#C9B18A;
+          --ember-active:#FF4D32; --ember-active-bright:#FF7A45;
+          --ember-warning:#FFB13B; --ember-cyan:#19D7E6; --ember-danger:#D93C2B;
+          --ember-text:#F3E9D8; --ember-text-soft:#D8C9B5; --ember-text-muted:#B8A78F; --ember-text-dim:#8B7A66;
+          --ember-font-display:"Cinzel", Georgia, serif;
+          --ember-font-ui:"Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          --ember-shadow-panel:0 10px 30px rgb(0 0 0 / 48%);
+          --ember-shadow-active:0 0 18px rgb(255 77 50 / 42%);
+          --ember-shadow-cyan:0 0 22px rgb(25 215 230 / 20%);
+          --ember-ease-mechanical:cubic-bezier(.2,.8,.2,1);
+          --ember-ease-sweep:cubic-bezier(.22,1,.36,1);
         }
+        body, button, input, textarea { font-family:var(--ember-font-ui); }
         .font-mono-x { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
         .font-display { font-family:"Cinzel","Georgia",serif; }
 
@@ -1200,27 +1348,19 @@ Look at the photo and write the caption. Output caption text only — no preambl
           .rail-list { flex-direction:row; flex-wrap:wrap; }
         }
 
-        .panel { position:relative; border:1px solid var(--line); border-radius:16px;
-          background:linear-gradient(180deg, var(--panel-2), var(--panel));
-          box-shadow:inset 0 1px 0 rgba(242,227,194,.05), inset 0 0 0 1px rgba(0,0,0,.3);
-          transition:border-color .25s, box-shadow .25s; }
-        .panel:hover { border-color:var(--line-hot);
-          box-shadow:inset 0 1px 0 rgba(242,227,194,.05), inset 0 0 0 1px rgba(0,0,0,.3),
-            0 10px 34px rgba(0,0,0,.45), 0 0 24px rgba(255,120,60,.09); }
-        /* hairline etched inner border — machined bezel */
-        .panel::before { content:""; position:absolute; inset:4px; border-radius:12px;
-          pointer-events:none; border:1px solid rgba(201,168,106,.08); }
-        /* corner rivets — brass, subtle */
-        .panel::after { content:""; position:absolute; inset:7px; pointer-events:none; opacity:.5;
-          background-image:
-            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent),
-            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent),
-            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent),
-            radial-gradient(circle at 32% 30%, #e8d3a0, #8a6f3f 55%, #241a0e 95%, transparent);
-          background-size:4px 4px; background-repeat:no-repeat;
-          background-position:left top, right top, left bottom, right bottom; }
-        .bg-on .panel { background:linear-gradient(180deg, rgba(24,16,16,.82), rgba(16,11,11,.84)); backdrop-filter:blur(6px); }
-        .notch { position:absolute; top:-1px; left:20px; width:56px; height:2px; border-radius:2px; }
+        /* machined 9-slice plate frame from the asset pack — brass etch + rivet
+           corners live in the SVG; center stays CSS so bg-on translucency works */
+        .panel { position:relative; border:14px solid transparent;
+          border-image:url("${ASSETS}/svg/frames/panel-frame.svg") 28 / 14px stretch;
+          background:linear-gradient(180deg, var(--ember-panel-alt), var(--ember-panel));
+          background-clip:padding-box;
+          box-shadow:var(--ember-shadow-panel);
+          transition:filter .25s, box-shadow .25s; }
+        .panel:hover { filter:brightness(1.05);
+          box-shadow:var(--ember-shadow-panel), 0 0 24px rgba(255,120,60,.09); }
+        .bg-on .panel { background:linear-gradient(180deg, rgba(18,16,13,.84), rgba(13,12,10,.86)); background-clip:padding-box; backdrop-filter:blur(6px); }
+        /* category light — sits on the plate's top rail inside the frame */
+        .notch { position:absolute; top:-8px; left:14px; width:38px; height:2px; border-radius:2px; opacity:.9; }
         .notch.hot  { background:linear-gradient(90deg,var(--ember-red),var(--ember-dark));  box-shadow:0 0 12px var(--ember-red); }
         .notch.warm { background:linear-gradient(90deg,var(--ember-orange),#ffcf5d);         box-shadow:0 0 12px var(--ember-orange); }
         .notch.cool { background:linear-gradient(90deg,var(--brass),#e8d3a0);            box-shadow:0 0 12px rgba(201,168,106,.55); }
@@ -1280,37 +1420,42 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .chip:disabled { opacity:.35; cursor:default; }
 
         .big { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:700; letter-spacing:.06em;
-          padding:13px 26px; border-radius:14px; cursor:pointer; transition:all .18s;
-          border:1px solid var(--line); background:var(--panel-2); color:var(--ink-dim); }
-        .big:hover { transform:translateY(-2px); border-color:var(--line-hot); color:var(--ink); box-shadow:0 8px 26px rgba(255,77,61,.18); }
-        .big.primary { background:linear-gradient(90deg,var(--ember-red),#ff6a4d); border:none; color:#fff; box-shadow:0 4px 24px rgba(255,77,61,.4); }
-        .big.primary:hover { box-shadow:0 8px 34px rgba(255,77,61,.6); }
+          border:11px solid transparent;
+          border-image:url("${ASSETS}/svg/frames/quick-action-frame.svg") 16 / 11px stretch;
+          padding:6px 16px; cursor:pointer; transition:all 140ms var(--ember-ease-mechanical);
+          background:var(--panel-2); background-clip:padding-box; color:var(--ink-dim); }
+        .big:hover { transform:translateY(-2px); color:var(--ink); filter:brightness(1.1) drop-shadow(0 6px 18px rgba(255,77,50,.2)); }
+        .big.primary { background:linear-gradient(90deg,var(--ember-red),#ff6a4d); background-clip:padding-box; color:#fff;
+          filter:drop-shadow(0 0 14px rgba(255,77,50,.4)); }
+        .big.primary:hover { filter:brightness(1.08) drop-shadow(0 0 20px rgba(255,77,50,.6)); }
         .big:disabled { opacity:.5; cursor:wait; transform:none; }
 
-        .tabwrap { display:flex; align-items:center; gap:4px; padding:5px; border-radius:16px;
-          border:1px solid rgba(255,90,60,.28);
-          background:linear-gradient(180deg,#1e1210,#120b0a);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.55), 0 6px 20px rgba(0,0,0,.5); }
-        .tab { font-family:"Cinzel","Georgia",serif; font-size:14px; font-weight:700; letter-spacing:.14em; padding:12px 24px; border-radius:12px;
-          color:var(--ink-dim); cursor:pointer; transition:all .18s; border:1px solid transparent; background:transparent;
+        .tabwrap { display:flex; align-items:center; gap:6px; }
+        .tab { font-family:var(--ember-font-display); font-size:14px; font-weight:700; letter-spacing:.14em;
+          border:11px solid transparent;
+          border-image:url("${ASSETS}/svg/frames/quick-action-frame.svg") 16 / 11px stretch;
+          padding:4px 14px; background:rgba(10,9,7,.72); background-clip:padding-box;
+          color:var(--ink-dim); cursor:pointer; transition:all 140ms var(--ember-ease-mechanical);
           text-shadow:0 1px 0 rgba(0,0,0,.7); }
-        .tab:hover { color:var(--ink); background:rgba(255,90,60,.06); }
-        .tab.active { background:linear-gradient(180deg,#ff7a55,var(--ember-red)); color:#fff;
-          border-color:rgba(255,255,255,.14);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 -2px 5px rgba(120,20,10,.55), 0 4px 24px rgba(255,77,61,.55);
+        .tab:hover { color:var(--ink); filter:brightness(1.12); }
+        .tab.active { background:linear-gradient(180deg,#ff7a55,var(--ember-red)); background-clip:padding-box; color:#fff;
+          filter:drop-shadow(0 0 12px rgba(255,77,50,.5));
           text-shadow:0 1px 2px rgba(100,15,8,.7); }
 
         .studio-stack { display:flex; flex-direction:column; gap:18px; min-height:0; }
         .tool-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
         @media (max-width:900px){ .tool-grid { grid-template-columns:repeat(2,1fr); } }
         .tool-tile { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
-          padding:16px 10px; border-radius:14px; font-size:10.5px; font-weight:700; letter-spacing:.03em;
-          color:var(--ink-dim); text-align:center; cursor:pointer; transition:all .16s;
-          border:1px solid transparent; background:transparent; }
-        .tool-tile:hover { color:var(--ink); background:rgba(255,90,60,.06); }
-        .tool-tile.on { color:var(--ink);
-          background:linear-gradient(180deg,#241412,#170d0c); border-color:rgba(255,90,60,.32);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 0 18px rgba(255,77,61,.16); }
+          border:12px solid transparent;
+          border-image:url("${ASSETS}/svg/frames/tool-module-frame.svg") 18 / 12px stretch;
+          padding:8px 2px; font-size:10.5px; font-weight:700; letter-spacing:.03em;
+          color:var(--ink-dim); text-align:center; cursor:pointer;
+          background:linear-gradient(180deg,#100D0A,#090806); background-clip:padding-box;
+          transition:all 140ms var(--ember-ease-mechanical); }
+        .tool-tile:hover { color:var(--ink); filter:brightness(1.12); }
+        .tool-tile.on { color:var(--ink); transform:translateY(-2px);
+          background:linear-gradient(180deg,#1A120D,#0D0906); background-clip:padding-box;
+          filter:brightness(1.15) drop-shadow(0 0 14px rgba(255,77,50,.4)); }
         .tool-tile .tic { font-size:19px; line-height:1; display:flex; justify-content:center; }
         .tool-tile.on .tic { filter:drop-shadow(0 0 6px rgba(255,120,60,.85)); }
 
@@ -1367,6 +1512,90 @@ Look at the photo and write the caption. Output caption text only — no preambl
           100% { transform:translate(var(--dx,18px),-108vh) scale(.35); opacity:0; }
         }
 
+        /* ---------- steampunk pack: iron floor, tanks, skull, levers, shells ---------- */
+
+        .iron-bg { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.55;
+          background-image:url("${ASSETS}/textures/iron-tile.svg"); background-repeat:repeat; background-size:128px 128px; }
+
+        .tank-wrap { position:fixed; top:50%; transform:translateY(-50%); z-index:1; pointer-events:none;
+          display:none; height:clamp(360px,58vh,620px); }
+        .tank-wrap.left { left:8px; }
+        .tank-wrap.right { right:8px; transform:translateY(-50%) scaleX(-1); }
+        .tank-wrap img { height:100%; width:auto; opacity:.9; }
+        .tank-energy { content:""; position:absolute; left:22%; right:22%; top:14%; bottom:12%;
+          background:radial-gradient(ellipse at 50% 62%, rgba(25,215,230,.4), transparent 68%);
+          mix-blend-mode:screen; animation:tankEnergy 4200ms ease-in-out infinite alternate; }
+        @keyframes tankEnergy {
+          from { transform:translateY(18%); opacity:.16; }
+          to   { transform:translateY(-18%); opacity:.32; } }
+        @media (min-width:1180px){ .tank-wrap { display:block; } }
+
+        /* skull crowns the center chamber only — width capped to the center
+           column so it never overflows onto the side panels' text (readability) */
+        .skull-arch { position:absolute; left:50%; top:0; transform:translate(-50%,-42%);
+          width:min(100%, 440px); max-width:100%; opacity:.72; pointer-events:none; z-index:0; display:none; }
+        @media (min-width:980px){ .skull-arch { display:block; } }
+        .skull-host { overflow:hidden; }
+        .skull-host > :not(.skull-arch) { position:relative; z-index:1; }
+
+        .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
+
+        .ctx-lever { position:absolute; top:50%; transform:translateY(-50%); z-index:2;
+          display:none; flex-direction:column; align-items:center; gap:4px;
+          background:none; border:none; padding:0; cursor:pointer;
+          transition:filter 220ms var(--ember-ease-mechanical), transform 220ms var(--ember-ease-mechanical); }
+        @media (min-width:980px){ .ctx-lever { display:flex; } }
+        .ctx-lever.left { left:16px; } .ctx-lever.right { right:16px; }
+        .ctx-lever img { width:62px; height:83px; transition:filter 220ms var(--ember-ease-mechanical); }
+        .ctx-lever:disabled { cursor:default; }
+        .ctx-lever:disabled img { opacity:.6; }
+        .ctx-lever:not(:disabled):hover { filter:brightness(1.15); transform:translateY(calc(-50% - 2px)); }
+        .lever-label { font-size:9.5px; font-weight:700; letter-spacing:.08em; color:var(--ember-text-muted); text-transform:uppercase; }
+        .lever-dot { width:7px; height:7px; border-radius:50%; background:var(--ember-brass-dark); transition:background 220ms; }
+        .lever-dot.ready { background:var(--ember-brass-bright); box-shadow:0 0 6px rgba(214,179,106,.8); }
+        .lever-dot.active { background:var(--ember-active); box-shadow:0 0 8px rgba(255,77,50,.85); }
+        .lever-dot.pending { background:var(--ember-warning); box-shadow:0 0 8px rgba(255,177,59,.8);
+          animation:leverPulse 900ms ease-in-out infinite; }
+        @keyframes leverPulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+
+        .row-sel { cursor:pointer; transition:background 140ms, box-shadow 140ms, padding 140ms; }
+        .row-sel:hover { background:rgba(214,179,106,.05); }
+        .row-on { background:rgba(214,179,106,.08); box-shadow:inset 2px 0 0 var(--ember-brass-bright); padding-left:9px; }
+
+        .codex { position:relative; border:9px solid transparent;
+          border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
+          background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
+        @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
+        .seg.on { animation:codexDrum 320ms var(--ember-ease-mechanical); }
+
+        .tgl { display:inline-flex; align-items:center; gap:7px; font-weight:700; letter-spacing:inherit;
+          color:var(--ink-faint); background:transparent; border:none; padding:2px 0; cursor:pointer; font-size:inherit; }
+        .tgl.on { color:var(--ember-orange); }
+        .tgl-track { position:relative; width:38px; height:18px; border-radius:9px; flex:none;
+          background:#0A0907; border:2px solid var(--ember-brass-dark);
+          box-shadow:inset 0 2px 4px rgba(0,0,0,.7); }
+        .tgl-track::before { content:""; position:absolute; left:6px; right:6px; top:50%; height:3px; margin-top:-1.5px;
+          border-radius:2px; background:#3A281B; }
+        .tgl-knob { position:absolute; top:50%; left:1px; width:12px; height:12px; margin-top:-6px; border-radius:50%;
+          background:radial-gradient(circle at 35% 30%, #F0D18B, #6A4727 75%); border:1px solid var(--ember-brass);
+          transition:left 220ms var(--ember-ease-mechanical), background 220ms, box-shadow 220ms; }
+        .tgl-track.on .tgl-knob { left:19px;
+          background:radial-gradient(circle at 35% 30%, #FFB067, #FF4D32 75%);
+          box-shadow:0 0 8px rgba(255,77,50,.7); }
+
+        .sync-gear { display:inline-block; }
+        .sync-gear.spin { animation:gearSpin 900ms linear infinite; }
+        .sync-gear.spin.rev { animation-direction:reverse; }
+        @keyframes gearSpin { to { transform:rotate(360deg); } }
+
+        .gauge-wrap { position:relative; width:40px; height:40px; flex:none; }
+        .gauge-wrap img { position:absolute; inset:0; width:100%; height:100%; }
+        .gauge-needle { transition:transform 600ms var(--ember-ease-sweep); transform-origin:50% 68%; }
+
+        .chip.qframe { border:8px solid transparent; border-radius:0;
+          border-image:url("${ASSETS}/svg/frames/quick-action-frame.svg") 16 / 8px stretch;
+          background:rgba(10,9,7,.72); background-clip:padding-box; }
+
         @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important;} .reveal{opacity:1;} }
       `}</style>
 
@@ -1383,6 +1612,19 @@ Look at the photo and write the caption. Output caption text only — no preambl
       {bgActive && (
         <div className="fixed inset-0" style={{ zIndex: 0, background: "linear-gradient(180deg, rgba(8,6,6,.78), rgba(8,6,6,.5) 45%, rgba(8,6,6,.86))" }} />
       )}
+
+      {/* iron floor texture — beneath the panel layer */}
+      {!bgActive && <div className="iron-bg" aria-hidden="true" />}
+
+      {/* mirrored cyan glass tanks at the far edges (>=1180px only) */}
+      <div className="tank-wrap left" aria-hidden="true">
+        <img src={`${ASSETS}/raster/glass-tank@2x.png`} alt="" />
+        <span className="tank-energy" />
+      </div>
+      <div className="tank-wrap right" aria-hidden="true">
+        <img src={`${ASSETS}/raster/glass-tank@2x.png`} alt="" />
+        <span className="tank-energy" />
+      </div>
 
       {/* atmosphere */}
       <div className="atmo" />
@@ -1435,17 +1677,23 @@ Look at the photo and write the caption. Output caption text only — no preambl
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
               className="rounded-md border px-2 py-1 transition-colors"
               style={{ borderColor: "var(--line)", color: bg.choice !== "default" ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-              <EmberIcon name="image" size={13} style={{ verticalAlign: "-2px", marginRight: "4px" }} />BG
+              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="14" height="14"
+                style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "4px" }} />BG
             </button>
             <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
-              className="rounded-md border px-2 py-1 transition-colors"
-              style={{ borderColor: "var(--line)", color: voiceOn ? "var(--ember-orange)" : "var(--ink-faint)" }}>
+              className={`tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}>
+              <span className={`tgl-track ${voiceOn ? "on" : ""}`}><span className="tgl-knob" /></span>
               {voiceOn ? "VOICE ON" : "VOICE OFF"}
             </button>
             <button onClick={syncLive} disabled={syncing}
               className="flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
               style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", boxShadow: "0 2px 14px rgba(255,77,61,.35)", opacity: syncing ? 0.6 : 1 }}>
-              {syncing && <span className="spinner" />}
+              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="13" height="13"
+                className={`sync-gear ${syncing ? "spin" : ""}`} />
+              {syncing && (
+                <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="10" height="10"
+                  className="sync-gear spin rev" style={{ marginLeft: "-6px", marginTop: "8px" }} />
+              )}
               {syncing ? "SYNCING" : "SYNC"}
             </button>
           </div>
@@ -1509,7 +1757,9 @@ Look at the photo and write the caption. Output caption text only — no preambl
           <div className="flex min-h-0 flex-col gap-4">
             <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
               {data.voicemails.map((v, i) => (
-                <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}>
+                <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
+                  selected={selectedComm?.type === "vm" && selectedComm.i === i}
+                  onClick={() => setSelectedComm(selectedComm?.type === "vm" && selectedComm.i === i ? null : { type: "vm", i })}>
                   {v.vm ? (
                     <div className="mt-1.5 rounded-r-lg px-3 py-2 text-[11.5px] italic leading-relaxed"
                       style={{ background: "rgba(255,158,61,.06)", borderLeft: "2px solid var(--ember-orange)", color: "var(--ink-dim)" }}>
@@ -1519,10 +1769,10 @@ Look at the photo and write the caption. Output caption text only — no preambl
                     <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>{v.note || "No voicemail."}</div>
                   )}
                   <div className="mt-2 flex gap-2">
-                    <button className="chip solid" onClick={() => sendCommand(`Draft a reply text to ${v.from} on the ${v.line || "Fishing"} Quo line responding to: "${v.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`)}>
+                    <button className="chip solid" onClick={(e) => { e.stopPropagation(); sendCommand(`Draft a reply text to ${v.from} on the ${v.line || "Fishing"} Quo line responding to: "${v.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`); }}>
                       Draft reply
                     </button>
-                    <button className="chip ghost" onClick={() => sendCommand(`Create a Quo task to call back ${v.from} (${v.line || "Fishing"} line) tomorrow morning re: ${v.vm ? "their voicemail" : "their missed call"}.`)}>
+                    <button className="chip ghost" onClick={(e) => { e.stopPropagation(); sendCommand(`Create a Quo task to call back ${v.from} (${v.line || "Fishing"} line) tomorrow morning re: ${v.vm ? "their voicemail" : "their missed call"}.`); }}>
                       Task
                     </button>
                   </div>
@@ -1530,7 +1780,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               ))}
             </Panel>
 
-            <Panel notch="hot" title="Today's Revenue" count="+$1,240" countColor="#ff8074" delay="0.25s">
+            <Panel notch="hot" title="Today's Revenue" count="+$1,240" countColor="#ffb87a" codexCount delay="0.25s">
               <Row who="2 FareHarbor bookings">
                 <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>Rod upgrade ×2 · Trip Protection ×1</div>
               </Row>
@@ -1539,8 +1789,12 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
           {/* CENTER: CORE */}
           <div className="flex min-h-0 flex-col">
-            <div className={`panel relative flex flex-1 flex-col items-center justify-center gap-8 px-8 py-10 ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
+            <div className={`panel skull-host relative flex flex-1 flex-col items-center justify-center gap-8 px-8 py-10 ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
+              <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
               <span className="notch hot" />
+
+              <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
+              <ContextLever side="right" label="Create Task" state={leverState("task")} onPull={leverCreateTask} />
 
               <div className="reveal text-center" style={{ animationDelay: "0.1s" }}>
                 <h2 className="text-2xl font-bold tracking-tight">
@@ -1558,6 +1812,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
                 {coreMode === "enigma" ? (
                   <div className="relative mx-auto flex h-56 w-56 items-center justify-center" onClick={toggleMic} role="button" aria-label="Voice input" style={{ cursor: "pointer" }}>
+                    <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
                     <div ref={gasRef} className="gas-wrap">
                       <div className="gas g1" /><div className="gas g2" /><div className="gas g3" /><div className="gas g4" />
                     </div>
@@ -1585,7 +1840,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 {speaking && (
                   <button className="chip solid mt-2" onClick={stopSpeaking}>⏹ Stop Voice</button>
                 )}
-                <button className="chip ghost mt-2" onClick={testVoice}><EmberIcon name="speaker" size={13} style={{ verticalAlign: "-2px", marginRight: "5px" }} />VOICE TEST</button>
+                <button className="chip ghost qframe mt-2" onClick={testVoice}><EmberIcon name="speaker" size={13} style={{ verticalAlign: "-2px", marginRight: "5px" }} />VOICE TEST</button>
                 {voiceDiag && (
                   <div className="font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]" style={{ color: "var(--ember-amber)" }}>
                     {voiceDiag}
@@ -1628,6 +1883,58 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 </div>
               )}
 
+              {/* editable lever draft — never sends automatically */}
+              {draftEdit !== null && (
+                <div className="w-full max-w-sm rounded-xl border px-4 py-3"
+                  style={{ borderColor: "rgba(214,179,106,.5)", background: "rgba(214,179,106,.05)" }}>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-brass-bright)" }}>DRAFT — EDIT FREELY, NOTHING SENDS</span>
+                    <button onClick={() => { setDraftEdit(null); setLeverPending(null); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
+                  </div>
+                  <textarea value={draftEdit}
+                    onChange={(e) => { setDraftEdit(e.target.value); setLeverPending(null); }}
+                    className="cmd-input w-full rounded-xl p-3 text-[12.5px] leading-relaxed"
+                    style={{ background: "#120c0c", color: "var(--ink)", minHeight: "130px", resize: "vertical" }} />
+                  <div className="mt-2 flex gap-2">
+                    <button className="chip solid" onClick={() => {
+                      navigator.clipboard.writeText(draftEdit).catch(() => {});
+                      setDraftCopied(true); setTimeout(() => setDraftCopied(false), 1600);
+                      setLeverPending(null);
+                    }}>{draftCopied ? "COPIED ✓" : "Copy draft"}</button>
+                    <button className="chip ghost" onClick={() => { setDraftEdit(null); setLeverPending(null); }}>Discard</button>
+                  </div>
+                </div>
+              )}
+
+              {/* task proposal — requires explicit confirmation before saving */}
+              {taskProposal && (
+                <div className="w-full max-w-sm rounded-xl border px-4 py-3"
+                  style={{ borderColor: "rgba(255,177,59,.5)", background: "rgba(255,177,59,.05)" }}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-warning)" }}>TASK PROPOSAL — CONFIRM TO SAVE</span>
+                    <button onClick={() => { setTaskProposal(null); setLeverPending(null); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
+                  </div>
+                  <div className="fieldlabel">Title</div>
+                  <input value={taskProposal.title}
+                    onChange={(e) => { setTaskProposal({ ...taskProposal, title: e.target.value }); setLeverPending(null); }}
+                    className="cmd-input mt-1 w-full rounded-lg px-3 py-2 text-sm" style={{ background: "#120c0c", color: "var(--ink)" }} />
+                  <div className="fieldlabel mt-2">Due</div>
+                  <input value={taskProposal.due}
+                    onChange={(e) => { setTaskProposal({ ...taskProposal, due: e.target.value }); setLeverPending(null); }}
+                    className="cmd-input mt-1 w-full rounded-lg px-3 py-2 text-sm" style={{ background: "#120c0c", color: "var(--ink)" }} />
+                  <div className="fieldlabel mt-2">Details</div>
+                  <textarea value={taskProposal.details}
+                    onChange={(e) => { setTaskProposal({ ...taskProposal, details: e.target.value }); setLeverPending(null); }}
+                    className="cmd-input mt-1 w-full rounded-lg px-3 py-2 text-[12.5px]"
+                    style={{ background: "#120c0c", color: "var(--ink)", minHeight: "60px", resize: "vertical" }} />
+                  <div className="mt-1 text-[10px]" style={{ color: "var(--ink-faint)" }}>Source: {taskProposal.source}</div>
+                  <div className="mt-2 flex gap-2">
+                    <button className="chip solid" disabled={thinking} onClick={confirmTaskProposal}>Create task</button>
+                    <button className="chip ghost" onClick={() => { setTaskProposal(null); setLeverPending(null); }}>Discard</button>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
 
@@ -1635,10 +1942,12 @@ Look at the photo and write the caption. Output caption text only — no preambl
           <div className="flex min-h-0 flex-col gap-4">
             <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow>
               {data.emails.map((m, i) => (
-                <Row key={i} who={m.from} when={m.time}>
+                <Row key={i} who={m.from} when={m.time}
+                  selected={selectedComm?.type === "email" && selectedComm.i === i}
+                  onClick={() => setSelectedComm(selectedComm?.type === "email" && selectedComm.i === i ? null : { type: "email", i })}>
                   <div className="mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{m.subject}</div>
                   <div className="mt-2 flex gap-2">
-                    <button className="chip solid" onClick={() => sendCommand(`Draft a reply to the email from ${m.from}: "${m.subject}". Match Baxstar voice. Show me the draft — don't send yet.`)}>
+                    <button className="chip solid" onClick={(e) => { e.stopPropagation(); sendCommand(`Draft a reply to the email from ${m.from}: "${m.subject}". Match Baxstar voice. Show me the draft — don't send yet.`); }}>
                       Draft reply
                     </button>
                   </div>
@@ -1646,7 +1955,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               ))}
             </Panel>
 
-            <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" delay="0.3s">
+            <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
               {data.events.map((e, i) => (
                 <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail} />
               ))}
@@ -1666,7 +1975,11 @@ Look at the photo and write the caption. Output caption text only — no preambl
             <div className="tool-grid">
               {TOOLS.map((t) => (
                 <button key={t.id} className={`tool-tile ${studioTool === t.id ? "on" : ""}`} onClick={() => setStudioTool(t.id)}>
-                  <span className="tic"><EmberIcon name={t.icon} /></span>
+                  <span className="tic">
+                    {t.id === "chat" || t.id === "drive" || t.id === "github"
+                      ? <BrandMark tool={t.id} active={studioTool === t.id} />
+                      : <EmberIcon name={t.icon} />}
+                  </span>
                   {t.label}
                 </button>
               ))}
@@ -1829,7 +2142,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex items-center gap-2">
                   <span className="fieldlabel">Model</span>
-                  <div className="flex gap-1">
+                  <div className="codex">
                     {MODELS.map((m) => (
                       <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
                         {m.label}
@@ -1839,7 +2152,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="fieldlabel">Effort</span>
-                  <div className="flex gap-1">
+                  <div className="codex">
                     {Object.entries(EFFORT).map(([k, e]) => (
                       <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
                         {e.label}
@@ -2185,15 +2498,28 @@ Look at the photo and write the caption. Output caption text only — no preambl
    SMALL PIECES
    ============================================================ */
 
-function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true }) {
+function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge }) {
   return (
     <div className={`panel reveal flex flex-col px-5 py-4 ${grow ? "flex-1" : ""}`} style={{ animationDelay: delay, minHeight: 0 }}>
       <span className={`notch ${notch}`} />
       <div className="mb-2.5 flex items-center justify-between">
         <h3 className="font-display text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-dim)" }}>{title}</h3>
-        <span className="font-mono-x rounded-full border px-2.5 py-0.5 text-[10px] font-semibold"
-          style={{ color: countColor, borderColor: "var(--line)", background: "rgba(255,90,60,.06)" }}>
-          {count}
+        <span className="flex items-center gap-2">
+          {gauge != null && (
+            <span className="gauge-wrap" aria-hidden="true">
+              <img src={`${ASSETS}/svg/controls/gauge-face.svg`} alt="" />
+              <img src={`${ASSETS}/svg/controls/gauge-needle.svg`} alt="" className="gauge-needle"
+                style={{ transform: `rotate(${(-52 + Math.max(0, Math.min(1, gauge)) * 104).toFixed(1)}deg)` }} />
+            </span>
+          )}
+          {codexCount ? (
+            <span className="codex font-mono-x text-[10px] font-semibold" style={{ color: countColor }}>{count}</span>
+          ) : (
+            <span className="font-mono-x rounded-full border px-2.5 py-0.5 text-[10px] font-semibold"
+              style={{ color: countColor, borderColor: "var(--line)", background: "rgba(255,90,60,.06)" }}>
+              {count}
+            </span>
+          )}
         </span>
       </div>
       <div className={`flex min-h-0 flex-1 flex-col ${scroll ? "overflow-y-auto" : ""}`}>{children}</div>
@@ -2201,9 +2527,10 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
   );
 }
 
-function Row({ who, when, children }) {
+function Row({ who, when, children, onClick, selected }) {
   return (
-    <div className="border-b py-2.5 last:border-none" style={{ borderColor: "rgba(255,90,60,.09)" }}>
+    <div className={`border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`}
+      style={{ borderColor: "rgba(255,90,60,.09)" }} onClick={onClick}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[13px] font-semibold">{who}</span>
         {when && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}
