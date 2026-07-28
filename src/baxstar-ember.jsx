@@ -1351,8 +1351,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
         /* machined 9-slice plate frame from the asset pack — brass etch + rivet
            corners live in the SVG; center stays CSS so bg-on translucency works */
-        .panel { position:relative; border:14px solid transparent;
-          border-image:url("${ASSETS}/svg/frames/panel-frame.svg") 28 / 14px stretch;
+        .panel { position:relative; border:28px solid transparent;
+          border-image:url("${ASSETS}/svg/frames/panel-frame.svg") 28 fill stretch;
           background:linear-gradient(180deg, var(--ember-panel-alt), var(--ember-panel));
           background-clip:padding-box;
           box-shadow:var(--ember-shadow-panel);
@@ -1533,13 +1533,19 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
         /* skull crowns the center chamber only — width capped to the center
            column so it never overflows onto the side panels' text (readability) */
-        .skull-arch { position:absolute; left:50%; top:0; transform:translate(-50%,-42%);
-          width:min(100%, 440px); max-width:100%; opacity:.72; pointer-events:none; z-index:0; display:none; }
+        .skull-arch { position:absolute; left:50%; top:0; transform:translate(-50%,-34%);
+          width:clamp(420px,52vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:none; }
         @media (min-width:980px){ .skull-arch { display:block; } }
         .skull-host { overflow:hidden; }
         .skull-host > :not(.skull-arch) { position:relative; z-index:1; }
 
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
+
+        /* pipe-junction ornaments — outer frame corners only, never behind text */
+        .pipe-junction { position:absolute; top:-8px; width:46px; height:46px; opacity:.55; pointer-events:none; z-index:0; display:none; }
+        .pipe-junction.pj-l { left:-12px; }
+        .pipe-junction.pj-r { right:-12px; transform:scaleX(-1); }
+        @media (min-width:980px){ .pipe-junction { display:block; } }
 
         .ctx-lever { position:absolute; top:50%; transform:translateY(-50%); z-index:2;
           display:none; flex-direction:column; align-items:center; gap:4px;
@@ -1567,22 +1573,20 @@ Look at the photo and write the caption. Output caption text only — no preambl
           border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
           background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
         @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
+        @keyframes codexDrumNeighbor { from { transform:translateY(-8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
         .seg.on { animation:codexDrum 320ms var(--ember-ease-mechanical); }
+        .seg:not(.on) { animation:codexDrumNeighbor 320ms var(--ember-ease-mechanical); }
 
         .tgl { display:inline-flex; align-items:center; gap:7px; font-weight:700; letter-spacing:inherit;
           color:var(--ink-faint); background:transparent; border:none; padding:2px 0; cursor:pointer; font-size:inherit; }
         .tgl.on { color:var(--ember-orange); }
-        .tgl-track { position:relative; width:38px; height:18px; border-radius:9px; flex:none;
-          background:#0A0907; border:2px solid var(--ember-brass-dark);
-          box-shadow:inset 0 2px 4px rgba(0,0,0,.7); }
-        .tgl-track::before { content:""; position:absolute; left:6px; right:6px; top:50%; height:3px; margin-top:-1.5px;
-          border-radius:2px; background:#3A281B; }
-        .tgl-knob { position:absolute; top:50%; left:1px; width:12px; height:12px; margin-top:-6px; border-radius:50%;
-          background:radial-gradient(circle at 35% 30%, #F0D18B, #6A4727 75%); border:1px solid var(--ember-brass);
-          transition:left 220ms var(--ember-ease-mechanical), background 220ms, box-shadow 220ms; }
-        .tgl-track.on .tgl-knob { left:19px;
-          background:radial-gradient(circle at 35% 30%, #FFB067, #FF4D32 75%);
-          box-shadow:0 0 8px rgba(255,77,50,.7); }
+        .tgl-track { flex:none; display:block; overflow:visible; }
+        .tgl-knob-o { fill:#6A4727; transition:fill 220ms var(--ember-ease-mechanical), stroke 220ms var(--ember-ease-mechanical); }
+        .tgl-knob-i { fill:#8B7A66; transition:fill 220ms var(--ember-ease-mechanical); }
+        .tgl-knob-g { transition:transform 220ms var(--ember-ease-mechanical); }
+        .tgl.on .tgl-knob-g { transform:translateX(52px); }
+        .tgl.on .tgl-knob-o { fill:#B0451F; stroke:#FFB067; }
+        .tgl.on .tgl-knob-i { fill:#FFD9A0; }
 
         .sync-gear { display:inline-block; }
         .sync-gear.spin { animation:gearSpin 900ms linear infinite; }
@@ -1648,6 +1652,9 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
       <div className={`relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-8 py-6 ${bgActive ? "bg-on" : ""}`} style={{ zoom: 1.02 }}>
 
+        <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" aria-hidden="true" className="pipe-junction pj-l" />
+        <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" aria-hidden="true" className="pipe-junction pj-r" />
+
         {/* ================= HEADER ================= */}
         <header className="reveal relative flex items-center justify-between" style={{ animationDelay: "0.05s" }}>
           <div className="flex items-center gap-3.5">
@@ -1683,7 +1690,14 @@ Look at the photo and write the caption. Output caption text only — no preambl
             </button>
             <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
               className={`tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}>
-              <span className={`tgl-track ${voiceOn ? "on" : ""}`}><span className="tgl-knob" /></span>
+              <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
+                <rect x="2" y="2" width="108" height="48" rx="24" fill="#0A0907" stroke="#5F4428" strokeWidth="4" />
+                <path d="M26 26h60" stroke="#3A281B" strokeWidth="10" strokeLinecap="round" />
+                <g className="tgl-knob-g">
+                  <circle cx="30" cy="26" r="17" className="tgl-knob-o" strokeWidth="3" />
+                  <circle cx="30" cy="26" r="5" className="tgl-knob-i" />
+                </g>
+              </svg>
               {voiceOn ? "VOICE ON" : "VOICE OFF"}
             </button>
             <button onClick={syncLive} disabled={syncing}
@@ -2143,7 +2157,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex items-center gap-2">
                   <span className="fieldlabel">Model</span>
-                  <div className="codex">
+                  <div className="codex" key={chatModel}>
                     {MODELS.map((m) => (
                       <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
                         {m.label}
@@ -2153,7 +2167,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="fieldlabel">Effort</span>
-                  <div className="codex">
+                  <div className="codex" key={chatEffort}>
                     {Object.entries(EFFORT).map(([k, e]) => (
                       <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
                         {e.label}
