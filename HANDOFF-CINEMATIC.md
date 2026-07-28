@@ -102,10 +102,20 @@ here on purpose. Nothing below has been simplified, reorganized, or redesigned.
 
 ## 4. `index.html` deployment status
 
-- **Layout blocker resolved.** `_preview.html` and `index.html` now both load the
-  Tailwind Play CDN and are regenerated from `src/baxstar-ember.jsx` with
-  `python3 scripts/sync-standalone.py`.
-- **Remaining blocker — no API auth.** As in §3. Fix: a thin server-side proxy holding the key.
+- **Layout blocker resolved, and the two builds now have separate generators.**
+  `_preview.html` comes from `python3 scripts/sync-standalone.py` (Tailwind Play CDN,
+  React dev builds — right for local iteration). `index.html` comes from `npm run build`
+  (`build.mjs`), which compiles only the utilities the source actually uses and inlines
+  them — no runtime CSS CDN, no FOUC. **Nothing else may write `index.html`;** two
+  generators for one file is how it drifted a whole redesign behind `src/`.
+- **Remaining blocker — no API auth.** As in §3. The proxy is now written and wired:
+  `proxy/cloudflare-worker.js` and `proxy/vercel/api/claude.js` hold the key server-side,
+  with an origin allowlist enforced server-side as well as by CORS, a model allowlist, a
+  token cap, and the `anthropic-beta: mcp-client-2025-04-04` header `mcp_servers` needs.
+  Point the app at it with `window.EMBER_API_PROXY`. **It still has to be deployed** — see
+  `docs/DEPLOY.md`. Note that even deployed, the MCP connectors need per-connector OAuth
+  tokens the artifact platform currently supplies, so hosted chat works while the
+  phone/email/calendar panels do not.
   **Never ship a key in client code.**
 - For a hardened production build, compile the used utilities instead of relying
   on the Tailwind CDN.
