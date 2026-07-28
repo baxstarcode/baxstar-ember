@@ -37,7 +37,7 @@
       "trigger": "Ambient while viewport is at least 1180px wide",
       "durationMs": 4200,
       "easing": "ease-in-out",
-      "effect": "Animate a cyan highlight pseudo-element from translateY(18%) to translateY(-18%) and opacity .16 to .32. Do not animate the PNG itself."
+      "effect": "Animate a cyan highlight pseudo-element from translateY(18%) to translateY(-18%) and opacity .16 to .32. Four bubble fields rise through the glass on a separate 5600ms linear cycle. Do not animate the PNG itself."
     },
     {
       "name": "tool-active",
@@ -52,6 +52,25 @@
       "durationMs": "KEEP_EXISTING",
       "easing": "KEEP_EXISTING",
       "effect": "Retain the existing pressure-vent animation. The supplied mic orb is only the new shell."
+    },
+    {
+      "name": "reactor-rings",
+      "trigger": "Ambient; accelerate while listening or processing",
+      "durationMs": {
+        "idleOuter": 18000,
+        "idleInner": 11000,
+        "activeOuter": 3200,
+        "activeInner": 2100
+      },
+      "easing": "linear",
+      "effect": "Rotate two visibly toothed DOM gear rings above the static reactor bezel. Accelerate both while listening or processing. Never rotate the photoreal reactor asset itself."
+    },
+    {
+      "name": "console-control",
+      "trigger": "Pointer hover, press, or selected mode",
+      "durationMs": 150,
+      "easing": "cubic-bezier(.2,.8,.2,1)",
+      "effect": "Each of the six responsive DOM modules owns its mechanism and hit target. Raise 2px on hover, depress 2px on click, and add an ember indicator glow for the selected mode. Studio gears rotate at 14s/9s idle and accelerate to 2.2s; the OPS lever, gauge, compass, reactor, and handoff piston run intermittent mechanical cycles and accelerate on interaction. The raster rail is proportionally cropped at low opacity and is never stretched."
     }
   ],
   "reducedMotion": "When prefers-reduced-motion: reduce, disable continuous tank and gear animation; snap lever, drum, and needle state changes in 1ms."

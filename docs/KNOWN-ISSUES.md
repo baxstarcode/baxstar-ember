@@ -6,10 +6,37 @@ Last audited at commit `d7717a1` + this pass. Each item says how it was verified
 
 ---
 
-## 0. THE NEWEST DESIGN IS NOT IN THIS REPO — highest priority
+## ~~0. THE NEWEST DESIGN IS NOT IN THIS REPO~~ — RESOLVED
 
-**Severity:** blocks all visual work
-**Verified:** yes — against a screenshot of the newer build, dated Sun Jul 26 10:36 PM
+Brady supplied `embercinematicrebuildv2.zip` (`ember-current-source/`, source stamped
+Jul 28 06:14). It is now merged and `src/baxstar-ember.jsx` is the cinematic v2 build.
+
+**What landed:** the v2 source (+20KB over the old one), the two raster assets it needs —
+`reactor-bezel@2x.webp` and `command-console@2x.webp` — updated `manifest.json`,
+`control-map.json`, `motion-spec.json`, `docs/generated-assets.md`,
+`docs/HANDOFF-CINEMATIC.md`, plus the python-only local harness (`start-ember.sh`,
+`scripts/sync-standalone.py`, `.env.example`).
+
+Only two new rasters were needed, not the eight estimated below — the whole bottom
+console is one composite strip rather than six separate assets.
+
+**Kept from this repo instead of the zip:** `voice/ember-demo.html` (the zip still had the
+pre-Claude-brain version) and `README.md`. The proxy patch was re-applied to the new
+source, and the proxy model allowlist was widened to all five models the v2 app offers
+(Opus 5 and Fable 5 were added upstream).
+
+**Verified:** rendered from `npm run build` in headless Chromium. Odometer, reactor bezel,
+six-panel dock, brass frame, glass tanks and Cinzel all present. 240 class tokens, **0
+unresolved**. No console errors, **no ≥400 responses**. Mobile 390px: zero overflow.
+Studio module switches and renders.
+
+The generator split that prevents this recurring is below in "Two generators, one file".
+
+---
+
+### Historical detail — what the gap looked like
+
+**Verified:** against a screenshot of the newer build, dated Sun Jul 26 10:36 PM
 
 A materially more advanced build of Ember exists outside git. `src/baxstar-ember.jsx` at
 HEAD is behind it. Anything generated from this repo renders the older look — correctly,
@@ -34,20 +61,32 @@ photoreal rasters. And the source has zero occurrences of `compass`, `cannon`,
 **This cannot be rebuilt from a screenshot.** Reconstructing photoreal brass instruments
 and an odometer from one JPEG would be guesswork that does not match.
 
-**To close this, land these in git:**
-
-1. The newer `.jsx` (or the artifact HTML) → replaces `src/baxstar-ember.jsx`
-2. Every raster asset it references → `assets/ember/raster/`
-3. Then `npm run build` — everything downstream is already wired and will pick it up
-   automatically: Tailwind recompiles against the new class set, the proxy hook and the
-   asset-root hook are re-emitted, no hand-editing.
-
-**Root cause: this is version sprawl recurring.** Issue 5 in the old version of this file
+**Root cause was version sprawl recurring.** Issue 5 in the old version of this file
 claimed the repo had solved it ("eight copies across Downloads and chat artifacts…
-this repo starts clean"). It hadn't — the best build still lives in a chat artifact
-rather than in git. The habit to fix is that the artifact is where work happens and
-nothing commits it back. Until a session ends with a commit, the repo is not the source
-of truth, and the next session rediscovers the wrong design.
+this repo starts clean"). It hadn't — the best build was still living outside git. The
+habit to fix is that work happens in an artifact or on the Mac and nothing commits it
+back. Until a session ends with a commit, the repo is not the source of truth, and the
+next session rediscovers the wrong design.
+
+---
+
+## Two generators, one file — fixed, don't reintroduce
+
+`scripts/sync-standalone.py` (from the zip) wrote **both** `_preview.html` and
+`index.html`. `build.mjs` also wrote `index.html`. Two generators for one artifact is
+precisely the drift that caused issue 0 and the old issue 1.
+
+Ownership is now split and each file says so in its own header:
+
+| File | Owner | Toolchain | Tailwind | React |
+|---|---|---|---|---|
+| `_preview.html` | `scripts/sync-standalone.py` | python3 only | Play CDN | dev builds |
+| `index.html` | `build.mjs` | node | compiled + inlined | production |
+
+The python path is preserved deliberately: **there is no Node on Brady's Mac**, and
+`./start-ember.sh` must keep working with python3 alone. It now regenerates the preview
+before serving, so the preview can never be stale either. `_preview.html` is gitignored
+since it's generated.
 
 ---
 
@@ -153,7 +192,28 @@ remaining work, and it's still the biggest open opportunity.
 microphone. Neither exists in CI. The canned path and the syntax are verified; the
 live path is written but untested.
 
-## 5. Blue glass tanks contradict the palette rule
+## 5. The photoreal dock console is dialled back to 24% — confirm this was intended
+
+**Severity:** cosmetic, needs a decision
+**Verified:** browser inspection of the built page
+**New this pass**
+
+`command-console@2x.webp` is a 1600×322 photoreal brass console strip. In the v2 source it
+renders at `opacity:.24; mix-blend-mode:luminosity` (`src/baxstar-ember.jsx:1755`), which
+desaturates it into a faint texture, and CSS-drawn line-art `DockMechanism` elements are
+drawn on top instead.
+
+Brady's reference screenshot shows that bar as **prominent photoreal brass** — lever with
+red lamps, gears, glowing gauge, compass gauge, ship's wheel, cannon. That screenshot's
+in-app clock reads Jul 28 **1:03 AM**; the zip source is stamped **06:14**. So the source
+moved on after the screenshot and the dock was deliberately quietened. The build is
+faithful to the newer source, not to the screenshot.
+
+If the photoreal look was the intent, it's one line — raise the opacity and drop the blend
+mode on `.console-dock-bg`. Left alone pending Brady's call, since the change appears
+deliberate.
+
+## 6. Blue glass tanks contradict the palette rule
 
 **Severity:** cosmetic, but it's a direct brief conflict
 **Verified:** visual render
@@ -172,7 +232,7 @@ alone pending a call from Brady rather than quietly changed. Two ways out:
 - Filter it in place — `filter: sepia(.7) saturate(2.2) hue-rotate(-35deg)` on those
   two `<img>` tags brings it to amber with no new asset.
 
-## 6. Runtime still depends on unpkg + in-browser Babel
+## 7. Runtime still depends on unpkg + in-browser Babel
 
 **Severity:** performance and fragility, not a blocker
 **Verified:** the render test failed to mount until React/Babel were vendored locally,

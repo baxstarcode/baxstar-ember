@@ -6,17 +6,15 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 
 ---
 
-> ### ⚠ The newest design is not in this repo
+> ### Two generated files. Never edit either by hand.
 >
-> A more advanced build exists outside git — full-page brass frame, a mechanical
-> odometer for revenue, an ornate concentric core gauge, and six sculpted instrument
-> panels for the bottom nav. It needs roughly eight raster assets that are not in
-> `assets/ember/raster/` (which holds only `glass-tank` and `skull-arch`).
+> | File | Rebuild with | For |
+> |---|---|---|
+> | `_preview.html` | `./start-ember.sh` (python3 only) | local iteration |
+> | `index.html` | `npm run build` (node) | the hosted deploy build |
 >
-> `src/baxstar-ember.jsx` here is **behind** that build. Getting the newer source and
-> its assets committed is the highest-priority task in this repo — see
-> `docs/KNOWN-ISSUES.md` §0. Until then, anything built from this source renders the
-> older look, correctly.
+> Edit `src/baxstar-ember.jsx` and regenerate. Hand-editing a generated file is how the
+> deploy build once drifted an entire redesign behind the source with nobody noticing.
 
 ---
 
@@ -24,17 +22,21 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 
 | Path | What it is | Status |
 |---|---|---|
-| `src/baxstar-ember.jsx` | **The app.** Canonical React source in git. | Working, but behind the newest design |
+| `src/baxstar-ember.jsx` | **The app.** Canonical React source — cinematic v2. | Working |
 | `index.html` | **Deploy build. Generated — never edit by hand.** | Builds clean; needs a proxy to host |
-| `build.mjs` | Generates `index.html` from the source. `npm run build`. | Working |
+| `_preview.html` | **Local preview. Generated, gitignored.** | Working |
+| `build.mjs` | Generates `index.html`. `npm run build`. | Working |
+| `scripts/sync-standalone.py` | Generates `_preview.html`. No Node needed. | Working |
+| `start-ember.sh` | Regenerates the preview, then serves it on :8787. | Working |
 | `proxy/cloudflare-worker.js` | Key-holding API proxy so Ember can live at a URL. | Written, not yet deployed |
 | `proxy/vercel/api/claude.js` | Same proxy for Vercel / Netlify. | Written, not yet deployed |
 | `voice/ember-voice-deck.html` | Voice test rig — mic in, speech out, audio meter. | Working |
 | `voice/ember-demo.html` | Voice rig + Claude brain, canned demo as fallback. | Working |
 | `docs/BUILD-PROMPT.md` | Master brief for any AI session that continues this build. | Current |
 | `docs/DEPLOY.md` | How to build, deploy the proxy, and go live. | Current |
+| `docs/HANDOFF-CINEMATIC.md` | Checkpoint notes for the cinematic v2 build. | Current |
 | `docs/KNOWN-ISSUES.md` | Open blockers with detail. | Current |
-| `assets/ember/` | Steampunk asset pack — SVG controls, frames, logos, textures. | Wired in, incomplete |
+| `assets/ember/` | Steampunk asset pack — SVG controls, frames, rasters, textures. | Wired in |
 
 ---
 
@@ -47,15 +49,21 @@ Two modules: **OPS** and **BAXSTAR STUDIO**.
 **Studio tools (8):**
 Claude Chat · AI Handoff · Caption Studio · Google Drive Librarian · HTML Viewer · Image Filters · GitHub · Snippets
 
-**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
+**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
 
 ### Running it
+
+**Locally — python3 only, no Node.** The everyday loop.
+
+```bash
+./start-ember.sh          # regenerates _preview.html, serves http://localhost:8787/_preview.html
+```
 
 **As a Claude artifact (works fully today).** Paste `src/baxstar-ember.jsx` into a Claude
 conversation. The API key and the MCP connector tokens are injected by the platform there,
 which is why the app has no key in its code.
 
-**Hosted at a URL.**
+**Hosted at a URL.** Needs Node for the build.
 
 ```bash
 npm install
@@ -98,13 +106,14 @@ biggest open opportunity.
 
 See `docs/KNOWN-ISSUES.md`. Short version:
 
-0. **The newest design isn't in git** — see the warning at the top. Highest priority.
 1. **Proxy is written but not deployed** — needed before Ember can live at a URL.
 2. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
    platform currently supplies. Hosted, chat works and the phone/email/calendar panels don't.
 3. **Voice is half-merged** — real brain wired in, but `voice/` and `src/` are still two codebases.
-4. **The glass-tank asset is cyan**, which contradicts the warm-metals-only palette rule.
-5. **Runtime still depends on unpkg + in-browser Babel** — slow first paint, and a hard
+4. **The dock console renders at 24% opacity** — check that's intended; the reference
+   screenshot shows it photoreal.
+5. **The glass-tank asset is cyan**, which contradicts the warm-metals-only palette rule.
+6. **Runtime still depends on unpkg + in-browser Babel** — slow first paint, and a hard
    dependency on a CDN being up.
 
 ---

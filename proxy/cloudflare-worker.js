@@ -25,12 +25,15 @@ const ANTHROPIC_VERSION = "2023-06-01";
 // Required for the mcp_servers field. Without it the API rejects MCP requests.
 const MCP_BETA = "mcp-client-2025-04-04";
 
-// Ember's three selectable models. Anything else is refused so a leaked endpoint
-// can't be repurposed into a general-purpose model proxy.
+// Ember's selectable models — keep in sync with MODELS in src/baxstar-ember.jsx.
+// Anything else is refused so a leaked endpoint can't be repurposed into a
+// general-purpose model proxy.
 const ALLOWED_MODELS = new Set([
   "claude-haiku-4-5",
   "claude-sonnet-4-6",
   "claude-opus-4-8",
+  "claude-opus-5",
+  "claude-fable-5",
 ]);
 
 const MAX_TOKENS_CAP = 4096;

@@ -4,23 +4,24 @@
     {
       "name": "OPS",
       "role": "mode-tab",
-      "asset": "svg/frames/quick-action-frame.svg",
+      "asset": "raster/command-console@2x.webp",
       "state": "inactive|active",
-      "implementation": "Keep the existing tab handler and ID; use ember-active only for the selected mode."
+      "implementation": "First dock bay. Keep the existing tab handler and ID; overlay the live label and active state as DOM."
     },
     {
       "name": "Baxstar Studio",
       "role": "mode-tab",
-      "asset": "svg/frames/quick-action-frame.svg",
+      "asset": "raster/command-console@2x.webp",
       "state": "inactive|active",
-      "implementation": "Keep the existing tab handler and ID; use ember-active only for the selected mode."
+      "implementation": "Second dock bay. Keep the existing tab handler and ID; overlay the live label and active state as DOM."
     },
     {
       "name": "central mic orb",
       "role": "voice-trigger",
-      "asset": "svg/controls/mic-orb-shell.svg",
+      "asset": "raster/reactor-bezel@2x.webp",
+      "liveLayer": "svg/controls/mic-orb-shell.svg",
       "state": "idle|armed|listening|processing",
-      "implementation": "Retain the existing pressure-vent animation and click/voice behavior. Place current orb content above this shell."
+      "implementation": "Retain the existing pressure-vent animation and click/voice behavior. Place the live orb and SVG shell inside the raster reactor opening."
     },
     {
       "name": "Voice Test",
@@ -32,30 +33,30 @@
     {
       "name": "What'd I miss",
       "role": "quick-action",
-      "asset": "svg/frames/quick-action-frame.svg",
+      "asset": "raster/command-console@2x.webp",
       "state": "idle|hover|active|pending",
-      "implementation": "Preserve existing action, preset ID, and output destination."
+      "implementation": "Third dock bay. Preserve existing action, preset ID, output destination, and live DOM label."
     },
     {
       "name": "Triage inbox",
       "role": "quick-action",
-      "asset": "svg/frames/quick-action-frame.svg",
+      "asset": "raster/command-console@2x.webp",
       "state": "idle|hover|active|pending",
-      "implementation": "Preserve existing action, preset ID, and output destination."
+      "implementation": "Fourth dock bay. Preserve existing action, preset ID, output destination, and live DOM label."
     },
     {
       "name": "Brief my day",
       "role": "quick-action",
-      "asset": "svg/frames/quick-action-frame.svg",
+      "asset": "raster/command-console@2x.webp",
       "state": "idle|hover|active|pending",
-      "implementation": "Preserve existing action, preset ID, and output destination."
+      "implementation": "Fifth dock bay. Preserve existing action, preset ID, output destination, and live DOM label."
     },
     {
       "name": "Handoff draft",
       "role": "quick-action",
-      "asset": "svg/frames/quick-action-frame.svg",
+      "asset": "raster/command-console@2x.webp",
       "state": "idle|hover|active|pending",
-      "implementation": "Preserve existing action, preset ID, and output destination."
+      "implementation": "Sixth dock bay. Preserve existing action, preset ID, output destination, and live DOM label."
     },
     {
       "name": "Calls & Voicemail",
@@ -83,7 +84,7 @@
       "role": "panel",
       "asset": "svg/controls/codex-lock-shell.svg",
       "state": "default|updated",
-      "implementation": "Use the shell behind live revenue digits; do not rasterize the number."
+      "implementation": "Render the live value as DOM split-flap cells; never rasterize the number."
     },
     {
       "name": "Claude Chat",
@@ -138,11 +139,11 @@
       "state": "idle|active"
     },
     {
-      "name": "Haiku/Sonnet/Opus",
+      "name": "Haiku 4.5/Sonnet 4.6/Opus 4.8/Opus 5/Fable 5",
       "role": "model-toggle",
       "asset": "svg/controls/codex-lock-shell.svg",
       "state": "one active",
-      "implementation": "Keep the current three buttons and model values; shell is visual only."
+      "implementation": "Keep all five live model buttons and their exact API IDs; shell is visual only."
     },
     {
       "name": "Low/Std/High",

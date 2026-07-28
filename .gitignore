@@ -16,3 +16,6 @@ dist/
 # Secrets — never commit an API key
 *.key
 secrets.json
+
+# Generated local preview — run ./start-ember.sh (or scripts/sync-standalone.py)
+_preview.html
