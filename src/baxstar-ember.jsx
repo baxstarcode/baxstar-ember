@@ -1671,7 +1671,11 @@ Look at the photo and write the caption. Output caption text only — no preambl
           width:clamp(420px,52vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:none; }
         @media (min-width:980px){ .skull-arch { display:block; } }
         .skull-host { overflow:hidden; }
-        .skull-host > :not(.skull-arch) { position:relative; z-index:1; }
+        /* Lift the chamber's contents above the arch. z-index needs a position, but this
+           must not clobber children that place themselves — .ctx-lever is absolute and
+           carries its own z-index, and being forced to relative dropped both levers into
+           flow, on top of the greeting. */
+        .skull-host > :not(.skull-arch):not(.ctx-lever) { position:relative; z-index:1; }
 
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
 
@@ -1732,65 +1736,48 @@ Look at the photo and write the caption. Output caption text only — no preambl
         }
         .odo-cell.punct { min-width:14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
 
+        /* The dock IS command-console@2x.webp. That asset carries the frame, the end
+           caps, the six panel divisions, all six brass mechanisms and an empty engraved
+           nameplate under each one. So this CSS deliberately adds no panel chrome of its
+           own — earlier it synthesised a second set of panels and line-art mechanisms on
+           top, which fought the artwork and cropped its nameplates away. */
         .console-dock {
           position:relative; flex:0 0 clamp(128px,15.2vh,158px); width:100%; min-height:0;
-          padding:9px 13px 8px; isolation:isolate;
-          border:1px solid rgba(151,101,50,.7); border-radius:24px 24px 8px 8px;
-          background:
-            linear-gradient(180deg,rgba(177,119,55,.20),transparent 9%),
-            linear-gradient(180deg,#17100b,#080604 66%,#130c08);
-          box-shadow:
-            inset 0 2px 0 rgba(255,207,126,.18),
-            inset 0 -10px 24px rgba(0,0,0,.72),
-            0 -8px 18px rgba(0,0,0,.48);
+          padding:0; isolation:isolate;
+          border:0; background:transparent;
+          box-shadow:0 -8px 18px rgba(0,0,0,.48);
         }
-        .console-dock::before,.console-dock::after {
-          content:""; position:absolute; top:9px; bottom:9px; width:24px; z-index:3; pointer-events:none;
-          border:1px solid #73502b; border-radius:50%;
-          background:radial-gradient(circle,#bc8547 0 8%,#2a190e 10% 31%,#936233 33% 38%,#0b0705 41%);
-          box-shadow:inset 0 0 8px #000,0 4px 9px #000;
-        }
-        .console-dock::before { left:-7px; }
-        .console-dock::after { right:-7px; }
         .console-dock-bg {
-          position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 53%;
-          pointer-events:none; z-index:0; opacity:.24; mix-blend-mode:luminosity;
+          position:absolute; inset:0; width:100%; height:100%;
+          /* fill, not cover: the console must be seen whole. cover crops it vertically
+             on a bar this wide and takes the nameplates with it. */
+          object-fit:fill;
+          pointer-events:none; z-index:0;
         }
         .console-dock-grid {
           position:relative; height:100%; z-index:1; display:grid; grid-template-columns:repeat(6,minmax(0,1fr));
-          gap:6px;
+          gap:0;
+          /* clear the asset's end arcs so each column lands on one painted panel:
+             its panels run x 100–1500 of 1600 */
+          padding:0 6.25%;
         }
         .dock-control {
-          position:relative; min-width:0; overflow:hidden; color:var(--ember-text-soft);
-          cursor:pointer; padding:0 5%; font-family:var(--ember-font-display);
-          border:1px solid rgba(124,83,43,.82); border-radius:9px;
-          background:
-            radial-gradient(circle at 50% 22%,rgba(205,139,65,.11),transparent 42%),
-            linear-gradient(180deg,rgba(22,16,11,.92),rgba(7,6,4,.96));
-          box-shadow:
-            inset 0 0 0 2px rgba(8,5,3,.9),
-            inset 0 0 0 3px rgba(181,121,57,.24),
-            inset 0 -14px 22px rgba(0,0,0,.55),
-            0 4px 8px rgba(0,0,0,.55);
-          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical),border-color 150ms;
-        }
-        .dock-control::before {
-          content:""; position:absolute; inset:5px; pointer-events:none; border:1px solid rgba(214,179,106,.13);
-          border-radius:5px;
+          position:relative; min-width:0; color:var(--ember-text-soft);
+          cursor:pointer; padding:0 4%; font-family:var(--ember-font-display);
+          border:0; border-radius:9px; background:transparent; box-shadow:none;
+          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical);
         }
         .dock-control:hover { filter:brightness(1.18) drop-shadow(0 0 10px rgba(255,98,36,.3)); transform:translateY(-2px); }
         .dock-control:active { transform:translateY(2px); }
         .dock-control.active {
           filter:brightness(1.14) drop-shadow(0 0 12px rgba(255,77,50,.58)); color:#fff1dc;
-          border-color:rgba(255,117,57,.76);
         }
         .dock-control:disabled { cursor:wait; opacity:.7; transform:none; }
-        .dock-machine {
-          position:absolute; left:10%; right:10%; top:8%; height:58%;
-          display:flex; align-items:center; justify-content:center; pointer-events:none;
-        }
+        /* Mechanisms are painted into the console asset. The CSS ones duplicated them. */
+        .dock-machine { display:none; }
         .dock-label {
-          position:absolute; left:7%; right:7%; bottom:7%; min-height:22%;
+          /* sits on the engraved nameplate, which occupies roughly 62–86% of panel height */
+          position:absolute; left:6%; right:6%; top:64%; height:22%;
           display:flex; align-items:center; justify-content:center; text-align:center;
           font-size:clamp(8px,.69vw,11.5px); font-weight:700; letter-spacing:.07em; text-transform:uppercase;
           text-shadow:0 2px 2px #000,0 0 9px rgba(255,145,73,.3);

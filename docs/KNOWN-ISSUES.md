@@ -38,8 +38,8 @@ The generator split that prevents this recurring is below in "Two generators, on
 
 **Verified:** against a screenshot of the newer build, dated Sun Jul 26 10:36 PM
 
-A materially more advanced build of Ember exists outside git. `src/baxstar-ember.jsx` at
-HEAD is behind it. Anything generated from this repo renders the older look — correctly,
+(Written before the zip arrived.) A materially more advanced build of Ember existed
+outside git and `src/baxstar-ember.jsx` was behind it. Anything generated from this repo renders the older look — correctly,
 but it is not the current design.
 
 **What the newer build has that this source does not:**
@@ -114,8 +114,9 @@ Glacier Lake, and zero references to `EmberIcon`, `BrandMark`, or the asset pack
 Root cause was that `index.html` was maintained by hand. `build.mjs` now generates it
 from `src/baxstar-ember.jsx`, so the two cannot diverge again.
 
-**Verified:** every retheme marker now matches across both files
-(`Cinzel` 3/3, `EmberIcon` 18/18, `BrandMark` 2/2, comic markers 0/0).
+**Verified:** every retheme marker matches across both files. After the v2 merge that
+reads `Cinzel` 3/3, `EmberIcon` 15/15, `BrandMark` 2/2, `reactor-bezel` 2/2,
+`command-console` 1/1, comic markers 0/0.
 
 **Rule going forward: never edit `index.html` by hand. Run `npm run build`.**
 
@@ -192,28 +193,48 @@ remaining work, and it's still the biggest open opportunity.
 microphone. Neither exists in CI. The canned path and the syntax are verified; the
 live path is written but untested.
 
-## 5. The photoreal dock console is dialled back to 24% — confirm this was intended
+## ~~5. The dock console was hidden behind duplicate CSS chrome~~ — FIXED
 
-**Severity:** cosmetic, needs a decision
-**Verified:** browser inspection of the built page
-**New this pass**
+`command-console@2x.webp` is a 1600×322 photoreal brass console: six panels, each with a
+brass mechanism and an empty engraved nameplate for its label. It **is** the dock.
 
-`command-console@2x.webp` is a 1600×322 photoreal brass console strip. In the v2 source it
-renders at `opacity:.24; mix-blend-mode:luminosity` (`src/baxstar-ember.jsx:1755`), which
-desaturates it into a faint texture, and CSS-drawn line-art `DockMechanism` elements are
-drawn on top instead.
+The v2 CSS treated it as a faint texture — `opacity:.24; mix-blend-mode:luminosity` — and
+synthesised a second set of panels (`.dock-control` borders and gradients) plus line-art
+mechanisms (`.dock-machine`) on top. Worse, `object-fit:cover` on a bar this wide cropped
+the artwork vertically and took the nameplates with it.
 
-Brady's reference screenshot shows that bar as **prominent photoreal brass** — lever with
-red lamps, gears, glowing gauge, compass gauge, ship's wheel, cannon. That screenshot's
-in-app clock reads Jul 28 **1:03 AM**; the zip source is stamped **06:14**. So the source
-moved on after the screenshot and the dock was deliberately quietened. The build is
-faithful to the newer source, not to the screenshot.
+Fixed by letting the asset be the dock: full opacity, `object-fit:fill` so the whole
+console is visible, no synthetic panel chrome, `.dock-machine` hidden (it duplicated the
+painted mechanisms), and labels repositioned onto the nameplates at 64–86% of panel height.
+The grid gets a 6.25% side inset so each column lands on one painted panel — the asset's
+panels run x 100–1500 of 1600.
 
-If the photoreal look was the intent, it's one line — raise the opacity and drop the blend
-mode on `.console-dock-bg`. Left alone pending Brady's call, since the change appears
-deliberate.
+**Trade-off, stated plainly:** the CSS mechanisms were animated (lever pull, gear spin,
+reactor pulse). Hiding them loses that motion. Hover and active feedback is preserved via
+brightness and glow on the photoreal art. Restoring per-mechanism animation would mean
+compositing sprites aligned to the artwork — worth doing only if the motion is missed.
 
-## 6. Blue glass tanks contradict the palette rule
+**Verified:** element screenshot of `.console-dock` — six photoreal panels, all six labels
+seated on their nameplates, alignment correct at 1427px wide.
+
+## ~~6. Draft Reply / Create Task levers collided with the greeting~~ — FIXED
+
+A CSS specificity bug, not a layout one:
+
+- `.skull-host > :not(.skull-arch)` → `position:relative`, specificity **(0,2,0)**
+- `.ctx-lever` → `position:absolute`, specificity **(0,1,0)**
+
+The broader rule won, so both levers lost absolute positioning, fell into the flex column,
+and landed on top of "Morning, Brady." — visible in Brady's own reference screenshot too.
+
+The `skull-host` rule only needs `position` so its `z-index:1` works, and `.ctx-lever`
+already carries `z-index:4`, so excluding it is the correct fix:
+`.skull-host > :not(.skull-arch):not(.ctx-lever)`.
+
+**Verified:** both levers compute `position:absolute` at x=494 and x=870, flanking the
+reactor, with `collidesWithGreeting: false`. VOICE TEST is no longer clipped either.
+
+## 7. Blue glass tanks contradict the palette rule
 
 **Severity:** cosmetic, but it's a direct brief conflict
 **Verified:** visual render
@@ -232,7 +253,7 @@ alone pending a call from Brady rather than quietly changed. Two ways out:
 - Filter it in place — `filter: sepia(.7) saturate(2.2) hue-rotate(-35deg)` on those
   two `<img>` tags brings it to amber with no new asset.
 
-## 7. Runtime still depends on unpkg + in-browser Babel
+## 8. Runtime still depends on unpkg + in-browser Babel
 
 **Severity:** performance and fragility, not a blocker
 **Verified:** the render test failed to mount until React/Babel were vendored locally,

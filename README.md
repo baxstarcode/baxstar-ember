@@ -110,10 +110,8 @@ See `docs/KNOWN-ISSUES.md`. Short version:
 2. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
    platform currently supplies. Hosted, chat works and the phone/email/calendar panels don't.
 3. **Voice is half-merged** — real brain wired in, but `voice/` and `src/` are still two codebases.
-4. **The dock console renders at 24% opacity** — check that's intended; the reference
-   screenshot shows it photoreal.
-5. **The glass-tank asset is cyan**, which contradicts the warm-metals-only palette rule.
-6. **Runtime still depends on unpkg + in-browser Babel** — slow first paint, and a hard
+4. **The glass-tank asset is cyan**, which contradicts the warm-metals-only palette rule.
+5. **Runtime still depends on unpkg + in-browser Babel** — slow first paint, and a hard
    dependency on a CDN being up.
 
 ---
