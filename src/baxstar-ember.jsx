@@ -1325,6 +1325,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           --ember-ease-mechanical:cubic-bezier(.2,.8,.2,1);
           --ember-ease-sweep:cubic-bezier(.22,1,.36,1);
         }
+        html, body { margin:0; background:var(--bg); }
         body, button, input, textarea { font-family:var(--ember-font-ui); }
         .font-mono-x { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
         .font-display { font-family:"Cinzel","Georgia",serif; }
