@@ -39,7 +39,31 @@ every load. Fine for personal use; see §5 if you want it faster.
 `index.html` ships to every visitor, so it can never hold an API key. The proxy holds
 the key server-side and is the only thing the browser talks to.
 
-### Cloudflare Worker (recommended — free tier, single file)
+### Cloudflare Worker, browser only (recommended — no Node required)
+
+`wrangler` needs Node, and **there is no Node on Brady's Mac**. This route installs
+nothing. Everything happens at dash.cloudflare.com.
+
+1. Get an API key at console.anthropic.com → API keys. Copy it once; you cannot see it again.
+2. dash.cloudflare.com → **Workers & Pages** → **Create** → **Create Worker**.
+   Name it `ember-claude-proxy`. Deploy the placeholder it offers.
+3. **Edit code**. Select all, delete, and paste the whole of
+   `proxy/cloudflare-worker.js` from this repo. **Deploy**.
+4. **Settings → Variables and Secrets**:
+   - Add a **Secret** — name `ANTHROPIC_API_KEY`, value your key.
+     Secret, not plaintext: plaintext vars are readable from the dashboard afterwards.
+   - Add a **Variable** — name `ALLOWED_ORIGINS`, value the exact origin Ember runs on.
+     For local testing that is `http://localhost:8787`. No trailing slash.
+5. **Deploy** again so the variables take effect.
+
+Your endpoint is `https://ember-claude-proxy.<your-subdomain>.workers.dev`.
+
+**Try it locally before hosting anything.** Set `ALLOWED_ORIGINS` to
+`http://localhost:8787`, uncomment `window.EMBER_API_PROXY` in
+`scripts/sync-standalone.py`'s config block, then `./start-ember.sh`. That gives you a
+live Ember with a working brain on your own machine — no hosting, no domain.
+
+### Cloudflare Worker via CLI (needs Node)
 
 ```bash
 cd proxy
