@@ -445,27 +445,71 @@ function ContextLever({ side, label, state, onPull }) {
   );
 }
 
-function DockMechanism({ type }) {
-  if (type === "ops") return (
-    <span className="dock-machine" aria-hidden="true"><span className="dock-lever" /></span>
-  );
-  if (type === "studio") return (
-    <span className="dock-machine" aria-hidden="true">
-      <img className="dock-gear" src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" />
-      <img className="dock-gear small" src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" />
-    </span>
-  );
-  if (type === "miss") return (
-    <span className="dock-machine" aria-hidden="true"><span className="dock-reactor" /></span>
-  );
-  if (type === "triage") return (
-    <span className="dock-machine" aria-hidden="true"><span className="dock-gauge" /></span>
-  );
-  if (type === "brief") return (
-    <span className="dock-machine" aria-hidden="true"><span className="dock-compass" /></span>
-  );
+/* ---------- COMMAND DOCK MOTION ----------
+   The dock's six mechanisms are PAINTED INTO command-console@2x.webp — a lever press with
+   two lamps, a gear train, a reactor porthole, a pressure gauge, a ship's wheel and a
+   piston cannon. So motion here is LIGHT ONLY: additive glints, glows and travelling
+   sheen, composited over the artwork with mix-blend-mode:screen.
+
+   Nothing draws a second lever, gear or needle. That is deliberate — the gauge already has
+   a painted needle and the gears already have painted teeth, so any synthetic shape laid on
+   top reads as a duplicate. That is exactly what the old .dock-machine layer did.
+
+   Offsets are percentages of one panel cell, measured off the asset: its panels run
+   x 100–1500 of 1600 (hence the grid's 6.25% inset) and the mechanisms centre near 31%
+   of its height. `d` is the painted part's diameter in asset pixels — width comes from
+   the 233.33px cell, and the round ones are squashed by --dock-squash because
+   object-fit:fill renders those painted circles as ellipses. */
+const DOCK_CELL_PX = 233.33;
+const pctOfCell = (assetPx) => ((assetPx / DOCK_CELL_PX) * 100).toFixed(1) + "%";
+
+const DOCK_MOTION = {
+  // lever press: the two lamps breathe, a highlight strokes along the drum
+  ops: [
+    { c: "dm-lamp", round: true, d: 34, s: { left: "15%", top: "38%" } },
+    { c: "dm-lamp", round: true, d: 34, s: { left: "88%", top: "38%" }, delay: "-0.9s" },
+    { c: "dm-sheen", s: { left: "24%", top: "21%", width: "43%", height: "29%" } },
+  ],
+  // gear train: a glint orbits each painted gear, counter-rotating on the middle one
+  studio: [
+    { c: "dm-spin", round: true, d: 95, s: { left: "54%", top: "26%" } },
+    { c: "dm-spin dm-rev", round: true, d: 64, s: { left: "86%", top: "28%" } },
+    { c: "dm-spin dm-slow", round: true, d: 45, s: { left: "40%", top: "50%" } },
+  ],
+  // reactor porthole: core pulse plus a slow ring sweep
+  miss: [
+    { c: "dm-spin dm-slow", round: true, d: 140, s: { left: "52%", top: "34%" } },
+    { c: "dm-core", round: true, d: 105, s: { left: "52%", top: "34%" } },
+  ],
+  // gauge: an illuminated indicator rides the painted dial — no second needle
+  triage: [{ c: "dm-sweep", round: true, d: 122, s: { left: "43%", top: "27%" } }],
+  // ship's wheel: slow glint around the rim
+  brief: [{ c: "dm-spin dm-slow", round: true, d: 132, s: { left: "48%", top: "27%" } }],
+  // piston cannon: lamp breathes, sheen strokes barrel then cylinder
+  handoff: [
+    { c: "dm-lamp", round: true, d: 40, s: { left: "16%", top: "26%" } },
+    { c: "dm-sheen", s: { left: "23%", top: "21%", width: "75%", height: "12%" } },
+    { c: "dm-sheen", s: { left: "25%", top: "36%", width: "61%", height: "14%" }, delay: "-1.8s" },
+  ],
+};
+
+function DockMotion({ type }) {
+  const parts = DOCK_MOTION[type] || [];
   return (
-    <span className="dock-machine" aria-hidden="true"><span className="dock-piston" /></span>
+    <span className="dock-motion" aria-hidden="true">
+      {parts.map((p, i) => {
+        // Round parts get a wrapper that carries the ellipse squash, so the child is free
+        // to rotate as a true circle. Sheens are already rectangular — no wrapper needed.
+        if (!p.round) {
+          return <span key={i} className={p.c} style={{ ...p.s, animationDelay: p.delay }} />;
+        }
+        return (
+          <span key={i} className="dm-round" style={{ ...p.s, width: pctOfCell(p.d) }}>
+            <i className={p.c} style={{ animationDelay: p.delay }} />
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -510,6 +554,7 @@ export default function BaxstarEmber() {
   const gasRef = useRef(null);
   const ventRef = useRef(null);
   const scopeRef = useRef(null);
+  const dockRef = useRef(null);          // command dock — see the --dock-squash effect
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
@@ -550,6 +595,28 @@ export default function BaxstarEmber() {
   const [driveBusy, setDriveBusy] = useState(false);
   const driveEndRef = useRef(null);
   useEffect(() => { driveEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [driveMsgs, driveBusy]);
+
+  /* command-console@2x.webp is 1600x322 and the dock stretches it with object-fit:fill,
+     so every painted circle — gears, porthole, gauge, wheel — renders as an ellipse.
+     Measure that squash and hand it to the motion layer, which scales its glints to
+     match. Without this the round glints sit about twice as tall as the mechanism they
+     belong to and spill onto the nameplate. Re-measures on resize. */
+  useEffect(() => {
+    const el = dockRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const sync = () => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      // >1 is legitimate: on a narrow dock the asset is stretched taller than its own
+      // aspect, so the painted circles become ellipses that are taller than they are wide.
+      const squash = (r.height / 322) / (r.width / 1600);
+      el.style.setProperty("--dock-squash", String(Math.max(0.15, Math.min(3, squash))));
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ---- HANDOFF state ----
   const [handoffText, setHandoffText] = useState("");
@@ -1773,8 +1840,6 @@ Look at the photo and write the caption. Output caption text only — no preambl
           filter:brightness(1.14) drop-shadow(0 0 12px rgba(255,77,50,.58)); color:#fff1dc;
         }
         .dock-control:disabled { cursor:wait; opacity:.7; transform:none; }
-        /* Mechanisms are painted into the console asset. The CSS ones duplicated them. */
-        .dock-machine { display:none; }
         .dock-label {
           /* sits on the engraved nameplate, which occupies roughly 62–86% of panel height */
           position:absolute; left:6%; right:6%; top:64%; height:22%;
@@ -1787,100 +1852,99 @@ Look at the photo and write the caption. Output caption text only — no preambl
           background:var(--ember-active); box-shadow:0 0 9px var(--ember-active);
         }
 
-        .dock-gear {
-          width:clamp(30px,3.2vw,47px); height:clamp(30px,3.2vw,47px);
-          filter:sepia(1) saturate(1.45) brightness(.82) drop-shadow(0 3px 5px #000);
-          animation:dockGear 14s linear infinite;
-        }
-        .dock-gear.small { width:clamp(23px,2.5vw,36px); height:clamp(23px,2.5vw,36px); margin-left:-7px; animation-duration:9s; animation-direction:reverse; }
-        .dock-control:hover .dock-gear,.dock-control.active .dock-gear { animation-duration:2.2s; }
-        @keyframes dockGear { to { transform:rotate(360deg); } }
+        /* Motion layer over the painted console. Every part here is additive light —
+           mix-blend-mode:screen — so it can brighten the artwork but never occlude or
+           duplicate it. See DOCK_MOTION for the per-panel offsets. */
+        .dock-motion { position:absolute; inset:0; z-index:1; pointer-events:none; }
+        .dock-motion > * { position:absolute; pointer-events:none; }
+        .dm-sheen { mix-blend-mode:screen; }
 
-        .dock-lever {
-          position:relative; width:70%; height:36%; border-radius:18px;
-          background:linear-gradient(180deg,#0b0907,#21150c 45%,#080604);
-          border:2px solid #6d4827; box-shadow:inset 0 4px 8px #000,0 3px 5px #000;
+        /* Wrapper for anything round. It holds the position and the ellipse squash that
+           object-fit:fill imposes on the artwork, which leaves the child a true circle
+           free to rotate. --dock-squash is measured from the live dock box. */
+        .dm-round {
+          aspect-ratio:1; transform:translate(-50%,-50%) scaleY(var(--dock-squash,.53));
         }
-        .dock-lever::before {
-          content:""; position:absolute; left:10%; right:10%; top:50%; height:4px; margin-top:-2px;
-          background:#0b0806; box-shadow:0 1px 0 rgba(214,179,106,.18);
-        }
-        .dock-lever::after {
-          content:""; position:absolute; left:16%; top:50%; width:31%; height:18px; transform:translateY(-50%);
-          border-radius:10px; background:linear-gradient(180deg,#735034,#17100c 48%,#020202 55%,#432b1c);
-          border:1px solid #a06a38; box-shadow:7px 0 0 #15100c,9px 0 0 #7f552e,0 0 8px rgba(255,73,43,.2);
-          animation:leverIdle 6s var(--ember-ease-mechanical) infinite;
-        }
-        .dock-control:hover .dock-lever::after,.dock-control.active .dock-lever::after { animation:leverWork 900ms var(--ember-ease-mechanical) infinite alternate; }
-        @keyframes leverIdle { 0%,78%,100%{left:16%;} 84%{left:43%;} 90%{left:16%;} }
-        @keyframes leverWork { to{left:47%;} }
-
-        .dock-reactor {
-          width:clamp(43px,4.2vw,64px); aspect-ratio:1; border-radius:50%;
-          border:4px double #7d542f;
-          background:
-            repeating-conic-gradient(from 0deg,#9c6737 0 2deg,#15100b 2deg 13deg),
-            radial-gradient(circle,#ff9c50 0 8%,#9e321c 10% 18%,#130b07 21% 48%,#8b5c31 50%);
-          box-shadow:inset 0 0 10px #000,0 0 12px rgba(255,83,32,.44);
-          animation:reactorSpin 10s linear infinite;
-        }
-        .dock-control:hover .dock-reactor,.dock-control.active .dock-reactor { animation-duration:2.5s; box-shadow:inset 0 0 10px #000,0 0 20px rgba(255,83,32,.72); }
-
-        .dock-gauge {
-          position:relative; width:clamp(48px,4.6vw,70px); aspect-ratio:1; border-radius:50%;
-          border:4px ridge #80552e;
-          background:
-            radial-gradient(circle at 50% 52%,#b49b72 0 54%,#332317 56% 64%,#0c0806 66%);
-          box-shadow:inset 0 0 9px #000,0 4px 7px #000;
-        }
-        .dock-gauge::before {
-          content:""; position:absolute; left:49%; bottom:45%; width:2px; height:38%; transform-origin:50% 100%;
-          background:#2b120b; box-shadow:0 0 2px #ff7a45;
-          animation:gaugeSweep 6.5s var(--ember-ease-sweep) infinite;
-        }
-        .dock-gauge::after {
-          content:""; position:absolute; left:50%; top:55%; width:7px; height:7px; transform:translate(-50%,-50%);
-          border-radius:50%; background:#3c2414; border:1px solid #b98247;
-        }
-        @keyframes gaugeSweep {
-          0%,18%{transform:rotate(-54deg);}
-          38%,72%{transform:rotate(34deg);}
-          88%,100%{transform:rotate(-54deg);}
+        .dm-round > i {
+          position:absolute; inset:0; border-radius:50%; display:block;
+          mix-blend-mode:screen;
         }
 
-        .dock-compass {
-          position:relative; width:clamp(48px,4.6vw,70px); aspect-ratio:1; border-radius:50%;
-          border:4px double #80552e;
-          background:
-            linear-gradient(0deg,transparent 48%,rgba(214,179,106,.34) 49% 51%,transparent 52%),
-            linear-gradient(90deg,transparent 48%,rgba(214,179,106,.34) 49% 51%,transparent 52%),
-            radial-gradient(circle,#19130e 0 58%,#0a0705 60%);
-          box-shadow:inset 0 0 10px #000,0 4px 7px #000;
+        /* glint orbiting a painted gear / wheel — masked to the rim, where teeth catch
+           the light. Unmasked it reads as a pie wedge rather than a turning part. */
+        .dm-spin {
+          background:conic-gradient(from 0deg,
+            rgba(255,222,168,0) 0deg, rgba(255,222,168,.34) 30deg,
+            rgba(255,150,66,.08) 70deg, transparent 120deg);
+          -webkit-mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
+                  mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
+          animation:dmSpin 9s linear infinite;
         }
-        .dock-compass::after {
-          content:""; position:absolute; left:47%; top:14%; width:6%; height:72%;
-          clip-path:polygon(50% 0,100% 50%,50% 42%,0 50%);
-          background:linear-gradient(180deg,#db8b43 0 48%,#80745f 50%);
-          transform-origin:50% 50%; animation:compassHunt 8s ease-in-out infinite;
-          filter:drop-shadow(0 0 2px #000);
-        }
-        @keyframes compassHunt { 0%,100%{transform:rotate(-7deg);} 45%{transform:rotate(18deg);} 65%{transform:rotate(9deg);} }
+        .dm-spin.dm-rev  { animation-duration:6.5s; animation-direction:reverse; }
+        .dm-spin.dm-slow { animation-duration:15s; }
+        @keyframes dmSpin { to { transform:rotate(360deg); } }
 
-        .dock-piston {
-          position:relative; width:76%; height:24px; border:2px solid #79502b; border-radius:12px;
-          background:linear-gradient(180deg,#40291a,#090706 48%,#271910 52%,#0a0705);
-          box-shadow:inset 0 4px 7px #000,0 4px 7px #000;
+        /* reactor core breathing in the porthole */
+        .dm-core {
+          background:radial-gradient(circle,
+            rgba(255,206,140,.70) 0 16%, rgba(255,116,44,.34) 36%,
+            rgba(255,80,30,.10) 56%, transparent 72%);
+          animation:dmCore 2.7s ease-in-out infinite;
         }
-        .dock-piston::before {
-          content:""; position:absolute; left:8%; top:3px; width:47%; bottom:3px; border-radius:8px;
-          background:linear-gradient(180deg,#bc7950,#3a2116 45%,#120b08 55%,#7c432b);
-          border:1px solid #c0824e; animation:pistonWork 7s var(--ember-ease-mechanical) infinite;
+        @keyframes dmCore {
+          0%,100% { opacity:.5; transform:scale(.9); }
+          50%     { opacity:1;  transform:scale(1.08); }
         }
-        .dock-piston::after {
-          content:""; position:absolute; right:9%; top:50%; width:9px; height:9px; transform:translateY(-50%);
-          border-radius:50%; background:#ff6939; box-shadow:0 0 9px #ff4d32; animation:leverPulse 1.8s ease-in-out infinite;
+
+        /* Illuminated wash riding the painted gauge dial, faded before the bezel.
+           Kept broad and low-alpha on purpose: a narrow wedge reads as a second needle
+           beside the painted one, which is the duplication this layer exists to avoid. */
+        .dm-sweep {
+          background:conic-gradient(from -18deg,
+            rgba(255,190,120,.20) 0 14deg, rgba(255,140,60,.06) 14deg 34deg, transparent 34deg);
+          -webkit-mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
+                  mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
+          animation:dmSweep 6.5s var(--ember-ease-sweep) infinite;
         }
-        @keyframes pistonWork { 0%,70%,100%{left:8%;} 80%{left:38%;} 90%{left:8%;} }
+        @keyframes dmSweep {
+          0%,18%   { transform:rotate(-54deg); }
+          38%,72%  { transform:rotate(34deg); }
+          88%,100% { transform:rotate(-54deg); }
+        }
+
+        /* lamp breathing — sits on a painted lamp, so it only adds bloom */
+        .dm-lamp {
+          background:radial-gradient(circle,
+            rgba(255,168,96,.85) 0 22%, rgba(255,74,36,.42) 44%, transparent 70%);
+          animation:dmLamp 1.9s ease-in-out infinite;
+        }
+        @keyframes dmLamp {
+          0%,100% { opacity:.42; transform:scale(.92); }
+          50%     { opacity:1;   transform:scale(1.1); }
+        }
+
+        /* specular highlight stroking along a drum or barrel — reads as travel.
+           background-position is animated rather than a child's offset, so the inline
+           animation-delay in DOCK_MOTION lands on the element that actually moves. */
+        .dm-sheen {
+          border-radius:7px;
+          background:linear-gradient(90deg,
+            transparent 0 34%, rgba(255,222,175,.40) 46%, transparent 58%);
+          background-size:280% 100%; background-repeat:no-repeat;
+          animation:dmSheen 5.6s var(--ember-ease-mechanical) infinite;
+        }
+        @keyframes dmSheen {
+          0%,68%   { background-position:-90% 0; }
+          88%,100% { background-position:190% 0; }
+        }
+
+        /* the whole dock leans in on hover / when active */
+        .dock-control:hover .dm-spin,.dock-control.active .dm-spin   { animation-duration:2.4s; }
+        .dock-control:hover .dm-rev,.dock-control.active .dm-rev     { animation-duration:2s; }
+        .dock-control:hover .dm-slow,.dock-control.active .dm-slow   { animation-duration:3.2s; }
+        .dock-control:hover .dm-core,.dock-control.active .dm-core   { animation-duration:1.3s; }
+        .dock-control:hover .dm-sheen,.dock-control.active .dm-sheen { animation-duration:1.9s; }
+        .dock-control:hover .dm-lamp,.dock-control.active .dm-lamp   { animation-duration:1s; }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; }
@@ -2864,21 +2928,21 @@ Look at the photo and write the caption. Output caption text only — no preambl
         )}
 
         {/* ================= DOCK ================= */}
-        <div className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
+        <div ref={dockRef} className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
           <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" className="console-dock-bg" />
           <div className="console-dock-grid">
             <button className={`dock-control ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>
-              <DockMechanism type="ops" />
+              <DockMotion type="ops" />
               <span className="dock-label">OPS</span>
             </button>
             <button className={`dock-control ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}>
-              <DockMechanism type="studio" />
+              <DockMotion type="studio" />
               <span className="dock-label">Baxstar Studio</span>
             </button>
           {ACTIONS.map((a, i) => (
             <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <DockMechanism type={["miss", "triage", "brief", "handoff"][i]} />
+              <DockMotion type={["miss", "triage", "brief", "handoff"][i]} />
               <span className="dock-label">{a.label}</span>
             </button>
           ))}

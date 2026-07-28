@@ -209,13 +209,53 @@ painted mechanisms), and labels repositioned onto the nameplates at 64–86% of 
 The grid gets a 6.25% side inset so each column lands on one painted panel — the asset's
 panels run x 100–1500 of 1600.
 
-**Trade-off, stated plainly:** the CSS mechanisms were animated (lever pull, gear spin,
-reactor pulse). Hiding them loses that motion. Hover and active feedback is preserved via
-brightness and glow on the photoreal art. Restoring per-mechanism animation would mean
-compositing sprites aligned to the artwork — worth doing only if the motion is missed.
-
 **Verified:** element screenshot of `.console-dock` — six photoreal panels, all six labels
 seated on their nameplates, alignment correct at 1427px wide.
+
+### Motion restored — as light, not geometry
+
+The CSS mechanisms were animated, and hiding them cost that motion. It is back, via a
+`DockMotion` layer (`.dock-motion` / `.dm-*`) that replaces `DockMechanism` entirely.
+
+The rule it follows: **animate light, never geometry.** Every part is a glint, glow or
+travelling sheen composited with `mix-blend-mode:screen`, so it can only brighten the
+artwork — it cannot occlude or duplicate it. That constraint is not stylistic. The gears
+already have painted teeth and the gauge already has a painted needle, so any synthetic
+shape laid on top reads as a duplicate, which is what the old layer did.
+
+| Panel | Painted part | Motion |
+|---|---|---|
+| OPS | lever press, two lamps | lamps breathe; highlight strokes the drum |
+| Baxstar Studio | gear train | glint orbits each gear, middle one counter-rotating |
+| What'd I miss | reactor porthole | core pulses, slow ring sweep |
+| Triage inbox | pressure gauge | broad illuminated wash rides the dial |
+| Brief my day | ship's wheel | slow glint around the rim |
+| Handoff draft | piston cannon | lamp breathes; sheen strokes barrel, then cylinder |
+
+Two details worth keeping in mind if this is touched again:
+
+- **The painted circles are ellipses on screen.** `object-fit:fill` stretches a 1600×322
+  asset into roughly 1285×137, so a painted circle renders about 2:1 wide. Round glints
+  therefore sit in a `.dm-round` wrapper carrying `scaleY(var(--dock-squash))`, which a
+  `ResizeObserver` on the dock measures live — `(h/322)/(w/1600)`. The child stays a true
+  circle so it can rotate cleanly. Without this the glints were twice as tall as their
+  mechanism and crept onto the nameplates. Values >1 are legitimate: on a narrow dock the
+  asset is stretched taller than its own aspect.
+- **The gauge wash is deliberately broad and low-alpha.** A narrow wedge reads as a second
+  needle beside the painted one.
+
+Glints are masked to each mechanism's rim (`mask-image: radial-gradient(...)`) because an
+unmasked conic gradient reads as a pie wedge rather than a turning part.
+
+**Verified** headless at 1440×900: 13 motion parts, all `mix-blend-mode:screen` and
+`pointer-events:none`; zero elements from the old duplicate layer remain; a 750ms frame
+diff over the dock region changes ~306KB, confirming it animates. Label geometry is
+byte-identical to before the change — `top:64%`, `height:22%`, horizontally centred, on
+all six. The lowest-reaching motion part bottoms out at **57%** of the cell against a
+nameplate starting at 64%, and holds at 57% across 1920 / 1440 / 1024 / 390px because the
+squash tracks the measured value exactly (0.3934 / 0.5292 / 0.7655 / 1.8777). No console
+errors, no HTTP ≥400, no mobile overflow. `prefers-reduced-motion` is already honoured
+globally, so these animations disable with everything else.
 
 ## ~~6. Draft Reply / Create Task levers collided with the greeting~~ — FIXED
 
