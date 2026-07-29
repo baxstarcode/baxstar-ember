@@ -304,33 +304,59 @@ already carries `z-index:4`, so excluding it is the correct fix:
 **Verified:** both levers compute `position:absolute` at x=494 and x=870, flanking the
 reactor, with `collidesWithGreeting: false`. VOICE TEST is no longer clipped either.
 
-## 7. Blue glass tanks contradict the palette rule
+## ~~7. Blue glass tanks contradict the palette rule~~ — FIXED
 
-**Severity:** cosmetic, but it's a direct brief conflict
-**Verified:** visual render
-**New this pass**
+`BUILD-PROMPT.md` §3 is explicit: "No blues, no purples for primary UI… Warmth only."
+`--ember-ice` had been retired from the CSS, but `glass-tank@2x.png` is painted cyan and
+renders full-height down **both** edges of the OPS view, which made it the most saturated
+thing on screen and left it fighting every brass surface around it.
 
-`BUILD-PROMPT.md` §3 is explicit: "No blues, no purples for primary UI… Warmth only,"
-and `--ember-ice` was duly retired from the CSS. But
-`assets/ember/raster/glass-tank@2x.png` — rendered large down both edges of the OPS
-view (`src/baxstar-ember.jsx:1654`, `:1658`) — is vivid cyan. It's now the most
-saturated color on the screen.
+Three sources of cyan, all now warm:
 
-It arrived deliberately in `d7717a1` ("apply exact spec deviations"), so it's left
-alone pending a call from Brady rather than quietly changed. Two ways out:
+- the artwork, via `sepia(1) saturate(2.5) hue-rotate(-14deg)` on `.tank-wrap img` —
+  sepia strips the cyan outright, then saturate and hue-rotate bring it back as
+  banked-coal amber so the glass still reads as lit fluid rather than going grey
+- `.tank-energy`, from `rgba(25,215,230,.4)` to amber
+- the rising bubbles in `.tank-wrap::after`, from cyan-white to warm
 
-- Regenerate the asset in the brass/copper family.
-- Filter it in place — `filter: sepia(.7) saturate(2.2) hue-rotate(-35deg)` on those
-  two `<img>` tags brings it to amber with no new asset.
+Filtering rather than repainting is deliberate: one line to revert if the raster is ever
+redrawn in brass, and it avoids committing a second copy of a 227KB texture.
 
-## 8. Runtime still depends on unpkg + in-browser Babel
+**Verified:** element screenshot of the tank plus the full OPS view at 1440×900 — brass
+housing, amber fluid, no cyan anywhere on screen.
 
-**Severity:** performance and fragility, not a blocker
-**Verified:** the render test failed to mount until React/Babel were vendored locally,
-because this sandbox blocks unpkg — a live demonstration of the failure mode.
+## ~~8. Runtime depends on unpkg + in-browser Babel~~ — FIXED
 
-`index.html` loads React, ReactDOM, and Babel Standalone from unpkg, then compiles
-~200KB of JSX in the browser on every page load. If unpkg is slow, blocked, or down,
-Ember does not start. Precompiling the JSX at build time and vendoring the two React
-files would remove both the dependency and the compile. `build.mjs` is the natural
-place for it.
+`index.html` used to fetch React, ReactDOM and Babel Standalone from unpkg and then
+compile ~225KB of JSX in the browser on **every** page load — roughly 2.9MB of Babel
+downloaded to do work that belongs at build time. Worse, the page did not render at all
+when unpkg was unreachable. That was not hypothetical: it is exactly what happened while
+verifying an earlier commit in a sandbox that blocks unpkg.
+
+`build.mjs` now compiles the JSX with esbuild and inlines React, ReactDOM, the compiled
+app and the Tailwind utilities into one file. The browser never sees JSX and never loads
+Babel.
+
+| Part | Size |
+|---|---|
+| react + react-dom, inlined | 139.2KB |
+| compiled app | 229.1KB |
+| tailwind utilities | 10.9KB |
+| **total, single file** | **380.5KB** |
+
+Bigger on disk, far smaller and far more reliable over the wire. The only network Ember
+needs to *load itself* is now the Google Fonts stylesheet, which degrades to a system
+serif rather than breaking the page; every other request is a deliberate runtime API call.
+
+**Verified:** rendered the built file — mounts, six dock labels, 13 motion parts, both
+levers absolute, Cinzel applied, Studio switches, no mobile overflow at 390px, and the
+only external request is the font stylesheet.
+
+## 9. The local preview still uses CDN Tailwind and React dev builds
+
+**Severity:** none for its purpose — stated so nobody "fixes" it by accident
+
+`_preview.html` deliberately keeps the Tailwind Play CDN and React development builds.
+That is the right trade for local iteration: no compile step, readable component stack
+traces, and it runs on python3 alone, which matters because there is no Node on Brady's
+Mac. `index.html` is the artifact that must be self-contained, and it is.
