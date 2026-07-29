@@ -1708,18 +1708,27 @@ Look at the photo and write the caption. Output caption text only — no preambl
           display:none; height:clamp(330px,48vh,560px); filter:drop-shadow(0 14px 20px rgba(0,0,0,.75)); }
         .tank-wrap.left { left:0; }
         .tank-wrap.right { right:0; transform:translateY(-46%) scaleX(-1); }
-        .tank-wrap img { height:100%; width:auto; opacity:.96; }
+        /* The tank artwork is painted cyan, which is the single loudest violation of
+           BUILD-PROMPT §3 ("no blues, no purples for primary UI — warmth only"): lit from
+           both edges it was the most saturated thing on screen. sepia strips the cyan
+           outright, then saturate/hue-rotate bring it back up as banked-coal amber, so
+           the glass still reads as lit fluid rather than going grey. Filtering rather
+           than repainting keeps this one line to revert if the asset is ever redrawn. */
+        .tank-wrap img {
+          height:100%; width:auto; opacity:.96;
+          filter:sepia(1) saturate(2.5) hue-rotate(-14deg) brightness(1.04) contrast(1.04);
+        }
         .tank-energy { content:""; position:absolute; left:22%; right:22%; top:14%; bottom:12%;
-          background:radial-gradient(ellipse at 50% 62%, rgba(25,215,230,.4), transparent 68%);
+          background:radial-gradient(ellipse at 50% 62%, rgba(255,150,58,.38), transparent 68%);
           mix-blend-mode:screen; animation:tankEnergy 4200ms ease-in-out infinite alternate; }
         .tank-wrap::after {
           content:""; position:absolute; left:29%; right:29%; top:19%; bottom:18%; border-radius:40%;
           opacity:.62; mix-blend-mode:screen;
           background-image:
-            radial-gradient(circle at 22% 95%,rgba(192,252,255,.9) 0 2px,transparent 3px),
-            radial-gradient(circle at 69% 82%,rgba(114,239,248,.8) 0 1.5px,transparent 2.5px),
-            radial-gradient(circle at 46% 68%,rgba(207,252,255,.65) 0 1px,transparent 2px),
-            radial-gradient(circle at 78% 52%,rgba(114,239,248,.7) 0 2px,transparent 3px);
+            radial-gradient(circle at 22% 95%,rgba(255,231,186,.9) 0 2px,transparent 3px),
+            radial-gradient(circle at 69% 82%,rgba(255,181,96,.8) 0 1.5px,transparent 2.5px),
+            radial-gradient(circle at 46% 68%,rgba(255,238,205,.65) 0 1px,transparent 2px),
+            radial-gradient(circle at 78% 52%,rgba(255,181,96,.7) 0 2px,transparent 3px);
           background-size:39px 74px,47px 92px,31px 63px,53px 106px;
           animation:tankBubbles 5.6s linear infinite;
         }
@@ -2058,7 +2067,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
       {/* iron floor texture — beneath the panel layer */}
       {!bgActive && <div className="iron-bg" aria-hidden="true" />}
 
-      {/* mirrored cyan glass tanks at the far edges (>=1180px only) */}
+      {/* mirrored glass tanks at the far edges (>=1180px only) — filtered to amber, see .tank-wrap img */}
       <div className="tank-wrap left" aria-hidden="true">
         <img src={`${ASSETS}/raster/glass-tank@2x.png`} alt="" />
         <span className="tank-energy" />
