@@ -23,7 +23,7 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 | Path | What it is | Status |
 |---|---|---|
 | `src/baxstar-ember.jsx` | **The app.** Canonical React source — cinematic v2. | Working |
-| `index.html` | **Deploy build. Generated — never edit by hand.** | Builds clean |
+| `index.html` | **Deploy build. Generated — never edit by hand.** | Self-contained, no CDN |
 | `_preview.html` | **Local preview. Generated, gitignored.** | Working |
 | `build.mjs` | Generates `index.html`. `npm run build`. | Working |
 | `scripts/sync-standalone.py` | Generates `_preview.html`. No Node needed. | Working |
@@ -31,7 +31,7 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 | `proxy/cloudflare-worker.js` | Key-holding API proxy. | **Deployed & verified** |
 | `proxy/vercel/api/claude.js` | Same proxy for Vercel / Netlify. | Written, unused (Cloudflare is live) |
 | `voice/ember-voice-deck.html` | Voice test rig — mic in, speech out, audio meter. | Working |
-| `voice/ember-demo.html` | Voice rig + Claude brain, canned demo as fallback. | Working |
+| `voice/ember-demo.html` | Voice rig + Claude brain, canned demo as fallback. Config generated from `src/`. | Working |
 | `docs/BUILD-PROMPT.md` | Master brief for any AI session that continues this build. | Current |
 | `docs/DEPLOY.md` | How to build, deploy the proxy, and go live. | Current |
 | `docs/HANDOFF-CINEMATIC.md` | Checkpoint notes for the cinematic v2 build. | Current |
@@ -106,13 +106,16 @@ biggest open opportunity.
 
 See `docs/KNOWN-ISSUES.md`. Short version:
 
-1. ~~Proxy not deployed~~ — **live** at `ember-claude-proxy.brady-9d1.workers.dev`, verified. `./start-ember.sh` now has a working brain. Change `ALLOWED_ORIGINS` before hosting at a real domain.
-2. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
-   platform currently supplies. Hosted, chat works and the phone/email/calendar panels don't.
-3. **Voice is half-merged** — real brain wired in, but `voice/` and `src/` are still two codebases.
-4. **The glass-tank asset is cyan**, which contradicts the warm-metals-only palette rule.
-5. **Runtime still depends on unpkg + in-browser Babel** — slow first paint, and a hard
-   dependency on a CDN being up.
+1. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
+   platform currently supplies. Hosted, chat works and the phone/email/calendar panels
+   don't. **This is the largest remaining gap.**
+2. **Voice is part-merged** — the rig's Baxstar config is now generated from the app so it
+   can't drift, but the speech engine is still its own codebase and the live mic path has
+   never been tested.
+3. `ALLOWED_ORIGINS` is `http://localhost:8787` — change it before hosting at a real domain.
+
+Recently closed: proxy deployed and verified · glass tanks brought into the warm palette ·
+`index.html` no longer needs unpkg or in-browser Babel.
 
 ---
 

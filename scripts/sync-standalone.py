@@ -17,11 +17,19 @@ Both are right for local iteration and wrong for production. Run
 `npm run build` for the artifact you actually host.
 """
 
+import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "baxstar-ember.jsx"
 TARGET = ROOT / "_preview.html"
+VOICE = ROOT / "voice" / "ember-demo.html"
+
+# The deployed Worker. Declared once here and written into BOTH generated surfaces,
+# so the preview and the voice rig can never disagree about where the brain lives.
+# Not a secret: the Worker enforces its origin allowlist server-side.
+PROXY_URL = "https://ember-claude-proxy.brady-9d1.workers.dev"
 
 IMPORT_LINE = 'import { useState, useEffect, useRef } from "react";'
 EXPORT_LINE = "export default function BaxstarEmber"
@@ -44,7 +52,7 @@ HEAD = """<!doctype html>
      Not a secret: the Worker enforces an origin allowlist server-side, so this URL is
      useless from anywhere but ALLOWED_ORIGINS. Verified 403 from curl and from a
      forged origin. See docs/DEPLOY.md. */
-  window.EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
+  window.EMBER_API_PROXY = "__PROXY_URL__";
   </script>
 </head>
 <body>
@@ -77,5 +85,54 @@ def browser_source() -> str:
     return source
 
 
-TARGET.write_text(HEAD + browser_source() + FOOT, encoding="utf-8")
+def sync_voice_config() -> None:
+    """Rewrite the voice rig's GENERATED CONFIG block from the app source.
+
+    voice/ember-demo.html keeps its own speech engine — mic capture, the scored
+    local-voice picker, the MP3 fallback chain — all hand-written and untouched here.
+    Only the Baxstar facts it shares with the app are generated, because those are what
+    silently drifted: its BRADY_CONTEXT fell behind the app's, and its proxy stayed null
+    for hours after the Worker went live.
+    """
+    if not VOICE.exists():
+        print("sync: voice/ember-demo.html not found — skipping voice config")
+        return
+
+    src = SOURCE.read_text(encoding="utf-8")
+
+    def grab(pattern, what):
+        m = re.search(pattern, src, re.S)
+        if not m:
+            raise SystemExit(f"sync: could not find {what} in {SOURCE.name} — "
+                             "the voice config would silently go stale, so refusing to write")
+        return m.group(1)
+
+    context = grab(r"const BRADY_CONTEXT = `(.*?)`;", "BRADY_CONTEXT")
+    servers = grab(r"const MCP_SERVERS = \[(.*?)\];", "MCP_SERVERS")
+    model = grab(r'const DEFAULT_MODEL = "([^"]+)";', "DEFAULT_MODEL")
+
+    block = (
+        "var EMBER_API_PROXY = " + json.dumps(PROXY_URL) + ";\n"
+        "var EMBER_MODEL = " + json.dumps(model) + ";\n"
+        "var MCP_SERVERS = [" + servers + "];\n"
+        "var BRADY_CONTEXT = " + json.dumps(context) + ";"
+    )
+
+    text = VOICE.read_text(encoding="utf-8")
+    new, n = re.subn(
+        r"(/\* ===== BEGIN GENERATED CONFIG.*?\*/\n).*?(/\* ===== END GENERATED CONFIG ===== \*/)",
+        lambda m: m.group(1) + block + "\n" + m.group(2),
+        text, flags=re.S)
+    if n != 1:
+        raise SystemExit("sync: could not locate exactly one GENERATED CONFIG block in "
+                         f"{VOICE.name} (found {n}) — refusing to write")
+    if new != text:
+        VOICE.write_text(new, encoding="utf-8")
+        print(f"sync: refreshed voice config in {VOICE.name} (model {model})")
+    else:
+        print(f"sync: voice config already current in {VOICE.name}")
+
+
+TARGET.write_text(HEAD.replace("__PROXY_URL__", PROXY_URL) + browser_source() + FOOT, encoding="utf-8")
 print(f"sync: wrote {TARGET.name} ({TARGET.stat().st_size // 1024}KB) from src/baxstar-ember.jsx")
+sync_voice_config()

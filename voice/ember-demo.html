@@ -40,28 +40,28 @@
   <div id="log" style="display:none"></div>
 
 <script>
-/* ---------- EMBER VOICE — DEPLOY CONFIG ----------
-   Point this at the same proxy the app uses (proxy/cloudflare-worker.js, docs/DEPLOY.md)
-   and spoken questions route through the real Claude brain with the real Baxstar context
-   and the Quo / Gmail / Calendar connectors.
-   Leave it null and this page stays in canned demo mode — the offline demo still works.
-   Never put an API key here. This file ships to the browser. */
-var EMBER_API_PROXY = null; // e.g. "https://ember-claude-proxy.YOUR-SUBDOMAIN.workers.dev"
+/* ===== BEGIN GENERATED CONFIG — do not edit by hand =====
+   Written by scripts/sync-standalone.py from src/baxstar-ember.jsx, which is the one
+   source of truth for the proxy URL, the model, the MCP servers and BRADY_CONTEXT.
 
-var EMBER_MODEL = 'claude-sonnet-4-6';
+   This block used to be a hand-kept second copy, and it did exactly what second copies
+   do: BRADY_CONTEXT drifted from the app's, and the proxy URL was still null long after
+   the Worker went live — so the voice rig had no brain while the app did. Regenerating
+   it on every ./start-ember.sh makes that impossible.
 
+   To change any of these, edit src/baxstar-ember.jsx and re-run the sync. */
+var EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
+var EMBER_MODEL = "claude-sonnet-4-6";
 var MCP_SERVERS = [
-  { type: 'url', url: 'https://mcp.quo.com/mcp', name: 'quo' },
-  { type: 'url', url: 'https://gmailmcp.googleapis.com/mcp/v1', name: 'gmail' },
-  { type: 'url', url: 'https://calendarmcp.googleapis.com/mcp/v1', name: 'calendar' }
+  { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
+  { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
+  { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
 ];
+var BRADY_CONTEXT = "You are EMBER, Brady Baxter's operations assistant for Baxstar Fishing and Lakes Golf Simulator in Detroit Lakes, MN.\nQuo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.\nStyle: BLUF \u2014 bottom line first. Concise. No hedging. Numerals without commas.\nCustomer-facing drafts: premium-but-warm, sign \"Brady @ Baxstar\". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say \"one group per day\" \u2014 use \"private trip(s)\".\nUse your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.";
+/* ===== END GENERATED CONFIG ===== */
 
-/* Same operating context the app uses, plus the rules that matter for the ear. */
-var BRADY_CONTEXT = "You are EMBER, Brady Baxter's operations assistant for Baxstar Fishing and Lakes Golf Simulator in Detroit Lakes, MN.\n"
-  + "Quo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.\n"
-  + "Style: BLUF — bottom line first. Concise. No hedging.\n"
-  + "Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.";
-
+/* Voice-only, and deliberately NOT generated — these rules exist because this surface
+   is heard rather than read, so they have no counterpart in the app. */
 var SPOKEN_RULES = "\n\nYou are being SPOKEN ALOUD. Write for the ear:\n"
   + "- No bullet points, no numbered lists, no markdown, no headings.\n"
   + "- Never say a URL or an email address unless asked for it directly.\n"
