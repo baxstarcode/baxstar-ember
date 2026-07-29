@@ -40,9 +40,11 @@ HEAD = """<!doctype html>
   <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
   <style>html,body,#root{margin:0;height:100%;background:#000;}</style>
   <script>
-  /* Point the preview at a deployed proxy to give it a working brain locally.
-     Without it the UI renders and chat fails — see docs/DEPLOY.md. */
-  // window.EMBER_API_PROXY = "https://ember-claude-proxy.YOUR-SUBDOMAIN.workers.dev";
+  /* Brady's deployed proxy — this is what gives the local preview a working brain.
+     Not a secret: the Worker enforces an origin allowlist server-side, so this URL is
+     useless from anywhere but ALLOWED_ORIGINS. Verified 403 from curl and from a
+     forged origin. See docs/DEPLOY.md. */
+  window.EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
   </script>
 </head>
 <body>
