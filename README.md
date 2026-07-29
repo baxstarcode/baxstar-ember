@@ -106,7 +106,7 @@ biggest open opportunity.
 
 See `docs/KNOWN-ISSUES.md`. Short version:
 
-1. **Proxy is written but not deployed** — needed before Ember can live at a URL.
+1. ~~Proxy not deployed~~ — **live** at `ember-claude-proxy.brady-9d1.workers.dev`, verified. `./start-ember.sh` now has a working brain. Change `ALLOWED_ORIGINS` before hosting at a real domain.
 2. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
    platform currently supplies. Hosted, chat works and the phone/email/calendar panels don't.
 3. **Voice is half-merged** — real brain wired in, but `voice/` and `src/` are still two codebases.

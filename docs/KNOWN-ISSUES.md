@@ -124,10 +124,40 @@ reads `Cinzel` 3/3, `EmberIcon` 15/15, `BrandMark` 2/2, `reactor-bezel` 2/2,
 
 ## OPEN
 
-## 2. Hosted Ember has no API auth of its own
+## ~~2. Hosted Ember has no API auth of its own~~ — RESOLVED, proxy is live
 
-**Severity:** blocks deployment
-**Status:** proxy written and wired; needs deploying
+**Status:** deployed and verified against the live Worker.
+
+`https://ember-claude-proxy.brady-9d1.workers.dev` is up on Cloudflare's free tier with
+`ANTHROPIC_API_KEY` as a secret and `ALLOWED_ORIGINS` set to `http://localhost:8787`.
+`scripts/sync-standalone.py` points the local preview at it, so `./start-ember.sh` now
+gives Ember a working brain outside a Claude artifact for the first time.
+
+**Verified against the deployment, not just the code:**
+
+| Probe | Result |
+|---|---|
+| Browser `GET` | 405 `POST only` |
+| `POST`, no `Origin` header | 403 `Origin not allowed` |
+| `POST`, forged origin | 403 |
+| Preflight, wrong origin | 403, no allow-header leaked |
+| Preflight, allowed origin | 204, echoes origin, `Vary: Origin` |
+| `gpt-4o` (off the allowlist) | 400 `Model not allowed` |
+| `claude-haiku-4-5`, allowed origin | 200, real reply |
+
+The origin check being enforced **server-side and not only via CORS** is the load-bearing
+part: a leaked URL used from curl or a script still gets a 403, so the Anthropic balance
+is not exposed. That is why the Worker URL is safe to keep in git.
+
+**Before hosting Ember at a real domain:** change `ALLOWED_ORIGINS` to that origin and
+redeploy, or every request from it will 403.
+
+**Never ship an API key in client-side code.** Anything in `index.html` is public the
+moment it's hosted — that constraint has not changed.
+
+### Historical detail
+
+**Severity was:** blocks deployment
 
 The app used to hardcode `fetch("https://api.anthropic.com/v1/messages")` with no
 credentials — fine inside a Claude artifact where the platform injects them, dead

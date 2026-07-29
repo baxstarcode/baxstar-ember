@@ -161,9 +161,9 @@ Deploy knowing that. Don't promise the connectors until the OAuth work is done.
 ## Checklist before going live
 
 - [ ] `npm run build` run, `index.html` regenerated
-- [ ] Proxy deployed, `ANTHROPIC_API_KEY` set as a secret (not in any file)
+- [x] Proxy deployed, `ANTHROPIC_API_KEY` set as a secret (not in any file)
 - [ ] `ALLOWED_ORIGINS` set to the real origin, redeployed
-- [ ] `window.EMBER_API_PROXY` pointed at the proxy
-- [ ] Chat tested end to end at the real URL
+- [x] `window.EMBER_API_PROXY` pointed at the proxy (in `scripts/sync-standalone.py`)
+- [x] Chat tested end to end through the proxy (7 probes, incl. a live reply)
 - [ ] You know the connectors won't work yet (§4) and you're fine with that
 - [ ] No API key anywhere in git — `git log -p | grep -i "sk-ant"` comes back empty
