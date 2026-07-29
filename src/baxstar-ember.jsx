@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
    BAXSTAR EMBER — FULL JARVIS BUILD v4.1
    ------------------------------------------------------------
    v4 adds:
-     · Claude Chat: model toggle (Haiku / Sonnet / Opus) +
+     · Claude Chat: model toggle (Haiku / Sonnet / Opus / Fable) +
        effort level (Low / Std / High). Non-Sonnet models
        auto-fall back to Sonnet 4.6 if the gateway rejects them.
      · Google Drive tool in the Studio rail (real Drive icon) —
@@ -80,6 +80,8 @@ const MODELS = [
   { id: "claude-haiku-4-5",  label: "Haiku 4.5" },
   { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
   { id: "claude-opus-4-8",   label: "Opus 4.8" },
+  { id: "claude-opus-5",     label: "Opus 5" },
+  { id: "claude-fable-5",    label: "Fable 5" },
 ];
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 
@@ -123,15 +125,43 @@ const DEMO = {
 
 /* ---------- CLAUDE API HELPERS ---------- */
 
+/* Where Ember sends its Claude traffic.
+   Unset  → calls the Anthropic API direct. That only works inside a Claude artifact,
+            where the platform injects credentials.
+   Hosted → set window.EMBER_API_PROXY to a server-side proxy that holds the key.
+            See docs/DEPLOY.md. Never put an API key in this file — it ships to the browser. */
+const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
+const API_ENDPOINT =
+  (typeof window !== "undefined" && window.EMBER_API_PROXY) || ANTHROPIC_DIRECT;
+const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
+
+const NO_PROXY_HINT =
+  "Ember has no brain here. Hosted builds need a key-holding proxy — set window.EMBER_API_PROXY (docs/DEPLOY.md).";
+
 async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers } = {}) {
   const body = { model, max_tokens: 1000, messages };
   if (useTools) body.mcp_servers = servers || MCP_SERVERS;
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`API ${res.status}`);
+  let res;
+  try {
+    res = await fetch(API_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // Network-level failure: CORS rejection hosted, or the proxy is down.
+    throw new Error(
+      USING_PROXY
+        ? "Can't reach the Ember proxy. Check it's deployed and its CORS allows this origin."
+        : NO_PROXY_HINT
+    );
+  }
+  if (!res.ok) {
+    if (!USING_PROXY && (res.status === 401 || res.status === 403)) {
+      throw new Error(`API ${res.status} — no credentials. ${NO_PROXY_HINT}`);
+    }
+    throw new Error(`API ${res.status}`);
+  }
   return res.json();
 }
 
@@ -407,11 +437,79 @@ function ContextLever({ side, label, state, onPull }) {
   return (
     <button type="button" disabled={state === "idle" || state === "active"} onClick={onPull}
       aria-label={`${label} for selected communication`}
-      className={`ctx-lever ${side}`}>
+      className={`ctx-lever ${side} ${state}`}>
       <img alt="" src={`${ASSETS}/svg/controls/${img}`} />
       <span className={`lever-dot ${state}`} />
       <span className="lever-label">{label}</span>
     </button>
+  );
+}
+
+/* ---------- COMMAND DOCK MOTION ----------
+   The dock's six mechanisms are PAINTED INTO command-console@2x.webp — a lever press with
+   two lamps, a gear train, a reactor porthole, a pressure gauge, a ship's wheel and a
+   piston cannon. So motion here is LIGHT ONLY: additive glints, glows and travelling
+   sheen, composited over the artwork with mix-blend-mode:screen.
+
+   Nothing draws a second lever, gear or needle. That is deliberate — the gauge already has
+   a painted needle and the gears already have painted teeth, so any synthetic shape laid on
+   top reads as a duplicate. That is exactly what the old .dock-machine layer did.
+
+   Offsets are percentages of one panel cell, measured off the asset: its panels run
+   x 100–1500 of 1600 (hence the grid's 6.25% inset) and the mechanisms centre near 31%
+   of its height. `d` is the painted part's diameter in asset pixels — width comes from
+   the 233.33px cell, and the round ones are squashed by --dock-squash because
+   object-fit:fill renders those painted circles as ellipses. */
+const DOCK_CELL_PX = 233.33;
+const pctOfCell = (assetPx) => ((assetPx / DOCK_CELL_PX) * 100).toFixed(1) + "%";
+
+const DOCK_MOTION = {
+  // lever press: the two lamps breathe, a highlight strokes along the drum
+  ops: [
+    { c: "dm-lamp", round: true, d: 34, s: { left: "15%", top: "38%" } },
+    { c: "dm-lamp", round: true, d: 34, s: { left: "88%", top: "38%" }, delay: "-0.9s" },
+    { c: "dm-sheen", s: { left: "24%", top: "21%", width: "43%", height: "29%" } },
+  ],
+  // gear train: a glint orbits each painted gear, counter-rotating on the middle one
+  studio: [
+    { c: "dm-spin", round: true, d: 95, s: { left: "54%", top: "26%" } },
+    { c: "dm-spin dm-rev", round: true, d: 64, s: { left: "86%", top: "28%" } },
+    { c: "dm-spin dm-slow", round: true, d: 45, s: { left: "40%", top: "50%" } },
+  ],
+  // reactor porthole: core pulse plus a slow ring sweep
+  miss: [
+    { c: "dm-spin dm-slow", round: true, d: 140, s: { left: "52%", top: "34%" } },
+    { c: "dm-core", round: true, d: 105, s: { left: "52%", top: "34%" } },
+  ],
+  // gauge: an illuminated indicator rides the painted dial — no second needle
+  triage: [{ c: "dm-sweep", round: true, d: 122, s: { left: "43%", top: "27%" } }],
+  // ship's wheel: slow glint around the rim
+  brief: [{ c: "dm-spin dm-slow", round: true, d: 132, s: { left: "48%", top: "27%" } }],
+  // piston cannon: lamp breathes, sheen strokes barrel then cylinder
+  handoff: [
+    { c: "dm-lamp", round: true, d: 40, s: { left: "16%", top: "26%" } },
+    { c: "dm-sheen", s: { left: "23%", top: "21%", width: "75%", height: "12%" } },
+    { c: "dm-sheen", s: { left: "25%", top: "36%", width: "61%", height: "14%" }, delay: "-1.8s" },
+  ],
+};
+
+function DockMotion({ type }) {
+  const parts = DOCK_MOTION[type] || [];
+  return (
+    <span className="dock-motion" aria-hidden="true">
+      {parts.map((p, i) => {
+        // Round parts get a wrapper that carries the ellipse squash, so the child is free
+        // to rotate as a true circle. Sheens are already rectangular — no wrapper needed.
+        if (!p.round) {
+          return <span key={i} className={p.c} style={{ ...p.s, animationDelay: p.delay }} />;
+        }
+        return (
+          <span key={i} className="dm-round" style={{ ...p.s, width: pctOfCell(p.d) }}>
+            <i className={p.c} style={{ animationDelay: p.delay }} />
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -456,6 +554,7 @@ export default function BaxstarEmber() {
   const gasRef = useRef(null);
   const ventRef = useRef(null);
   const scopeRef = useRef(null);
+  const dockRef = useRef(null);          // command dock — see the --dock-squash effect
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
@@ -496,6 +595,28 @@ export default function BaxstarEmber() {
   const [driveBusy, setDriveBusy] = useState(false);
   const driveEndRef = useRef(null);
   useEffect(() => { driveEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [driveMsgs, driveBusy]);
+
+  /* command-console@2x.webp is 1600x322 and the dock stretches it with object-fit:fill,
+     so every painted circle — gears, porthole, gauge, wheel — renders as an ellipse.
+     Measure that squash and hand it to the motion layer, which scales its glints to
+     match. Without this the round glints sit about twice as tall as the mechanism they
+     belong to and spill onto the nameplate. Re-measures on resize. */
+  useEffect(() => {
+    const el = dockRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const sync = () => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      // >1 is legitimate: on a narrow dock the asset is stretched taller than its own
+      // aspect, so the painted circles become ellipses that are taller than they are wide.
+      const squash = (r.height / 322) / (r.width / 1600);
+      el.style.setProperty("--dock-squash", String(Math.max(0.15, Math.min(3, squash))));
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ---- HANDOFF state ----
   const [handoffText, setHandoffText] = useState("");
@@ -1296,7 +1417,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
      ============================================================ */
 
   return (
-    <div className="min-h-screen w-full" style={{ background: "var(--bg)", color: "var(--ink)" }}>
+    <div className="ember-root w-full" style={{ background: "var(--bg)", color: "var(--ink)" }}>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
@@ -1325,10 +1446,54 @@ Look at the photo and write the caption. Output caption text only — no preambl
           --ember-ease-mechanical:cubic-bezier(.2,.8,.2,1);
           --ember-ease-sweep:cubic-bezier(.22,1,.36,1);
         }
-        html, body { margin:0; background:var(--bg); }
+        html, body, #root { margin:0; width:100%; height:100%; background:var(--bg); }
+        * { box-sizing:border-box; }
         body, button, input, textarea { font-family:var(--ember-font-ui); }
         .font-mono-x { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
         .font-display { font-family:"Cinzel","Georgia",serif; }
+
+        .ember-root { position:relative; height:100vh; min-height:720px; overflow:hidden; }
+        .ember-root::before {
+          content:""; position:fixed; inset:0; z-index:20; pointer-events:none;
+          border:7px solid #171008;
+          box-shadow:inset 0 0 0 2px #73502b,inset 0 0 0 5px #0a0704,inset 0 0 34px rgba(0,0,0,.9);
+        }
+        .ember-root::after {
+          content:""; position:fixed; left:6px; right:6px; top:6px; height:13px; z-index:19; pointer-events:none;
+          background:
+            radial-gradient(circle at 7% 50%,#d09952 0 2px,#2a1b0e 3px 6px,transparent 6.5px),
+            radial-gradient(circle at 93% 50%,#d09952 0 2px,#2a1b0e 3px 6px,transparent 6.5px),
+            linear-gradient(180deg,#3b2816,#120c07 45%,#8c6030 52%,#1b120a 60%,#080503);
+          border-bottom:1px solid rgba(214,179,106,.35);
+          box-shadow:0 5px 15px rgba(0,0,0,.62);
+        }
+        .ember-shell {
+          width:100vw; height:100vh; min-height:720px; max-width:none;
+          padding:16px clamp(68px,5.4vw,96px) 7px;
+          gap:8px; overflow:hidden;
+        }
+        .ember-header {
+          flex:0 0 auto; min-height:58px; padding:9px 16px;
+          border:1px solid rgba(214,179,106,.38); border-radius:14px;
+          background:linear-gradient(180deg,rgba(18,14,10,.96),rgba(7,6,4,.94));
+          box-shadow:inset 0 0 0 2px rgba(36,23,13,.95), inset 0 -10px 24px rgba(0,0,0,.34),
+            0 8px 24px rgba(0,0,0,.45), 0 0 18px rgba(255,105,38,.06);
+        }
+        .brand-title { font-size:clamp(23px,1.8vw,31px); text-shadow:0 2px 2px #000; }
+        .header-control {
+          min-height:30px; border:1px solid #63431f!important; border-radius:7px!important;
+          padding:5px 11px!important; background:linear-gradient(180deg,#17100b,#080604)!important;
+          box-shadow:inset 0 1px 0 rgba(255,212,143,.12),inset 0 -5px 10px rgba(0,0,0,.42),0 4px 12px rgba(0,0,0,.45);
+        }
+        .header-control:hover { filter:brightness(1.18); border-color:#b57c35!important; }
+        .header-control.sync-control {
+          background:linear-gradient(180deg,#ff7349,#b82e1d)!important;
+          border-color:#ff8b5d!important; box-shadow:inset 0 1px 0 rgba(255,231,206,.42),0 0 16px rgba(255,77,50,.35);
+        }
+        .mic-rail {
+          flex:0 0 auto; min-height:38px; border-radius:11px!important;
+          box-shadow:inset 0 0 0 1px rgba(92,54,25,.42), 0 6px 18px rgba(0,0,0,.32);
+        }
 
         .atmo { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.5;
           background:
@@ -1341,22 +1506,38 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .node { position:fixed; width:5px; height:5px; border-radius:50%; z-index:0;
           background:var(--ember-orange); box-shadow:0 0 10px var(--ember-orange); }
 
-        .main-grid { display:grid; grid-template-columns:1fr 420px 1fr; gap:18px; align-items:stretch; }
-        .cap-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:stretch; }
+        .main-grid {
+          display:grid; grid-template-columns:minmax(300px,1fr) minmax(430px,1.28fr) minmax(300px,1fr);
+          gap:10px; align-items:stretch; min-height:0; overflow:hidden;
+        }
+        .cap-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:stretch; min-height:0; }
+        .ops-side { min-height:0; gap:10px!important; }
 
-        @media (max-width:1100px){
+        @media (max-width:1020px){
+          .ember-root { height:auto; min-height:100vh; overflow:auto; }
+          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px; overflow:visible; }
           .main-grid, .cap-grid { grid-template-columns:1fr; }
           .rail-list { flex-direction:row; flex-wrap:wrap; }
+          .console-dock { min-height:126px; }
         }
 
         /* machined 9-slice plate frame from the asset pack — brass etch + rivet
            corners live in the SVG; center stays CSS so bg-on translucency works */
-        .panel { position:relative; border:28px solid transparent;
+        .panel { position:relative; border:14px solid transparent; border-radius:18px;
           border-image:url("${ASSETS}/svg/frames/panel-frame.svg") 28 fill stretch;
           background:linear-gradient(180deg, var(--ember-panel-alt), var(--ember-panel));
           background-clip:padding-box;
-          box-shadow:var(--ember-shadow-panel);
+          box-shadow:var(--ember-shadow-panel), inset 0 0 0 1px rgba(214,179,106,.2),
+            inset 0 14px 30px rgba(255,177,59,.025), 0 0 0 1px rgba(27,17,10,.9);
           transition:filter .25s, box-shadow .25s; }
+        .panel::after {
+          content:""; position:absolute; inset:-8px; border-radius:15px; pointer-events:none;
+          background:
+            radial-gradient(circle at 5px 5px,#c2924e 0 1px,#3a2718 2px 4px,transparent 4.5px),
+            radial-gradient(circle at calc(100% - 5px) 5px,#c2924e 0 1px,#3a2718 2px 4px,transparent 4.5px),
+            radial-gradient(circle at 5px calc(100% - 5px),#c2924e 0 1px,#3a2718 2px 4px,transparent 4.5px),
+            radial-gradient(circle at calc(100% - 5px) calc(100% - 5px),#c2924e 0 1px,#3a2718 2px 4px,transparent 4.5px);
+        }
         .panel:hover { filter:brightness(1.05);
           box-shadow:var(--ember-shadow-panel), 0 0 24px rgba(255,120,60,.09); }
         .bg-on .panel { background:linear-gradient(180deg, rgba(18,16,13,.84), rgba(13,12,10,.86)); background-clip:padding-box; backdrop-filter:blur(6px); }
@@ -1443,16 +1624,21 @@ Look at the photo and write the caption. Output caption text only — no preambl
           filter:drop-shadow(0 0 12px rgba(255,77,50,.5));
           text-shadow:0 1px 2px rgba(100,15,8,.7); }
 
-        .studio-stack { display:flex; flex-direction:column; gap:18px; min-height:0; }
+        .studio-stack { display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden; }
+        .studio-tools-panel { flex:0 0 auto; padding:10px 16px!important; }
         .tool-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
         @media (max-width:900px){ .tool-grid { grid-template-columns:repeat(2,1fr); } }
-        .tool-tile { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
-          border:12px solid transparent;
-          border-image:url("${ASSETS}/svg/frames/tool-module-frame.svg") 18 / 12px stretch;
-          padding:8px 2px; font-size:10.5px; font-weight:700; letter-spacing:.03em;
+        .tool-tile { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
+          min-height:64px; border:8px solid transparent;
+          border-image:url("${ASSETS}/svg/frames/tool-module-frame.svg") 18 / 8px stretch;
+          padding:6px 2px; font-size:10.5px; font-weight:700; letter-spacing:.03em;
           color:var(--ink-dim); text-align:center; cursor:pointer;
-          background:linear-gradient(180deg,#100D0A,#090806); background-clip:padding-box;
+          background:
+            radial-gradient(circle at 50% 16%,rgba(214,179,106,.08),transparent 34%),
+            linear-gradient(180deg,#18120d,#080705 72%); background-clip:padding-box;
+          box-shadow:inset 0 1px 0 rgba(255,214,150,.08), inset 0 -12px 20px rgba(0,0,0,.45);
           transition:all 140ms var(--ember-ease-mechanical); }
+        .tool-tile::after { content:""; position:absolute; inset:4px; border:1px solid rgba(176,141,87,.18); pointer-events:none; }
         .tool-tile:hover { color:var(--ink); filter:brightness(1.12); }
         .tool-tile.on { color:var(--ink); transform:translateY(-2px);
           background:linear-gradient(180deg,#1A120D,#0D0906); background-clip:padding-box;
@@ -1518,17 +1704,32 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .iron-bg { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.55;
           background-image:url("${ASSETS}/textures/iron-tile.svg"); background-repeat:repeat; background-size:128px 128px; }
 
-        .tank-wrap { position:fixed; top:50%; transform:translateY(-50%); z-index:1; pointer-events:none;
-          display:none; height:clamp(360px,58vh,620px); }
-        .tank-wrap.left { left:8px; }
-        .tank-wrap.right { right:8px; transform:translateY(-50%) scaleX(-1); }
-        .tank-wrap img { height:100%; width:auto; opacity:.9; }
+        .tank-wrap { position:fixed; top:50%; transform:translateY(-46%); z-index:11; pointer-events:none;
+          display:none; height:clamp(330px,48vh,560px); filter:drop-shadow(0 14px 20px rgba(0,0,0,.75)); }
+        .tank-wrap.left { left:0; }
+        .tank-wrap.right { right:0; transform:translateY(-46%) scaleX(-1); }
+        .tank-wrap img { height:100%; width:auto; opacity:.96; }
         .tank-energy { content:""; position:absolute; left:22%; right:22%; top:14%; bottom:12%;
           background:radial-gradient(ellipse at 50% 62%, rgba(25,215,230,.4), transparent 68%);
           mix-blend-mode:screen; animation:tankEnergy 4200ms ease-in-out infinite alternate; }
+        .tank-wrap::after {
+          content:""; position:absolute; left:29%; right:29%; top:19%; bottom:18%; border-radius:40%;
+          opacity:.62; mix-blend-mode:screen;
+          background-image:
+            radial-gradient(circle at 22% 95%,rgba(192,252,255,.9) 0 2px,transparent 3px),
+            radial-gradient(circle at 69% 82%,rgba(114,239,248,.8) 0 1.5px,transparent 2.5px),
+            radial-gradient(circle at 46% 68%,rgba(207,252,255,.65) 0 1px,transparent 2px),
+            radial-gradient(circle at 78% 52%,rgba(114,239,248,.7) 0 2px,transparent 3px);
+          background-size:39px 74px,47px 92px,31px 63px,53px 106px;
+          animation:tankBubbles 5.6s linear infinite;
+        }
         @keyframes tankEnergy {
           from { transform:translateY(18%); opacity:.16; }
           to   { transform:translateY(-18%); opacity:.32; } }
+        @keyframes tankBubbles {
+          from { background-position:0 80px,8px 96px,3px 68px,12px 112px; }
+          to { background-position:0 -80px,8px -96px,3px -68px,12px -112px; }
+        }
         @media (min-width:1180px){ .tank-wrap { display:block; } }
 
         /* skull crowns the center chamber only — width capped to the center
@@ -1537,9 +1738,217 @@ Look at the photo and write the caption. Output caption text only — no preambl
           width:clamp(420px,52vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:none; }
         @media (min-width:980px){ .skull-arch { display:block; } }
         .skull-host { overflow:hidden; }
-        .skull-host > :not(.skull-arch) { position:relative; z-index:1; }
+        /* Lift the chamber's contents above the arch. z-index needs a position, but this
+           must not clobber children that place themselves — .ctx-lever is absolute and
+           carries its own z-index, and being forced to relative dropped both levers into
+           flow, on top of the greeting. */
+        .skull-host > :not(.skull-arch):not(.ctx-lever) { position:relative; z-index:1; }
 
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
+
+        .core-chamber {
+          overflow:hidden; gap:4px!important; padding:9px 26px 8px!important;
+          background:
+            radial-gradient(circle at 50% 48%,rgba(255,92,24,.08),transparent 42%),
+            linear-gradient(180deg,#0b0a08,#070706)!important;
+        }
+        .core-chamber h2 { font-size:clamp(22px,1.55vw,28px); line-height:1.05; }
+        .core-chamber .reveal.text-center .mt-3\\.5 { margin-top:8px!important; }
+        .core-chamber .max-w-sm { max-width:440px; }
+        .reactor-stage {
+          position:relative; width:clamp(238px,35vh,326px); height:clamp(238px,35vh,326px);
+          margin:-6px auto -12px; cursor:pointer; isolation:isolate;
+          filter:drop-shadow(0 16px 24px rgba(0,0,0,.72));
+        }
+        .reactor-bezel { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; z-index:1; pointer-events:none; }
+        .reactor-core-orb {
+          position:absolute; left:31%; top:31%; width:38%; height:38%; z-index:2;
+          display:flex; align-items:center; justify-content:center; border-radius:50%;
+          box-shadow:0 0 26px rgba(255,77,25,.3);
+        }
+        .reactor-core-orb .gas-wrap { width:100%; height:100%; }
+        .reactor-stage::before,.reactor-stage::after {
+          content:""; position:absolute; border-radius:50%; pointer-events:none; z-index:3;
+          background:repeating-conic-gradient(
+            from 0deg,
+            rgba(255,177,78,.84) 0deg 1.5deg,
+            rgba(79,43,20,.22) 1.5deg 5.5deg
+          );
+          -webkit-mask:radial-gradient(circle,transparent 0 70%,#000 71% 79%,transparent 80%);
+          mask:radial-gradient(circle,transparent 0 70%,#000 71% 79%,transparent 80%);
+          filter:drop-shadow(0 0 5px rgba(255,104,37,.35));
+        }
+        .reactor-stage::before { inset:8%; animation:reactorSpin 18s linear infinite; opacity:.68; }
+        .reactor-stage::after {
+          inset:21%; animation:reactorSpin 11s linear infinite reverse; opacity:.52;
+          background:repeating-conic-gradient(
+            from 2deg,
+            rgba(255,112,46,.9) 0deg 2deg,
+            rgba(69,35,16,.16) 2deg 8deg
+          );
+          -webkit-mask:radial-gradient(circle,transparent 0 64%,#000 65% 76%,transparent 77%);
+          mask:radial-gradient(circle,transparent 0 64%,#000 65% 76%,transparent 77%);
+        }
+        .is-listening .reactor-stage::before,.is-thinking .reactor-stage::before { animation-duration:3.2s; opacity:1; }
+        .is-listening .reactor-stage::after,.is-thinking .reactor-stage::after { animation-duration:2.1s; opacity:.9; }
+        @keyframes reactorSpin { to { transform:rotate(360deg); } }
+
+        .odometer { display:flex; align-items:center; gap:4px; margin:2px 0 8px; }
+        .odo-cell {
+          min-width:29px; padding:6px 5px; border:1px solid #76502a; border-radius:4px;
+          color:#ffb15f; text-align:center; font-family:"SF Mono",ui-monospace,monospace;
+          font-size:20px; line-height:1; text-shadow:0 0 8px rgba(255,92,25,.72);
+          background:linear-gradient(180deg,#16100b 0 47%,#060504 49% 53%,#160f0a 55% 100%);
+          box-shadow:inset 0 2px 5px #000,0 0 0 2px #21150c,0 5px 10px rgba(0,0,0,.5);
+        }
+        .odo-cell.punct { min-width:14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
+
+        /* The dock IS command-console@2x.webp. That asset carries the frame, the end
+           caps, the six panel divisions, all six brass mechanisms and an empty engraved
+           nameplate under each one. So this CSS deliberately adds no panel chrome of its
+           own — earlier it synthesised a second set of panels and line-art mechanisms on
+           top, which fought the artwork and cropped its nameplates away. */
+        .console-dock {
+          position:relative; flex:0 0 clamp(128px,15.2vh,158px); width:100%; min-height:0;
+          padding:0; isolation:isolate;
+          border:0; background:transparent;
+          box-shadow:0 -8px 18px rgba(0,0,0,.48);
+        }
+        .console-dock-bg {
+          position:absolute; inset:0; width:100%; height:100%;
+          /* fill, not cover: the console must be seen whole. cover crops it vertically
+             on a bar this wide and takes the nameplates with it. */
+          object-fit:fill;
+          pointer-events:none; z-index:0;
+        }
+        .console-dock-grid {
+          position:relative; height:100%; z-index:1; display:grid; grid-template-columns:repeat(6,minmax(0,1fr));
+          gap:0;
+          /* clear the asset's end arcs so each column lands on one painted panel:
+             its panels run x 100–1500 of 1600 */
+          padding:0 6.25%;
+        }
+        .dock-control {
+          position:relative; min-width:0; color:var(--ember-text-soft);
+          cursor:pointer; padding:0 4%; font-family:var(--ember-font-display);
+          border:0; border-radius:9px; background:transparent; box-shadow:none;
+          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical);
+        }
+        .dock-control:hover { filter:brightness(1.18) drop-shadow(0 0 10px rgba(255,98,36,.3)); transform:translateY(-2px); }
+        .dock-control:active { transform:translateY(2px); }
+        .dock-control.active {
+          filter:brightness(1.14) drop-shadow(0 0 12px rgba(255,77,50,.58)); color:#fff1dc;
+        }
+        .dock-control:disabled { cursor:wait; opacity:.7; transform:none; }
+        .dock-label {
+          /* sits on the engraved nameplate, which occupies roughly 62–86% of panel height */
+          position:absolute; left:6%; right:6%; top:64%; height:22%;
+          display:flex; align-items:center; justify-content:center; text-align:center;
+          font-size:clamp(8px,.69vw,11.5px); font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+          text-shadow:0 2px 2px #000,0 0 9px rgba(255,145,73,.3);
+        }
+        .dock-control.active .dock-label::before {
+          content:""; width:6px; height:6px; border-radius:50%; margin-right:7px;
+          background:var(--ember-active); box-shadow:0 0 9px var(--ember-active);
+        }
+
+        /* Motion layer over the painted console. Every part here is additive light —
+           mix-blend-mode:screen — so it can brighten the artwork but never occlude or
+           duplicate it. See DOCK_MOTION for the per-panel offsets. */
+        .dock-motion { position:absolute; inset:0; z-index:1; pointer-events:none; }
+        .dock-motion > * { position:absolute; pointer-events:none; }
+        .dm-sheen { mix-blend-mode:screen; }
+
+        /* Wrapper for anything round. It holds the position and the ellipse squash that
+           object-fit:fill imposes on the artwork, which leaves the child a true circle
+           free to rotate. --dock-squash is measured from the live dock box. */
+        .dm-round {
+          aspect-ratio:1; transform:translate(-50%,-50%) scaleY(var(--dock-squash,.53));
+        }
+        .dm-round > i {
+          position:absolute; inset:0; border-radius:50%; display:block;
+          mix-blend-mode:screen;
+        }
+
+        /* glint orbiting a painted gear / wheel — masked to the rim, where teeth catch
+           the light. Unmasked it reads as a pie wedge rather than a turning part. */
+        .dm-spin {
+          background:conic-gradient(from 0deg,
+            rgba(255,222,168,0) 0deg, rgba(255,222,168,.34) 30deg,
+            rgba(255,150,66,.08) 70deg, transparent 120deg);
+          -webkit-mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
+                  mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
+          animation:dmSpin 9s linear infinite;
+        }
+        .dm-spin.dm-rev  { animation-duration:6.5s; animation-direction:reverse; }
+        .dm-spin.dm-slow { animation-duration:15s; }
+        @keyframes dmSpin { to { transform:rotate(360deg); } }
+
+        /* reactor core breathing in the porthole */
+        .dm-core {
+          background:radial-gradient(circle,
+            rgba(255,206,140,.70) 0 16%, rgba(255,116,44,.34) 36%,
+            rgba(255,80,30,.10) 56%, transparent 72%);
+          animation:dmCore 2.7s ease-in-out infinite;
+        }
+        @keyframes dmCore {
+          0%,100% { opacity:.5; transform:scale(.9); }
+          50%     { opacity:1;  transform:scale(1.08); }
+        }
+
+        /* Illuminated wash riding the painted gauge dial, faded before the bezel.
+           Kept broad and low-alpha on purpose: a narrow wedge reads as a second needle
+           beside the painted one, which is the duplication this layer exists to avoid. */
+        .dm-sweep {
+          background:conic-gradient(from -18deg,
+            rgba(255,190,120,.20) 0 14deg, rgba(255,140,60,.06) 14deg 34deg, transparent 34deg);
+          -webkit-mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
+                  mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
+          animation:dmSweep 6.5s var(--ember-ease-sweep) infinite;
+        }
+        @keyframes dmSweep {
+          0%,18%   { transform:rotate(-54deg); }
+          38%,72%  { transform:rotate(34deg); }
+          88%,100% { transform:rotate(-54deg); }
+        }
+
+        /* lamp breathing — sits on a painted lamp, so it only adds bloom */
+        .dm-lamp {
+          background:radial-gradient(circle,
+            rgba(255,168,96,.85) 0 22%, rgba(255,74,36,.42) 44%, transparent 70%);
+          animation:dmLamp 1.9s ease-in-out infinite;
+        }
+        @keyframes dmLamp {
+          0%,100% { opacity:.42; transform:scale(.92); }
+          50%     { opacity:1;   transform:scale(1.1); }
+        }
+
+        /* specular highlight stroking along a drum or barrel — reads as travel.
+           background-position is animated rather than a child's offset, so the inline
+           animation-delay in DOCK_MOTION lands on the element that actually moves. */
+        .dm-sheen {
+          border-radius:7px;
+          background:linear-gradient(90deg,
+            transparent 0 34%, rgba(255,222,175,.40) 46%, transparent 58%);
+          background-size:280% 100%; background-repeat:no-repeat;
+          animation:dmSheen 5.6s var(--ember-ease-mechanical) infinite;
+        }
+        @keyframes dmSheen {
+          0%,68%   { background-position:-90% 0; }
+          88%,100% { background-position:190% 0; }
+        }
+
+        /* the whole dock leans in on hover / when active */
+        .dock-control:hover .dm-spin,.dock-control.active .dm-spin   { animation-duration:2.4s; }
+        .dock-control:hover .dm-rev,.dock-control.active .dm-rev     { animation-duration:2s; }
+        .dock-control:hover .dm-slow,.dock-control.active .dm-slow   { animation-duration:3.2s; }
+        .dock-control:hover .dm-core,.dock-control.active .dm-core   { animation-duration:1.3s; }
+        .dock-control:hover .dm-sheen,.dock-control.active .dm-sheen { animation-duration:1.9s; }
+        .dock-control:hover .dm-lamp,.dock-control.active .dm-lamp   { animation-duration:1s; }
+
+        .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
+        .ember-row .row-title { font-size:13.5px; line-height:1.25; }
+        .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments — outer frame corners only, never behind text */
         .pipe-junction { position:absolute; top:-8px; width:46px; height:46px; opacity:.55; pointer-events:none; z-index:0; display:none; }
@@ -1547,17 +1956,36 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .pipe-junction.pj-r { right:-12px; transform:scaleX(-1); }
         @media (min-width:980px){ .pipe-junction { display:block; } }
 
-        .ctx-lever { position:absolute; top:50%; transform:translateY(-50%); z-index:2;
+        .ctx-lever { position:absolute; top:48%; transform:translateY(-50%); z-index:4;
           display:none; flex-direction:column; align-items:center; gap:4px;
           background:none; border:none; padding:0; cursor:pointer;
           transition:filter 220ms var(--ember-ease-mechanical), transform 220ms var(--ember-ease-mechanical); }
         @media (min-width:980px){ .ctx-lever { display:flex; } }
-        .ctx-lever.left { left:16px; } .ctx-lever.right { right:16px; }
-        .ctx-lever img { width:62px; height:83px; transition:filter 220ms var(--ember-ease-mechanical); }
+        .ctx-lever.left { left:7px; } .ctx-lever.right { right:7px; }
+        .ctx-lever img {
+          width:clamp(48px,4.3vw,62px); height:auto; max-height:82px;
+          transform-origin:50% 82%; transition:filter 220ms var(--ember-ease-mechanical),transform 220ms var(--ember-ease-mechanical);
+        }
         .ctx-lever:disabled { cursor:default; }
         .ctx-lever:disabled img { opacity:.6; }
         .ctx-lever:not(:disabled):hover { filter:brightness(1.15); transform:translateY(calc(-50% - 2px)); }
-        .lever-label { font-size:9.5px; font-weight:700; letter-spacing:.08em; color:var(--ember-text-muted); text-transform:uppercase; }
+        .ctx-lever:not(.idle) img { animation:leverAttention 5.8s var(--ember-ease-mechanical) infinite; }
+        .ctx-lever.active img { animation:contextLeverPull 720ms var(--ember-ease-mechanical) infinite alternate; }
+        @keyframes leverAttention {
+          0%,76%,100%{transform:rotate(0deg);}
+          82%{transform:rotate(-7deg);}
+          89%{transform:rotate(5deg);}
+          94%{transform:rotate(0deg);}
+        }
+        @keyframes contextLeverPull { to{transform:rotate(17deg) translateY(3px);} }
+        .lever-label {
+          order:-1; width:76px; padding:4px 3px; margin-bottom:-5px;
+          border:2px solid #5f4428; border-radius:5px; color:var(--ember-text-soft);
+          background:linear-gradient(180deg,#18110c,#070604);
+          box-shadow:inset 0 0 0 1px rgba(214,179,106,.18),0 5px 12px rgba(0,0,0,.55);
+          font-family:var(--ember-font-display); font-size:8px; font-weight:700;
+          line-height:1.15; letter-spacing:.06em; text-transform:uppercase; text-align:center;
+        }
         .lever-dot { width:7px; height:7px; border-radius:50%; background:var(--ember-brass-dark); transition:background 220ms; }
         .lever-dot.ready { background:var(--ember-brass-bright); box-shadow:0 0 6px rgba(214,179,106,.8); }
         .lever-dot.active { background:var(--ember-active); box-shadow:0 0 8px rgba(255,77,50,.85); }
@@ -1602,6 +2030,15 @@ Look at the photo and write the caption. Output caption text only — no preambl
           background:rgba(10,9,7,.72); background-clip:padding-box; }
 
         @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important;} .reveal{opacity:1;} }
+        @media (max-height:820px) and (min-width:1021px) {
+          .ember-shell { padding-top:18px; padding-bottom:6px; gap:7px; }
+          .ember-header { min-height:48px; padding-block:6px; }
+          .mic-rail { min-height:32px; padding-block:5px!important; }
+          .core-chamber { padding-block:8px!important; }
+          .reactor-stage { width:252px; height:252px; }
+          .console-dock { flex-basis:122px; }
+          .tool-tile { min-height:50px; }
+        }
       `}</style>
 
       {/* background layer (behind everything) */}
@@ -1650,19 +2087,19 @@ Look at the photo and write the caption. Output caption text only — no preambl
         ))}
       </div>
 
-      <div className={`relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-8 py-6 ${bgActive ? "bg-on" : ""}`} style={{ zoom: 1.02 }}>
+      <div className={`ember-shell relative z-10 mx-auto flex flex-col ${bgActive ? "bg-on" : ""}`}>
 
         <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" aria-hidden="true" className="pipe-junction pj-l" />
         <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" aria-hidden="true" className="pipe-junction pj-r" />
 
         {/* ================= HEADER ================= */}
-        <header className="reveal relative flex items-center justify-between" style={{ animationDelay: "0.05s" }}>
+        <header className="ember-header reveal relative flex items-center justify-between" style={{ animationDelay: "0.05s" }}>
           <div className="flex items-center gap-3.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg text-base font-extrabold text-white"
               style={{ background: "linear-gradient(135deg,var(--ember-red),var(--ember-dark))", boxShadow: "0 0 24px rgba(255,77,61,.5)" }}>
               B
             </div>
-            <h1 className="font-display text-[25px] font-extrabold leading-none tracking-[0.13em]">
+            <h1 className="brand-title font-display font-extrabold leading-none tracking-[0.13em]">
               BAXSTAR{" "}
               <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: "drop-shadow(0 0 12px rgba(255,90,50,.35))" }}>
                 EMBER
@@ -1683,13 +2120,13 @@ Look at the photo and write the caption. Output caption text only — no preambl
             <span style={{ color: "var(--ink-faint)" }}>{live ? "LIVE" : "DEMO"} · {clock}</span>
 
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
-              className="rounded-md border px-2 py-1 transition-colors"
+              className="header-control rounded-md border px-2 py-1 transition-colors"
               style={{ borderColor: "var(--line)", color: bg.choice !== "default" ? "var(--ember-orange)" : "var(--ink-faint)" }}>
               <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="14" height="14"
                 style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "4px" }} />BG
             </button>
             <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
-              className={`tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}>
+              className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}>
               <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
                 <rect x="2" y="2" width="108" height="48" rx="24" fill="#0A0907" stroke="#5F4428" strokeWidth="4" />
                 <path d="M26 26h60" stroke="#3A281B" strokeWidth="10" strokeLinecap="round" />
@@ -1701,7 +2138,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               {voiceOn ? "VOICE ON" : "VOICE OFF"}
             </button>
             <button onClick={syncLive} disabled={syncing}
-              className="flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
+              className="header-control sync-control flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
               style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", boxShadow: "0 2px 14px rgba(255,77,61,.35)", opacity: syncing ? 0.6 : 1 }}>
               <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="13" height="13"
                 className={`sync-gear ${syncing ? "spin" : ""}`} />
@@ -1751,7 +2188,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         </header>
 
         {micArm && !listening && (
-          <div className="font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
+          <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
             style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
             <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
           </div>
@@ -1769,7 +2206,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         <div className="main-grid flex-1">
 
           {/* LEFT */}
-          <div className="flex min-h-0 flex-col gap-4">
+          <div className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
               {data.voicemails.map((v, i) => (
                 <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
@@ -1796,6 +2233,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
             </Panel>
 
             <Panel notch="hot" title="Today's Revenue" count="+$1,240" countColor="#ffb87a" codexCount delay="0.25s">
+              <Odometer value="$01,240" />
               <Row who="2 FareHarbor bookings">
                 <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>Rod upgrade ×2 · Trip Protection ×1</div>
               </Row>
@@ -1804,8 +2242,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
           {/* CENTER: CORE */}
           <div className="flex min-h-0 flex-col">
-            <div className={`panel skull-host relative flex flex-1 flex-col items-center justify-center gap-8 px-8 py-10 ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
-              <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
+            <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
               <span className="notch hot" />
 
               <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
@@ -1826,12 +2263,15 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
                 {coreMode === "enigma" ? (
-                  <div className="relative mx-auto flex h-56 w-56 items-center justify-center" onClick={toggleMic} role="button" aria-label="Voice input" style={{ cursor: "pointer" }}>
-                    <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
-                    <div ref={gasRef} className="gas-wrap">
-                      <div className="gas g1" /><div className="gas g2" /><div className="gas g3" /><div className="gas g4" />
+                  <div className="reactor-stage" onClick={toggleMic} role="button" aria-label="Voice input">
+                    <img src={`${ASSETS}/raster/reactor-bezel@2x.webp`} alt="" aria-hidden="true" className="reactor-bezel" />
+                    <div className="reactor-core-orb">
+                      <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
+                      <div ref={gasRef} className="gas-wrap">
+                        <div className="gas g1" /><div className="gas g2" /><div className="gas g3" /><div className="gas g4" />
+                      </div>
+                      <div ref={ventRef} className="pointer-events-none absolute z-10" style={{ inset: "-26px" }} />
                     </div>
-                    <div ref={ventRef} className="pointer-events-none absolute z-10" style={{ inset: "-26px" }} />
                   </div>
                 ) : (
                   <div className="scope-bezel mx-auto my-6" onClick={toggleMic} role="button" aria-label="Voice input">
@@ -1954,7 +2394,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           </div>
 
           {/* RIGHT */}
-          <div className="flex min-h-0 flex-col gap-4">
+          <div className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow>
               {data.emails.map((m, i) => (
                 <Row key={i} who={m.from} when={m.time}
@@ -1984,7 +2424,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         <div className="studio-stack flex-1">
 
           {/* TOOLS — two rows, tap a tile, its panel opens below */}
-          <div className="panel reveal px-5 py-4" style={{ animationDelay: "0.08s" }}>
+          <div className="studio-tools-panel panel reveal px-5 py-4" style={{ animationDelay: "0.08s" }}>
             <span className="notch hot" />
             <div className="fieldlabel mb-3">Tools</div>
             <div className="tool-grid">
@@ -2488,21 +2928,25 @@ Look at the photo and write the caption. Output caption text only — no preambl
         )}
 
         {/* ================= DOCK ================= */}
-        <div className="reveal flex flex-wrap items-center justify-center gap-3 pb-1" style={{ animationDelay: "0.65s" }}>
-          <div className="tabwrap">
-            <button className={`tab ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}><EmberIcon name="spark" size={14} style={{ verticalAlign: "-2px", marginRight: "6px" }} />OPS</button>
-            <button className={`tab ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}><EmberIcon name="palette" size={14} style={{ verticalAlign: "-2px", marginRight: "6px" }} />BAXSTAR STUDIO</button>
-          </div>
-          <div style={{ width: "1px", height: "26px", background: "var(--line)" }} />
-          {ACTIONS.map((a) => (
-            <button key={a.label} disabled={thinking} className={`big ${a.primary ? "primary" : ""}`}
+        <div ref={dockRef} className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
+          <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" className="console-dock-bg" />
+          <div className="console-dock-grid">
+            <button className={`dock-control ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>
+              <DockMotion type="ops" />
+              <span className="dock-label">OPS</span>
+            </button>
+            <button className={`dock-control ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}>
+              <DockMotion type="studio" />
+              <span className="dock-label">Baxstar Studio</span>
+            </button>
+          {ACTIONS.map((a, i) => (
+            <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              {a.primary
-                ? (thinking ? <span className="spinner" /> : <EmberIcon name="spark" size={13} />)
-                : <span className="h-1.5 w-1.5 rounded-full" style={{ background: a.dot, boxShadow: `0 0 8px ${a.dot}` }} />}
-              {a.label}
+              <DockMotion type={["miss", "triage", "brief", "handoff"][i]} />
+              <span className="dock-label">{a.label}</span>
             </button>
           ))}
+          </div>
         </div>
       </div>
     </div>
@@ -2544,13 +2988,23 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
 
 function Row({ who, when, children, onClick, selected }) {
   return (
-    <div className={`border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`}
+    <div className={`ember-row border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`}
       style={{ borderColor: "rgba(255,90,60,.09)" }} onClick={onClick}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[13px] font-semibold">{who}</span>
+        <span className="row-title text-[13px] font-semibold">{who}</span>
         {when && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}
       </div>
       {children}
+    </div>
+  );
+}
+
+function Odometer({ value }) {
+  return (
+    <div className="odometer" aria-label={`Today's revenue ${value}`}>
+      {String(value).split("").map((char, i) => (
+        <span key={`${char}-${i}`} className={`odo-cell ${char === "," ? "punct" : ""}`}>{char}</span>
+      ))}
     </div>
   );
 }

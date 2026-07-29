@@ -27,6 +27,16 @@ tool has to guess.
   (transparent-PNG components). **ChatGPT** owns the concept/reference; **Gemini** is
   not in the loop. See `HANDOFF-CINEMATIC.md` §6.
 
+- **Claude Code, 2026‑07‑28 (after the checkpoint):** landed the cinematic v2 source into
+  git from `embercinematicrebuildv2.zip`, then built the plumbing that stops generated
+  files drifting again — `build.mjs` for `index.html`, split ownership with
+  `scripts/sync-standalone.py` for `_preview.html`, compiled Tailwind inline (Blocker A
+  closed), and a key-holding API proxy under `proxy/` (Blocker B ready to deploy). Also
+  fixed three defects in the v2 source: the command dock was buried under duplicate CSS
+  chrome, the Draft Reply / Create Task levers collided with the greeting via a CSS
+  specificity bug, and dock motion was restored as additive light rather than duplicated
+  geometry. On branch `claude/baxstar-emper-repository-7rikvg`, PR #1.
+
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 
@@ -43,12 +53,20 @@ tool has to guess.
 | **Current state, must-not-change list, reproduce recipe** | `HANDOFF-CINEMATIC.md` | The living checkpoint doc. Start here to resume. |
 | **Provenance & this file map** | `SOURCES-OF-TRUTH.md` (this file) | — |
 | **Deployed/repo truth** | GitHub `baxstarcode/baxstar-ember` @ `main` | Private. Checkpoint SHA `1ac6be7`. |
-| **Local run** | `_preview.html` via `./start-ember.sh` (or `python3 -m http.server 8787`) | Ephemeral; not a source of truth, a way to view one. |
+| **Local run** | `_preview.html` via `./start-ember.sh` | Generated + gitignored. `start-ember.sh` regenerates it before serving, so it cannot go stale. Ephemeral; not a source of truth, a way to view one. |
+| **Deploy build** | `index.html` via `npm run build` (`build.mjs`) | Generated. Compiled inline Tailwind, production React. **Exactly one generator writes it** — that rule is what stopped it drifting a whole redesign behind `src/`. |
 | **Cinematic visual target** | Brady's ChatGPT reference mockup (`~/Downloads/ChatGPT Image Jul 27…png`) | The look to match; a flat painting, **not** a UI to embed. |
 
 ## Not sources of truth (do not build from these)
 
-- `index.html` — trails `src/baxstar-ember.jsx` (stale skin) and is deploy-blocked.
-- `voice/*.html` — separate, working voice rig; its brain is hardcoded, not Claude.
+- `index.html` — **generated** from `src/baxstar-ember.jsx` by `build.mjs`. Never edit it
+  by hand and never build from it; it is an output. It is no longer stale (the generator
+  guarantees that) and the Tailwind blocker is fixed, but hosting it still needs the API
+  proxy deployed.
+- `_preview.html` — **generated** by `scripts/sync-standalone.py`, and gitignored. The
+  copy that was briefly committed on `main` was already stale.
+- `voice/*.html` — separate voice rig. Its brain is no longer hardcoded: spoken questions
+  route through Claude via the same proxy, falling back to the canned demo answers when no
+  proxy is configured or the call fails.
 - Any `baxstar-ember-repo*.zip` in `~/Downloads` — pre-retheme snapshots.
 - The tmp preview-harness scratch files — regenerated, never canonical.

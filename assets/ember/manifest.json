@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "target": "single-file React JSX with Tailwind utilities and CSS variables",
   "rasterBudgetBytes": 2097152,
-  "rasterTotalBytes": 1031251,
+  "rasterTotalBytes": 1249589,
   "assets": [
     {
       "path": "mockups/ember-ops-final.webp",
@@ -40,6 +40,24 @@
       "role": "responsive-inline-element",
       "implementation": true,
       "notes": "Use once on each far edge; mirror right instance with scaleX(-1); hide below 1180px."
+    },
+    {
+      "path": "raster/reactor-bezel@2x.webp",
+      "format": "webp-alpha",
+      "dimensions": [900, 900],
+      "bytes": 129716,
+      "role": "responsive-interactive-shell",
+      "implementation": true,
+      "notes": "Photoreal center reactor architecture. Keep the existing live mic orb, vent rings, and rotating CSS indicators layered above its open center."
+    },
+    {
+      "path": "raster/command-console@2x.webp",
+      "format": "webp-alpha",
+      "dimensions": [1600, 322],
+      "bytes": 88622,
+      "role": "responsive-control-dock",
+      "implementation": true,
+      "notes": "Six-bay physical dock for OPS, Baxstar Studio, What'd I miss, Triage inbox, Brief my day, and Handoff draft. Labels and click targets remain live DOM overlays."
     },
     {
       "path": "textures/iron-tile.svg",
@@ -191,6 +209,7 @@
     "design-tokens.css",
     "control-map.json",
     "motion-spec.json",
-    "docs/integration-snippets.md"
+    "docs/integration-snippets.md",
+    "docs/generated-assets.md"
   ]
 }

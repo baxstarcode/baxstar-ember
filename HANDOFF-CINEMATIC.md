@@ -38,7 +38,7 @@ here on purpose. Nothing below has been simplified, reorganized, or redesigned.
   | **Design constitution** | `docs/BUILD-PROMPT.md` |
   | **Known blockers** | `docs/KNOWN-ISSUES.md` |
   | **Launch script / env template** | `start-ember.sh`, `.env.example` |
-- **Files modified during the steampunk redesign:** exactly **one source file —
+- **Original Claude redesign:** exactly **one source file —
   `src/baxstar-ember.jsx`** — plus the addition of `assets/ember/**`. Commit trail:
   - `cdefb3e` iconography (emoji → engraved-line EmberIcon set)
   - `84bccc0` typography (Big Shoulders → Cinzel)
@@ -50,6 +50,9 @@ here on purpose. Nothing below has been simplified, reorganized, or redesigned.
   - `db2a563` fix white band at top (paint dark base on html/body)
   - `d7717a1` apply exact asset-pack spec (panel `28 fill stretch`, skull placement,
     `toggle-track.svg` for VOICE, `pipe-junction`, codex-drum neighbors)
+- **Cinematic continuation:** `src/baxstar-ember.jsx`, the synchronized
+  `_preview.html`/`index.html`, two compressed raster assets, the asset manifest,
+  control map, motion spec, README, and handoff/known-issues documentation.
 
 ---
 
@@ -58,7 +61,7 @@ here on purpose. Nothing below has been simplified, reorganized, or redesigned.
 - Both **OPS** and **BAXSTAR STUDIO** views render and switch.
 - All **8 Studio tools** open their surfaces: Claude Chat, AI Handoff, Caption
   Studio, Google Drive, HTML Viewer, Image Filters, GitHub, Snippets.
-- Model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8) and Effort (Low/Std/High).
+- Model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5) and Effort (Low/Std/High).
 - **Live SYNC** with demo data; DEMO/LIVE indicator; clock.
 - **BG picker** (Ember default, Dark Lake photo, Brass Lantern, Foundry Smoke, upload-your-own).
 - **VOICE toggle** and **Voice Test** (mic rig lives in `voice/`, not yet merged into the app).
@@ -80,10 +83,10 @@ here on purpose. Nothing below has been simplified, reorganized, or redesigned.
 - **Voice layer not merged.** `voice/*.html` is a separate, working codebase (Web
   Speech in, speechSynthesis out, mic meter). Its `emberReply()` is hardcoded string
   matching, not Claude. Merging it into `callClaude()` is the biggest open opportunity.
-- **`index.html` deploy build is blocked** — see §4.
-- **Cinematic gap (the current goal):** the shipped look is correct-but-flat because
-  the pack assets are thin **vector** linework. The target (ChatGPT reference mockup)
-  is photoreal **raster** metal. Closing this is the paused work — see §6.
+- **`index.html` can render the complete layout**, but live Claude/MCP actions remain
+  blocked outside a Claude artifact until a server-side API proxy is added — see §4.
+- **Target-device visual QA remains:** confirm proportions at the normal 16-inch Mac
+  display setting and Chrome 90%. The cinematic raster/DOM hybrid is implemented — see §6.
 
 ## 3a. Known console / runtime errors
 
@@ -97,16 +100,25 @@ here on purpose. Nothing below has been simplified, reorganized, or redesigned.
 
 ---
 
-## 4. `index.html` deploy blockers (do not rediscover — from docs/KNOWN-ISSUES.md)
+## 4. `index.html` deployment status
 
-- **Blocker A — no Tailwind.** The JSX uses Tailwind utility classes throughout;
-  `index.html` loads only React+ReactDOM+Babel from CDN. Hosted, colors survive but
-  **layout collapses to a stacked column.** Fix: add Tailwind Play CDN, or compile the
-  used utilities into the inline stylesheet.
-- **Blocker B — no API auth.** As in §3. Fix: a thin server-side proxy holding the key.
+- **Layout blocker resolved, and the two builds now have separate generators.**
+  `_preview.html` comes from `python3 scripts/sync-standalone.py` (Tailwind Play CDN,
+  React dev builds — right for local iteration). `index.html` comes from `npm run build`
+  (`build.mjs`), which compiles only the utilities the source actually uses and inlines
+  them — no runtime CSS CDN, no FOUC. **Nothing else may write `index.html`;** two
+  generators for one file is how it drifted a whole redesign behind `src/`.
+- **Remaining blocker — no API auth.** As in §3. The proxy is now written and wired:
+  `proxy/cloudflare-worker.js` and `proxy/vercel/api/claude.js` hold the key server-side,
+  with an origin allowlist enforced server-side as well as by CORS, a model allowlist, a
+  token cap, and the `anthropic-beta: mcp-client-2025-04-04` header `mcp_servers` needs.
+  Point the app at it with `window.EMBER_API_PROXY`. **It still has to be deployed** — see
+  `docs/DEPLOY.md`. Note that even deployed, the MCP connectors need per-connector OAuth
+  tokens the artifact platform currently supplies, so hosted chat works while the
+  phone/email/calendar panels do not.
   **Never ship a key in client code.**
-- `index.html` is also **not re-synced** to the current steampunk skin — it still
-  trails `src/baxstar-ember.jsx`. Any deploy must re-derive it from `src/` first.
+- For a hardened production build, compile the used utilities instead of relying
+  on the Tailwind CDN.
 
 ---
 
@@ -125,8 +137,9 @@ These are load-bearing. The asset-pack handoff and BUILD-PROMPT both require the
   - Background presets: `default`, `darklake`, `glacier` (label "Brass Lantern"),
     `aurora` (label "Foundry Smoke"), `custom`. The **IDs are frozen** because saved
     user choices key off them; only labels were rethemed.
-  - Model IDs: `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-8`
-    (default `claude-sonnet-4-6`). Effort keys: `low`, `std`, `high`.
+  - Existing model IDs remain frozen: `claude-haiku-4-5`, `claude-sonnet-4-6`,
+    `claude-opus-4-8`. Added models: `claude-opus-5`, `claude-fable-5`.
+    Default remains `claude-sonnet-4-6`. Effort keys: `low`, `std`, `high`.
 - **Persisted keys** (via `window.storage`): `ember-bg`, `ember-prefs`
   (`voiceOn, chatModel, chatEffort, lake, postWindow, coreMode, studioTool`),
   `ember-chat`, `ember-drive`. Don't rename keys or change their shapes.
@@ -140,32 +153,45 @@ These are load-bearing. The asset-pack handoff and BUILD-PROMPT both require the
 
 ---
 
-## 6. Cinematic target + the constraint (color-in for ChatGPT)
+## 6. Cinematic implementation
 
 Goal: reach the fidelity of Brady's reference mockup (photoreal steampunk console —
 machined tool controls, a central mechanical reactor/iris, split-flap revenue
 odometer, brass lever pulls, corner gauges) **while staying lightweight and keeping
 the app functional with realistic motion.**
 
-Hard truths to design around:
+Implementation rules:
 - The reference is a **flat AI painting**, not a UI. The asset-pack spec explicitly
   forbids using either mockup as an app background ("intent references only").
 - Photoreal + lightweight + functional resolves to exactly one approach: generate
   **transparent-PNG assets for the fixed, non-reflowing pieces** (the 6 console tools,
   the reactor, the odometer, corner gauges, lever housings, a richer frame) and keep
   **all live text / data / buttons as DOM layered on top.** No WebGL/canvas engine.
-- A pixel-clone of a hand-painted frame is **not** attainable at "lightweight." The
-  achievable bar: same machine, same components as photoreal rasters, same layout,
-  fully functional, plus motion a static image can't have (iris pulse on mic level,
-  needle sweeps, physical lever pulls, LED flicker, odometer roll on revenue change,
-  gear spin on SYNC).
+- The center now uses `raster/reactor-bezel@2x.webp` as a 127 KB photoreal shell.
+  The existing mic orb, pressure vent, hit target, and two rotating DOM rings remain
+  separate interactive layers inside its opening.
+- The bottom rail now uses six independently sized DOM control housings. Each owns
+  its live hit target, label, and CSS mechanism (lever, paired gears, reactor,
+  gauge, compass, or piston). `raster/command-console@2x.webp` is retained only as
+  a low-opacity metal texture with `object-fit: cover`; it is never stretched.
+- The center chamber has no internal scrollbar. Reactor sizing is capped against
+  viewport height so its mode controls, Voice Test, and command input remain in
+  the same scene.
+- Today's Revenue now uses live DOM split-flap cells. The number remains selectable
+  and updateable; it is not painted into an image.
+- The scene shell now fills the viewport instead of stopping at `max-w-7xl`, reserves
+  a fixed in-scene console region, and scrolls content inside panels rather than
+  turning OPS and Studio into one tall page.
 - **Weight budget:** the pack's `manifest.json` sets `rasterBudgetBytes` = 2,097,152
   (2 MB). Current `assets/ember` ≈ 1.1 MB. New photoreal rasters must fit the remaining
   headroom — enforce transparency + compression + a sprite sheet for the console rail.
-- Asset production plan (paused, awaiting go): generate via **Higgsfield** image gen
-  (transparent-PNG components, auto background-cut), then composite as positioned layers.
-  ChatGPT and Gemini are **not** needed for assets — Higgsfield yields layered
-  components; more flat paintings just create cutting work.
+- Asset production does not require Higgsfield. The two photoreal modules were
+  generated as isolated chroma-key components, alpha-extracted locally, resized,
+  and compressed to WebP. Continue with the same modular process only when a new
+  raster materially improves depth; keep labels, values, states, and moving parts
+  in DOM/CSS/SVG.
+
+Current implementation raster total is 1,249,589 bytes, below the 2 MB budget.
 
 ---
 

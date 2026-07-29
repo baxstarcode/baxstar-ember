@@ -1,0 +1,21 @@
+# EMBER — Anthropic proxy (Cloudflare Worker)
+# Deploy:  npx wrangler deploy
+# Secrets: npx wrangler secret put ANTHROPIC_API_KEY
+# See docs/DEPLOY.md
+
+name = "ember-claude-proxy"
+main = "cloudflare-worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Exact origins allowed to call this proxy — comma separated, no trailing slash.
+# Replace with wherever Ember is actually hosted before going live.
+ALLOWED_ORIGINS = "http://localhost:8080"
+
+# Secrets are NOT set here — they would end up in git.
+# Set them with: npx wrangler secret put <NAME>
+#   ANTHROPIC_API_KEY     (required)
+#   MCP_TOKEN_QUO         (optional)
+#   MCP_TOKEN_GMAIL       (optional)
+#   MCP_TOKEN_CALENDAR    (optional)
+#   MCP_TOKEN_GDRIVE      (optional)

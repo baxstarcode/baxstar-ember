@@ -6,16 +6,37 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 
 ---
 
+> ### Two generated files. Never edit either by hand.
+>
+> | File | Rebuild with | For |
+> |---|---|---|
+> | `_preview.html` | `./start-ember.sh` (python3 only) | local iteration |
+> | `index.html` | `npm run build` (node) | the hosted deploy build |
+>
+> Edit `src/baxstar-ember.jsx` and regenerate. Hand-editing a generated file is how the
+> deploy build once drifted an entire redesign behind the source with nobody noticing.
+
+---
+
 ## What's in here
 
 | Path | What it is | Status |
 |---|---|---|
-| `src/baxstar-ember.jsx` | **The app.** Canonical React source. This is Ember. | Working |
-| `index.html` | **Deploy build.** Same app packaged to run standalone in a browser via CDN. | Blocked — see Known Issues |
+| `src/baxstar-ember.jsx` | **The app.** Canonical React source — cinematic v2. | Working |
+| `index.html` | **Deploy build. Generated — never edit by hand.** | Builds clean |
+| `_preview.html` | **Local preview. Generated, gitignored.** | Working |
+| `build.mjs` | Generates `index.html`. `npm run build`. | Working |
+| `scripts/sync-standalone.py` | Generates `_preview.html`. No Node needed. | Working |
+| `start-ember.sh` | Regenerates the preview, then serves it on :8787. | Working |
+| `proxy/cloudflare-worker.js` | Key-holding API proxy. | **Deployed & verified** |
+| `proxy/vercel/api/claude.js` | Same proxy for Vercel / Netlify. | Written, unused (Cloudflare is live) |
 | `voice/ember-voice-deck.html` | Voice test rig — mic in, speech out, audio meter. | Working |
-| `voice/ember-demo.html` | Voice rig + canned Baxstar demo brain. Wife/investor demo. | Working, not wired to the real app |
+| `voice/ember-demo.html` | Voice rig + Claude brain, canned demo as fallback. | Working |
 | `docs/BUILD-PROMPT.md` | Master brief for any AI session that continues this build. | Current |
+| `docs/DEPLOY.md` | How to build, deploy the proxy, and go live. | Current |
+| `docs/HANDOFF-CINEMATIC.md` | Checkpoint notes for the cinematic v2 build. | Current |
 | `docs/KNOWN-ISSUES.md` | Open blockers with detail. | Current |
+| `assets/ember/` | Steampunk asset pack — SVG controls, frames, rasters, textures. | Wired in |
 
 ---
 
@@ -28,27 +49,56 @@ Two modules: **OPS** and **BAXSTAR STUDIO**.
 **Studio tools (8):**
 Claude Chat · AI Handoff · Caption Studio · Google Drive Librarian · HTML Viewer · Image Filters · GitHub · Snippets
 
-**Built in:** model selector (Haiku / Sonnet / Opus), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
+**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
 
 ### Running it
-Today Ember runs as a Claude artifact — paste `src/baxstar-ember.jsx` into a Claude conversation. The Claude API key is injected by the platform there, which is why the app has no key in its code.
 
-Standalone hosting is the goal but is not yet working. See Known Issues.
+**Locally — python3 only, no Node.** The everyday loop.
+
+```bash
+./start-ember.sh          # regenerates _preview.html, serves http://localhost:8787/_preview.html
+```
+
+**As a Claude artifact (works fully today).** Paste `src/baxstar-ember.jsx` into a Claude
+conversation. The API key and the MCP connector tokens are injected by the platform there,
+which is why the app has no key in its code.
+
+**Hosted at a URL.** Needs Node for the build.
+
+```bash
+npm install
+npm run build     # regenerates index.html from src/
+npm run serve     # http://localhost:8080
+```
+
+Hosting needs a proxy to hold the API key, and the MCP connectors need OAuth work that
+isn't done yet. Read `docs/DEPLOY.md` before deploying — it is specific about what works
+hosted and what doesn't.
+
+> **`index.html` is generated.** Edit `src/baxstar-ember.jsx` and rebuild. Editing
+> `index.html` directly is how the deploy build once ended up a full redesign behind the
+> source with nobody noticing.
 
 ---
 
 ## The voice layer — `voice/`
 
-Self-contained, no build step. Open either file directly in **Chrome** (Web Speech API support) and click through.
+Self-contained, no build step. Open either file directly in **Chrome** (Web Speech API
+support) and click through.
 
 - Speech in: continuous `SpeechRecognition`
-- Speech out: `speechSynthesis` with a scored local-voice picker, plus a two-source MP3 fallback chain and a 1.4s watchdog
+- Speech out: `speechSynthesis` with a scored local-voice picker, plus a two-source MP3
+  fallback chain and a 1.4s watchdog
 - Live mic-level meter driving an animated orb
 - Full diagnostic log panel
 
-`ember-demo.html` answers Baxstar questions (pontoon rates, guided trips, booking curve, golf sim, tech camp) from **hardcoded string matching** — not Claude. It is a demo, not a brain.
+`ember-demo.html` routes spoken questions through Claude — real Baxstar context, real
+connectors, replies written for the ear. Set `EMBER_API_PROXY` at the top of the file to
+turn it on. Without it, or if the call fails, it falls back to the canned demo brain, so
+the offline demo still works.
 
-Merging this voice layer into the real app is the biggest open opportunity.
+Merging this voice layer into the app properly — one Ember, one brain — remains the
+biggest open opportunity.
 
 ---
 
@@ -56,16 +106,21 @@ Merging this voice layer into the real app is the biggest open opportunity.
 
 See `docs/KNOWN-ISSUES.md`. Short version:
 
-1. **`index.html` has no Tailwind** — layout collapses when hosted.
-2. **`index.html` has no API auth** — needs a server-side key proxy before it can live at a URL.
-3. **Voice is not connected to the app** — two separate codebases today.
-4. **Visual identity is mid-transition** — moving from comic-book styling to steampunk. See `docs/BUILD-PROMPT.md`.
+1. ~~Proxy not deployed~~ — **live** at `ember-claude-proxy.brady-9d1.workers.dev`, verified. `./start-ember.sh` now has a working brain. Change `ALLOWED_ORIGINS` before hosting at a real domain.
+2. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
+   platform currently supplies. Hosted, chat works and the phone/email/calendar panels don't.
+3. **Voice is half-merged** — real brain wired in, but `voice/` and `src/` are still two codebases.
+4. **The glass-tank asset is cyan**, which contradicts the warm-metals-only palette rule.
+5. **Runtime still depends on unpkg + in-browser Babel** — slow first paint, and a hard
+   dependency on a CDN being up.
 
 ---
 
 ## Continuing the build
 
-Open a Claude conversation, paste `docs/BUILD-PROMPT.md`, and attach whichever files that session touches. The prompt carries the design language, the quality bar, and the known blockers so no session rediscovers them.
+Open a Claude conversation, paste `docs/BUILD-PROMPT.md`, and attach whichever files that
+session touches. The prompt carries the design language, the quality bar, and the known
+blockers so no session rediscovers them.
 
 ---
 

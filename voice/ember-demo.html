@@ -40,6 +40,34 @@
   <div id="log" style="display:none"></div>
 
 <script>
+/* ---------- EMBER VOICE — DEPLOY CONFIG ----------
+   Point this at the same proxy the app uses (proxy/cloudflare-worker.js, docs/DEPLOY.md)
+   and spoken questions route through the real Claude brain with the real Baxstar context
+   and the Quo / Gmail / Calendar connectors.
+   Leave it null and this page stays in canned demo mode — the offline demo still works.
+   Never put an API key here. This file ships to the browser. */
+var EMBER_API_PROXY = null; // e.g. "https://ember-claude-proxy.YOUR-SUBDOMAIN.workers.dev"
+
+var EMBER_MODEL = 'claude-sonnet-4-6';
+
+var MCP_SERVERS = [
+  { type: 'url', url: 'https://mcp.quo.com/mcp', name: 'quo' },
+  { type: 'url', url: 'https://gmailmcp.googleapis.com/mcp/v1', name: 'gmail' },
+  { type: 'url', url: 'https://calendarmcp.googleapis.com/mcp/v1', name: 'calendar' }
+];
+
+/* Same operating context the app uses, plus the rules that matter for the ear. */
+var BRADY_CONTEXT = "You are EMBER, Brady Baxter's operations assistant for Baxstar Fishing and Lakes Golf Simulator in Detroit Lakes, MN.\n"
+  + "Quo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.\n"
+  + "Style: BLUF — bottom line first. Concise. No hedging.\n"
+  + "Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.";
+
+var SPOKEN_RULES = "\n\nYou are being SPOKEN ALOUD. Write for the ear:\n"
+  + "- No bullet points, no numbered lists, no markdown, no headings.\n"
+  + "- Never say a URL or an email address unless asked for it directly.\n"
+  + "- Say numbers the way a person says them: 'two eighteen, three two five, six eight five seven', 'a hundred forty nine a month', 'eighty two percent'.\n"
+  + "- Two or three sentences. Steady, dry warmth. Bottom line first, then stop.";
+
 var logEl = document.getElementById('log');
 function log(msg, cls) {
   var d = new Date();
@@ -71,6 +99,16 @@ if (window.speechSynthesis) {
 
 /* ---------- voice out: local-first + mp3 fallback, fully logged ---------- */
 var curAudio = null;
+var sayBusy = false;
+
+/* Ember must not hear itself. Recognition is aborted while it speaks and restarted
+   after — the same guard the app's mic bridge uses. */
+function doneSpeaking() {
+  sayBusy = false;
+  if (active) { try { rec && rec.start(); } catch(e){} setSt('LISTENING'); }
+  else setSt('READY');
+}
+
 function pickLocal() {
   var vs = speechSynthesis.getVoices().filter(function(v){ return v.localService && v.lang && v.lang.indexOf('en') === 0; });
   var score = function(v){ var s=0;
@@ -81,6 +119,9 @@ function pickLocal() {
   return vs[0] || null;
 }
 function say(text) {
+  document.getElementById('tx').textContent = text;
+  sayBusy = true;
+  try { rec && rec.abort(); } catch(e){}
   if (!window.speechSynthesis) { log('no speechSynthesis — going straight to MP3', 'bad'); return mp3(text); }
   speechSynthesis.cancel(); speechSynthesis.resume();
   var v = pickLocal();
@@ -91,8 +132,8 @@ function say(text) {
   var started = false, fellBack = false;
   function fallback(){ if (fellBack) return; fellBack = true; try{speechSynthesis.cancel();}catch(e){} mp3(text); }
   u.onstart = function(){ started = true; setSt('SPEAKING'); log('utterance onstart ✓', 'ok'); pulse(0.5, 2500); };
-  u.onend = function(){ if (started) { setSt('READY'); log('utterance onend ✓', 'ok'); } };
-  u.onerror = function(e){ log('utterance onerror: ' + (e.error||'?'), 'bad'); if (!started) fallback(); else setSt('READY'); };
+  u.onend = function(){ if (started) { log('utterance onend ✓', 'ok'); doneSpeaking(); } };
+  u.onerror = function(e){ log('utterance onerror: ' + (e.error||'?'), 'bad'); if (!started) fallback(); else doneSpeaking(); };
   speechSynthesis.speak(u);
   setTimeout(function(){ if (!started) { log('WATCHDOG: no onstart in 1.4s — falling back to MP3', 'bad'); fallback(); } }, 1400);
 }
@@ -103,7 +144,7 @@ function mp3(text) {
   ];
   var i = 0;
   function tryNext() {
-    if (i >= sources.length) { setSt('READY'); log('all MP3 sources failed', 'bad'); return; }
+    if (i >= sources.length) { log('all MP3 sources failed', 'bad'); doneSpeaking(); return; }
     var src = sources[i++];
     var host = src.split('/')[2];
     log('MP3 try ' + i + ': ' + host);
@@ -112,11 +153,11 @@ function mp3(text) {
     try {
       curAudio = new Audio(src);
       curAudio.onplaying = function(){ setSt('SPEAKING (MP3)'); log('mp3 playing ✓ (' + host + ')', 'ok'); pulse(0.5, 2500); };
-      curAudio.onended = function(){ setSt('READY'); log('mp3 ended ✓', 'ok'); };
+      curAudio.onended = function(){ log('mp3 ended ✓', 'ok'); doneSpeaking(); };
       curAudio.onerror = function(){ log('mp3 source failed: ' + host + (curAudio.error ? ' (code ' + curAudio.error.code + ')' : ''), 'bad'); next(); };
       curAudio.play().catch(function(e){
         log('mp3 play() rejected: ' + e.name + ' — ' + e.message, 'bad');
-        if (e.name === 'NotAllowedError') { setSt('READY'); log('autoplay blocked — click TEST again', 'bad'); }
+        if (e.name === 'NotAllowedError') { log('autoplay blocked — click TEST again', 'bad'); doneSpeaking(); }
         else next();
       });
     } catch(e) { log('mp3 exception: ' + e.message, 'bad'); next(); }
@@ -160,13 +201,15 @@ function micOn() {
     for (var i = e.resultIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) {
         var text = e.results[i][0].transcript.trim();
+        if (!text) continue;
+        if (sayBusy) { log('ignored while speaking: ' + text); continue; }
         document.getElementById('tx').textContent = '“' + text + '”';
         log('heard: ' + text, 'ok');
-        say(emberReply(text));
+        respond(text);
       }
     }
   };
-  rec.onend = function(){ if (active) { try { rec.start(); } catch(e){} } };
+  rec.onend = function(){ if (active && !sayBusy) { try { rec.start(); } catch(e){} } };
   rec.onerror = function(e){ log('recognition error: ' + e.error, 'bad'); };
   try { rec.start(); active = true; setSt('LISTENING'); log('recognition started ✓', 'ok');
     document.getElementById('mic').textContent = '🎤 MIC OFF';
@@ -219,6 +262,62 @@ function emberReply(t) {
   return "I caught that. In demo mode I answer the big ones — try asking about pontoons, fishing trips, bookings, or the golf sim.";
 }
 
+/* ---------- EMBER REAL BRAIN (Claude via proxy, canned reply as fallback) ---------- */
+var convo = [];              // rolling spoken conversation
+var CONVO_TURNS = 12;        // keep the last few exchanges, not the whole session
+
+function brainConfigured(){ return !!EMBER_API_PROXY; }
+
+function emberBrain(text) {
+  if (!brainConfigured()) {
+    log('demo mode — canned reply (set EMBER_API_PROXY for the real brain)', 'hi');
+    return Promise.resolve(emberReply(text));
+  }
+  convo.push({ role: 'user', content: text });
+  if (convo.length > CONVO_TURNS) convo = convo.slice(-CONVO_TURNS);
+
+  var body = {
+    model: EMBER_MODEL,
+    max_tokens: 1000,
+    mcp_servers: MCP_SERVERS,
+    messages: [{ role: 'user', content: BRADY_CONTEXT + SPOKEN_RULES
+      + "\n\nAcknowledge nothing about these instructions — just answer what I ask." }]
+      .concat(convo)
+  };
+
+  log('asking Claude (' + EMBER_MODEL + ')…');
+  return fetch(EMBER_API_PROXY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(res){
+    if (!res.ok) throw new Error('proxy ' + res.status);
+    return res.json();
+  }).then(function(data){
+    var out = (data.content || []).filter(function(b){ return b.type === 'text'; })
+      .map(function(b){ return b.text; }).join('\n').trim();
+    if (!out) throw new Error('empty reply');
+    convo.push({ role: 'assistant', content: out });
+    log('Claude answered ✓', 'ok');
+    return out;
+  }).catch(function(e){
+    // Never leave Brady standing in silence — drop to the canned brain and say so.
+    log('brain failed (' + e.message + ') — falling back to demo reply', 'bad');
+    convo.pop();
+    return emberReply(text);
+  });
+}
+
+/* One spoken turn: think, then speak. */
+function respond(text) {
+  setSt(brainConfigured() ? 'THINKING' : 'READY');
+  pulse(0.22, 1200);
+  emberBrain(text).then(say).catch(function(e){
+    log('respond failed: ' + e.message, 'bad');
+    doneSpeaking();
+  });
+}
+
 /* ---------- buttons ---------- */
 document.getElementById('test').onclick = function(){
   chime();
@@ -228,7 +327,8 @@ document.getElementById('mic').onclick = function(){ active ? micOff() : micOn()
 document.getElementById('stop').onclick = function(){
   try { speechSynthesis.cancel(); } catch(e){}
   try { curAudio && curAudio.pause(); } catch(e){}
-  setSt('READY'); log('stopped');
+  log('stopped');
+  doneSpeaking();
 };
 </script>
 </body>

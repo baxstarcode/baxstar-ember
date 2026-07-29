@@ -2,81 +2,335 @@
 
 Verified against the code in this repo. Fix these rather than rediscover them.
 
----
-
-## 1. `index.html` has no Tailwind — layout collapses when hosted
-
-**Severity:** blocks deployment
-**Verified:** yes
-
-`src/baxstar-ember.jsx` uses Tailwind utility classes throughout — `flex items-center gap-3`, `rounded-full`, `text-[13px]`, `grid`, `absolute`, and so on.
-
-`index.html` loads exactly three scripts:
-
-```
-react@18 (UMD)
-react-dom@18 (UMD)
-@babel/standalone
-```
-
-No Tailwind. Its inline `<style>` blocks total ~16KB and contain the custom Ember CSS — variables (`--ember-red`, `--ember-orange`, `--ember-amber`, `--panel`, `--line`), panel styling, animations. Zero utility class definitions.
-
-**Result when hosted:** colors and panel treatments survive; all layout, spacing, and alignment collapse into a stacked column.
-
-**Fix, pick one:**
-- Add the Tailwind Play CDN script to `<head>` — fastest, adds a runtime dependency and a flash of unstyled content
-- Compile the used utilities into the inline stylesheet — heavier lift, fully self-contained, better for a premium feel
+Last audited at commit `d7717a1` + this pass. Each item says how it was verified.
 
 ---
 
-## 2. `index.html` has no API auth — hosted Ember has a dead brain
+## ~~0. THE NEWEST DESIGN IS NOT IN THIS REPO~~ — RESOLVED
 
-**Severity:** blocks deployment
-**Verified:** yes
+Brady supplied `embercinematicrebuildv2.zip` (`ember-current-source/`, source stamped
+Jul 28 06:14). It is now merged and `src/baxstar-ember.jsx` is the cinematic v2 build.
 
-The app calls:
+**What landed:** the v2 source (+20KB over the old one), the two raster assets it needs —
+`reactor-bezel@2x.webp` and `command-console@2x.webp` — updated `manifest.json`,
+`control-map.json`, `motion-spec.json`, `docs/generated-assets.md`,
+`docs/HANDOFF-CINEMATIC.md`, plus the python-only local harness (`start-ember.sh`,
+`scripts/sync-standalone.py`, `.env.example`).
+
+Only two new rasters were needed, not the eight estimated below — the whole bottom
+console is one composite strip rather than six separate assets.
+
+**Kept from this repo instead of the zip:** `voice/ember-demo.html` (the zip still had the
+pre-Claude-brain version) and `README.md`. The proxy patch was re-applied to the new
+source, and the proxy model allowlist was widened to all five models the v2 app offers
+(Opus 5 and Fable 5 were added upstream).
+
+**Verified:** rendered from `npm run build` in headless Chromium. Odometer, reactor bezel,
+six-panel dock, brass frame, glass tanks and Cinzel all present. 240 class tokens, **0
+unresolved**. No console errors, **no ≥400 responses**. Mobile 390px: zero overflow.
+Studio module switches and renders.
+
+The generator split that prevents this recurring is below in "Two generators, one file".
+
+---
+
+### Historical detail — what the gap looked like
+
+**Verified:** against a screenshot of the newer build, dated Sun Jul 26 10:36 PM
+
+(Written before the zip arrived.) A materially more advanced build of Ember existed
+outside git and `src/baxstar-ember.jsx` was behind it. Anything generated from this repo renders the older look — correctly,
+but it is not the current design.
+
+**What the newer build has that this source does not:**
+
+| Feature in the newer build | This repo |
+|---|---|
+| Full-page ornate brass frame, riveted, with pipework | thin SVG panel bezels only |
+| Revenue as a mechanical odometer — `$ 0 1 , 2 4 0` in digit tiles | plain text `count="+$1,240"` (`src:1826`) |
+| Ornate concentric core gauge (deep iris/mandala) | a single soft circular glow |
+| Six sculpted instrument panels for the bottom nav — lever, gears, gauge, compass gauge, compass rose, cannon | text chips with a thin `quick-action-frame.svg` border |
+| Analog clock faces in the lower corners | absent |
+| "MIC ARMED" banner spanning the top | present in source but not styled as a banner |
+
+**Hard evidence it isn't here:** `assets/ember/raster/` contains exactly two files —
+`glass-tank@2x.png` and `skull-arch@2x.png`. The newer build needs roughly eight more
+photoreal rasters. And the source has zero occurrences of `compass`, `cannon`,
+`odometer`, `split-flap`, or `counter`.
+
+**This cannot be rebuilt from a screenshot.** Reconstructing photoreal brass instruments
+and an odometer from one JPEG would be guesswork that does not match.
+
+**Root cause was version sprawl recurring.** Issue 5 in the old version of this file
+claimed the repo had solved it ("eight copies across Downloads and chat artifacts…
+this repo starts clean"). It hadn't — the best build was still living outside git. The
+habit to fix is that work happens in an artifact or on the Mac and nothing commits it
+back. Until a session ends with a commit, the repo is not the source of truth, and the
+next session rediscovers the wrong design.
+
+---
+
+## Two generators, one file — fixed, don't reintroduce
+
+`scripts/sync-standalone.py` (from the zip) wrote **both** `_preview.html` and
+`index.html`. `build.mjs` also wrote `index.html`. Two generators for one artifact is
+precisely the drift that caused issue 0 and the old issue 1.
+
+Ownership is now split and each file says so in its own header:
+
+| File | Owner | Toolchain | Tailwind | React |
+|---|---|---|---|---|
+| `_preview.html` | `scripts/sync-standalone.py` | python3 only | Play CDN | dev builds |
+| `index.html` | `build.mjs` | node | compiled + inlined | production |
+
+The python path is preserved deliberately: **there is no Node on Brady's Mac**, and
+`./start-ember.sh` must keep working with python3 alone. It now regenerates the preview
+before serving, so the preview can never be stale either. `_preview.html` is gitignored
+since it's generated.
+
+---
+
+## RESOLVED THIS PASS
+
+### ~~1. `index.html` has no Tailwind~~ — fixed
+
+`npm run build` now compiles the utilities the source actually uses (~11KB) and inlines
+them. No runtime CSS CDN, no flash of unstyled content.
+
+**Verified:** headless Chromium render at 1440×900. A probe element with
+`flex items-center gap-3 max-w-7xl text-[13px]` computes to `display:flex`, `gap:12px`,
+`max-width:1280px`, `font-size:13px`. 22 of 22 flex rows lay out horizontally. Mobile at
+390px wide has zero horizontal overflow. A class-coverage audit found 0 unresolved class
+tokens out of 197 used.
+
+### ~~5. `index.html` had silently drifted a full redesign behind `src/`~~ — fixed
+
+This was the big one, and it was not in this file before. `index.html` was last written
+by the Jul 26 consolidation commit and never regenerated after the six retheme commits
+landed on `src/baxstar-ember.jsx`. The hosted build was still the **pre-steampunk** app:
+`BURST_WORDS`, ZOWIE, emoji tool icons, Big Shoulders Display, `--ember-ice` ×10,
+Glacier Lake, and zero references to `EmberIcon`, `BrandMark`, or the asset pack.
+
+Root cause was that `index.html` was maintained by hand. `build.mjs` now generates it
+from `src/baxstar-ember.jsx`, so the two cannot diverge again.
+
+**Verified:** every retheme marker matches across both files. After the v2 merge that
+reads `Cinzel` 3/3, `EmberIcon` 15/15, `BrandMark` 2/2, `reactor-bezel` 2/2,
+`command-console` 1/1, comic markers 0/0.
+
+**Rule going forward: never edit `index.html` by hand. Run `npm run build`.**
+
+---
+
+## OPEN
+
+## ~~2. Hosted Ember has no API auth of its own~~ — RESOLVED, proxy is live
+
+**Status:** deployed and verified against the live Worker.
+
+`https://ember-claude-proxy.brady-9d1.workers.dev` is up on Cloudflare's free tier with
+`ANTHROPIC_API_KEY` as a secret and `ALLOWED_ORIGINS` set to `http://localhost:8787`.
+`scripts/sync-standalone.py` points the local preview at it, so `./start-ember.sh` now
+gives Ember a working brain outside a Claude artifact for the first time.
+
+**Verified against the deployment, not just the code:**
+
+| Probe | Result |
+|---|---|
+| Browser `GET` | 405 `POST only` |
+| `POST`, no `Origin` header | 403 `Origin not allowed` |
+| `POST`, forged origin | 403 |
+| Preflight, wrong origin | 403, no allow-header leaked |
+| Preflight, allowed origin | 204, echoes origin, `Vary: Origin` |
+| `gpt-4o` (off the allowlist) | 400 `Model not allowed` |
+| `claude-haiku-4-5`, allowed origin | 200, real reply |
+
+The origin check being enforced **server-side and not only via CORS** is the load-bearing
+part: a leaked URL used from curl or a script still gets a 403, so the Anthropic balance
+is not exposed. That is why the Worker URL is safe to keep in git.
+
+**Before hosting Ember at a real domain:** change `ALLOWED_ORIGINS` to that origin and
+redeploy, or every request from it will 403.
+
+**Never ship an API key in client-side code.** Anything in `index.html` is public the
+moment it's hosted — that constraint has not changed.
+
+### Historical detail
+
+**Severity was:** blocks deployment
+
+The app used to hardcode `fetch("https://api.anthropic.com/v1/messages")` with no
+credentials — fine inside a Claude artifact where the platform injects them, dead
+anywhere else.
+
+Now the endpoint is configurable:
 
 ```js
-fetch("https://api.anthropic.com/v1/messages", { ... })
+window.EMBER_API_PROXY = "https://…"   // set in index.html's config block
 ```
 
-with no `x-api-key` and no `Authorization` header. That works **only** inside a Claude artifact, where the platform injects credentials. Hosted anywhere else it fails on authentication and CORS — the UI loads and every chat, Drive query, and MCP call dies.
+Unset, behavior is exactly as before (direct call, artifact-only). Set, traffic goes
+through a key-holding proxy. `proxy/cloudflare-worker.js` and `proxy/vercel/api/claude.js`
+are ready to deploy — origin allowlist, model allowlist, token cap, key server-side only.
+A 401/403 without a proxy now returns an error that names the fix instead of failing silently.
 
-**Fix:** stand up a thin proxy that holds the key server-side and forwards to the Anthropic API — Cloudflare Worker, Netlify Function, or Vercel Edge Function. Point the app's fetch at the proxy.
+**Remaining work:** actually deploy it and set `ALLOWED_ORIGINS`. See `docs/DEPLOY.md`.
 
-**Never ship an API key in client-side code.** Anything in `index.html` is public the moment it's hosted.
+**Never ship an API key in client-side code.** Anything in `index.html` is public the
+moment it's hosted.
 
----
+## 3. MCP connectors don't work outside a Claude artifact
 
-## 3. Voice layer is not connected to the app
+**Severity:** blocks the OPS module when hosted
+**Verified:** by inspection of the API contract
+**New this pass** — previously hidden underneath issue 2.
 
-**Severity:** feature gap, not a bug
-**Verified:** yes
+Quo, Gmail, Calendar, and Drive are MCP connectors. Each needs an OAuth
+`authorization_token` per server, which the Claude platform injects inside an artifact.
+Hosted, nothing injects them, so those calls fail even with the proxy deployed and chat
+working.
 
-`voice/` and `src/` are separate codebases. The voice rig's speech recognition, voice selection, MP3 fallback, and audio meter are solid and worth keeping verbatim. What it lacks is a real brain — `emberReply()` in `ember-demo.html` is hardcoded string matching over about a dozen keyword groups.
+The proxy will attach tokens from `MCP_TOKEN_QUO` / `_GMAIL` / `_CALENDAR` / `_GDRIVE`
+secrets once they exist. Obtaining them means running each connector's OAuth flow and
+storing the result. That work is not done.
 
-**Fix:** replace `emberReply()` with a call into the app's existing `callClaude()` path, so spoken questions route through the real system contexts and MCP tools. Write spoken replies for the ear — no bullet syntax, no URLs, numbers spoken the way a person says them.
+Hosted today: chat, Caption Studio, HTML Viewer, Image Filters, Snippets, AI Handoff,
+and GitHub all work. "What'd I miss", Triage inbox, Schedule, and Drive Librarian do not.
+See `docs/DEPLOY.md` §4.
 
----
+## 4. Voice layer: real brain wired, app merge still open
 
-## 4. Visual identity is mid-transition
+**Severity:** feature gap
+**Status:** half done
 
-**Severity:** cosmetic, but it's the whole point
-**Verified:** yes
+`voice/ember-demo.html` no longer answers only from hardcoded string matching. It now
+routes spoken questions through Claude via the same proxy, with the real `BRADY_CONTEXT`,
+the MCP server list, rolling conversation history, and a spoken-output ruleset (no
+bullets, no URLs, numbers said the way a person says them). If no proxy is configured —
+or the call fails — it falls back to the canned demo brain, so the offline
+wife/investor demo still works exactly as before.
 
-Comic-book DNA still in the code:
-- `BURST_WORDS` — `["ZOWIE!", "POW!", "BAM!", "WHAM!", "ZING!", "SNAP!", "BOOM!", "KAPOW!"]`
-- Emoji tool icons — 💬 🔀 ✍️ 🌐 🎛️ 📋
-- `Big Shoulders Display` as the display face — reads sports-poster, not watchmaker
+Also fixed while in there: Ember used to be able to hear itself talk. Recognition is now
+aborted while speaking and restarted after, mirroring the guard the app's own mic bridge
+already used.
 
-Palette conflicts with the steampunk direction:
-- `--ember-ice: #5dd8ff`
-- Background presets "Glacier Lake" and "Violet Sky"
+**Still open:** `voice/` and `src/` remain two codebases. The voice rig duplicates the
+context and model config instead of importing the app's. Truly merging them — one
+Ember, one brain, voice as a surface of the app rather than a sibling page — is the
+remaining work, and it's still the biggest open opportunity.
 
-Target direction is documented in `BUILD-PROMPT.md` §3. Warm metals only; no blues, no purples.
+**Not verified end to end:** the real-brain path needs a deployed proxy and a
+microphone. Neither exists in CI. The canned path and the syntax are verified; the
+live path is written but untested.
 
----
+## ~~5. The dock console was hidden behind duplicate CSS chrome~~ — FIXED
 
-## 5. Version sprawl (resolved by this repo)
+`command-console@2x.webp` is a 1600×322 photoreal brass console: six panels, each with a
+brass mechanism and an empty engraved nameplate for its label. It **is** the dock.
 
-Eight copies of the app existed across Downloads and chat artifacts with browser-numbered filenames. Two were byte-identical to the newest; the rest were older iterations. `src/baxstar-ember.jsx` here is the newest of the set and is now the only copy that matters. Older iterations were not imported — this repo starts clean.
+The v2 CSS treated it as a faint texture — `opacity:.24; mix-blend-mode:luminosity` — and
+synthesised a second set of panels (`.dock-control` borders and gradients) plus line-art
+mechanisms (`.dock-machine`) on top. Worse, `object-fit:cover` on a bar this wide cropped
+the artwork vertically and took the nameplates with it.
+
+Fixed by letting the asset be the dock: full opacity, `object-fit:fill` so the whole
+console is visible, no synthetic panel chrome, `.dock-machine` hidden (it duplicated the
+painted mechanisms), and labels repositioned onto the nameplates at 64–86% of panel height.
+The grid gets a 6.25% side inset so each column lands on one painted panel — the asset's
+panels run x 100–1500 of 1600.
+
+**Verified:** element screenshot of `.console-dock` — six photoreal panels, all six labels
+seated on their nameplates, alignment correct at 1427px wide.
+
+### Motion restored — as light, not geometry
+
+The CSS mechanisms were animated, and hiding them cost that motion. It is back, via a
+`DockMotion` layer (`.dock-motion` / `.dm-*`) that replaces `DockMechanism` entirely.
+
+The rule it follows: **animate light, never geometry.** Every part is a glint, glow or
+travelling sheen composited with `mix-blend-mode:screen`, so it can only brighten the
+artwork — it cannot occlude or duplicate it. That constraint is not stylistic. The gears
+already have painted teeth and the gauge already has a painted needle, so any synthetic
+shape laid on top reads as a duplicate, which is what the old layer did.
+
+| Panel | Painted part | Motion |
+|---|---|---|
+| OPS | lever press, two lamps | lamps breathe; highlight strokes the drum |
+| Baxstar Studio | gear train | glint orbits each gear, middle one counter-rotating |
+| What'd I miss | reactor porthole | core pulses, slow ring sweep |
+| Triage inbox | pressure gauge | broad illuminated wash rides the dial |
+| Brief my day | ship's wheel | slow glint around the rim |
+| Handoff draft | piston cannon | lamp breathes; sheen strokes barrel, then cylinder |
+
+Two details worth keeping in mind if this is touched again:
+
+- **The painted circles are ellipses on screen.** `object-fit:fill` stretches a 1600×322
+  asset into roughly 1285×137, so a painted circle renders about 2:1 wide. Round glints
+  therefore sit in a `.dm-round` wrapper carrying `scaleY(var(--dock-squash))`, which a
+  `ResizeObserver` on the dock measures live — `(h/322)/(w/1600)`. The child stays a true
+  circle so it can rotate cleanly. Without this the glints were twice as tall as their
+  mechanism and crept onto the nameplates. Values >1 are legitimate: on a narrow dock the
+  asset is stretched taller than its own aspect.
+- **The gauge wash is deliberately broad and low-alpha.** A narrow wedge reads as a second
+  needle beside the painted one.
+
+Glints are masked to each mechanism's rim (`mask-image: radial-gradient(...)`) because an
+unmasked conic gradient reads as a pie wedge rather than a turning part.
+
+**Verified** headless at 1440×900: 13 motion parts, all `mix-blend-mode:screen` and
+`pointer-events:none`; zero elements from the old duplicate layer remain; a 750ms frame
+diff over the dock region changes ~306KB, confirming it animates. Label geometry is
+byte-identical to before the change — `top:64%`, `height:22%`, horizontally centred, on
+all six. The lowest-reaching motion part bottoms out at **57%** of the cell against a
+nameplate starting at 64%, and holds at 57% across 1920 / 1440 / 1024 / 390px because the
+squash tracks the measured value exactly (0.3934 / 0.5292 / 0.7655 / 1.8777). No console
+errors, no HTTP ≥400, no mobile overflow. `prefers-reduced-motion` is already honoured
+globally, so these animations disable with everything else.
+
+## ~~6. Draft Reply / Create Task levers collided with the greeting~~ — FIXED
+
+A CSS specificity bug, not a layout one:
+
+- `.skull-host > :not(.skull-arch)` → `position:relative`, specificity **(0,2,0)**
+- `.ctx-lever` → `position:absolute`, specificity **(0,1,0)**
+
+The broader rule won, so both levers lost absolute positioning, fell into the flex column,
+and landed on top of "Morning, Brady." — visible in Brady's own reference screenshot too.
+
+The `skull-host` rule only needs `position` so its `z-index:1` works, and `.ctx-lever`
+already carries `z-index:4`, so excluding it is the correct fix:
+`.skull-host > :not(.skull-arch):not(.ctx-lever)`.
+
+**Verified:** both levers compute `position:absolute` at x=494 and x=870, flanking the
+reactor, with `collidesWithGreeting: false`. VOICE TEST is no longer clipped either.
+
+## 7. Blue glass tanks contradict the palette rule
+
+**Severity:** cosmetic, but it's a direct brief conflict
+**Verified:** visual render
+**New this pass**
+
+`BUILD-PROMPT.md` §3 is explicit: "No blues, no purples for primary UI… Warmth only,"
+and `--ember-ice` was duly retired from the CSS. But
+`assets/ember/raster/glass-tank@2x.png` — rendered large down both edges of the OPS
+view (`src/baxstar-ember.jsx:1654`, `:1658`) — is vivid cyan. It's now the most
+saturated color on the screen.
+
+It arrived deliberately in `d7717a1` ("apply exact spec deviations"), so it's left
+alone pending a call from Brady rather than quietly changed. Two ways out:
+
+- Regenerate the asset in the brass/copper family.
+- Filter it in place — `filter: sepia(.7) saturate(2.2) hue-rotate(-35deg)` on those
+  two `<img>` tags brings it to amber with no new asset.
+
+## 8. Runtime still depends on unpkg + in-browser Babel
+
+**Severity:** performance and fragility, not a blocker
+**Verified:** the render test failed to mount until React/Babel were vendored locally,
+because this sandbox blocks unpkg — a live demonstration of the failure mode.
+
+`index.html` loads React, ReactDOM, and Babel Standalone from unpkg, then compiles
+~200KB of JSX in the browser on every page load. If unpkg is slow, blocked, or down,
+Ember does not start. Precompiling the JSX at build time and vendoring the two React
+files would remove both the dependency and the compile. `build.mjs` is the natural
+place for it.
