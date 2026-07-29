@@ -23,13 +23,13 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 | Path | What it is | Status |
 |---|---|---|
 | `src/baxstar-ember.jsx` | **The app.** Canonical React source — cinematic v2. | Working |
-| `index.html` | **Deploy build. Generated — never edit by hand.** | Builds clean; needs a proxy to host |
+| `index.html` | **Deploy build. Generated — never edit by hand.** | Builds clean |
 | `_preview.html` | **Local preview. Generated, gitignored.** | Working |
 | `build.mjs` | Generates `index.html`. `npm run build`. | Working |
 | `scripts/sync-standalone.py` | Generates `_preview.html`. No Node needed. | Working |
 | `start-ember.sh` | Regenerates the preview, then serves it on :8787. | Working |
-| `proxy/cloudflare-worker.js` | Key-holding API proxy so Ember can live at a URL. | Written, not yet deployed |
-| `proxy/vercel/api/claude.js` | Same proxy for Vercel / Netlify. | Written, not yet deployed |
+| `proxy/cloudflare-worker.js` | Key-holding API proxy. | **Deployed & verified** |
+| `proxy/vercel/api/claude.js` | Same proxy for Vercel / Netlify. | Written, unused (Cloudflare is live) |
 | `voice/ember-voice-deck.html` | Voice test rig — mic in, speech out, audio meter. | Working |
 | `voice/ember-demo.html` | Voice rig + Claude brain, canned demo as fallback. | Working |
 | `docs/BUILD-PROMPT.md` | Master brief for any AI session that continues this build. | Current |

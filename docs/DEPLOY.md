@@ -59,8 +59,8 @@ nothing. Everything happens at dash.cloudflare.com.
 Your endpoint is `https://ember-claude-proxy.<your-subdomain>.workers.dev`.
 
 **Try it locally before hosting anything.** Set `ALLOWED_ORIGINS` to
-`http://localhost:8787`, uncomment `window.EMBER_API_PROXY` in
-`scripts/sync-standalone.py`'s config block, then `./start-ember.sh`. That gives you a
+`http://localhost:8787` — `window.EMBER_API_PROXY` in `scripts/sync-standalone.py`
+is already pointed at the live Worker — then `./start-ember.sh`. That gives you a
 live Ember with a working brain on your own machine — no hosting, no domain.
 
 ### Cloudflare Worker via CLI (needs Node)
@@ -93,7 +93,7 @@ handler signature swapped.
 - Holds the key. Nothing sensitive reaches the browser.
 - Adds `anthropic-version` and, for MCP requests, the `anthropic-beta:
   mcp-client-2025-04-04` header the `mcp_servers` field requires.
-- Refuses any model outside Ember's three, so a leaked URL can't be repurposed
+- Refuses any model outside Ember's five, so a leaked URL can't be repurposed
   into a general-purpose model proxy.
 - Caps `max_tokens` and request size.
 - Enforces the origin allowlist server-side as well as via CORS, so a non-browser
