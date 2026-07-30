@@ -129,9 +129,15 @@ reads `Cinzel` 3/3, `EmberIcon` 15/15, `BrandMark` 2/2, `reactor-bezel` 2/2,
 **Status:** deployed and verified against the live Worker.
 
 `https://ember-claude-proxy.brady-9d1.workers.dev` is up on Cloudflare's free tier with
-`ANTHROPIC_API_KEY` as a secret and `ALLOWED_ORIGINS` set to `http://localhost:8787`.
+`ANTHROPIC_API_KEY` as a secret and `ALLOWED_ORIGINS` set to
+`http://localhost:8787,https://baxstar-ember.pages.dev`.
 `scripts/sync-standalone.py` points the local preview at it, so `./start-ember.sh` now
 gives Ember a working brain outside a Claude artifact for the first time.
+
+Ember is also hosted at `https://baxstar-ember.pages.dev` (Cloudflare Pages, deployed from
+`main`), gated by Cloudflare Access to `brady@baxstarfishing.com` and
+`baxterbrady@gmail.com` via one-time PIN. Both the preflight and a real `POST` were
+re-verified from that origin after the change.
 
 **Verified against the deployment, not just the code:**
 
@@ -149,8 +155,17 @@ The origin check being enforced **server-side and not only via CORS** is the loa
 part: a leaked URL used from curl or a script still gets a 403, so the Anthropic balance
 is not exposed. That is why the Worker URL is safe to keep in git.
 
-**Before hosting Ember at a real domain:** change `ALLOWED_ORIGINS` to that origin and
-redeploy, or every request from it will 403.
+**Before hosting Ember at any further origin:** add it to `ALLOWED_ORIGINS` and redeploy,
+or every request from it will 403. Never widen this to `*` — the server-side origin check
+is the only reason the Worker URL is safe in a public repo. Pages *preview* deployments get
+their own hostnames and are deliberately not on the list, so chat does not work there.
+
+**An unauthorized MCP connector used to take chat down with it.** The app sends its whole
+connector list on every message, the API rejects the entire request if any listed server
+fails to authenticate, and none of the `MCP_TOKEN_*` secrets are set yet — so every hosted
+message failed with `Authentication error while communicating with MCP server`, which read
+like the proxy was broken when it was fine. The Worker now drops servers it holds no token
+for, and omits `mcp_servers` entirely when none are left.
 
 **Never ship an API key in client-side code.** Anything in `index.html` is public the
 moment it's hosted — that constraint has not changed.
