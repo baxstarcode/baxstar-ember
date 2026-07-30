@@ -107,15 +107,15 @@ biggest open opportunity.
 See `docs/KNOWN-ISSUES.md`. Short version:
 
 1. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
-   platform currently supplies. Hosted, chat works and the phone/email/calendar panels
-   don't. **This is the largest remaining gap.**
+   platform currently supplies. Hosted, the phone/email/calendar panels show demo data.
+   **This is the largest remaining gap.**
 2. **Voice is part-merged** — the rig's Baxstar config is now generated from the app so it
    can't drift, but the speech engine is still its own codebase and the live mic path has
    never been tested.
-3. `ALLOWED_ORIGINS` is `http://localhost:8787` — change it before hosting at a real domain.
 
-Recently closed: proxy deployed and verified · glass tanks brought into the warm palette ·
-`index.html` no longer needs unpkg or in-browser Babel.
+Recently closed: proxy deployed and verified · hosted at `baxstar-ember.pages.dev` behind
+Cloudflare Access · glass tanks brought into the warm palette · `index.html` no longer needs
+unpkg or in-browser Babel · unauthorized connectors no longer take chat down with them.
 
 ---
 

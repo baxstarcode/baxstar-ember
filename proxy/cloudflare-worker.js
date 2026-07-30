@@ -66,18 +66,25 @@ function json(body, status, headers) {
   });
 }
 
-/** Attach connector OAuth tokens from secrets. Ember's front end never sees these. */
+/**
+ * Attach connector OAuth tokens from secrets. Ember's front end never sees these.
+ *
+ * Servers we hold no token for are dropped rather than passed through. The API
+ * rejects the entire request if any listed server fails to authenticate, so
+ * forwarding an unauthorized connector takes plain chat down with it — and the
+ * app sends its full connector list on every message.
+ */
 function injectMcpTokens(servers, env) {
-  if (!Array.isArray(servers)) return servers;
+  if (!Array.isArray(servers)) return [];
   const tokens = {
     quo: env.MCP_TOKEN_QUO,
     gmail: env.MCP_TOKEN_GMAIL,
     calendar: env.MCP_TOKEN_CALENDAR,
     gdrive: env.MCP_TOKEN_GDRIVE,
   };
-  return servers.map((s) => {
+  return servers.flatMap((s) => {
     const t = s && s.name ? tokens[s.name] : null;
-    return t ? { ...s, authorization_token: t } : s;
+    return t ? [{ ...s, authorization_token: t }] : [];
   });
 }
 
@@ -128,7 +135,9 @@ export default {
     }
     body.max_tokens = Math.min(Number(body.max_tokens) || 1000, MAX_TOKENS_CAP);
     if (body.mcp_servers) {
-      body.mcp_servers = injectMcpTokens(body.mcp_servers, env);
+      const authorized = injectMcpTokens(body.mcp_servers, env);
+      if (authorized.length) body.mcp_servers = authorized;
+      else delete body.mcp_servers;
     }
 
     // Build headers ourselves — nothing from the client is forwarded.
