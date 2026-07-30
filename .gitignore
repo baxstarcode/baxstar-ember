@@ -19,3 +19,6 @@ secrets.json
 
 # Generated local preview — run ./start-ember.sh (or scripts/sync-standalone.py)
 _preview.html
+
+# Claude Code local session settings
+.claude/

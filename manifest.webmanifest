@@ -1,0 +1,27 @@
+{
+  "name": "Baxstar Ember",
+  "short_name": "Ember",
+  "description": "Brady Baxter's AI command center for Baxstar Fishing — captions, ops, and voice.",
+  "start_url": "?tool=captions&lean=1",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070604",
+  "theme_color": "#070604",
+  "icons": [
+    {
+      "src": "assets/ember/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Caption Studio",
+      "short_name": "Caption",
+      "description": "Jump straight to the lean caption tool",
+      "url": "?tool=captions&lean=1"
+    }
+  ]
+}

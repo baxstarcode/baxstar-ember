@@ -181,7 +181,31 @@ function extractJSON(text) {
   return JSON.parse(clean.slice(start, end + 1));
 }
 
-async function fileToResizedB64(file, MAX = 1568, quality = 0.85) {
+/* HEIC/HEIF → JPEG before anything else touches the file. iPhones hand out HEIC by
+   default and <img> can't decode it outside Safari, so a raw HEIC would fail the canvas
+   step below. When the heic2any decoder is present (bundled into the generated shells),
+   convert; when it isn't (offline, or the Claude artifact sandbox where external scripts
+   are blocked) fall through — Safari decodes HEIC natively, and everything else lands in
+   the caller's catch with a friendly message. */
+async function maybeConvertHeic(file) {
+  const name = file.name || "";
+  const isHeic = /image\/(heic|heif)/i.test(file.type) || (/\.(heic|heif)$/i.test(name) && !/^image\/(jpe?g|png|webp)/i.test(file.type));
+  if (!isHeic) return file;
+  if (typeof window !== "undefined" && typeof window.heic2any === "function") {
+    try {
+      const out = await window.heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+      const blob = Array.isArray(out) ? out[0] : out;
+      const jpgName = name.replace(/\.(heic|heif)$/i, "") + ".jpg" || "photo.jpg";
+      return new File([blob], jpgName, { type: "image/jpeg" });
+    } catch (e) {
+      /* decoder failed — let the native path try, then the caller's catch */
+    }
+  }
+  return file;
+}
+
+async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
+  file = await maybeConvertHeic(file);
   const url = URL.createObjectURL(file);
   const img = await new Promise((res, rej) => {
     const i = new Image();
@@ -210,6 +234,30 @@ function sanitizeCaption(t) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+/* ---------- LOCAL PERSISTENCE ----------
+   window.storage is the Claude-artifact key/value store and is the app's primary
+   persistence. It's absent everywhere else (local preview, the hosted deploy), where its
+   calls silently no-op. These helpers add a plain-localStorage layer for state that must
+   actually survive a reload OUTSIDE the artifact — the caption draft that has to outlive a
+   dropped lake connection, the outbox URL, and Mission Control's numbers. Every call is
+   wrapped so a disabled/full/again-absent store can never throw into a render. */
+function lsGet(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw == null ? fallback : JSON.parse(raw);
+  } catch (e) { return fallback; }
+}
+function lsSet(key, val) {
+  try { window.localStorage.setItem(key, JSON.stringify(val)); return true; }
+  catch (e) { return false; }
+}
+function lsDel(key) {
+  try { window.localStorage.removeItem(key); } catch (e) { /* ignore */ }
+}
+
+const OUTBOX_URL_KEY = "ember-outbox-url";
+const CAPTION_DRAFT_KEY = "ember-caption-draft";
 
 /* ---------- GOOGLE DRIVE ICON ---------- */
 
@@ -580,6 +628,18 @@ export default function BaxstarEmber() {
   const [copied, setCopied] = useState(false);
   const fileRef = useRef(null);
 
+  // ---- CAPTION: PUBLISH → DRIVE OUTBOX ----
+  // The outbox URL is the deployed Apps Script /exec endpoint (see apps-script/outbox/).
+  // It's a deployment URL, not a secret, so localStorage is the right home — it must
+  // persist outside the artifact where window.storage doesn't exist.
+  const [outboxUrl, setOutboxUrl] = useState("");
+  const [outboxOpen, setOutboxOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMsg, setPublishMsg] = useState("");
+  const [captionRestored, setCaptionRestored] = useState(false);
+  // Stripped mobile shell: dock + non-caption tools hidden. Set by ?lean=1 / #lean.
+  const [leanCaption, setLeanCaption] = useState(false);
+
   // ---- CLAUDE CHAT state ----
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatInput, setChatInput] = useState("");
@@ -670,6 +730,56 @@ export default function BaxstarEmber() {
       hydrated.current = true;
     })();
   }, []);
+
+  /* ---- MOBILE DEEP-LINK + OUTBOX URL + CAPTION DRAFT RECOVERY ----
+     Runs once, synchronously off localStorage, so a phone that opens
+     ember?tool=captions (or #caption) lands straight in the caption tool and — if the
+     lake connection dropped mid-caption last time — offers the unsent draft back. */
+  useEffect(() => {
+    // Deep-link: ?tool=captions / ?view=caption / #caption / #/caption ; ?lean=1 for the
+    // stripped mobile shell (dock + non-caption tools hidden).
+    try {
+      const qs = new URLSearchParams(window.location.search || "");
+      const hash = (window.location.hash || "").toLowerCase();
+      const wantsCaption =
+        /caption/i.test(qs.get("tool") || "") ||
+        /caption/i.test(qs.get("view") || "") ||
+        /(^|[#/])caption/.test(hash);
+      if (wantsCaption) { setView("studio"); setStudioTool("captions"); }
+      if (qs.get("lean") === "1" || /lean/.test(hash)) { setLeanCaption(true); setView("studio"); setStudioTool("captions"); }
+    } catch (e) { /* no location — artifact/SSR */ }
+
+    // Outbox endpoint (deployment URL, not a secret).
+    const savedUrl = lsGet(OUTBOX_URL_KEY, "");
+    if (typeof savedUrl === "string" && savedUrl) setOutboxUrl(savedUrl);
+
+    // Caption draft recovery — the survives-a-dropped-connection piece.
+    const draft = lsGet(CAPTION_DRAFT_KEY, null);
+    if (draft && (draft.caption || draft.photo)) {
+      if (draft.photo) setPhoto(draft.photo);
+      if (draft.caption) setCaption(draft.caption);
+      if (draft.fishId) setFishId(draft.fishId);
+      if (draft.sponsors) setSponsors(draft.sponsors);
+      if (draft.lake) setLake(draft.lake);
+      if (draft.postWindow) setPostWindow(draft.postWindow);
+      setCaptionRestored(true);
+    }
+  }, []);
+
+  /* Autosave the in-progress caption to localStorage so a dropped lake connection or an
+     accidental reload never loses it. Debounced via React's batching; the photo is only
+     kept when the encoded draft is small enough to fit the localStorage quota (a resized
+     JPEG usually is) — otherwise the text/metadata still survive and the photo is re-picked. */
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (!caption && !photo) { lsDel(CAPTION_DRAFT_KEY); return; }
+    const base = { caption, fishId, sponsors, lake, postWindow, ts: clock };
+    const withPhoto = { ...base, photo };
+    if (!lsSet(CAPTION_DRAFT_KEY, withPhoto)) {
+      // Too big (photo pushed it past quota) — persist without the image.
+      lsSet(CAPTION_DRAFT_KEY, base);
+    }
+  }, [caption, photo, fishId, sponsors, lake, postWindow]);
 
   // fire-and-forget persist that never throws, even if storage is absent
   const persist = (key, val) => {
@@ -1078,7 +1188,11 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
   /* ---------- STUDIO: CAPTION PIPELINE ---------- */
 
   async function handleFile(file) {
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file) return;
+    // iOS sometimes hands over a HEIC with an empty MIME type, so fall back to the
+    // extension when there's no usable type string.
+    const okType = file.type ? /^image\//i.test(file.type) : /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
+    if (!okType) return;
     setCapErr("");
     setCaption("");
     setFishId(null);
@@ -1087,7 +1201,10 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
       setPhoto(p);
       analyzePhoto(p.b64);
     } catch (e) {
-      setCapErr("Couldn't read that image — try a JPG or PNG.");
+      const wasHeic = /image\/(heic|heif)/i.test(file.type) || /\.(heic|heif)$/i.test(file.name || "");
+      setCapErr(wasHeic
+        ? "Couldn't decode that HEIC on this device — in iPhone Settings ▸ Camera ▸ Formats pick \"Most Compatible\", or share it as a JPG."
+        : "Couldn't read that image — try a JPG or PNG.");
     }
   }
 
@@ -1179,6 +1296,75 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
   function toggleSponsor(key) {
     setSponsors((s) => ({ ...s, [key]: { ...s[key], on: !s[key].on } }));
+  }
+
+  function saveOutboxUrl(u) {
+    const v = (u || "").trim();
+    setOutboxUrl(v);
+    if (v) lsSet(OUTBOX_URL_KEY, v); else lsDel(OUTBOX_URL_KEY);
+  }
+
+  function discardDraft() {
+    lsDel(CAPTION_DRAFT_KEY);
+    setCaptionRestored(false);
+    setPhoto(null); setCaption(""); setFishId(null);
+    setSponsors({ vexus: { on: false, detected: false }, summit: { on: false, detected: false }, jk: { on: false } });
+  }
+
+  /* Publish the finished JPEG + caption to Brady's private Drive outbox (an Apps Script
+     web app — see apps-script/outbox/Code.gs). This does NOT post to Instagram/Facebook;
+     it drops a ready-to-post pair into Drive for review. The endpoint is set once in the
+     outbox settings. Apps Script web apps choke on CORS preflight, so we send a
+     "simple" text/plain request and, if the browser still blocks reading the response,
+     fall back to an opaque no-cors write (the file still lands; we just can't read a
+     confirmation). */
+  async function publishToOutbox() {
+    if (!photo || !caption || publishing) return;
+    const url = (outboxUrl || "").trim();
+    if (!url) { setOutboxOpen(true); setPublishMsg("Add your outbox URL first (gear icon)."); return; }
+    setPublishing(true);
+    setPublishMsg("");
+    const finalCaption = sanitizeCaption(caption) + "\n\n" + LOCKED_TAG;
+    const handles = Object.entries(sponsors).filter(([, v]) => v.on).map(([k]) => SPONSORS[k].handle);
+    const payload = {
+      source: "ember-caption-studio",
+      caption: finalCaption,
+      lockedTag: LOCKED_TAG,
+      imageBase64: photo.b64,
+      mimeType: "image/jpeg",
+      species: fishId?.species || "",
+      lake,
+      postWindow,
+      sponsors: handles,
+      clientTime: new Date().toISOString(),
+    };
+    const body = JSON.stringify(payload);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body,
+      });
+      let ok = res.ok;
+      try { const j = await res.json(); ok = ok && (j.ok !== false); } catch (e) { /* opaque/non-JSON */ }
+      if (ok) {
+        setPublishMsg("✓ Sent to the Drive outbox — review and post from there.");
+        lsDel(CAPTION_DRAFT_KEY);
+      } else {
+        setPublishMsg("Outbox responded with an error — check the Apps Script deployment.");
+      }
+    } catch (e) {
+      // CORS or network — retry as a fire-and-forget opaque write so the file still lands.
+      try {
+        await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body });
+        setPublishMsg("Sent (couldn't read a confirmation — verify it landed in Drive).");
+        lsDel(CAPTION_DRAFT_KEY);
+      } catch (e2) {
+        setPublishMsg("Couldn't reach the outbox. Check the URL and that the web app is deployed.");
+      }
+    } finally {
+      setPublishing(false);
+    }
   }
 
   /* ---------- STUDIO: CLAUDE CHAT ---------- */
@@ -2432,7 +2618,9 @@ Look at the photo and write the caption. Output caption text only — no preambl
         {view === "studio" && (
         <div className="studio-stack flex-1">
 
-          {/* TOOLS — two rows, tap a tile, its panel opens below */}
+          {/* TOOLS — two rows, tap a tile, its panel opens below.
+              Hidden in the lean mobile caption shell (?lean=1), which pins to captions. */}
+          {!leanCaption && (
           <div className="studio-tools-panel panel reveal px-5 py-4" style={{ animationDelay: "0.08s" }}>
             <span className="notch hot" />
             <div className="fieldlabel mb-3">Tools</div>
@@ -2449,6 +2637,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               ))}
             </div>
           </div>
+          )}
 
           {/* TOOL BAY */}
           <div className="flex min-h-0 flex-1 flex-col">
@@ -2460,7 +2649,15 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 count={analyzing ? "SCANNING" : fishId ? `${(fishId.confidence || "").toUpperCase()} ID` : "AWAITING PHOTO"}
                 countColor={analyzing ? "var(--ember-orange)" : fishId ? "#54e08a" : "var(--ink-faint)"} delay="0.1s" grow>
 
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+                <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+
+                {captionRestored && (
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px]"
+                    style={{ borderColor: "rgba(255,191,94,.45)", background: "rgba(255,191,94,.07)", color: "var(--ember-amber)" }}>
+                    <span><EmberIcon name="spark" size={11} style={{ verticalAlign: "-1px", marginRight: "6px" }} />Recovered your last unfinished caption.</span>
+                    <button className="chip ghost" onClick={discardDraft}>Start fresh</button>
+                  </div>
+                )}
 
                 {!photo ? (
                   <div className="upzone mt-1" onClick={() => fileRef.current?.click()}
@@ -2591,6 +2788,40 @@ Look at the photo and write the caption. Output caption text only — no preambl
                         {genBusy ? <span className="spinner" /> : "Regenerate"}
                       </button>
                     </div>
+
+                    {/* Publish → private Drive outbox (review-then-post; never auto-posts to social) */}
+                    <div className="mt-3 flex items-center gap-3">
+                      <button className="big flex-1 justify-center" disabled={publishing || !photo} onClick={publishToOutbox}
+                        style={{ borderColor: "var(--brass)", color: "var(--candle)" }}>
+                        {publishing ? <span className="spinner" /> : <EmberIcon name="drive" size={14} />}
+                        {publishing ? "SENDING…" : "Publish to Drive Outbox"}
+                      </button>
+                      <button className="chip ghost" title="Outbox settings" onClick={() => setOutboxOpen((o) => !o)}>
+                        <EmberIcon name="dials" size={13} style={{ verticalAlign: "-2px" }} />
+                      </button>
+                    </div>
+
+                    {outboxOpen && (
+                      <div className="mt-2 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "#120c0c" }}>
+                        <div className="fieldlabel">Drive Outbox URL (Apps Script /exec)</div>
+                        <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
+                          placeholder="https://script.google.com/macros/s/…/exec"
+                          className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
+                          style={{ background: "#0c0808", color: "var(--ink)" }} />
+                        <div className="mt-1.5 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+                          Deploy <code>apps-script/outbox/Code.gs</code> as a Web App, paste its <code>/exec</code> URL here.
+                          Saved on this device. Publishing drops the JPEG + caption into a private Drive folder for review —
+                          it does <b>not</b> post to Instagram or Facebook.
+                        </div>
+                      </div>
+                    )}
+
+                    {publishMsg && (
+                      <div className="mt-2 text-[11px] font-semibold"
+                        style={{ color: /couldn|error|reach|add your/i.test(publishMsg) ? "#ff8074" : "#54e08a" }}>
+                        {publishMsg}
+                      </div>
+                    )}
                   </>
                 )}
               </Panel>
@@ -2937,6 +3168,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
         )}
 
         {/* ================= DOCK ================= */}
+        {/* Hidden in the lean mobile caption shell (?lean=1) — that route is single-purpose. */}
+        {!leanCaption && (
         <div ref={dockRef} className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
           <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" className="console-dock-bg" />
           <div className="console-dock-grid">
@@ -2957,6 +3190,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           ))}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

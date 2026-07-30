@@ -121,12 +121,15 @@ const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#070604"/>
 <title>Baxstar Ember</title>
 <!-- GENERATED FILE — do not edit by hand.
      Source: src/baxstar-ember.jsx · Rebuild: npm run build
      Self-contained: React and the compiled app are inlined, so this file loads with
      no CDN. The only network Ember needs is its API proxy. -->
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="assets/ember/icon.svg"/>
 <style id="ember-tailwind-compiled">${tailwindCss}</style>
 <style>html,body,#root{margin:0;height:100%;background:#000;}</style>
 <script>
@@ -145,6 +148,16 @@ window.EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
 </head>
 <body>
 <div id="root"></div>
+<script>
+/* PWA: cache the shell so repeat opens are instant on weak lake signal.
+   Feature-detected — a no-op where service workers are unavailable. Same-origin only;
+   no CDN. Ship sw.js + manifest.webmanifest + assets/ember/icon.svg alongside index.html. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+</script>
 <script>${inlineSafe(compiled)}</script>
 </body>
 </html>
