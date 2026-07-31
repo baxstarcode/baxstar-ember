@@ -289,7 +289,10 @@ function buildBridgeHtml() {
     + 'function post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\n'
     + 'function setSt(s){document.getElementById("st").textContent=s;}\n'
     + 'function canHear(){return active&&!sayBusy&&!extBusy;}\n'
-    + 'function regain(){if(canHear()){try{rec&&rec.start();}catch(e){}setSt("LISTENING");}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\n'
+    // start() throws if recognition is already running (harmless) or if the mic
+    // is genuinely unavailable (not harmless). Swallowing both and claiming
+    // LISTENING regardless meant a dead mic looked identical to a live one.
+    + 'function regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("LISTENING");}catch(e){setSt(/already/i.test(String(e&&e.message))?"LISTENING":"MIC UNAVAILABLE - TAP START");}}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\n'
     + 'function startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\n'
     + 'rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\n'
     + 'rec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\n'
@@ -307,14 +310,27 @@ function buildBridgeHtml() {
     + '}).catch(function(){setSt("MIC PERMISSION DENIED");});\n'
     + 'function pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
     + 'if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\n'
-    + 'function say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;\n'
-    + 'function go(){synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
+    // sayGen retires a scheduled utterance: stopSay used to cancel the engine
+    // but not the pending 700ms go(), so she would start reading an answer that
+    // had already been stopped. It also makes go() one-shot — the timer and
+    // onvoiceschanged could both fire, and the second go()'s cancel() ran the
+    // first one's fin(), reopening the mic mid-sentence.
+    + 'var sayGen=0;\n'
+    + 'function say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
+    + 'function go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
     + 'var u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
-    + 'u.onstart=function(){post({t:"speaking",on:true});setSt("SPEAKING");};\n'
-    + 'function fin(){sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'u.onend=fin;u.onerror=fin;synth.speak(u);}\n'
+    + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
+    + 'u.onstart=function(){started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\n'
+    + 'u.onend=fin;u.onerror=fin;\n'
+    // Chrome silently swallows an utterance queued in the same tick as cancel().
+    // The main window already defers for this reason; the bridge did not, and a
+    // swallowed utterance fires no event at all, so sayBusy stuck true and
+    // canHear() could never be satisfied again — mic dead, UI still LISTENING.
+    + 'var started=false;setTimeout(function(){if(gen!==sayGen)return;try{synth.speak(u);}catch(e){fin();return;}\n'
+    + 'setTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
+    + 'function killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
+    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
     + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
     + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
     + 'if(m.t==="close"){window.close();}});\n'
@@ -624,6 +640,7 @@ export default function BaxstarEmber() {
   const pendingRef = useRef(null);      // what he said while she was still answering
   const speechEpochRef = useRef(0);     // only the newest utterance may reopen the mic
   const speechEndRef = useRef(null);    // resolves when she actually stops talking
+  const speechEndResolveRef = useRef(null); // the ONE resolver for the above
   const bridgeEndRef = useRef(null);    // ditto, for speech the bridge produced
   const lastSpokenRef = useRef("");     // normalised, to recognise her own voice coming back
   const [voiceDiag, setVoiceDiag] = useState("");
@@ -966,6 +983,24 @@ export default function BaxstarEmber() {
     return said.includes(heard) || heard.includes(said.slice(0, 60));
   }
 
+  // One owner for the "she stopped talking" signal. Each speech path used to
+  // create its own promise and resolve it from its own event handlers, which
+  // meant every path that ended some other way — pause(), a closed popup, an
+  // engine that simply never fires anything — left speak() awaiting a promise
+  // nobody could resolve. sendCommand()'s finally never ran, busyRef stayed
+  // true, and every later command was queued forever behind an answer that had
+  // already finished. Reload was the only way out. Now: one resolver, released
+  // from anywhere, idempotent, and never awaited without a timeout.
+  function armSpeechEnd() {
+    releaseSpeechEnd();
+    speechEndRef.current = new Promise((r) => { speechEndResolveRef.current = r; });
+  }
+  function releaseSpeechEnd() {
+    const r = speechEndResolveRef.current;
+    speechEndResolveRef.current = null;
+    if (r) r();
+  }
+
   function postBridge(t) {
     const w = popupRef.current;
     if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t }, "*");
@@ -986,8 +1021,7 @@ export default function BaxstarEmber() {
       const epoch = beginSpeech();
       synth.cancel();
       synth.resume();
-      let endResolve;
-      speechEndRef.current = new Promise((r) => { endResolve = r; });
+      armSpeechEnd();
       const u = new SpeechSynthesisUtterance(short);
       u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
@@ -1002,9 +1036,18 @@ export default function BaxstarEmber() {
         // a superseded one must not mark the live one as finished.
         if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
         endSpeech(epoch);
-        endResolve();
+        releaseSpeechEnd();
       };
-      u.onstart = () => { ok = true; voiceRef.current = v; speakingRef.current = true; setSpeaking(true); kick = setInterval(() => synth.resume(), 4000); res(true); };
+      // Epoch-guarded like finish() is: a superseded utterance that starts late
+      // must not flip speakingRef on, because its own finish() is barred from
+      // flipping it back off — that combination latches the self-hearing guard
+      // shut and silently drops every spoken command from then on.
+      u.onstart = () => {
+        ok = true; voiceRef.current = v;
+        if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
+        kick = setInterval(() => synth.resume(), 4000);
+        res(true);
+      };
       u.onend = finish;
       u.onerror = () => { finish(); if (!ok) res(false); };
       // Chrome wedges if speak() lands in the same tick as cancel() — the queue
@@ -1039,13 +1082,21 @@ export default function BaxstarEmber() {
       const w = popupRef.current;
       if (!w || w.closed) return res(false);
       let settled = false;
-      let endResolve;
-      speechEndRef.current = new Promise((r) => { endResolve = r; });
-      bridgeEndRef.current = endResolve;
+      armSpeechEnd();
+      bridgeEndRef.current = releaseSpeechEnd;
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
       w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
       setTimeout(() => {
-        if (!settled) { settled = true; bridgeEndRef.current = null; endResolve(); res(false); }
+        if (settled) return;
+        settled = true;
+        // Giving up on the bridge is not the same as the bridge giving up. It
+        // may still be waiting on getVoices() and start talking a second later,
+        // over the top of whichever path we fall back to. Tell it to drop the
+        // utterance before we hand the answer to someone else.
+        bridgeEndRef.current = null;
+        postBridge("stopSay");
+        releaseSpeechEnd();
+        res(false);
       }, 1500);
     });
   }
@@ -1058,8 +1109,7 @@ export default function BaxstarEmber() {
         const prev = audioElRef.current;
         if (prev) { try { prev.pause(); } catch (e) {} }
         const epoch = beginSpeech();
-        let endResolve;
-        speechEndRef.current = new Promise((r) => { endResolve = r; });
+        armSpeechEnd();
         const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
         audioElRef.current = a;
         let ok = false;
@@ -1069,15 +1119,24 @@ export default function BaxstarEmber() {
           settled = true;
           if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
           endSpeech(epoch);
-          endResolve();
+          releaseSpeechEnd();
         };
-        a.onplaying = () => { ok = true; speakingRef.current = true; setSpeaking(true); res(true); };
+        a.onplaying = () => {
+          ok = true;
+          if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
+          res(true);
+        };
         a.onended = finish;
         a.onerror = () => { finish(); if (!ok) res(false); };
         // A play() rejection fires no error event — reopen the gate here or the
         // mic stays shut with nothing playing.
         a.play().catch(() => { finish(); if (!ok) res(false); });
-        setTimeout(() => { if (!ok) { finish(); res(false); } }, 2500);
+        // Abandoning a element that never started is not enough — it can still
+        // buffer and start playing after we have moved on, talking over the
+        // path that replaced it.
+        setTimeout(() => {
+          if (!ok) { try { a.pause(); } catch (e) {} if (audioElRef.current === a) audioElRef.current = null; finish(); res(false); }
+        }, 2500);
       } catch (e) { res(false); }
     });
   }
@@ -1096,6 +1155,7 @@ export default function BaxstarEmber() {
     if (!voiceOn || !text) return;
     const short = text.length > 380 ? text.slice(0, 380) + "… full answer on screen." : text;
     lastSpokenRef.current = normalizeHeard(short);
+    releaseSpeechEnd();
     speechEndRef.current = null;
     const p = ttsPathRef.current;
     let started = false;
@@ -1110,7 +1170,21 @@ export default function BaxstarEmber() {
       setError("No speech path worked — hit VOICE TEST under the core and read me the amber line.");
       return;
     }
-    if (speechEndRef.current) await speechEndRef.current;
+    // Never await this bare. Every permanent lockup in this feature has been
+    // some path forgetting to resolve; a caller that cannot hang turns the
+    // whole class of bug into "the mic reopens a bit early" instead of "the app
+    // is dead until reload". Ceiling is well past the longest real utterance —
+    // 380 chars at rate 1.03 is roughly 30s.
+    if (speechEndRef.current) {
+      const ceiling = Math.min(45000, 5000 + short.length * 90);
+      let bail;
+      await Promise.race([
+        speechEndRef.current,
+        new Promise((r) => { bail = setTimeout(r, ceiling); }),
+      ]);
+      clearTimeout(bail);
+      releaseSpeechEnd();
+    }
   }
 
   async function testVoice() {
@@ -1136,7 +1210,12 @@ export default function BaxstarEmber() {
     if (audioElRef.current) { try { audioElRef.current.pause(); } catch (e) {} audioElRef.current = null; }
     speakingRef.current = false;
     setSpeaking(false);
-    if (bridgeEndRef.current) { bridgeEndRef.current(); bridgeEndRef.current = null; }
+    bridgeEndRef.current = null;
+    // pause() fires neither ended nor error, and both watchdogs are guarded on
+    // "never started" — so on the stop path nothing else in the app will ever
+    // resolve this. Release it here or speak() waits forever and every command
+    // after this one is queued behind an answer that already stopped.
+    releaseSpeechEnd();
     postBridge("stopSay");
     postBridge("micResume");
   }
@@ -1324,14 +1403,27 @@ export default function BaxstarEmber() {
         // Only believe the bridge about speech the bridge is producing. Its own
         // say() finishing used to clear speakingRef while THIS window was mid
         // utterance, which unlocked the self-hearing guard at the worst moment.
-        if (ttsPathRef.current === "bridge" || m.on) {
+        // Symmetric on purpose. Honouring "on" unconditionally but "off" only
+        // while the proven path is still "bridge" meant a late bridge utterance
+        // — one we already timed out on and replaced — could switch speaking ON
+        // and then have its OFF discarded, latching the self-hearing guard shut
+        // so every spoken command after it was dropped in silence.
+        const oursToBelieve = ttsPathRef.current === "bridge" || !!bridgeEndRef.current;
+        if (oursToBelieve) {
           speakingRef.current = !!m.on;
           setSpeaking(!!m.on);
         }
         if (m.on) bridgeAckRef.current?.();
         if (!m.on && bridgeEndRef.current) { bridgeEndRef.current(); bridgeEndRef.current = null; }
       }
-      if (m.t === "closed") { setListening(false); speakingRef.current = false; setSpeaking(false); popupRef.current = null; }
+      if (m.t === "closed") {
+        setListening(false); speakingRef.current = false; setSpeaking(false); popupRef.current = null;
+        // The popup's own note invites closing it, and closing it mid-answer
+        // posts "closed" but never "speaking off" — so the speech we were
+        // waiting on ends with nothing to announce it.
+        bridgeEndRef.current = null;
+        releaseSpeechEnd();
+      }
       if (m.t === "transcript" && m.text) {
         // Two layers, because the gate closes a beat after speech starts and a
         // recognition result lands a beat after speech stops: drop anything heard

@@ -537,7 +537,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const OUTBOX_URL_KEY = "ember-outbox-url";
   const CAPTION_DRAFT_KEY = "ember-caption-draft";
   function buildBridgeHtml() {
-    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Stop Listening</button><div class="note">Keep this little window open \u2014 it feeds your voice to Ember. Close it to end voice input.</div><script>\nvar P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction canHear(){return active&&!sayBusy&&!extBusy;}\nfunction regain(){if(canHear()){try{rec&&rec.start();}catch(e){}setSt("LISTENING");}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){if(canHear()){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\nactive=true;post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";regain();}\nfunction stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\ndocument.getElementById("btn").onclick=function(){active?stopSR():startSR();};\nnavigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\nvar C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){setSt("MIC PERMISSION DENIED");});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;\nfunction go(){synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nu.onstart=function(){post({t:"speaking",on:true});setSt("SPEAKING");};\nfunction fin(){sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nu.onend=fin;u.onerror=fin;synth.speak(u);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nwindow.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nif(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\nif(m.t==="micResume"){extBusy=false;regain();}\nif(m.t==="close"){window.close();}});\nwindow.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n<\/script></body></html>';
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Stop Listening</button><div class="note">Keep this little window open \u2014 it feeds your voice to Ember. Close it to end voice input.</div><script>\nvar P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction canHear(){return active&&!sayBusy&&!extBusy;}\nfunction regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("LISTENING");}catch(e){setSt(/already/i.test(String(e&&e.message))?"LISTENING":"MIC UNAVAILABLE - TAP START");}}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){if(canHear()){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\nactive=true;post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";regain();}\nfunction stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\ndocument.getElementById("btn").onclick=function(){active?stopSR():startSR();};\nnavigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\nvar C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){setSt("MIC PERMISSION DENIED");});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nvar sayGen=0;\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\nfunction go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nvar done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nu.onstart=function(){started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\nu.onend=fin;u.onerror=fin;\nvar started=false;setTimeout(function(){if(gen!==sayGen)return;try{synth.speak(u);}catch(e){fin();return;}\nsetTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nfunction killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nwindow.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\nif(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\nif(m.t==="micResume"){extBusy=false;regain();}\nif(m.t==="close"){window.close();}});\nwindow.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n<\/script></body></html>';
   }
   const ICON_GLYPHS = {
     chat: /* @__PURE__ */ React.createElement("path", { d: "M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-7l-4.5 4v-4A3 3 0 0 1 4 13z" }),
@@ -687,6 +687,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const pendingRef = useRef(null);
     const speechEpochRef = useRef(0);
     const speechEndRef = useRef(null);
+    const speechEndResolveRef = useRef(null);
     const bridgeEndRef = useRef(null);
     const lastSpokenRef = useRef("");
     const [voiceDiag, setVoiceDiag] = useState("");
@@ -978,6 +979,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!said || heard.length < 9) return false;
       return said.includes(heard) || heard.includes(said.slice(0, 60));
     }
+    function armSpeechEnd() {
+      releaseSpeechEnd();
+      speechEndRef.current = new Promise((r) => {
+        speechEndResolveRef.current = r;
+      });
+    }
+    function releaseSpeechEnd() {
+      const r = speechEndResolveRef.current;
+      speechEndResolveRef.current = null;
+      if (r) r();
+    }
     function postBridge(t) {
       const w = popupRef.current;
       if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t }, "*");
@@ -997,10 +1009,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const epoch = beginSpeech();
         synth.cancel();
         synth.resume();
-        let endResolve;
-        speechEndRef.current = new Promise((r) => {
-          endResolve = r;
-        });
+        armSpeechEnd();
         const u = new SpeechSynthesisUtterance(short);
         u.voice = v;
         u.lang = v.lang;
@@ -1017,13 +1026,15 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             setSpeaking(false);
           }
           endSpeech(epoch);
-          endResolve();
+          releaseSpeechEnd();
         };
         u.onstart = () => {
           ok = true;
           voiceRef.current = v;
-          speakingRef.current = true;
-          setSpeaking(true);
+          if (epoch === speechEpochRef.current) {
+            speakingRef.current = true;
+            setSpeaking(true);
+          }
           kick = setInterval(() => synth.resume(), 4e3);
           res(true);
         };
@@ -1061,11 +1072,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const w = popupRef.current;
         if (!w || w.closed) return res(false);
         let settled = false;
-        let endResolve;
-        speechEndRef.current = new Promise((r) => {
-          endResolve = r;
-        });
-        bridgeEndRef.current = endResolve;
+        armSpeechEnd();
+        bridgeEndRef.current = releaseSpeechEnd;
         bridgeAckRef.current = () => {
           if (!settled) {
             settled = true;
@@ -1074,12 +1082,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         };
         w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
         setTimeout(() => {
-          if (!settled) {
-            settled = true;
-            bridgeEndRef.current = null;
-            endResolve();
-            res(false);
-          }
+          if (settled) return;
+          settled = true;
+          bridgeEndRef.current = null;
+          postBridge("stopSay");
+          releaseSpeechEnd();
+          res(false);
         }, 1500);
       });
     }
@@ -1094,10 +1102,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             }
           }
           const epoch = beginSpeech();
-          let endResolve;
-          speechEndRef.current = new Promise((r) => {
-            endResolve = r;
-          });
+          armSpeechEnd();
           const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
           audioElRef.current = a;
           let ok = false;
@@ -1110,12 +1115,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
               setSpeaking(false);
             }
             endSpeech(epoch);
-            endResolve();
+            releaseSpeechEnd();
           };
           a.onplaying = () => {
             ok = true;
-            speakingRef.current = true;
-            setSpeaking(true);
+            if (epoch === speechEpochRef.current) {
+              speakingRef.current = true;
+              setSpeaking(true);
+            }
             res(true);
           };
           a.onended = finish;
@@ -1129,6 +1136,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           });
           setTimeout(() => {
             if (!ok) {
+              try {
+                a.pause();
+              } catch (e) {
+              }
+              if (audioElRef.current === a) audioElRef.current = null;
               finish();
               res(false);
             }
@@ -1157,6 +1169,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!voiceOn || !text) return;
       const short = text.length > 380 ? text.slice(0, 380) + "\u2026 full answer on screen." : text;
       lastSpokenRef.current = normalizeHeard(short);
+      releaseSpeechEnd();
       speechEndRef.current = null;
       const p = ttsPathRef.current;
       let started = false;
@@ -1171,7 +1184,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         setError("No speech path worked \u2014 hit VOICE TEST under the core and read me the amber line.");
         return;
       }
-      if (speechEndRef.current) await speechEndRef.current;
+      if (speechEndRef.current) {
+        const ceiling = Math.min(45e3, 5e3 + short.length * 90);
+        let bail;
+        await Promise.race([
+          speechEndRef.current,
+          new Promise((r) => {
+            bail = setTimeout(r, ceiling);
+          })
+        ]);
+        clearTimeout(bail);
+        releaseSpeechEnd();
+      }
     }
     async function testVoice() {
       setVoiceDiag("TESTING \u2014 chime first, then a voice\u2026");
@@ -1198,10 +1222,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
       speakingRef.current = false;
       setSpeaking(false);
-      if (bridgeEndRef.current) {
-        bridgeEndRef.current();
-        bridgeEndRef.current = null;
-      }
+      bridgeEndRef.current = null;
+      releaseSpeechEnd();
       postBridge("stopSay");
       postBridge("micResume");
     }
@@ -1381,7 +1403,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           if (m.on) setMicArm(false);
         }
         if (m.t === "speaking") {
-          if (ttsPathRef.current === "bridge" || m.on) {
+          const oursToBelieve = ttsPathRef.current === "bridge" || !!bridgeEndRef.current;
+          if (oursToBelieve) {
             speakingRef.current = !!m.on;
             setSpeaking(!!m.on);
           }
@@ -1396,6 +1419,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           speakingRef.current = false;
           setSpeaking(false);
           popupRef.current = null;
+          bridgeEndRef.current = null;
+          releaseSpeechEnd();
         }
         if (m.t === "transcript" && m.text) {
           if (!speakingRef.current && !isEcho(m.text)) sendRef.current(m.text);
