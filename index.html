@@ -690,6 +690,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const speechEndResolveRef = useRef(null);
     const bridgeEndRef = useRef(null);
     const lastSpokenRef = useRef("");
+    const lastSpokenAtRef = useRef(0);
+    const voiceOnRef = useRef(true);
     const [voiceDiag, setVoiceDiag] = useState("");
     const [queued, setQueued] = useState("");
     const [photo, setPhoto] = useState(null);
@@ -719,6 +721,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
     const [chatEffort, setChatEffort] = useState("standard");
     const chatEndRef = useRef(null);
+    useEffect(() => {
+      voiceOnRef.current = voiceOn;
+    }, [voiceOn]);
     useEffect(() => {
       var _a2;
       (_a2 = chatEndRef.current) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth" });
@@ -973,10 +978,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function normalizeHeard(s) {
       return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
     }
+    const ECHO_WINDOW_MS = 2500;
     function isEcho(text) {
-      const heard = normalizeHeard(text);
       const said = lastSpokenRef.current;
-      if (!said || heard.length < 9) return false;
+      if (!said) return false;
+      const age = performance.now() - (lastSpokenAtRef.current || 0);
+      if (age > ECHO_WINDOW_MS && !speakingRef.current) return false;
+      const heard = normalizeHeard(text);
+      if (heard.length < 9) return false;
       return said.includes(heard) || heard.includes(said.slice(0, 60));
     }
     function armSpeechEnd() {
@@ -1166,9 +1175,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       return false;
     }
     async function speak(text) {
-      if (!voiceOn || !text) return;
+      if (!voiceOnRef.current || !text) return;
       const short = text.length > 380 ? text.slice(0, 380) + "\u2026 full answer on screen." : text;
       lastSpokenRef.current = normalizeHeard(short);
+      lastSpokenAtRef.current = performance.now();
       releaseSpeechEnd();
       speechEndRef.current = null;
       const p = ttsPathRef.current;
@@ -1196,6 +1206,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         clearTimeout(bail);
         releaseSpeechEnd();
       }
+      lastSpokenAtRef.current = performance.now();
     }
     async function testVoice() {
       setVoiceDiag("TESTING \u2014 chime first, then a voice\u2026");

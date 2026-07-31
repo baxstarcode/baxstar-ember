@@ -643,6 +643,8 @@ export default function BaxstarEmber() {
   const speechEndResolveRef = useRef(null); // the ONE resolver for the above
   const bridgeEndRef = useRef(null);    // ditto, for speech the bridge produced
   const lastSpokenRef = useRef("");     // normalised, to recognise her own voice coming back
+  const lastSpokenAtRef = useRef(0);    // ...and when, so the match expires
+  const voiceOnRef = useRef(true);      // read inside async speech, where state is stale
   const [voiceDiag, setVoiceDiag] = useState("");
   const [queued, setQueued] = useState("");
 
@@ -682,6 +684,7 @@ export default function BaxstarEmber() {
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState("standard");
   const chatEndRef = useRef(null);
+  useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMsgs, chatBusy]);
 
   // ---- GOOGLE DRIVE state ----
@@ -976,10 +979,20 @@ export default function BaxstarEmber() {
   function normalizeHeard(s) {
     return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   }
+  // Echo suppression has to expire. lastSpokenRef was never cleared, so a phrase
+  // that appeared anywhere in an answer stayed un-sayable for the life of the
+  // page — and repeating her own words back is a normal way to talk to her
+  // ("call the marina" right after she says she will call the marina). Speakers
+  // only feed the mic while she is actually talking, so a short window after
+  // speech ends is all this needs to cover.
+  const ECHO_WINDOW_MS = 2500;
   function isEcho(text) {
-    const heard = normalizeHeard(text);
     const said = lastSpokenRef.current;
-    if (!said || heard.length < 9) return false;
+    if (!said) return false;
+    const age = performance.now() - (lastSpokenAtRef.current || 0);
+    if (age > ECHO_WINDOW_MS && !speakingRef.current) return false;
+    const heard = normalizeHeard(text);
+    if (heard.length < 9) return false;
     return said.includes(heard) || heard.includes(said.slice(0, 60));
   }
 
@@ -1152,9 +1165,12 @@ export default function BaxstarEmber() {
   // on that: a queued command must not cut the current answer off mid-sentence,
   // and two overlapping utterances would interleave their gate messages.
   async function speak(text) {
-    if (!voiceOn || !text) return;
+    // voiceOn off the ref, not the closure: speak() is awaited from sendCommand
+    // long after render, so muting while she was thinking still spoke the answer.
+    if (!voiceOnRef.current || !text) return;
     const short = text.length > 380 ? text.slice(0, 380) + "… full answer on screen." : text;
     lastSpokenRef.current = normalizeHeard(short);
+    lastSpokenAtRef.current = performance.now();
     releaseSpeechEnd();
     speechEndRef.current = null;
     const p = ttsPathRef.current;
@@ -1185,6 +1201,9 @@ export default function BaxstarEmber() {
       clearTimeout(bail);
       releaseSpeechEnd();
     }
+    // Restamp on the way out: the echo window should run from when she stopped
+    // talking, not from when she started.
+    lastSpokenAtRef.current = performance.now();
   }
 
   async function testVoice() {
