@@ -1054,7 +1054,6 @@ export default function BaxstarEmber() {
       synth.cancel();
       synth.resume();
       const token = armSpeechEnd();
-      if (slot) slot.token = token;
       const u = new SpeechSynthesisUtterance(short);
       u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
@@ -1071,6 +1070,10 @@ export default function BaxstarEmber() {
         endSpeech(epoch);
         releaseSpeechEnd(token);
       };
+      // The ceiling in speak() must be able to run this. Releasing the promise
+      // alone left speakingRef true and micResume unposted, so a stalled path
+      // meant the mic never reopened -- a lockup made by the anti-lockup valve.
+      if (slot) { slot.token = token; slot.finish = finish; }
       // Epoch-guarded like finish() is: a superseded utterance that starts late
       // must not flip speakingRef on, because its own finish() is barred from
       // flipping it back off — that combination latches the self-hearing guard
@@ -1087,8 +1090,16 @@ export default function BaxstarEmber() {
       // hasn't flushed and the new utterance silently never starts. Give it a
       // beat, and clear any leftover speaking state before trying again.
       setTimeout(() => {
+        // STOP retires the epoch, but cancel() can only flush what is already
+        // queued — it cannot retire a speak() we have not called yet. Without
+        // this check she reads the whole answer after he stopped her, with the
+        // mic live the entire time. The bridge already guards this with sayGen.
+        if (epoch !== speechEpochRef.current) { finish(); res(false); return; }
         if (synth.speaking || synth.pending) synth.cancel();
-        setTimeout(() => synth.speak(u), 60);
+        setTimeout(() => {
+          if (epoch !== speechEpochRef.current) { finish(); res(false); return; }
+          synth.speak(u);
+        }, 60);
       }, 120);
       // Enhanced and Premium voices load from disk on first use. 1.1s was
       // cancelling them mid-load and reporting it as a dead path.
@@ -1116,8 +1127,16 @@ export default function BaxstarEmber() {
       if (!w || w.closed) return res(false);
       let settled = false;
       const token = armSpeechEnd();
-      if (slot) slot.token = token;
       bridgeEndRef.current = () => releaseSpeechEnd(token);
+      if (slot) {
+        slot.token = token;
+        slot.finish = () => {
+          speakingRef.current = false; setSpeaking(false);
+          bridgeEndRef.current = null;
+          postBridge("stopSay"); postBridge("micResume");
+          releaseSpeechEnd(token);
+        };
+      }
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
       w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
       setTimeout(() => {
@@ -1144,7 +1163,6 @@ export default function BaxstarEmber() {
         if (prev) { try { prev.pause(); } catch (e) {} }
         const epoch = beginSpeech();
         const token = armSpeechEnd();
-        if (slot) slot.token = token;
         const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
         audioElRef.current = a;
         let ok = false;
@@ -1156,6 +1174,7 @@ export default function BaxstarEmber() {
           endSpeech(epoch);
           releaseSpeechEnd(token);
         };
+        if (slot) { slot.token = token; slot.finish = finish; }
         a.onplaying = () => {
           ok = true;
           if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
@@ -1199,7 +1218,7 @@ export default function BaxstarEmber() {
     // The path writes the token it armed in here. Re-reading the shared ref at
     // the end would sample whatever utterance armed LAST, so a short prompt's
     // ceiling could end a long answer that started after it.
-    const slot = { token: undefined };
+    const slot = { token: undefined, finish: null };
     let started = false;
     if (p === "local") started = await sayLocal(short, slot);
     else if (p === "bridge") started = await sayViaBridge(short, slot);
@@ -1225,12 +1244,17 @@ export default function BaxstarEmber() {
       // reopens the mic while she is still talking, which is the whole bug.
       const ceiling = Math.min(60000, 8000 + short.length * 140);
       let bail;
+      let timedOut = false;
       await Promise.race([
         speechEndRef.current,
-        new Promise((r) => { bail = setTimeout(r, ceiling); }),
+        new Promise((r) => { bail = setTimeout(() => { timedOut = true; r(); }, ceiling); }),
       ]);
       clearTimeout(bail);
-      if (slot.token !== undefined) releaseSpeechEnd(slot.token);
+      // If the ceiling won, the path never signalled an end -- a stalled audio
+      // element fires neither ended nor error. Run its finisher so the gate
+      // reopens; releasing the promise alone leaves the mic shut for good.
+      if (timedOut && slot.finish) slot.finish();
+      else if (slot.token !== undefined) releaseSpeechEnd(slot.token);
     }
     // Restamp on the way out: the echo window should run from when she stopped
     // talking, not from when she started.
@@ -1239,6 +1263,11 @@ export default function BaxstarEmber() {
 
   async function testVoice() {
     setVoiceDiag("TESTING — chime first, then a voice…");
+    // testVoice is the one speak path not serialized by busyRef, and arming a
+    // new utterance force-releases whatever is live. Without stopping her
+    // first, the test voice talks over an answer still coming from the bridge
+    // or the mp3 element -- two engines, no gate.
+    stopSpeaking();
     try { chime(); } catch (e) {}
     ttsPathRef.current = null;
     const ok = await speakCascade("Ember online. Brady, can you hear me?");

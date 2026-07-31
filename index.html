@@ -1024,7 +1024,6 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         synth.cancel();
         synth.resume();
         const token = armSpeechEnd();
-        if (slot) slot.token = token;
         const u = new SpeechSynthesisUtterance(short);
         u.voice = v;
         u.lang = v.lang;
@@ -1043,6 +1042,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           endSpeech(epoch);
           releaseSpeechEnd(token);
         };
+        if (slot) {
+          slot.token = token;
+          slot.finish = finish;
+        }
         u.onstart = () => {
           ok = true;
           voiceRef.current = v;
@@ -1059,8 +1062,20 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           if (!ok) res(false);
         };
         setTimeout(() => {
+          if (epoch !== speechEpochRef.current) {
+            finish();
+            res(false);
+            return;
+          }
           if (synth.speaking || synth.pending) synth.cancel();
-          setTimeout(() => synth.speak(u), 60);
+          setTimeout(() => {
+            if (epoch !== speechEpochRef.current) {
+              finish();
+              res(false);
+              return;
+            }
+            synth.speak(u);
+          }, 60);
         }, 120);
         setTimeout(() => {
           if (!ok) {
@@ -1088,8 +1103,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (!w || w.closed) return res(false);
         let settled = false;
         const token = armSpeechEnd();
-        if (slot) slot.token = token;
         bridgeEndRef.current = () => releaseSpeechEnd(token);
+        if (slot) {
+          slot.token = token;
+          slot.finish = () => {
+            speakingRef.current = false;
+            setSpeaking(false);
+            bridgeEndRef.current = null;
+            postBridge("stopSay");
+            postBridge("micResume");
+            releaseSpeechEnd(token);
+          };
+        }
         bridgeAckRef.current = () => {
           if (!settled) {
             settled = true;
@@ -1119,7 +1144,6 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           }
           const epoch = beginSpeech();
           const token = armSpeechEnd();
-          if (slot) slot.token = token;
           const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
           audioElRef.current = a;
           let ok = false;
@@ -1134,6 +1158,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             endSpeech(epoch);
             releaseSpeechEnd(token);
           };
+          if (slot) {
+            slot.token = token;
+            slot.finish = finish;
+          }
           a.onplaying = () => {
             ok = true;
             if (epoch === speechEpochRef.current) {
@@ -1190,7 +1218,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       releaseSpeechEnd();
       speechEndRef.current = null;
       const p = ttsPathRef.current;
-      const slot = { token: void 0 };
+      const slot = { token: void 0, finish: null };
       let started = false;
       if (p === "local") started = await sayLocal(short, slot);
       else if (p === "bridge") started = await sayViaBridge(short, slot);
@@ -1206,19 +1234,25 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (speechEndRef.current) {
         const ceiling = Math.min(6e4, 8e3 + short.length * 140);
         let bail;
+        let timedOut = false;
         await Promise.race([
           speechEndRef.current,
           new Promise((r) => {
-            bail = setTimeout(r, ceiling);
+            bail = setTimeout(() => {
+              timedOut = true;
+              r();
+            }, ceiling);
           })
         ]);
         clearTimeout(bail);
-        if (slot.token !== void 0) releaseSpeechEnd(slot.token);
+        if (timedOut && slot.finish) slot.finish();
+        else if (slot.token !== void 0) releaseSpeechEnd(slot.token);
       }
       lastSpokenAtRef.current = performance.now();
     }
     async function testVoice() {
       setVoiceDiag("TESTING \u2014 chime first, then a voice\u2026");
+      stopSpeaking();
       try {
         chime();
       } catch (e) {
