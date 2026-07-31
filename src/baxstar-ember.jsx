@@ -279,13 +279,13 @@ function buildBridgeHtml() {
     + '<button id="btn">Stop Listening</button>'
     + '<div class="note">Keep this little window open — it feeds your voice to Ember. Close it to end voice input.</div>'
     + '<scr' + 'ipt>\n'
-    + 'var P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;\n'
+    + 'var P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\n'
     + 'function post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\n'
     + 'function setSt(s){document.getElementById("st").textContent=s;}\n'
     + 'function startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\n'
     + 'rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\n'
     + 'rec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\n'
-    + 'rec.onend=function(){if(active&&!sayBusy){try{rec.start();}catch(e){}}};\n'
+    + 'rec.onend=function(){if(active&&!sayBusy&&!extBusy){try{rec.start();}catch(e){}}};\n'
     + 'rec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\n'
     + 'try{rec.start();active=true;setSt("LISTENING");post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";}catch(e){setSt("TAP START");}}\n'
     + 'function stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\n'
@@ -306,7 +306,10 @@ function buildBridgeHtml() {
     + 'function fin(){sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}setSt("LISTENING");}else{setSt("PAUSED");}}\n'
     + 'u.onend=fin;u.onerror=fin;synth.speak(u);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}}}if(m.t==="close"){window.close();}});\n'
+    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false});if(active&&!extBusy){try{rec.start();}catch(e){}}}\n'
+    + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}if(active){setSt("MUTED - EMBER SPEAKING");}}\n'
+    + 'if(m.t==="micResume"){extBusy=false;if(active&&!sayBusy){try{rec.start();}catch(e){}setSt("LISTENING");}}\n'
+    + 'if(m.t==="close"){window.close();}});\n'
     + 'window.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n'
     + '</scr' + 'ipt></body></html>';
 }
@@ -609,6 +612,8 @@ export default function BaxstarEmber() {
   const ttsPathRef = useRef(null);      // "local" | "bridge" | "mp3" once proven
   const audioElRef = useRef(null);      // mp3 fallback element
   const bridgeAckRef = useRef(null);    // resolves when bridge confirms speaking
+  const busyRef = useRef(false);        // a command is in flight — state lags, this doesn't
+  const pendingRef = useRef(null);      // what he said while she was still answering
   const [voiceDiag, setVoiceDiag] = useState("");
 
   // ---- CAPTION STUDIO state ----
@@ -926,24 +931,34 @@ export default function BaxstarEmber() {
       .sort((a, b) => scoreVoice(b) - scoreVoice(a));
   }
 
+  // The bridge holds the microphone in a separate window. Continuous recognition
+  // competes with the speech engine and, worse, hears Ember's own reply and sends
+  // it straight back as a new command. The bridge already closes the mic around
+  // speech it produces itself; this extends that to speech from this window.
+  function micGate(open) {
+    const w = popupRef.current;
+    if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: open ? "micResume" : "micPause" }, "*");
+  }
+
   function tryVoice(v, short) {
     return new Promise((res) => {
       const synth = window.speechSynthesis;
       synth.cancel();
       synth.resume();
+      micGate(false);
       const u = new SpeechSynthesisUtterance(short);
       u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
       let ok = false;
       let kick;
       u.onstart = () => { ok = true; voiceRef.current = v; speakingRef.current = true; setSpeaking(true); kick = setInterval(() => synth.resume(), 4000); res(true); };
-      const done = () => { clearInterval(kick); speakingRef.current = false; setSpeaking(false); };
+      const done = () => { clearInterval(kick); speakingRef.current = false; setSpeaking(false); micGate(true); };
       u.onend = done;
       u.onerror = () => { done(); if (!ok) res(false); };
       synth.speak(u);
       // Enhanced and Premium voices load from disk on first use. 1.1s was
       // cancelling them mid-load and reporting it as a dead path.
-      setTimeout(() => { if (!ok) { synth.cancel(); res(false); } }, 2800);
+      setTimeout(() => { if (!ok) { synth.cancel(); micGate(true); res(false); } }, 2800);
     });
   }
 
@@ -979,13 +994,14 @@ export default function BaxstarEmber() {
         const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
         audioElRef.current = a;
         let ok = false;
+        micGate(false);
         a.onplaying = () => { ok = true; speakingRef.current = true; setSpeaking(true); res(true); };
-        const done = () => { speakingRef.current = false; setSpeaking(false); };
+        const done = () => { speakingRef.current = false; setSpeaking(false); micGate(true); };
         a.onended = done;
         a.onerror = () => { done(); if (!ok) res(false); };
         a.play().catch(() => { if (!ok) res(false); });
-        setTimeout(() => { if (!ok) res(false); }, 2500);
-      } catch (e) { res(false); }
+        setTimeout(() => { if (!ok) { micGate(true); res(false); } }, 2500);
+      } catch (e) { micGate(true); res(false); }
     });
   }
 
@@ -1148,7 +1164,12 @@ export default function BaxstarEmber() {
 
   async function sendCommand(text) {
     const q = (text ?? command).trim();
-    if (!q || thinking) return;
+    if (!q) return;
+    // A spoken command that lands while she's answering used to be silently
+    // dropped — the guard read the `thinking` state and returned. Hold the
+    // latest one instead and run it when the current answer finishes.
+    if (busyRef.current) { pendingRef.current = q; return; }
+    busyRef.current = true;
     setThinking(true);
     setError("");
     setResponse("");
@@ -1171,6 +1192,10 @@ export default function BaxstarEmber() {
       setError("Command failed — check connection and try again.");
     } finally {
       setThinking(false);
+      busyRef.current = false;
+      const next = pendingRef.current;
+      pendingRef.current = null;
+      if (next) sendRef.current(next);
     }
   }
 
@@ -1186,7 +1211,9 @@ export default function BaxstarEmber() {
       if (m.t === "speaking") { speakingRef.current = !!m.on; setSpeaking(!!m.on); if (m.on) bridgeAckRef.current?.(); }
       if (m.t === "closed") { setListening(false); speakingRef.current = false; setSpeaking(false); popupRef.current = null; }
       if (m.t === "transcript" && m.text) {
-        sendRef.current(m.text);
+        // The mic is gated off while Ember speaks, but the gate takes a beat to
+        // close — anything transcribed in that window is her own voice. Drop it.
+        if (!speakingRef.current) sendRef.current(m.text);
       }
     };
     window.addEventListener("message", onMsg);

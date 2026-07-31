@@ -535,7 +535,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const OUTBOX_URL_KEY = "ember-outbox-url";
   const CAPTION_DRAFT_KEY = "ember-caption-draft";
   function buildBridgeHtml() {
-    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Stop Listening</button><div class="note">Keep this little window open \u2014 it feeds your voice to Ember. Close it to end voice input.</div><script>\nvar P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){if(active&&!sayBusy){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\ntry{rec.start();active=true;setSt("LISTENING");post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";}catch(e){setSt("TAP START");}}\nfunction stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\ndocument.getElementById("btn").onclick=function(){active?stopSR():startSR();};\nnavigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\nvar C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){setSt("MIC PERMISSION DENIED");});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;\nfunction go(){synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nu.onstart=function(){post({t:"speaking",on:true});setSt("SPEAKING");};\nfunction fin(){sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}setSt("LISTENING");}else{setSt("PAUSED");}}\nu.onend=fin;u.onerror=fin;synth.speak(u);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nwindow.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}}}if(m.t==="close"){window.close();}});\nwindow.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n<\/script></body></html>';
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Stop Listening</button><div class="note">Keep this little window open \u2014 it feeds your voice to Ember. Close it to end voice input.</div><script>\nvar P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){if(active&&!sayBusy&&!extBusy){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\ntry{rec.start();active=true;setSt("LISTENING");post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";}catch(e){setSt("TAP START");}}\nfunction stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\ndocument.getElementById("btn").onclick=function(){active?stopSR():startSR();};\nnavigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\nvar C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){setSt("MIC PERMISSION DENIED");});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;\nfunction go(){synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nu.onstart=function(){post({t:"speaking",on:true});setSt("SPEAKING");};\nfunction fin(){sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}setSt("LISTENING");}else{setSt("PAUSED");}}\nu.onend=fin;u.onerror=fin;synth.speak(u);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nwindow.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false});if(active&&!extBusy){try{rec.start();}catch(e){}}}\nif(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}if(active){setSt("MUTED - EMBER SPEAKING");}}\nif(m.t==="micResume"){extBusy=false;if(active&&!sayBusy){try{rec.start();}catch(e){}setSt("LISTENING");}}\nif(m.t==="close"){window.close();}});\nwindow.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n<\/script></body></html>';
   }
   const ICON_GLYPHS = {
     chat: /* @__PURE__ */ React.createElement("path", { d: "M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-7l-4.5 4v-4A3 3 0 0 1 4 13z" }),
@@ -681,6 +681,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const ttsPathRef = useRef(null);
     const audioElRef = useRef(null);
     const bridgeAckRef = useRef(null);
+    const busyRef = useRef(false);
+    const pendingRef = useRef(null);
     const [voiceDiag, setVoiceDiag] = useState("");
     const [photo, setPhoto] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
@@ -960,11 +962,16 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!synth) return [];
       return synth.getVoices().filter((v) => v.localService && v.lang && v.lang.startsWith("en")).sort((a, b) => scoreVoice(b) - scoreVoice(a));
     }
+    function micGate(open) {
+      const w = popupRef.current;
+      if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: open ? "micResume" : "micPause" }, "*");
+    }
     function tryVoice(v, short) {
       return new Promise((res) => {
         const synth = window.speechSynthesis;
         synth.cancel();
         synth.resume();
+        micGate(false);
         const u = new SpeechSynthesisUtterance(short);
         u.voice = v;
         u.lang = v.lang;
@@ -983,6 +990,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           clearInterval(kick);
           speakingRef.current = false;
           setSpeaking(false);
+          micGate(true);
         };
         u.onend = done;
         u.onerror = () => {
@@ -993,6 +1001,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         setTimeout(() => {
           if (!ok) {
             synth.cancel();
+            micGate(true);
             res(false);
           }
         }, 2800);
@@ -1035,6 +1044,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
           audioElRef.current = a;
           let ok = false;
+          micGate(false);
           a.onplaying = () => {
             ok = true;
             speakingRef.current = true;
@@ -1044,6 +1054,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           const done = () => {
             speakingRef.current = false;
             setSpeaking(false);
+            micGate(true);
           };
           a.onended = done;
           a.onerror = () => {
@@ -1054,9 +1065,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             if (!ok) res(false);
           });
           setTimeout(() => {
-            if (!ok) res(false);
+            if (!ok) {
+              micGate(true);
+              res(false);
+            }
           }, 2500);
         } catch (e) {
+          micGate(true);
           res(false);
         }
       });
@@ -1239,7 +1254,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }, []);
     async function sendCommand(text) {
       const q = (text != null ? text : command).trim();
-      if (!q || thinking) return;
+      if (!q) return;
+      if (busyRef.current) {
+        pendingRef.current = q;
+        return;
+      }
+      busyRef.current = true;
       setThinking(true);
       setError("");
       setResponse("");
@@ -1262,6 +1282,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         setError("Command failed \u2014 check connection and try again.");
       } finally {
         setThinking(false);
+        busyRef.current = false;
+        const next = pendingRef.current;
+        pendingRef.current = null;
+        if (next) sendRef.current(next);
       }
     }
     sendRef.current = sendCommand;
@@ -1287,7 +1311,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           popupRef.current = null;
         }
         if (m.t === "transcript" && m.text) {
-          sendRef.current(m.text);
+          if (!speakingRef.current) sendRef.current(m.text);
         }
       };
       window.addEventListener("message", onMsg);
