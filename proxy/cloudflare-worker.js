@@ -17,13 +17,50 @@
  *
  * Optional MCP secrets — see docs/DEPLOY.md §MCP. Without these, chat works but the
  * Quo / Gmail / Calendar / Drive connectors will not.
- *   MCP_TOKEN_QUO, MCP_TOKEN_GMAIL, MCP_TOKEN_CALENDAR, MCP_TOKEN_GDRIVE
+ *
+ * Two ways to hold connector credentials, checked in this order:
+ *   1. MCP_REFRESH_GMAIL / _CALENDAR / _GDRIVE / _QUO — refresh tokens. The Worker
+ *      trades one for a short-lived access token per request (cached in-isolate).
+ *      Get these by visiting /oauth/start?p=google and /oauth/start?p=quo.
+ *   2. MCP_TOKEN_QUO / _GMAIL / _CALENDAR / _GDRIVE — static access tokens. Simpler,
+ *      but they expire and chat silently drops to demo data when they do.
+ *
+ * OAuth handshake vars:
+ *   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET   from Google Cloud console
+ *   OAUTH_REDIRECT_URI                       this Worker's /oauth/callback URL
+ *   OAUTH_STATE_SECRET                       any long random string; signs the
+ *                                            PKCE cookie so a stray callback can't
+ *                                            be replayed against us
+ *   QUO_CLIENT_ID (optional)                 set after the first Quo run to skip
+ *                                            re-registering the client
  */
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 // Required for the mcp_servers field. Without it the API rejects MCP requests.
 const MCP_BETA = "mcp-client-2025-04-04";
+
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const QUO_DISCOVERY_URL = "https://mcp.quo.com/.well-known/oauth-authorization-server";
+const QUO_REGISTER_URL = "https://mcp.quo.com/register";
+
+// One Google consent covers all three Google connectors; Brady pastes the same
+// refresh token into all three secrets.
+const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/drive",
+].join(" ");
+
+const QUO_SCOPES = "read:conversations write:contacts read:account";
+
+const CONNECTOR_PROVIDER = {
+  gmail: "google",
+  calendar: "google",
+  gdrive: "google",
+  quo: "quo",
+};
 
 // Ember's selectable models — keep in sync with MODELS in src/baxstar-ember.jsx.
 // Anything else is refused so a leaked endpoint can't be repurposed into a
@@ -66,6 +103,312 @@ function json(body, status, headers) {
   });
 }
 
+// --- OAuth handshake ------------------------------------------------------
+//
+// The PKCE verifier has to survive the round trip to Google and back. Workers
+// give us no storage we can count on — isolates are recycled at will and there
+// is no KV binding here — so the verifier rides in a signed, HttpOnly cookie
+// instead. Stateless, and a callback that arrives without the matching cookie
+// is refused rather than trusted.
+
+function b64url(bytes) {
+  let s = "";
+  const arr = new Uint8Array(bytes);
+  for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function randomB64url(n) {
+  const b = new Uint8Array(n);
+  crypto.getRandomValues(b);
+  return b64url(b);
+}
+
+async function sha256b64url(text) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return b64url(d);
+}
+
+async function hmac(secret, text) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text));
+  return b64url(sig);
+}
+
+// Constant-time-ish compare so a signature can't be guessed byte by byte.
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function sealState(payload, secret) {
+  const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  return body + "." + (await hmac(secret, body));
+}
+
+async function openState(sealed, secret) {
+  if (typeof sealed !== "string" || !sealed.includes(".")) return null;
+  const idx = sealed.lastIndexOf(".");
+  const body = sealed.slice(0, idx);
+  const sig = sealed.slice(idx + 1);
+  if (!safeEqual(sig, await hmac(secret, body))) return null;
+  try {
+    const pad = body.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(decodeURIComponent(escape(atob(pad))));
+  } catch {
+    return null;
+  }
+}
+
+function readCookie(request, name) {
+  const raw = request.headers.get("Cookie") || "";
+  for (const part of raw.split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === name) return v.join("=");
+  }
+  return null;
+}
+
+function htmlPage(title, bodyHtml, status) {
+  return new Response(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<title>${title}</title>` +
+      `<style>body{font:16px/1.55 system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1.25rem;` +
+      `background:#0b0f14;color:#e6edf3}code{background:#161b22;padding:.15rem .4rem;border-radius:4px;` +
+      `font-size:.95em;word-break:break-all}h1{font-size:1.35rem}li{margin:.5rem 0}a{color:#58a6ff}` +
+      `.tok{display:block;background:#161b22;padding:.75rem;border-radius:6px;margin:.75rem 0}</style>` +
+      bodyHtml,
+    { status, headers: { "Content-Type": "text/html; charset=utf-8" } }
+  );
+}
+
+// Quo is a public client with dynamic registration. Register once, then set
+// QUO_CLIENT_ID so later runs skip this.
+async function quoConfig(env, fetchImpl) {
+  const disc = await fetchImpl(QUO_DISCOVERY_URL, { headers: { Accept: "application/json" } });
+  if (!disc.ok) throw new Error("Quo discovery failed: " + disc.status);
+  const meta = await disc.json();
+  const authorize = meta.authorization_endpoint || "https://mcp.quo.com/authorize";
+  const token = meta.token_endpoint || "https://mcp.quo.com/token";
+  if (env.QUO_CLIENT_ID) return { authorize, token, clientId: env.QUO_CLIENT_ID, registered: false };
+
+  const reg = await fetchImpl(meta.registration_endpoint || QUO_REGISTER_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_name: "Ember",
+      redirect_uris: [env.OAUTH_REDIRECT_URI],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+      scope: QUO_SCOPES,
+    }),
+  });
+  if (!reg.ok) throw new Error("Quo registration failed: " + reg.status);
+  const client = await reg.json();
+  if (!client.client_id) throw new Error("Quo registration returned no client_id");
+  return { authorize, token, clientId: client.client_id, registered: true };
+}
+
+async function oauthStart(request, env, url, fetchImpl) {
+  const provider = url.searchParams.get("p");
+  if (provider !== "google" && provider !== "quo") {
+    return htmlPage("Ember OAuth", "<h1>Unknown provider</h1><p>Use <code>?p=google</code> or <code>?p=quo</code>.</p>", 400);
+  }
+  if (!env.OAUTH_STATE_SECRET || !env.OAUTH_REDIRECT_URI) {
+    return htmlPage("Ember OAuth", "<h1>Not configured</h1><p>Set <code>OAUTH_STATE_SECRET</code> and <code>OAUTH_REDIRECT_URI</code> first.</p>", 500);
+  }
+
+  const verifier = randomB64url(48);
+  const challenge = await sha256b64url(verifier);
+  const state = randomB64url(16);
+
+  let authorizeUrl, clientId, extra = {};
+  if (provider === "google") {
+    if (!env.GOOGLE_CLIENT_ID) {
+      return htmlPage("Ember OAuth", "<h1>Not configured</h1><p><code>GOOGLE_CLIENT_ID</code> is not set.</p>", 500);
+    }
+    authorizeUrl = GOOGLE_AUTH_URL;
+    clientId = env.GOOGLE_CLIENT_ID;
+    // Without both of these Google returns no refresh token on repeat consents,
+    // which is the only thing this whole flow exists to obtain.
+    extra = { access_type: "offline", prompt: "consent", scope: GOOGLE_SCOPES };
+  } else {
+    let cfg;
+    try {
+      cfg = await quoConfig(env, fetchImpl);
+    } catch (e) {
+      return htmlPage("Ember OAuth", `<h1>Quo setup failed</h1><p>${String(e.message || e)}</p>`, 502);
+    }
+    authorizeUrl = cfg.authorize;
+    clientId = cfg.clientId;
+    extra = { scope: QUO_SCOPES };
+  }
+
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: env.OAUTH_REDIRECT_URI,
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    ...extra,
+  });
+
+  const sealed = await sealState({ v: verifier, s: state, p: provider, c: clientId }, env.OAUTH_STATE_SECRET);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${authorizeUrl}?${params.toString()}`,
+      "Set-Cookie": `ember_oauth=${sealed}; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=900`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+async function oauthCallback(request, env, url, fetchImpl) {
+  const err = url.searchParams.get("error");
+  if (err) return htmlPage("Ember OAuth", `<h1>Denied</h1><p>The provider returned <code>${err}</code>.</p>`, 400);
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const sealed = readCookie(request, "ember_oauth");
+  if (!code || !sealed) {
+    return htmlPage("Ember OAuth", "<h1>Missing handshake</h1><p>Start again at <code>/oauth/start?p=google</code>.</p>", 400);
+  }
+  const saved = env.OAUTH_STATE_SECRET ? await openState(sealed, env.OAUTH_STATE_SECRET) : null;
+  if (!saved || !safeEqual(String(state || ""), saved.s)) {
+    return htmlPage("Ember OAuth", "<h1>State mismatch</h1><p>This callback does not match a handshake we started. Nothing was exchanged.</p>", 400);
+  }
+
+  const isGoogle = saved.p === "google";
+  let tokenUrl = GOOGLE_TOKEN_URL;
+  if (!isGoogle) {
+    try {
+      tokenUrl = (await quoConfig(env, fetchImpl)).token;
+    } catch (e) {
+      return htmlPage("Ember OAuth", `<h1>Quo setup failed</h1><p>${String(e.message || e)}</p>`, 502);
+    }
+  }
+
+  const form = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: env.OAUTH_REDIRECT_URI,
+    client_id: saved.c,
+    code_verifier: saved.v,
+  });
+  // Quo registers with auth method "none" — a public client sends no secret.
+  if (isGoogle && env.GOOGLE_CLIENT_SECRET) form.set("client_secret", env.GOOGLE_CLIENT_SECRET);
+
+  let res, data;
+  try {
+    res = await fetchImpl(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+    data = await res.json();
+  } catch (e) {
+    return htmlPage("Ember OAuth", "<h1>Token exchange failed</h1><p>The provider could not be reached.</p>", 502);
+  }
+  if (!res.ok || !data.refresh_token) {
+    const detail = data && (data.error_description || data.error) ? String(data.error_description || data.error) : "no refresh_token in response";
+    return htmlPage(
+      "Ember OAuth",
+      `<h1>No refresh token</h1><p>${detail}</p><p>For Google this usually means the account has consented before — revoke Ember at <a href="https://myaccount.google.com/permissions">Google permissions</a> and run it again.</p>`,
+      400
+    );
+  }
+
+  const names = isGoogle
+    ? ["MCP_REFRESH_GMAIL", "MCP_REFRESH_CALENDAR", "MCP_REFRESH_GDRIVE"]
+    : ["MCP_REFRESH_QUO"];
+  const clientNote =
+    !isGoogle && saved.c && !env.QUO_CLIENT_ID
+      ? `<li>Also add <code>QUO_CLIENT_ID</code> = <span class="tok">${saved.c}</span> so it does not register a new client each time.</li>`
+      : "";
+
+  // The Worker deliberately cannot write its own secrets — that would mean giving
+  // it an API token that can rewrite its own configuration. Brady pastes them.
+  return htmlPage(
+    "Ember OAuth — done",
+    `<h1>Authorized ${isGoogle ? "Google" : "Quo"}</h1>` +
+      `<p>Copy this refresh token into Cloudflare — Workers &rsaquo; your Worker &rsaquo; Settings &rsaquo; Variables, as an <strong>encrypted</strong> secret:</p>` +
+      `<span class="tok">${data.refresh_token}</span>` +
+      `<ul><li>Set ${names.map((n) => `<code>${n}</code>`).join(", ")} to that value.</li>${clientNote}` +
+      `<li>Then redeploy the Worker.</li></ul>` +
+      `<p>This page is the only time the token is shown. It is not stored anywhere — the Worker has no permission to write its own secrets, which is why this is a copy-paste step.</p>`,
+    200
+  );
+}
+
+// --- per-request access tokens --------------------------------------------
+//
+// Isolates are reused, so a short cache saves a refresh round trip on most
+// requests. Keyed per connector; entries expire early so a token is never
+// handed out in its last few seconds of life.
+const tokenCache = new Map();
+
+async function accessTokenFor(connector, env, fetchImpl, now) {
+  const refresh = env["MCP_REFRESH_" + connector.toUpperCase()];
+  if (!refresh) return null;
+
+  const hit = tokenCache.get(connector);
+  if (hit && hit.exp > now && hit.refresh === refresh) return hit.token;
+
+  const provider = CONNECTOR_PROVIDER[connector];
+  let tokenUrl = GOOGLE_TOKEN_URL;
+  let clientId = env.GOOGLE_CLIENT_ID;
+  if (provider !== "google") {
+    if (!env.QUO_CLIENT_ID) return null; // cannot refresh without the registered client
+    clientId = env.QUO_CLIENT_ID;
+    try {
+      tokenUrl = (await quoConfig(env, fetchImpl)).token;
+    } catch {
+      return null;
+    }
+  }
+
+  const form = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refresh,
+    client_id: clientId,
+  });
+  if (provider === "google" && env.GOOGLE_CLIENT_SECRET) {
+    form.set("client_secret", env.GOOGLE_CLIENT_SECRET);
+  }
+
+  try {
+    const res = await fetchImpl(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.access_token) return null;
+    const ttl = Math.max(30, Number(data.expires_in) || 3600);
+    tokenCache.set(connector, {
+      token: data.access_token,
+      // 60s early so a token can't expire mid-flight upstream.
+      exp: now + (ttl - 60) * 1000,
+      refresh,
+    });
+    return data.access_token;
+  } catch {
+    return null; // a connector we can't authorize is dropped, not forwarded
+  }
+}
+
 /**
  * Attach connector OAuth tokens from secrets. Ember's front end never sees these.
  *
@@ -74,22 +417,44 @@ function json(body, status, headers) {
  * forwarding an unauthorized connector takes plain chat down with it — and the
  * app sends its full connector list on every message.
  */
-function injectMcpTokens(servers, env) {
+async function injectMcpTokens(servers, env, fetchImpl, now) {
   if (!Array.isArray(servers)) return [];
-  const tokens = {
+  const staticTokens = {
     quo: env.MCP_TOKEN_QUO,
     gmail: env.MCP_TOKEN_GMAIL,
     calendar: env.MCP_TOKEN_CALENDAR,
     gdrive: env.MCP_TOKEN_GDRIVE,
   };
-  return servers.flatMap((s) => {
-    const t = s && s.name ? tokens[s.name] : null;
-    return t ? [{ ...s, authorization_token: t }] : [];
-  });
+  const out = [];
+  for (const s of servers) {
+    const name = s && s.name;
+    if (!name) continue;
+    // A refreshed token beats a static one: static tokens expire silently and
+    // take the connector down until Brady notices and pastes a new one.
+    const t = (await accessTokenFor(name, env, fetchImpl, now)) || staticTokens[name];
+    if (t) out.push({ ...s, authorization_token: t });
+  }
+  return out;
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx, deps = {}) {
+    // deps lets the tests drive this with a stubbed fetch/clock; production
+    // passes nothing and gets the real ones.
+    const fetchImpl = deps.fetch || fetch;
+    const now = deps.now ? deps.now() : Date.now();
+
+    // OAuth is a browser navigation Brady does by hand, so it is routed before
+    // the POST-only and Origin checks below — a top-level GET carries no Origin
+    // header and would be refused by them.
+    const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/oauth/start") {
+      return oauthStart(request, env, url, fetchImpl);
+    }
+    if (request.method === "GET" && url.pathname === "/oauth/callback") {
+      return oauthCallback(request, env, url, fetchImpl);
+    }
+
     const origin = request.headers.get("Origin");
     const { headers: cors, ok: originOk } = corsHeaders(origin, env);
 
@@ -135,7 +500,7 @@ export default {
     }
     body.max_tokens = Math.min(Number(body.max_tokens) || 1000, MAX_TOKENS_CAP);
     if (body.mcp_servers) {
-      const authorized = injectMcpTokens(body.mcp_servers, env);
+      const authorized = await injectMcpTokens(body.mcp_servers, env, fetchImpl, now);
       if (authorized.length) body.mcp_servers = authorized;
       else delete body.mcp_servers;
     }
@@ -148,15 +513,51 @@ export default {
     };
     if (body.mcp_servers) upstreamHeaders["anthropic-beta"] = MCP_BETA;
 
+    const call = (payload, headers) =>
+      fetchImpl(ANTHROPIC_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
     let upstream;
     try {
-      upstream = await fetch(ANTHROPIC_URL, {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: JSON.stringify(body),
-      });
+      upstream = await call(body, upstreamHeaders);
     } catch (e) {
       return json({ error: "Upstream request failed." }, 502, cors);
+    }
+
+    // A connector whose token is missing, expired, or simply the wrong kind of
+    // credential makes the API reject the WHOLE request — so one dead connector
+    // takes plain chat down with it. That is never the right trade: answer the
+    // question, let the connector panels fall back to demo data.
+    if (upstream.status >= 400 && body.mcp_servers) {
+      const raw = await upstream.clone().text();
+      if (/mcp server/i.test(raw) && /auth/i.test(raw)) {
+        const { mcp_servers, ...withoutConnectors } = body;
+        const retryHeaders = { ...upstreamHeaders };
+        delete retryHeaders["anthropic-beta"];
+        try {
+          const retry = await call(withoutConnectors, retryHeaders);
+          if (retry.ok) {
+            return new Response(retry.body, {
+              status: retry.status,
+              headers: {
+                ...cors,
+                "Content-Type": "application/json",
+                // So the app can say "connectors offline" instead of guessing.
+                "x-ember-connectors": "degraded",
+              },
+            });
+          }
+        } catch (e) {
+          // fall through and return the original error
+        }
+      }
+      return new Response(raw, {
+        status: upstream.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
     }
 
     // Pass the response through, but only headers we choose.
