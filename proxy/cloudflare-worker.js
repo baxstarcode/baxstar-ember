@@ -148,15 +148,51 @@ export default {
     };
     if (body.mcp_servers) upstreamHeaders["anthropic-beta"] = MCP_BETA;
 
+    const call = (payload, headers) =>
+      fetch(ANTHROPIC_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
     let upstream;
     try {
-      upstream = await fetch(ANTHROPIC_URL, {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: JSON.stringify(body),
-      });
+      upstream = await call(body, upstreamHeaders);
     } catch (e) {
       return json({ error: "Upstream request failed." }, 502, cors);
+    }
+
+    // A connector whose token is missing, expired, or simply the wrong kind of
+    // credential makes the API reject the WHOLE request — so one dead connector
+    // takes plain chat down with it. That is never the right trade: answer the
+    // question, let the connector panels fall back to demo data.
+    if (upstream.status >= 400 && body.mcp_servers) {
+      const raw = await upstream.clone().text();
+      if (/mcp server/i.test(raw) && /auth/i.test(raw)) {
+        const { mcp_servers, ...withoutConnectors } = body;
+        const retryHeaders = { ...upstreamHeaders };
+        delete retryHeaders["anthropic-beta"];
+        try {
+          const retry = await call(withoutConnectors, retryHeaders);
+          if (retry.ok) {
+            return new Response(retry.body, {
+              status: retry.status,
+              headers: {
+                ...cors,
+                "Content-Type": "application/json",
+                // So the app can say "connectors offline" instead of guessing.
+                "x-ember-connectors": "degraded",
+              },
+            });
+          }
+        } catch (e) {
+          // fall through and return the original error
+        }
+      }
+      return new Response(raw, {
+        status: upstream.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
     }
 
     // Pass the response through, but only headers we choose.
