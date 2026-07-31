@@ -310,6 +310,9 @@ function buildBridgeHtml() {
     + '}).catch(function(){setSt("MIC PERMISSION DENIED");});\n'
     + 'function pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
     + 'if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\n'
+    // A superseded utterance never posts 'speaking on' (a late start would otherwise
+    // latch the gate shut, since its end is suppressed) and never calls cancel() --
+    // cancel() is queue-wide, so it would silence the utterance that replaced it.
     // sayGen retires a scheduled utterance: stopSay used to cancel the engine
     // but not the pending 700ms go(), so she would start reading an answer that
     // had already been stopped. It also makes go() one-shot — the timer and
@@ -319,12 +322,12 @@ function buildBridgeHtml() {
     + 'function say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
     + 'function go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
     + 'var u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
-    + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;if(gen===sayGen)post({t:"speaking",on:false,src:"bridge"});regain();}\n'
+    + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
     // If the swallow-watchdog already gave up on this utterance, a late start is
     // the engine talking over whatever replaced it — and its onend would be
     // suppressed by done, so the main window would never hear "speaking off"
     // and would drop every spoken command from then on. Kill it instead.
-    + 'u.onstart=function(){if(done||gen!==sayGen){try{synth.cancel();}catch(e){}return;}started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\n'
+    + 'u.onstart=function(){if(done||gen!==sayGen)return;started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\n'
     + 'u.onend=fin;u.onerror=fin;\n'
     // Chrome silently swallows an utterance queued in the same tick as cancel().
     // The main window already defers for this reason; the bridge did not, and a
@@ -1044,13 +1047,14 @@ export default function BaxstarEmber() {
     postBridge("micResume");
   }
 
-  function tryVoice(v, short) {
+  function tryVoice(v, short, slot) {
     return new Promise((res) => {
       const synth = window.speechSynthesis;
       const epoch = beginSpeech();
       synth.cancel();
       synth.resume();
       const token = armSpeechEnd();
+      if (slot) slot.token = token;
       const u = new SpeechSynthesisUtterance(short);
       u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
@@ -1092,26 +1096,27 @@ export default function BaxstarEmber() {
     });
   }
 
-  function sayLocal(short) {
+  function sayLocal(short, slot) {
     return new Promise((res) => whenVoicesReady(async () => {
       if (!window.speechSynthesis) return res(false);
       // A voice that already spoke is worth more than any score.
       const known = voiceRef.current;
-      if (known && (await tryVoice(known, short))) return res(true);
+      if (known && (await tryVoice(known, short, slot))) return res(true);
       for (const v of rankedLocals().filter((v) => v !== known).slice(0, 3)) {
-        if (await tryVoice(v, short)) return res(true);
+        if (await tryVoice(v, short, slot)) return res(true);
       }
       res(false); // every candidate stayed silent — fall through to another path
     }));
   }
 
   // Path 2 — Mic Bridge popup does the speaking (top-level engine)
-  function sayViaBridge(short) {
+  function sayViaBridge(short, slot) {
     return new Promise((res) => {
       const w = popupRef.current;
       if (!w || w.closed) return res(false);
       let settled = false;
       const token = armSpeechEnd();
+      if (slot) slot.token = token;
       bridgeEndRef.current = () => releaseSpeechEnd(token);
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
       w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
@@ -1131,7 +1136,7 @@ export default function BaxstarEmber() {
   }
 
   // Path 3 — MP3 TTS through an <audio> element: no speech engine involved at all
-  function playMp3(short) {
+  function playMp3(short, slot) {
     return new Promise((res) => {
       try {
         // Never leave two answers playing over each other.
@@ -1139,6 +1144,7 @@ export default function BaxstarEmber() {
         if (prev) { try { prev.pause(); } catch (e) {} }
         const epoch = beginSpeech();
         const token = armSpeechEnd();
+        if (slot) slot.token = token;
         const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
         audioElRef.current = a;
         let ok = false;
@@ -1170,10 +1176,10 @@ export default function BaxstarEmber() {
     });
   }
 
-  async function speakCascade(short) {
-    if (await sayLocal(short)) { ttsPathRef.current = "local"; return true; }
-    if (await sayViaBridge(short)) { ttsPathRef.current = "bridge"; return true; }
-    if (await playMp3(short)) { ttsPathRef.current = "mp3"; return true; }
+  async function speakCascade(short, slot) {
+    if (await sayLocal(short, slot)) { ttsPathRef.current = "local"; return true; }
+    if (await sayViaBridge(short, slot)) { ttsPathRef.current = "bridge"; return true; }
+    if (await playMp3(short, slot)) { ttsPathRef.current = "mp3"; return true; }
     return false;
   }
 
@@ -1190,13 +1196,17 @@ export default function BaxstarEmber() {
     releaseSpeechEnd();
     speechEndRef.current = null;
     const p = ttsPathRef.current;
+    // The path writes the token it armed in here. Re-reading the shared ref at
+    // the end would sample whatever utterance armed LAST, so a short prompt's
+    // ceiling could end a long answer that started after it.
+    const slot = { token: undefined };
     let started = false;
-    if (p === "local") started = await sayLocal(short);
-    else if (p === "bridge") started = await sayViaBridge(short);
-    else if (p === "mp3") started = await playMp3(short);
+    if (p === "local") started = await sayLocal(short, slot);
+    else if (p === "bridge") started = await sayViaBridge(short, slot);
+    else if (p === "mp3") started = await playMp3(short, slot);
     if (!started) {
       ttsPathRef.current = null;
-      started = await speakCascade(short);
+      started = await speakCascade(short, slot);
     }
     if (!started) {
       setError("No speech path worked — hit VOICE TEST under the core and read me the amber line.");
@@ -1214,14 +1224,13 @@ export default function BaxstarEmber() {
       // the end signal almost always arrives first — while erring short
       // reopens the mic while she is still talking, which is the whole bug.
       const ceiling = Math.min(60000, 8000 + short.length * 140);
-      const myToken = speechEndResolveRef.current?.token;
       let bail;
       await Promise.race([
         speechEndRef.current,
         new Promise((r) => { bail = setTimeout(r, ceiling); }),
       ]);
       clearTimeout(bail);
-      releaseSpeechEnd(myToken);
+      if (slot.token !== undefined) releaseSpeechEnd(slot.token);
     }
     // Restamp on the way out: the echo window should run from when she stopped
     // talking, not from when she started.
