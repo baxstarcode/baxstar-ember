@@ -39,40 +39,48 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // cross-origin (API proxy, fonts) → network
 
-  const isNavigation = req.mode === "navigate";
+  // The app document (navigation) is NETWORK-FIRST: online you always get the freshest
+  // build, so a deploy is never a reload behind. Offline, we fall back to the last cached
+  // shell so the UI still opens (an in-progress caption is restored from localStorage).
+  if (req.mode === "navigate") {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(CACHE);
+        try {
+          const fresh = await fetch(req);
+          if (fresh && fresh.ok && fresh.type === "basic") cache.put(req, fresh.clone());
+          return fresh;
+        } catch (e) {
+          return (
+            (await cache.match(req)) ||
+            (await cache.match("index.html")) ||
+            (await cache.match("_preview.html")) ||
+            (await cache.match("./")) ||
+            Response.error()
+          );
+        }
+      })()
+    );
+    return;
+  }
 
+  // Everything else same-origin (assets: SVGs, webp, the manifest) is
+  // STALE-WHILE-REVALIDATE: instant from cache, refreshed in the background. These are
+  // content-stable, so serving a cached copy first is exactly what makes repeat opens
+  // instant on weak signal.
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
       const cached = await cache.match(req);
-
       const network = fetch(req)
         .then((res) => {
-          // Only cache complete, OK, basic responses.
           if (res && res.ok && res.type === "basic") cache.put(req, res.clone());
           return res;
         })
         .catch(() => null);
-
-      // Cache-first for instant paint; revalidate in the background.
-      if (cached) {
-        network; // fire-and-forget refresh
-        return cached;
-      }
-
+      if (cached) { network; return cached; }
       const fresh = await network;
-      if (fresh) return fresh;
-
-      // Offline with nothing cached for this request: for a navigation, serve any cached
-      // shell document so the UI still opens.
-      if (isNavigation) {
-        const shell =
-          (await cache.match("_preview.html")) ||
-          (await cache.match("index.html")) ||
-          (await cache.match("./"));
-        if (shell) return shell;
-      }
-      return Response.error();
+      return fresh || Response.error();
     })()
   );
 });
