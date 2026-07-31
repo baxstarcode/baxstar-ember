@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "test:worker": "node proxy/worker.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",
