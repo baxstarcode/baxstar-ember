@@ -31,7 +31,8 @@ const BRADY_CONTEXT = `You are EMBER, Brady Baxter's operations assistant for Ba
 Quo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.
 Style: BLUF — bottom line first. Concise. No hedging. Numerals without commas.
 Customer-facing drafts: premium-but-warm, sign "Brady @ Baxstar". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say "one group per day" — use "private trip(s)".
-Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.`;
+Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.
+HARD RULE — schedule and messages: if a tool is unavailable or returns nothing, say exactly that ("I can't see your calendar right now") and STOP. Never state that a trip, booking, or message does or doesn't exist unless a tool actually returned that data. A guessed "you're free tomorrow" can cost Brady a paid charter.`;
 
 // Appended to the system turn only while the voice toggle is on. Without this
 // she answers from self-knowledge — "I'm text-based" — because nothing told
@@ -626,6 +627,7 @@ export default function BaxstarEmber() {
 
   // core visualizer + voice engine
   const [coreMode, setCoreMode] = useState("enigma"); // "enigma" | "scope"
+  const speechUnlockedRef = useRef(false);
   const inlineRecRef = useRef(null);   // in-page recognition (phones)
   const inlineWantRef = useRef(false); // should it keep restarting?
   const [micArm, setMicArm] = useState(false); // popup blocked at load; first click opens it
@@ -889,7 +891,29 @@ export default function BaxstarEmber() {
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
       !window.open);
 
+  // iOS keeps speechSynthesis mute until a tap-context utterance unlocks it.
+  // Her replies arrive after a network wait -- outside any tap -- so without
+  // this, the engine swallows them silently, the cascade falls through to the
+  // mp3 robot voice, and that gets remembered as the "proven" path. Unlock on
+  // the first genuine gesture, then void the proven path so the cascade
+  // re-auditions the real local voices it never got to try.
+  function unlockSpeech() {
+    if (speechUnlockedRef.current) return;
+    speechUnlockedRef.current = true;
+    try {
+      const synth = window.speechSynthesis;
+      if (synth) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; u.rate = 2; synth.speak(u); }
+    } catch (e) {}
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      const ctx = new C(); ctx.resume?.(); setTimeout(() => ctx.close?.(), 300);
+    } catch (e) {}
+    if (ttsPathRef.current === "mp3") ttsPathRef.current = null; // proven against a mute engine — void it
+    voiceRef.current = null;
+  }
+
   function startInlineMic() {
+    unlockSpeech();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setError("This browser has no speech recognition. Safari or Chrome."); return false; }
     if (inlineRecRef.current) return true;
@@ -973,8 +997,11 @@ export default function BaxstarEmber() {
   useEffect(() => {
     if (inlineMic) {
       // iOS will not grant the mic without a real user gesture, so arm the
-      // first tap rather than failing silently at load.
+      // first tap rather than failing silently at load. Any tap at all also
+      // unlocks the speech engine, so typed commands get spoken replies too.
       setMicArm(true);
+      const un = () => { window.removeEventListener("pointerdown", un); unlockSpeech(); };
+      window.addEventListener("pointerdown", un);
       return;
     }
     const t = setTimeout(() => {
@@ -1033,6 +1060,7 @@ export default function BaxstarEmber() {
     if (v.lang === "en-US") s += 30;
     else if (v.lang && v.lang.startsWith("en")) s += 12;
     if (v.default) s += 5;
+    if (/compact/i.test(v.name)) s -= 40; // iOS ships these tinny defaults
     if (NOVELTY_VOICE.test(v.name)) s -= 100;
     return s;
   }
@@ -2832,21 +2860,32 @@ Look at the photo and write the caption. Output caption text only — no preambl
           )}
         </header>
 
-        {micArm && !listening && (
-          inlineMic ? (
-            // On a phone the mic needs a real tap, and it has to be a tap on
-            // something obviously tappable -- not "click anywhere".
+        {inlineMic && (
+          // Phone controls: big targets, always visible. Left = mic, right =
+          // spoken replies. Small header chips are unusable in a truck.
+          <div className="flex gap-2">
             <button onClick={toggleMic}
-              className="mic-rail font-mono-x w-full rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.25em]"
-              style={{ borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
-              <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />TAP TO TALK TO EMBER
+              className="mic-rail font-mono-x flex-1 rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
+              style={listening
+                ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" }
+                : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
+              <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />
+              {listening ? "LISTENING — TAP TO STOP" : "TAP TO TALK TO EMBER"}
             </button>
-          ) : (
-            <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
-              style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
-              <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
-            </div>
-          )
+            <button onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+              className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
+              style={voiceOn
+                ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+                : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }}>
+              {voiceOn ? "VOICE ON" : "MUTED"}
+            </button>
+          </div>
+        )}
+        {!inlineMic && micArm && !listening && (
+          <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
+            style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
+            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
+          </div>
         )}
 
         {error && (
