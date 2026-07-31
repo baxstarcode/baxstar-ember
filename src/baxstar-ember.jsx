@@ -319,8 +319,12 @@ function buildBridgeHtml() {
     + 'function say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
     + 'function go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
     + 'var u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
-    + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'u.onstart=function(){started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\n'
+    + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;if(gen===sayGen)post({t:"speaking",on:false,src:"bridge"});regain();}\n'
+    // If the swallow-watchdog already gave up on this utterance, a late start is
+    // the engine talking over whatever replaced it — and its onend would be
+    // suppressed by done, so the main window would never hear "speaking off"
+    // and would drop every spoken command from then on. Kill it instead.
+    + 'u.onstart=function(){if(done||gen!==sayGen){try{synth.cancel();}catch(e){}return;}started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\n'
     + 'u.onend=fin;u.onerror=fin;\n'
     // Chrome silently swallows an utterance queued in the same tick as cancel().
     // The main window already defers for this reason; the bridge did not, and a
@@ -641,6 +645,7 @@ export default function BaxstarEmber() {
   const speechEpochRef = useRef(0);     // only the newest utterance may reopen the mic
   const speechEndRef = useRef(null);    // resolves when she actually stops talking
   const speechEndResolveRef = useRef(null); // the ONE resolver for the above
+  const speechTokenRef = useRef(0);     // ...tagged, so only its owner may end it
   const bridgeEndRef = useRef(null);    // ditto, for speech the bridge produced
   const lastSpokenRef = useRef("");     // normalised, to recognise her own voice coming back
   const lastSpokenAtRef = useRef(0);    // ...and when, so the match expires
@@ -1004,14 +1009,25 @@ export default function BaxstarEmber() {
   // true, and every later command was queued forever behind an answer that had
   // already finished. Reload was the only way out. Now: one resolver, released
   // from anywhere, idempotent, and never awaited without a timeout.
+  // Release is ownership-checked, not "resolve whatever is current". A handler
+  // from an utterance we already abandoned still fires — late onend, a cancel()
+  // that flushes the old queue, a bridge reply that outlived its timeout — and
+  // an identity-blind release let that stale handler resolve the LIVE
+  // utterance's promise. speak() would return mid-answer, the queue would drain
+  // on top of her, and she would cut herself off mid-sentence. Callers pass the
+  // token they armed with; only a bare call (the STOP button) force-releases.
   function armSpeechEnd() {
     releaseSpeechEnd();
-    speechEndRef.current = new Promise((r) => { speechEndResolveRef.current = r; });
+    const token = ++speechTokenRef.current;
+    speechEndRef.current = new Promise((r) => { speechEndResolveRef.current = { token, r }; });
+    return token;
   }
-  function releaseSpeechEnd() {
-    const r = speechEndResolveRef.current;
+  function releaseSpeechEnd(token) {
+    const cur = speechEndResolveRef.current;
+    if (!cur) return;
+    if (token !== undefined && cur.token !== token) return; // not ours to end
     speechEndResolveRef.current = null;
-    if (r) r();
+    cur.r();
   }
 
   function postBridge(t) {
@@ -1034,7 +1050,7 @@ export default function BaxstarEmber() {
       const epoch = beginSpeech();
       synth.cancel();
       synth.resume();
-      armSpeechEnd();
+      const token = armSpeechEnd();
       const u = new SpeechSynthesisUtterance(short);
       u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
@@ -1049,7 +1065,7 @@ export default function BaxstarEmber() {
         // a superseded one must not mark the live one as finished.
         if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
         endSpeech(epoch);
-        releaseSpeechEnd();
+        releaseSpeechEnd(token);
       };
       // Epoch-guarded like finish() is: a superseded utterance that starts late
       // must not flip speakingRef on, because its own finish() is barred from
@@ -1095,8 +1111,8 @@ export default function BaxstarEmber() {
       const w = popupRef.current;
       if (!w || w.closed) return res(false);
       let settled = false;
-      armSpeechEnd();
-      bridgeEndRef.current = releaseSpeechEnd;
+      const token = armSpeechEnd();
+      bridgeEndRef.current = () => releaseSpeechEnd(token);
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
       w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
       setTimeout(() => {
@@ -1108,7 +1124,7 @@ export default function BaxstarEmber() {
         // utterance before we hand the answer to someone else.
         bridgeEndRef.current = null;
         postBridge("stopSay");
-        releaseSpeechEnd();
+        releaseSpeechEnd(token);
         res(false);
       }, 1500);
     });
@@ -1122,7 +1138,7 @@ export default function BaxstarEmber() {
         const prev = audioElRef.current;
         if (prev) { try { prev.pause(); } catch (e) {} }
         const epoch = beginSpeech();
-        armSpeechEnd();
+        const token = armSpeechEnd();
         const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
         audioElRef.current = a;
         let ok = false;
@@ -1132,7 +1148,7 @@ export default function BaxstarEmber() {
           settled = true;
           if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
           endSpeech(epoch);
-          releaseSpeechEnd();
+          releaseSpeechEnd(token);
         };
         a.onplaying = () => {
           ok = true;
@@ -1192,14 +1208,20 @@ export default function BaxstarEmber() {
     // is dead until reload". Ceiling is well past the longest real utterance —
     // 380 chars at rate 1.03 is roughly 30s.
     if (speechEndRef.current) {
-      const ceiling = Math.min(45000, 5000 + short.length * 90);
+      // Sized off spoken time, not source characters: the engine expands
+      // numbers, times and prices, so "$1,250 at 5:45" is a handful of
+      // characters and several seconds of speech. Erring long is nearly free —
+      // the end signal almost always arrives first — while erring short
+      // reopens the mic while she is still talking, which is the whole bug.
+      const ceiling = Math.min(60000, 8000 + short.length * 140);
+      const myToken = speechEndResolveRef.current?.token;
       let bail;
       await Promise.race([
         speechEndRef.current,
         new Promise((r) => { bail = setTimeout(r, ceiling); }),
       ]);
       clearTimeout(bail);
-      releaseSpeechEnd();
+      releaseSpeechEnd(myToken);
     }
     // Restamp on the way out: the echo window should run from when she stopped
     // talking, not from when she started.
@@ -1440,8 +1462,12 @@ export default function BaxstarEmber() {
         // The popup's own note invites closing it, and closing it mid-answer
         // posts "closed" but never "speaking off" — so the speech we were
         // waiting on ends with nothing to announce it.
+        // Only end speech the BRIDGE was producing. TTS is often local or mp3
+        // while the popup is merely listening; releasing unconditionally cut
+        // her off mid-sentence the moment he closed the mic window.
+        const endBridge = bridgeEndRef.current;
         bridgeEndRef.current = null;
-        releaseSpeechEnd();
+        if (endBridge) endBridge();
       }
       if (m.t === "transcript" && m.text) {
         // Two layers, because the gate closes a beat after speech starts and a
