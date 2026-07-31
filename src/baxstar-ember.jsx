@@ -288,12 +288,14 @@ function buildBridgeHtml() {
     + 'var P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\n'
     + 'function post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\n'
     + 'function setSt(s){document.getElementById("st").textContent=s;}\n'
+    + 'function canHear(){return active&&!sayBusy&&!extBusy;}\n'
+    + 'function regain(){if(canHear()){try{rec&&rec.start();}catch(e){}setSt("LISTENING");}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\n'
     + 'function startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\n'
     + 'rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\n'
     + 'rec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\n'
-    + 'rec.onend=function(){if(active&&!sayBusy&&!extBusy){try{rec.start();}catch(e){}}};\n'
+    + 'rec.onend=function(){if(canHear()){try{rec.start();}catch(e){}}};\n'
     + 'rec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\n'
-    + 'try{rec.start();active=true;setSt("LISTENING");post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";}catch(e){setSt("TAP START");}}\n'
+    + 'active=true;post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";regain();}\n'
     + 'function stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\n'
     + 'document.getElementById("btn").onclick=function(){active?stopSR():startSR();};\n'
     + 'navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\n'
@@ -309,12 +311,12 @@ function buildBridgeHtml() {
     + 'function go(){synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
     + 'var u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
     + 'u.onstart=function(){post({t:"speaking",on:true});setSt("SPEAKING");};\n'
-    + 'function fin(){sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}setSt("LISTENING");}else{setSt("PAUSED");}}\n'
+    + 'function fin(){sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
     + 'u.onend=fin;u.onerror=fin;synth.speak(u);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false});if(active&&!extBusy){try{rec.start();}catch(e){}}}\n'
-    + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}if(active){setSt("MUTED - EMBER SPEAKING");}}\n'
-    + 'if(m.t==="micResume"){extBusy=false;if(active&&!sayBusy){try{rec.start();}catch(e){}setSt("LISTENING");}}\n'
+    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
+    + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
+    + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
     + 'if(m.t==="close"){window.close();}});\n'
     + 'window.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n'
     + '</scr' + 'ipt></body></html>';
@@ -620,7 +622,12 @@ export default function BaxstarEmber() {
   const bridgeAckRef = useRef(null);    // resolves when bridge confirms speaking
   const busyRef = useRef(false);        // a command is in flight — state lags, this doesn't
   const pendingRef = useRef(null);      // what he said while she was still answering
+  const speechEpochRef = useRef(0);     // only the newest utterance may reopen the mic
+  const speechEndRef = useRef(null);    // resolves when she actually stops talking
+  const bridgeEndRef = useRef(null);    // ditto, for speech the bridge produced
+  const lastSpokenRef = useRef("");     // normalised, to recognise her own voice coming back
   const [voiceDiag, setVoiceDiag] = useState("");
+  const [queued, setQueued] = useState("");
 
   // ---- CAPTION STUDIO state ----
   const [photo, setPhoto] = useState(null);
@@ -941,26 +948,65 @@ export default function BaxstarEmber() {
   // competes with the speech engine and, worse, hears Ember's own reply and sends
   // it straight back as a new command. The bridge already closes the mic around
   // speech it produces itself; this extends that to speech from this window.
-  function micGate(open) {
+  //
+  // The gate is epoch-owned, not a boolean. Cancelling an utterance makes its
+  // onend/onerror fire as a LATER task — after its replacement has already asked
+  // for the mic to close. An unowned reopen from that stale handler would leave
+  // the mic live for the whole next utterance, which is exactly the self-hearing
+  // the gate exists to prevent.
+  // Recognition returns bare words — strip everything punctuation and case so a
+  // heard phrase can be compared against what she just said.
+  function normalizeHeard(s) {
+    return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  function isEcho(text) {
+    const heard = normalizeHeard(text);
+    const said = lastSpokenRef.current;
+    if (!said || heard.length < 9) return false;
+    return said.includes(heard) || heard.includes(said.slice(0, 60));
+  }
+
+  function postBridge(t) {
     const w = popupRef.current;
-    if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: open ? "micResume" : "micPause" }, "*");
+    if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t }, "*");
+  }
+  function beginSpeech() {
+    const epoch = ++speechEpochRef.current;
+    postBridge("micPause");
+    return epoch;
+  }
+  function endSpeech(epoch) {
+    if (epoch !== speechEpochRef.current) return; // superseded — not ours to reopen
+    postBridge("micResume");
   }
 
   function tryVoice(v, short) {
     return new Promise((res) => {
       const synth = window.speechSynthesis;
+      const epoch = beginSpeech();
       synth.cancel();
       synth.resume();
-      micGate(false);
+      let endResolve;
+      speechEndRef.current = new Promise((r) => { endResolve = r; });
       const u = new SpeechSynthesisUtterance(short);
       u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
       let ok = false;
       let kick;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearInterval(kick);
+        // Only clear the speaking flag if we are still the current utterance —
+        // a superseded one must not mark the live one as finished.
+        if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
+        endSpeech(epoch);
+        endResolve();
+      };
       u.onstart = () => { ok = true; voiceRef.current = v; speakingRef.current = true; setSpeaking(true); kick = setInterval(() => synth.resume(), 4000); res(true); };
-      const done = () => { clearInterval(kick); speakingRef.current = false; setSpeaking(false); micGate(true); };
-      u.onend = done;
-      u.onerror = () => { done(); if (!ok) res(false); };
+      u.onend = finish;
+      u.onerror = () => { finish(); if (!ok) res(false); };
       // Chrome wedges if speak() lands in the same tick as cancel() — the queue
       // hasn't flushed and the new utterance silently never starts. Give it a
       // beat, and clear any leftover speaking state before trying again.
@@ -970,7 +1016,7 @@ export default function BaxstarEmber() {
       }, 120);
       // Enhanced and Premium voices load from disk on first use. 1.1s was
       // cancelling them mid-load and reporting it as a dead path.
-      setTimeout(() => { if (!ok) { synth.cancel(); micGate(true); res(false); } }, 3000);
+      setTimeout(() => { if (!ok) { synth.cancel(); finish(); res(false); } }, 3000);
     });
   }
 
@@ -993,9 +1039,14 @@ export default function BaxstarEmber() {
       const w = popupRef.current;
       if (!w || w.closed) return res(false);
       let settled = false;
+      let endResolve;
+      speechEndRef.current = new Promise((r) => { endResolve = r; });
+      bridgeEndRef.current = endResolve;
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
       w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
-      setTimeout(() => { if (!settled) { settled = true; res(false); } }, 1500);
+      setTimeout(() => {
+        if (!settled) { settled = true; bridgeEndRef.current = null; endResolve(); res(false); }
+      }, 1500);
     });
   }
 
@@ -1003,17 +1054,31 @@ export default function BaxstarEmber() {
   function playMp3(short) {
     return new Promise((res) => {
       try {
+        // Never leave two answers playing over each other.
+        const prev = audioElRef.current;
+        if (prev) { try { prev.pause(); } catch (e) {} }
+        const epoch = beginSpeech();
+        let endResolve;
+        speechEndRef.current = new Promise((r) => { endResolve = r; });
         const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
         audioElRef.current = a;
         let ok = false;
-        micGate(false);
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
+          endSpeech(epoch);
+          endResolve();
+        };
         a.onplaying = () => { ok = true; speakingRef.current = true; setSpeaking(true); res(true); };
-        const done = () => { speakingRef.current = false; setSpeaking(false); micGate(true); };
-        a.onended = done;
-        a.onerror = () => { done(); if (!ok) res(false); };
-        a.play().catch(() => { if (!ok) res(false); });
-        setTimeout(() => { if (!ok) { micGate(true); res(false); } }, 2500);
-      } catch (e) { micGate(true); res(false); }
+        a.onended = finish;
+        a.onerror = () => { finish(); if (!ok) res(false); };
+        // A play() rejection fires no error event — reopen the gate here or the
+        // mic stays shut with nothing playing.
+        a.play().catch(() => { finish(); if (!ok) res(false); });
+        setTimeout(() => { if (!ok) { finish(); res(false); } }, 2500);
+      } catch (e) { res(false); }
     });
   }
 
@@ -1024,16 +1089,28 @@ export default function BaxstarEmber() {
     return false;
   }
 
+  // Resolves when she has stopped talking, not when she starts. Callers serialize
+  // on that: a queued command must not cut the current answer off mid-sentence,
+  // and two overlapping utterances would interleave their gate messages.
   async function speak(text) {
     if (!voiceOn || !text) return;
     const short = text.length > 380 ? text.slice(0, 380) + "… full answer on screen." : text;
+    lastSpokenRef.current = normalizeHeard(short);
+    speechEndRef.current = null;
     const p = ttsPathRef.current;
-    if (p === "local") { if (await sayLocal(short)) return; ttsPathRef.current = null; }
-    else if (p === "bridge") { if (await sayViaBridge(short)) return; ttsPathRef.current = null; }
-    else if (p === "mp3") { if (await playMp3(short)) return; ttsPathRef.current = null; }
-    if (ttsPathRef.current === null && !(await speakCascade(short))) {
-      setError("No speech path worked — hit VOICE TEST under the core and read me the amber line.");
+    let started = false;
+    if (p === "local") started = await sayLocal(short);
+    else if (p === "bridge") started = await sayViaBridge(short);
+    else if (p === "mp3") started = await playMp3(short);
+    if (!started) {
+      ttsPathRef.current = null;
+      started = await speakCascade(short);
     }
+    if (!started) {
+      setError("No speech path worked — hit VOICE TEST under the core and read me the amber line.");
+      return;
+    }
+    if (speechEndRef.current) await speechEndRef.current;
   }
 
   async function testVoice() {
@@ -1051,12 +1128,17 @@ export default function BaxstarEmber() {
   }
 
   function stopSpeaking() {
+    // Retire the epoch first so no in-flight handler can reopen the mic behind
+    // us, then reopen it ourselves — pause() fires neither ended nor error, so
+    // nothing else ever would, and the mic would stay dead for good.
+    speechEpochRef.current++;
     window.speechSynthesis?.cancel();
-    const w = popupRef.current;
-    if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: "stopSay" }, "*");
     if (audioElRef.current) { try { audioElRef.current.pause(); } catch (e) {} audioElRef.current = null; }
     speakingRef.current = false;
     setSpeaking(false);
+    if (bridgeEndRef.current) { bridgeEndRef.current(); bridgeEndRef.current = null; }
+    postBridge("stopSay");
+    postBridge("micResume");
   }
 
   /* ---------- OPS: VOICE ENGINE + CORE VISUALIZER ---------- */
@@ -1177,15 +1259,23 @@ export default function BaxstarEmber() {
   async function sendCommand(text) {
     const q = (text ?? command).trim();
     if (!q) return;
-    // A spoken command that lands while she's answering used to be silently
-    // dropped — the guard read the `thinking` state and returned. Hold the
-    // latest one instead and run it when the current answer finishes.
-    if (busyRef.current) { pendingRef.current = q; return; }
+    // A spoken command landing mid-answer used to be dropped on the floor — the
+    // guard read `thinking` and returned. Hold the latest one and run it once the
+    // current answer has been spoken, handing this caller the answer it will get
+    // so awaiting callers (draft/task flows) don't receive undefined.
+    if (busyRef.current) {
+      const prev = pendingRef.current;
+      if (prev) prev.resolve(null); // superseded — never leave a caller hanging
+      setCommand("");
+      setQueued(q);
+      return new Promise((resolve) => { pendingRef.current = { q, resolve }; });
+    }
     busyRef.current = true;
     setThinking(true);
     setError("");
-    setResponse("");
     setCommand("");
+    // The previous answer stays up while she thinks. Clearing it here erased
+    // answer A the instant a queued command B started, so A never rendered.
     try {
       const userMsg = { role: "user", content: q };
       const messages = [
@@ -1198,16 +1288,26 @@ export default function BaxstarEmber() {
       const answer = extractText(resp) || "Done — no text returned.";
       historyRef.current = [...historyRef.current.slice(-8), userMsg, { role: "assistant", content: answer }];
       setResponse(answer);
-      speak(answer);
+      setThinking(false);
+      // Awaited: busyRef must span the speaking phase too, or a queued command
+      // would cut this answer off mid-sentence and interleave its gate messages.
+      await speak(answer);
       return answer;
     } catch (e) {
       setError("Command failed — check connection and try again.");
+      return null;
     } finally {
       setThinking(false);
       busyRef.current = false;
       const next = pendingRef.current;
       pendingRef.current = null;
-      if (next) sendRef.current(next);
+      setQueued("");
+      if (next) {
+        Promise.resolve(sendRef.current(next.q)).then(
+          (r) => next.resolve(r ?? null),
+          () => next.resolve(null)
+        );
+      }
     }
   }
 
@@ -1220,12 +1320,24 @@ export default function BaxstarEmber() {
       if (m.ch !== "EMBERMIC") return;
       if (m.t === "lvl") bridgeLevelRef.current = { v: m.v, wave: m.w, ts: performance.now() };
       if (m.t === "listening") { setListening(!!m.on); if (m.on) setMicArm(false); }
-      if (m.t === "speaking") { speakingRef.current = !!m.on; setSpeaking(!!m.on); if (m.on) bridgeAckRef.current?.(); }
+      if (m.t === "speaking") {
+        // Only believe the bridge about speech the bridge is producing. Its own
+        // say() finishing used to clear speakingRef while THIS window was mid
+        // utterance, which unlocked the self-hearing guard at the worst moment.
+        if (ttsPathRef.current === "bridge" || m.on) {
+          speakingRef.current = !!m.on;
+          setSpeaking(!!m.on);
+        }
+        if (m.on) bridgeAckRef.current?.();
+        if (!m.on && bridgeEndRef.current) { bridgeEndRef.current(); bridgeEndRef.current = null; }
+      }
       if (m.t === "closed") { setListening(false); speakingRef.current = false; setSpeaking(false); popupRef.current = null; }
       if (m.t === "transcript" && m.text) {
-        // The mic is gated off while Ember speaks, but the gate takes a beat to
-        // close — anything transcribed in that window is her own voice. Drop it.
-        if (!speakingRef.current) sendRef.current(m.text);
+        // Two layers, because the gate closes a beat after speech starts and a
+        // recognition result lands a beat after speech stops: drop anything heard
+        // while she is speaking, and drop anything that is recognisably her own
+        // last answer coming back through the speakers.
+        if (!speakingRef.current && !isEcho(m.text)) sendRef.current(m.text);
       }
     };
     window.addEventListener("message", onMsg);
@@ -2596,6 +2708,12 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   RUN
                 </button>
               </div>
+
+              {queued && (
+                <div className="font-mono-x w-full max-w-sm text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>
+                  QUEUED — RUNS WHEN SHE FINISHES: {queued.length > 54 ? queued.slice(0, 54) + "…" : queued}
+                </div>
+              )}
 
               {response && (
                 <div className="w-full max-w-sm rounded-xl border px-4 py-3"
