@@ -351,6 +351,8 @@ Quo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.
 Style: BLUF \u2014 bottom line first. Concise. No hedging. Numerals without commas.
 Customer-facing drafts: premium-but-warm, sign "Brady @ Baxstar". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say "one group per day" \u2014 use "private trip(s)".
 Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.`;
+  const VOICE_CONTEXT = `
+Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only \u2014 never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no URLs read out loud. Numbers and times said the way a person says them.`;
   const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
 Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns) \u2014 the canonical source of truth.
 The Agent OS lives in the "Baxstar Data Engine" folder: 01 Identity, 02 Context Library, 03 Skills, 04 Memory + Logs, 05 Verification, 06 Agents, 07 Automations, 08 Archive, 09 Handoff (Shared).
@@ -997,14 +999,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           done();
           if (!ok) res(false);
         };
-        synth.speak(u);
+        setTimeout(() => {
+          if (synth.speaking || synth.pending) synth.cancel();
+          setTimeout(() => synth.speak(u), 60);
+        }, 120);
         setTimeout(() => {
           if (!ok) {
             synth.cancel();
             micGate(true);
             res(false);
           }
-        }, 2800);
+        }, 3e3);
       });
     }
     function sayLocal(short) {
@@ -1267,7 +1272,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       try {
         const userMsg = { role: "user", content: q };
         const messages = [
-          { role: "user", content: BRADY_CONTEXT + "\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: BRADY_CONTEXT + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...historyRef.current.slice(-8),
           userMsg

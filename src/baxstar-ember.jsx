@@ -33,6 +33,12 @@ Style: BLUF — bottom line first. Concise. No hedging. Numerals without commas.
 Customer-facing drafts: premium-but-warm, sign "Brady @ Baxstar". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say "one group per day" — use "private trip(s)".
 Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.`;
 
+// Appended to the system turn only while the voice toggle is on. Without this
+// she answers from self-knowledge — "I'm text-based" — because nothing told
+// her the reply is read aloud.
+const VOICE_CONTEXT = `
+Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only — never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no URLs read out loud. Numbers and times said the way a person says them.`;
+
 const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
 Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns) — the canonical source of truth.
 The Agent OS lives in the "Baxstar Data Engine" folder: 01 Identity, 02 Context Library, 03 Skills, 04 Memory + Logs, 05 Verification, 06 Agents, 07 Automations, 08 Archive, 09 Handoff (Shared).
@@ -955,10 +961,16 @@ export default function BaxstarEmber() {
       const done = () => { clearInterval(kick); speakingRef.current = false; setSpeaking(false); micGate(true); };
       u.onend = done;
       u.onerror = () => { done(); if (!ok) res(false); };
-      synth.speak(u);
+      // Chrome wedges if speak() lands in the same tick as cancel() — the queue
+      // hasn't flushed and the new utterance silently never starts. Give it a
+      // beat, and clear any leftover speaking state before trying again.
+      setTimeout(() => {
+        if (synth.speaking || synth.pending) synth.cancel();
+        setTimeout(() => synth.speak(u), 60);
+      }, 120);
       // Enhanced and Premium voices load from disk on first use. 1.1s was
       // cancelling them mid-load and reporting it as a dead path.
-      setTimeout(() => { if (!ok) { synth.cancel(); micGate(true); res(false); } }, 2800);
+      setTimeout(() => { if (!ok) { synth.cancel(); micGate(true); res(false); } }, 3000);
     });
   }
 
@@ -1177,7 +1189,7 @@ export default function BaxstarEmber() {
     try {
       const userMsg = { role: "user", content: q };
       const messages = [
-        { role: "user", content: BRADY_CONTEXT + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: BRADY_CONTEXT + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...historyRef.current.slice(-8),
         userMsg,
