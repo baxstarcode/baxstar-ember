@@ -665,6 +665,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [listening, setListening] = useState(false);
     const [voiceOn, setVoiceOn] = useState(true);
     const [coreMode, setCoreMode] = useState("enigma");
+    const inlineRecRef = useRef(null);
+    const inlineWantRef = useRef(false);
     const [micArm, setMicArm] = useState(false);
     const [speaking, setSpeaking] = useState(false);
     const speakingRef = useRef(false);
@@ -887,7 +889,86 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const clock = now.toLocaleString("en-US", { weekday: "short", month: "short", day: "2-digit", hour: "numeric", minute: "2-digit" }).toUpperCase().replace(",", " \xB7");
     const hour = now.getHours();
     const dayPart = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
+    const inlineMic = typeof navigator !== "undefined" && (/iP(hone|ad|od)/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1 || !window.open);
+    function startInlineMic() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        setError("This browser has no speech recognition. Safari or Chrome.");
+        return false;
+      }
+      if (inlineRecRef.current) return true;
+      let rec;
+      try {
+        rec = new SR();
+      } catch (e) {
+        setError("Could not start the mic.");
+        return false;
+      }
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = "en-US";
+      rec.onstart = () => {
+        setListening(true);
+        setMicArm(false);
+        setError("");
+      };
+      rec.onerror = (e) => {
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          setError("Mic blocked \u2014 tap aA in the address bar, Website Settings, Microphone, Allow.");
+          inlineRecRef.current = null;
+          setListening(false);
+        }
+      };
+      rec.onend = () => {
+        if (!inlineRecRef.current) {
+          setListening(false);
+          return;
+        }
+        if (inlineWantRef.current && !speakingRef.current) {
+          try {
+            rec.start();
+          } catch (e) {
+          }
+        } else {
+          setListening(false);
+        }
+      };
+      rec.onresult = (ev) => {
+        let text = "";
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) text += ev.results[i][0].transcript;
+        }
+        text = text.trim();
+        if (!text) return;
+        if (speakingRef.current || isEcho(text)) return;
+        sendRef.current(text);
+      };
+      inlineRecRef.current = rec;
+      inlineWantRef.current = true;
+      try {
+        rec.start();
+      } catch (e) {
+      }
+      return true;
+    }
+    function stopInlineMic() {
+      inlineWantRef.current = false;
+      const rec = inlineRecRef.current;
+      inlineRecRef.current = null;
+      if (rec) {
+        try {
+          rec.stop();
+        } catch (e) {
+        }
+      }
+      setListening(false);
+    }
     function toggleMic() {
+      if (inlineMic) {
+        if (inlineRecRef.current) stopInlineMic();
+        else startInlineMic();
+        return;
+      }
       const w = popupRef.current;
       if (w && !w.closed) {
         w.postMessage({ ch: "EMBERMIC", t: "toggle" }, "*");
@@ -910,6 +991,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       return true;
     }
     useEffect(() => {
+      if (inlineMic) {
+        setMicArm(true);
+        return;
+      }
       const t = setTimeout(() => {
         if (!openMicBridge(true)) {
           setMicArm(true);
@@ -1004,6 +1089,24 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       speechEndResolveRef.current = null;
       cur.r();
     }
+    function pauseInlineMic() {
+      const rec = inlineRecRef.current;
+      if (rec) {
+        try {
+          rec.stop();
+        } catch (e) {
+        }
+      }
+    }
+    function resumeInlineMic() {
+      const rec = inlineRecRef.current;
+      if (rec && inlineWantRef.current) {
+        try {
+          rec.start();
+        } catch (e) {
+        }
+      }
+    }
     function postBridge(t) {
       const w = popupRef.current;
       if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t }, "*");
@@ -1011,11 +1114,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function beginSpeech() {
       const epoch = ++speechEpochRef.current;
       postBridge("micPause");
+      pauseInlineMic();
       return epoch;
     }
     function endSpeech(epoch) {
       if (epoch !== speechEpochRef.current) return;
       postBridge("micResume");
+      resumeInlineMic();
     }
     function tryVoice(v, short, slot) {
       return new Promise((res) => {
@@ -1280,6 +1385,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       releaseSpeechEnd();
       postBridge("stopSay");
       postBridge("micResume");
+      resumeInlineMic();
     }
     useEffect(() => {
       var _a2, _b2;
@@ -2640,7 +2746,20 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), micArm && !listening && /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), micArm && !listening && (inlineMic ? (
+      // On a phone the mic needs a real tap, and it has to be a tap on
+      // something obviously tappable -- not "click anywhere".
+      /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          onClick: toggleMic,
+          className: "mic-rail font-mono-x w-full rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.25em]",
+          style: { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+        },
+        /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 13, style: { verticalAlign: "-2px", marginRight: "6px" } }),
+        "TAP TO TALK TO EMBER"
+      )
+    ) : /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]",
@@ -2648,7 +2767,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
       },
       /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 12, style: { verticalAlign: "-2px", marginRight: "6px" } }),
       "MIC ARMED \u2014 CLICK ANYWHERE TO GO LIVE \xB7 ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD"
-    ), error && /* @__PURE__ */ React.createElement(
+    )), error && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "rounded-lg border px-4 py-2 text-xs font-semibold",

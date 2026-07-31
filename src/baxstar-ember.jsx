@@ -626,6 +626,8 @@ export default function BaxstarEmber() {
 
   // core visualizer + voice engine
   const [coreMode, setCoreMode] = useState("enigma"); // "enigma" | "scope"
+  const inlineRecRef = useRef(null);   // in-page recognition (phones)
+  const inlineWantRef = useRef(false); // should it keep restarting?
   const [micArm, setMicArm] = useState(false); // popup blocked at load; first click opens it
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
@@ -877,7 +879,72 @@ export default function BaxstarEmber() {
 
   /* ---------- VOICE (Web Speech) ---------- */
 
+  // iOS Safari refuses getUserMedia and SpeechRecognition to a blob: popup --
+  // that window has an opaque origin, and no amount of granting mic permission
+  // in Settings changes it. On a phone we skip the bridge entirely and listen in
+  // this page, which has a real origin and the tap that started it.
+  const inlineMic =
+    typeof navigator !== "undefined" &&
+    (/iP(hone|ad|od)/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+      !window.open);
+
+  function startInlineMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setError("This browser has no speech recognition. Safari or Chrome."); return false; }
+    if (inlineRecRef.current) return true;
+    let rec;
+    try { rec = new SR(); } catch (e) { setError("Could not start the mic."); return false; }
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+    rec.onstart = () => { setListening(true); setMicArm(false); setError(""); };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        setError("Mic blocked — tap aA in the address bar, Website Settings, Microphone, Allow.");
+        inlineRecRef.current = null;
+        setListening(false);
+      }
+    };
+    rec.onend = () => {
+      // Safari ends the session on its own constantly. Restart unless we are
+      // speaking (the gate) or the user switched it off.
+      if (!inlineRecRef.current) { setListening(false); return; }
+      if (inlineWantRef.current && !speakingRef.current) {
+        try { rec.start(); } catch (e) {}
+      } else { setListening(false); }
+    };
+    rec.onresult = (ev) => {
+      let text = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) text += ev.results[i][0].transcript;
+      }
+      text = text.trim();
+      if (!text) return;
+      // Same gate the bridge path uses: never act on her own voice.
+      if (speakingRef.current || isEcho(text)) return;
+      sendRef.current(text);
+    };
+    inlineRecRef.current = rec;
+    inlineWantRef.current = true;
+    try { rec.start(); } catch (e) {}
+    return true;
+  }
+
+  function stopInlineMic() {
+    inlineWantRef.current = false;
+    const rec = inlineRecRef.current;
+    inlineRecRef.current = null;
+    if (rec) { try { rec.stop(); } catch (e) {} }
+    setListening(false);
+  }
+
   function toggleMic() {
+    if (inlineMic) {
+      if (inlineRecRef.current) stopInlineMic();
+      else startInlineMic();
+      return;
+    }
     const w = popupRef.current;
     if (w && !w.closed) {
       w.postMessage({ ch: "EMBERMIC", t: "toggle" }, "*");
@@ -904,6 +971,12 @@ export default function BaxstarEmber() {
   // MIC ON BY DEFAULT: open the bridge the moment the app loads. If the browser
   // blocks the load-time popup, arm it — the user's FIRST click anywhere opens it.
   useEffect(() => {
+    if (inlineMic) {
+      // iOS will not grant the mic without a real user gesture, so arm the
+      // first tap rather than failing silently at load.
+      setMicArm(true);
+      return;
+    }
     const t = setTimeout(() => {
       if (!openMicBridge(true)) {
         setMicArm(true);
@@ -1033,6 +1106,15 @@ export default function BaxstarEmber() {
     cur.r();
   }
 
+  function pauseInlineMic() {
+    const rec = inlineRecRef.current;
+    if (rec) { try { rec.stop(); } catch (e) {} }   // onend will not restart while speaking
+  }
+  function resumeInlineMic() {
+    const rec = inlineRecRef.current;
+    if (rec && inlineWantRef.current) { try { rec.start(); } catch (e) {} }
+  }
+
   function postBridge(t) {
     const w = popupRef.current;
     if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t }, "*");
@@ -1040,11 +1122,13 @@ export default function BaxstarEmber() {
   function beginSpeech() {
     const epoch = ++speechEpochRef.current;
     postBridge("micPause");
+    pauseInlineMic();
     return epoch;
   }
   function endSpeech(epoch) {
     if (epoch !== speechEpochRef.current) return; // superseded — not ours to reopen
     postBridge("micResume");
+    resumeInlineMic();
   }
 
   function tryVoice(v, short, slot) {
@@ -1297,6 +1381,7 @@ export default function BaxstarEmber() {
     releaseSpeechEnd();
     postBridge("stopSay");
     postBridge("micResume");
+    resumeInlineMic();
   }
 
   /* ---------- OPS: VOICE ENGINE + CORE VISUALIZER ---------- */
@@ -2748,10 +2833,20 @@ Look at the photo and write the caption. Output caption text only — no preambl
         </header>
 
         {micArm && !listening && (
-          <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
-            style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
-            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
-          </div>
+          inlineMic ? (
+            // On a phone the mic needs a real tap, and it has to be a tap on
+            // something obviously tappable -- not "click anywhere".
+            <button onClick={toggleMic}
+              className="mic-rail font-mono-x w-full rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.25em]"
+              style={{ borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
+              <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />TAP TO TALK TO EMBER
+            </button>
+          ) : (
+            <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
+              style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
+              <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
+            </div>
+          )
         )}
 
         {error && (
