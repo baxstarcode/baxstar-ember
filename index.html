@@ -350,7 +350,8 @@ if ("serviceWorker" in navigator) {
 Quo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.
 Style: BLUF \u2014 bottom line first. Concise. No hedging. Numerals without commas.
 Customer-facing drafts: premium-but-warm, sign "Brady @ Baxstar". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say "one group per day" \u2014 use "private trip(s)".
-Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.`;
+Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.
+HARD RULE \u2014 schedule and messages: if a tool is unavailable or returns nothing, say exactly that ("I can't see your calendar right now") and STOP. Never state that a trip, booking, or message does or doesn't exist unless a tool actually returned that data. A guessed "you're free tomorrow" can cost Brady a paid charter.`;
   const VOICE_CONTEXT = `
 Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only \u2014 never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no URLs read out loud. Numbers and times said the way a person says them.`;
   const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
@@ -665,6 +666,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [listening, setListening] = useState(false);
     const [voiceOn, setVoiceOn] = useState(true);
     const [coreMode, setCoreMode] = useState("enigma");
+    const speechUnlockedRef = useRef(false);
     const inlineRecRef = useRef(null);
     const inlineWantRef = useRef(false);
     const [micArm, setMicArm] = useState(false);
@@ -890,7 +892,35 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const hour = now.getHours();
     const dayPart = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
     const inlineMic = typeof navigator !== "undefined" && (/iP(hone|ad|od)/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1 || !window.open);
+    function unlockSpeech() {
+      var _a2;
+      if (speechUnlockedRef.current) return;
+      speechUnlockedRef.current = true;
+      try {
+        const synth = window.speechSynthesis;
+        if (synth) {
+          const u = new SpeechSynthesisUtterance(" ");
+          u.volume = 0;
+          u.rate = 2;
+          synth.speak(u);
+        }
+      } catch (e) {
+      }
+      try {
+        const C = window.AudioContext || window.webkitAudioContext;
+        const ctx = new C();
+        (_a2 = ctx.resume) == null ? void 0 : _a2.call(ctx);
+        setTimeout(() => {
+          var _a3;
+          return (_a3 = ctx.close) == null ? void 0 : _a3.call(ctx);
+        }, 300);
+      } catch (e) {
+      }
+      if (ttsPathRef.current === "mp3") ttsPathRef.current = null;
+      voiceRef.current = null;
+    }
     function startInlineMic() {
+      unlockSpeech();
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) {
         setError("This browser has no speech recognition. Safari or Chrome.");
@@ -993,6 +1023,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     useEffect(() => {
       if (inlineMic) {
         setMicArm(true);
+        const un = () => {
+          window.removeEventListener("pointerdown", un);
+          unlockSpeech();
+        };
+        window.addEventListener("pointerdown", un);
         return;
       }
       const t = setTimeout(() => {
@@ -1053,6 +1088,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (v.lang === "en-US") s += 30;
       else if (v.lang && v.lang.startsWith("en")) s += 12;
       if (v.default) s += 5;
+      if (/compact/i.test(v.name)) s -= 40;
       if (NOVELTY_VOICE.test(v.name)) s -= 100;
       return s;
     }
@@ -2746,20 +2782,30 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), micArm && !listening && (inlineMic ? (
-      // On a phone the mic needs a real tap, and it has to be a tap on
-      // something obviously tappable -- not "click anywhere".
-      /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: toggleMic,
-          className: "mic-rail font-mono-x w-full rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.25em]",
-          style: { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), inlineMic && // Phone controls: big targets, always visible. Left = mic, right =
+    // spoken replies. Small header chips are unusable in a truck.
+    /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: toggleMic,
+        className: "mic-rail font-mono-x flex-1 rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]",
+        style: listening ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" } : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+      },
+      /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 13, style: { verticalAlign: "-2px", marginRight: "6px" } }),
+      listening ? "LISTENING \u2014 TAP TO STOP" : "TAP TO TALK TO EMBER"
+    ), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: () => {
+          unlockSpeech();
+          setVoiceOn(!voiceOn);
         },
-        /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 13, style: { verticalAlign: "-2px", marginRight: "6px" } }),
-        "TAP TO TALK TO EMBER"
-      )
-    ) : /* @__PURE__ */ React.createElement(
+        "aria-pressed": voiceOn,
+        className: "font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]",
+        style: voiceOn ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" } : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }
+      },
+      voiceOn ? "VOICE ON" : "MUTED"
+    )), !inlineMic && micArm && !listening && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]",
@@ -2767,7 +2813,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
       },
       /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 12, style: { verticalAlign: "-2px", marginRight: "6px" } }),
       "MIC ARMED \u2014 CLICK ANYWHERE TO GO LIVE \xB7 ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD"
-    )), error && /* @__PURE__ */ React.createElement(
+    ), error && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "rounded-lg border px-4 py-2 text-xs font-semibold",
