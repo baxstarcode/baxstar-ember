@@ -2,12 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#070604"/>
 <title>Baxstar Ember</title>
 <!-- GENERATED FILE — do not edit by hand.
      Source: src/baxstar-ember.jsx · Rebuild: npm run build
      Self-contained: React and the compiled app are inlined, so this file loads with
      no CDN. The only network Ember needs is its API proxy. -->
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="assets/ember/icon.svg"/>
 <style id="ember-tailwind-compiled">*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/*! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.pointer-events-none{pointer-events:none}.visible{visibility:visible}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0}.left-5{left:1.25rem}.right-0{right:0}.right-2{right:.5rem}.right-3{right:.75rem}.top-1\/2{top:50%}.top-11{top:2.75rem}.top-2{top:.5rem}.z-10{z-index:10}.z-20{z-index:20}.z-30{z-index:30}.mx-auto{margin-left:auto;margin-right:auto}.my-6{margin-top:1.5rem;margin-bottom:1.5rem}.mb-1{margin-bottom:.25rem}.mb-1\.5{margin-bottom:.375rem}.mb-2{margin-bottom:.5rem}.mb-2\.5{margin-bottom:.625rem}.mb-3{margin-bottom:.75rem}.ml-auto{margin-left:auto}.mt-1{margin-top:.25rem}.mt-1\.5{margin-top:.375rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-3\.5{margin-top:.875rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.block{display:block}.inline-block{display:inline-block}.inline{display:inline}.flex{display:flex}.inline-flex{display:inline-flex}.grid{display:grid}.contents{display:contents}.hidden{display:none}.h-1\.5{height:.375rem}.h-2{height:.5rem}.h-9{height:2.25rem}.min-h-0{min-height:0}.w-1\.5{width:.375rem}.w-2{width:.5rem}.w-64{width:16rem}.w-9{width:2.25rem}.w-full{width:100%}.max-w-\[85\%\]{max-width:85%}.max-w-sm{max-width:24rem}.max-w-xs{max-width:20rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.grow{flex-grow:1}.-translate-y-1\/2{--tw-translate-y:-50%}.-translate-y-1\/2,.transform{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.resize{resize:both}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.items-baseline{align-items:baseline}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-3\.5{gap:.875rem}.gap-4{gap:1rem}.gap-x-5{-moz-column-gap:1.25rem;column-gap:1.25rem}.gap-x-6{-moz-column-gap:1.5rem;column-gap:1.5rem}.gap-y-2{row-gap:.5rem}.self-start{align-self:flex-start}.self-end{align-self:flex-end}.overflow-hidden{overflow:hidden}.overflow-y-auto{overflow-y:auto}.whitespace-pre-wrap{white-space:pre-wrap}.rounded-2xl{border-radius:1rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:.5rem}.rounded-md{border-radius:.375rem}.rounded-xl{border-radius:.75rem}.rounded-r-lg{border-top-right-radius:.5rem;border-bottom-right-radius:.5rem}.rounded-bl-sm{border-bottom-left-radius:.125rem}.rounded-br-sm{border-bottom-right-radius:.125rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.object-cover{-o-object-fit:cover;object-fit:cover}.p-3{padding:.75rem}.p-4{padding:1rem}.px-2{padding-left:.5rem;padding-right:.5rem}.px-2\.5{padding-left:.625rem;padding-right:.625rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-12{padding-top:3rem;padding-bottom:3rem}.py-16{padding-top:4rem;padding-bottom:4rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-3\.5{padding-top:.875rem;padding-bottom:.875rem}.py-4{padding-top:1rem;padding-bottom:1rem}.pr-1{padding-right:.25rem}.pr-16{padding-right:4rem}.text-center{text-align:center}.text-2xl{font-size:1.5rem;line-height:2rem}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[11px\]{font-size:11px}.text-\[12\.5px\]{font-size:12.5px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[15px\]{font-size:15px}.text-\[8\.5px\]{font-size:8.5px}.text-\[9\.5px\]{font-size:9.5px}.text-\[9px\]{font-size:9px}.text-base{font-size:1rem;line-height:1.5rem}.text-sm{font-size:.875rem;line-height:1.25rem}.text-xl{font-size:1.25rem;line-height:1.75rem}.text-xs{font-size:.75rem;line-height:1rem}.font-bold{font-weight:700}.font-extrabold{font-weight:800}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.italic{font-style:italic}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.tracking-\[0\.13em\]{letter-spacing:.13em}.tracking-\[0\.15em\]{letter-spacing:.15em}.tracking-\[0\.25em\]{letter-spacing:.25em}.tracking-\[0\.2em\]{letter-spacing:.2em}.tracking-\[0\.3em\]{letter-spacing:.3em}.tracking-tight{letter-spacing:-.025em}.tracking-wider{letter-spacing:.05em}.tracking-widest{letter-spacing:.1em}.text-white{--tw-text-opacity:1;color:rgb(255 255 255/var(--tw-text-opacity,1))}.opacity-40{opacity:.4}.opacity-50{opacity:.5}.opacity-60{opacity:.6}.ring{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow,0 0 #0000)}.drop-shadow{--tw-drop-shadow:drop-shadow(0 1px 2px rgba(0,0,0,.1)) drop-shadow(0 1px 1px rgba(0,0,0,.06))}.drop-shadow,.sepia{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.sepia{--tw-sepia:sepia(100%)}.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,-webkit-backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter,-webkit-backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-all{transition-property:all;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-colors{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.transition-opacity{transition-property:opacity;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.ease-in-out{transition-timing-function:cubic-bezier(.4,0,.2,1)}.last\:border-none:last-child{border-style:none}</style>
 <style>html,body,#root{margin:0;height:100%;background:#000;}</style>
 <script>
@@ -324,6 +327,16 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
 </head>
 <body>
 <div id="root"></div>
+<script>
+/* PWA: cache the shell so repeat opens are instant on weak lake signal.
+   Feature-detected — a no-op where service workers are unavailable. Same-origin only;
+   no CDN. Ship sw.js + manifest.webmanifest + assets/ember/icon.svg alongside index.html. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+</script>
 <script>(() => {
   const { useState, useEffect, useRef } = React;
   const MCP_SERVERS = [
@@ -459,7 +472,23 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     if (start === -1 || end === -1) throw new Error("no JSON");
     return JSON.parse(clean.slice(start, end + 1));
   }
-  async function fileToResizedB64(file, MAX = 1568, quality = 0.85) {
+  async function maybeConvertHeic(file) {
+    const name = file.name || "";
+    const isHeic = /image\/(heic|heif)/i.test(file.type) || /\.(heic|heif)$/i.test(name) && !/^image\/(jpe?g|png|webp)/i.test(file.type);
+    if (!isHeic) return file;
+    if (typeof window !== "undefined" && typeof window.heic2any === "function") {
+      try {
+        const out = await window.heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+        const blob = Array.isArray(out) ? out[0] : out;
+        const jpgName = name.replace(/\.(heic|heif)$/i, "") + ".jpg" || "photo.jpg";
+        return new File([blob], jpgName, { type: "image/jpeg" });
+      } catch (e) {
+      }
+    }
+    return file;
+  }
+  async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
+    file = await maybeConvertHeic(file);
     const url = URL.createObjectURL(file);
     const img = await new Promise((res, rej) => {
       const i = new Image();
@@ -481,6 +510,30 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   function sanitizeCaption(t) {
     return t.replace(/```/g, "").replace(new RegExp(LOCKED_TAG, "gi"), "").replace(/scheels(\s+rods?)?/gi, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
+  function lsGet(key, fallback) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function lsSet(key, val) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(val));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function lsDel(key) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (e) {
+    }
+  }
+  const OUTBOX_URL_KEY = "ember-outbox-url";
+  const CAPTION_DRAFT_KEY = "ember-caption-draft";
   function buildBridgeHtml() {
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Stop Listening</button><div class="note">Keep this little window open \u2014 it feeds your voice to Ember. Close it to end voice input.</div><script>\nvar P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){if(active&&!sayBusy){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\ntry{rec.start();active=true;setSt("LISTENING");post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";}catch(e){setSt("TAP START");}}\nfunction stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\ndocument.getElementById("btn").onclick=function(){active?stopSR():startSR();};\nnavigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\nvar C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){setSt("MIC PERMISSION DENIED");});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;\nfunction go(){synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nu.onstart=function(){post({t:"speaking",on:true});setSt("SPEAKING");};\nfunction fin(){sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}setSt("LISTENING");}else{setSt("PAUSED");}}\nu.onend=fin;u.onerror=fin;synth.speak(u);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nwindow.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false});if(active){try{rec.start();}catch(e){}}}if(m.t==="close"){window.close();}});\nwindow.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n<\/script></body></html>';
   }
@@ -644,6 +697,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [capErr, setCapErr] = useState("");
     const [copied, setCopied] = useState(false);
     const fileRef = useRef(null);
+    const [outboxUrl, setOutboxUrl] = useState("");
+    const [outboxOpen, setOutboxOpen] = useState(false);
+    const [publishing, setPublishing] = useState(false);
+    const [publishMsg, setPublishMsg] = useState("");
+    const [captionRestored, setCaptionRestored] = useState(false);
+    const [leanCaption, setLeanCaption] = useState(false);
     const [chatMsgs, setChatMsgs] = useState([]);
     const [chatInput, setChatInput] = useState("");
     const [chatBusy, setChatBusy] = useState(false);
@@ -724,6 +783,47 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         hydrated.current = true;
       })();
     }, []);
+    useEffect(() => {
+      try {
+        const qs = new URLSearchParams(window.location.search || "");
+        const hash = (window.location.hash || "").toLowerCase();
+        const wantsCaption = /caption/i.test(qs.get("tool") || "") || /caption/i.test(qs.get("view") || "") || /(^|[#/])caption/.test(hash);
+        if (wantsCaption) {
+          setView("studio");
+          setStudioTool("captions");
+        }
+        if (qs.get("lean") === "1" || /lean/.test(hash)) {
+          setLeanCaption(true);
+          setView("studio");
+          setStudioTool("captions");
+        }
+      } catch (e) {
+      }
+      const savedUrl = lsGet(OUTBOX_URL_KEY, "");
+      if (typeof savedUrl === "string" && savedUrl) setOutboxUrl(savedUrl);
+      const draft = lsGet(CAPTION_DRAFT_KEY, null);
+      if (draft && (draft.caption || draft.photo)) {
+        if (draft.photo) setPhoto(draft.photo);
+        if (draft.caption) setCaption(draft.caption);
+        if (draft.fishId) setFishId(draft.fishId);
+        if (draft.sponsors) setSponsors(draft.sponsors);
+        if (draft.lake) setLake(draft.lake);
+        if (draft.postWindow) setPostWindow(draft.postWindow);
+        setCaptionRestored(true);
+      }
+    }, []);
+    useEffect(() => {
+      if (!hydrated.current) return;
+      if (!caption && !photo) {
+        lsDel(CAPTION_DRAFT_KEY);
+        return;
+      }
+      const base = { caption, fishId, sponsors, lake, postWindow, ts: clock };
+      const withPhoto = { ...base, photo };
+      if (!lsSet(CAPTION_DRAFT_KEY, withPhoto)) {
+        lsSet(CAPTION_DRAFT_KEY, base);
+      }
+    }, [caption, photo, fishId, sponsors, lake, postWindow]);
     const persist = (key, val) => {
       var _a2;
       try {
@@ -843,23 +943,37 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       (_a2 = synth.addEventListener) == null ? void 0 : _a2.call(synth, "voiceschanged", fire, { once: true });
       setTimeout(fire, 700);
     }
-    function sayLocal(short) {
-      return new Promise((res) => whenVoicesReady(() => {
+    const NOVELTY_VOICE = /eloquence|bad news|good news|bells|boing|bubbles|cellos|deranged|hysterical|jester|junior|organ|pipe|princess|ralph|superstar|trinoids|whisper|wobble|zarvox|albert|fred|kathy|bahh|grandma|grandpa|rocko|shelley|sandy|flo|eddy|reed/i;
+    function scoreVoice(v) {
+      let s = 0;
+      if (/premium/i.test(v.name)) s += 60;
+      else if (/enhanced/i.test(v.name)) s += 45;
+      if (/\b(ava|zoe|evan|nathan|allison|samantha|serena)\b/i.test(v.name)) s += 20;
+      if (v.lang === "en-US") s += 30;
+      else if (v.lang && v.lang.startsWith("en")) s += 12;
+      if (v.default) s += 5;
+      if (NOVELTY_VOICE.test(v.name)) s -= 100;
+      return s;
+    }
+    function rankedLocals() {
+      const synth = window.speechSynthesis;
+      if (!synth) return [];
+      return synth.getVoices().filter((v) => v.localService && v.lang && v.lang.startsWith("en")).sort((a, b) => scoreVoice(b) - scoreVoice(a));
+    }
+    function tryVoice(v, short) {
+      return new Promise((res) => {
         const synth = window.speechSynthesis;
-        if (!synth) return res(false);
-        const locals = synth.getVoices().filter((v) => v.localService && v.lang && v.lang.startsWith("en"));
-        if (!locals[0]) return res(false);
         synth.cancel();
         synth.resume();
         const u = new SpeechSynthesisUtterance(short);
-        u.voice = locals[0];
-        u.lang = locals[0].lang;
-        voiceRef.current = locals[0];
+        u.voice = v;
+        u.lang = v.lang;
         u.rate = 1.03;
         let ok = false;
         let kick;
         u.onstart = () => {
           ok = true;
+          voiceRef.current = v;
           speakingRef.current = true;
           setSpeaking(true);
           kick = setInterval(() => synth.resume(), 4e3);
@@ -881,7 +995,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             synth.cancel();
             res(false);
           }
-        }, 1100);
+        }, 2800);
+      });
+    }
+    function sayLocal(short) {
+      return new Promise((res) => whenVoicesReady(async () => {
+        if (!window.speechSynthesis) return res(false);
+        const known = voiceRef.current;
+        if (known && await tryVoice(known, short)) return res(true);
+        for (const v of rankedLocals().filter((v2) => v2 !== known).slice(0, 3)) {
+          if (await tryVoice(v, short)) return res(true);
+        }
+        res(false);
       }));
     }
     function sayViaBridge(short) {
@@ -979,7 +1104,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const ok = await speakCascade("Ember online. Brady, can you hear me?");
       const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
       const locals = vs.filter((v) => v.localService);
-      setVoiceDiag(ok ? "WORKING \u2014 PATH " + ttsPathRef.current.toUpperCase() + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL)" : "ALL TTS PATHS FAILED \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL) \xB7 DID THE CHIME PLAY? READ ME THIS LINE");
+      setVoiceDiag(ok ? "WORKING \u2014 PATH " + ttsPathRef.current.toUpperCase() + " \xB7 " + (voiceRef.current ? voiceRef.current.name : "?") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL)" : "ALL TTS PATHS FAILED \xB7 TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL) \xB7 DID THE CHIME PLAY?");
     }
     function stopSpeaking() {
       var _a2;
@@ -1198,7 +1323,9 @@ Then respond with ONLY valid JSON \u2014 no markdown, no commentary:
       }
     }
     async function handleFile(file) {
-      if (!file || !file.type.startsWith("image/")) return;
+      if (!file) return;
+      const okType = file.type ? /^image\//i.test(file.type) : /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
+      if (!okType) return;
       setCapErr("");
       setCaption("");
       setFishId(null);
@@ -1207,7 +1334,8 @@ Then respond with ONLY valid JSON \u2014 no markdown, no commentary:
         setPhoto(p);
         analyzePhoto(p.b64);
       } catch (e) {
-        setCapErr("Couldn't read that image \u2014 try a JPG or PNG.");
+        const wasHeic = /image\/(heic|heif)/i.test(file.type) || /\.(heic|heif)$/i.test(file.name || "");
+        setCapErr(wasHeic ? `Couldn't decode that HEIC on this device \u2014 in iPhone Settings \u25B8 Camera \u25B8 Formats pick "Most Compatible", or share it as a JPG.` : "Couldn't read that image \u2014 try a JPG or PNG.");
       }
     }
     async function analyzePhoto(b64) {
@@ -1293,6 +1421,75 @@ Look at the photo and write the caption. Output caption text only \u2014 no prea
     }
     function toggleSponsor(key) {
       setSponsors((s) => ({ ...s, [key]: { ...s[key], on: !s[key].on } }));
+    }
+    function saveOutboxUrl(u) {
+      const v = (u || "").trim();
+      setOutboxUrl(v);
+      if (v) lsSet(OUTBOX_URL_KEY, v);
+      else lsDel(OUTBOX_URL_KEY);
+    }
+    function discardDraft() {
+      lsDel(CAPTION_DRAFT_KEY);
+      setCaptionRestored(false);
+      setPhoto(null);
+      setCaption("");
+      setFishId(null);
+      setSponsors({ vexus: { on: false, detected: false }, summit: { on: false, detected: false }, jk: { on: false } });
+    }
+    async function publishToOutbox() {
+      if (!photo || !caption || publishing) return;
+      const url = (outboxUrl || "").trim();
+      if (!url) {
+        setOutboxOpen(true);
+        setPublishMsg("Add your outbox URL first (gear icon).");
+        return;
+      }
+      setPublishing(true);
+      setPublishMsg("");
+      const finalCaption = sanitizeCaption(caption) + "\n\n" + LOCKED_TAG;
+      const handles = Object.entries(sponsors).filter(([, v]) => v.on).map(([k]) => SPONSORS[k].handle);
+      const payload = {
+        source: "ember-caption-studio",
+        caption: finalCaption,
+        lockedTag: LOCKED_TAG,
+        imageBase64: photo.b64,
+        mimeType: "image/jpeg",
+        species: (fishId == null ? void 0 : fishId.species) || "",
+        lake,
+        postWindow,
+        sponsors: handles,
+        clientTime: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      const body = JSON.stringify(payload);
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body
+        });
+        let ok = res.ok;
+        try {
+          const j = await res.json();
+          ok = ok && j.ok !== false;
+        } catch (e) {
+        }
+        if (ok) {
+          setPublishMsg("\u2713 Sent to the Drive outbox \u2014 review and post from there.");
+          lsDel(CAPTION_DRAFT_KEY);
+        } else {
+          setPublishMsg("Outbox responded with an error \u2014 check the Apps Script deployment.");
+        }
+      } catch (e) {
+        try {
+          await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body });
+          setPublishMsg("Sent (couldn't read a confirmation \u2014 verify it landed in Drive).");
+          lsDel(CAPTION_DRAFT_KEY);
+        } catch (e2) {
+          setPublishMsg("Couldn't reach the outbox. Check the URL and that the web app is deployed.");
+        }
+      } finally {
+        setPublishing(false);
+      }
     }
     async function sendChat() {
       const q = chatInput.trim();
@@ -2431,7 +2628,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         e.stopPropagation();
         sendCommand(`Draft a reply to the email from ${m.from}: "${m.subject}". Match Baxstar voice. Show me the draft \u2014 don't send yet.`);
       } }, "Draft reply"))
-    ))), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }))))), view === "studio" && /* @__PURE__ */ React.createElement("div", { className: "studio-stack flex-1" }, /* @__PURE__ */ React.createElement("div", { className: "studio-tools-panel panel reveal px-5 py-4", style: { animationDelay: "0.08s" } }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "fieldlabel mb-3" }, "Tools"), /* @__PURE__ */ React.createElement("div", { className: "tool-grid" }, TOOLS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, className: `tool-tile ${studioTool === t.id ? "on" : ""}`, onClick: () => setStudioTool(t.id) }, /* @__PURE__ */ React.createElement("span", { className: "tic" }, t.id === "chat" || t.id === "drive" || t.id === "github" ? /* @__PURE__ */ React.createElement(BrandMark, { tool: t.id, active: studioTool === t.id }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: t.icon })), t.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, studioTool === "captions" && /* @__PURE__ */ React.createElement("div", { className: "cap-grid flex-1" }, /* @__PURE__ */ React.createElement(
+    ))), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }))))), view === "studio" && /* @__PURE__ */ React.createElement("div", { className: "studio-stack flex-1" }, !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "studio-tools-panel panel reveal px-5 py-4", style: { animationDelay: "0.08s" } }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "fieldlabel mb-3" }, "Tools"), /* @__PURE__ */ React.createElement("div", { className: "tool-grid" }, TOOLS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, className: `tool-tile ${studioTool === t.id ? "on" : ""}`, onClick: () => setStudioTool(t.id) }, /* @__PURE__ */ React.createElement("span", { className: "tic" }, t.id === "chat" || t.id === "drive" || t.id === "github" ? /* @__PURE__ */ React.createElement(BrandMark, { tool: t.id, active: studioTool === t.id }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: t.icon })), t.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, studioTool === "captions" && /* @__PURE__ */ React.createElement("div", { className: "cap-grid flex-1" }, /* @__PURE__ */ React.createElement(
       Panel,
       {
         notch: "warm",
@@ -2441,10 +2638,19 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         delay: "0.1s",
         grow: true
       },
-      /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: "image/*", className: "hidden", onChange: (e) => {
+      /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: "image/*,.heic,.heif", className: "hidden", onChange: (e) => {
         var _a2;
         return handleFile((_a2 = e.target.files) == null ? void 0 : _a2[0]);
       } }),
+      captionRestored && /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          className: "mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px]",
+          style: { borderColor: "rgba(255,191,94,.45)", background: "rgba(255,191,94,.07)", color: "var(--ember-amber)" }
+        },
+        /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement(EmberIcon, { name: "spark", size: 11, style: { verticalAlign: "-1px", marginRight: "6px" } }), "Recovered your last unfinished caption."),
+        /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: discardDraft }, "Start fresh")
+      ),
       !photo ? /* @__PURE__ */ React.createElement(
         "div",
         {
@@ -2559,7 +2765,33 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           style: { borderColor: "var(--line)", color: "var(--ink-dim)" }
         },
         SPONSORS[k].handle
-      ))), /* @__PURE__ */ React.createElement("div", { className: "mt-4 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: copyCaption }, copied ? "COPIED \u2713" : "Copy Caption"), /* @__PURE__ */ React.createElement("button", { className: "big", disabled: genBusy, onClick: generateCaption }, genBusy ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : "Regenerate")))
+      ))), /* @__PURE__ */ React.createElement("div", { className: "mt-4 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: copyCaption }, copied ? "COPIED \u2713" : "Copy Caption"), /* @__PURE__ */ React.createElement("button", { className: "big", disabled: genBusy, onClick: generateCaption }, genBusy ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : "Regenerate")), /* @__PURE__ */ React.createElement("div", { className: "mt-3 flex items-center gap-3" }, /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "big flex-1 justify-center",
+          disabled: publishing || !photo,
+          onClick: publishToOutbox,
+          style: { borderColor: "var(--brass)", color: "var(--candle)" }
+        },
+        publishing ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: "drive", size: 14 }),
+        publishing ? "SENDING\u2026" : "Publish to Drive Outbox"
+      ), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", title: "Outbox settings", onClick: () => setOutboxOpen((o) => !o) }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "dials", size: 13, style: { verticalAlign: "-2px" } }))), outboxOpen && /* @__PURE__ */ React.createElement("div", { className: "mt-2 rounded-lg border p-3", style: { borderColor: "var(--line)", background: "#120c0c" } }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, "Drive Outbox URL (Apps Script /exec)"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: outboxUrl,
+          onChange: (e) => saveOutboxUrl(e.target.value),
+          placeholder: "https://script.google.com/macros/s/\u2026/exec",
+          className: "cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]",
+          style: { background: "#0c0808", color: "var(--ink)" }
+        }
+      ), /* @__PURE__ */ React.createElement("div", { className: "mt-1.5 text-[10px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Deploy ", /* @__PURE__ */ React.createElement("code", null, "apps-script/outbox/Code.gs"), " as a Web App, paste its ", /* @__PURE__ */ React.createElement("code", null, "/exec"), " URL here. Saved on this device. Publishing drops the JPEG + caption into a private Drive folder for review \u2014 it does ", /* @__PURE__ */ React.createElement("b", null, "not"), " post to Instagram or Facebook.")), publishMsg && /* @__PURE__ */ React.createElement(
+        "div",
+        {
+          className: "mt-2 text-[11px] font-semibold",
+          style: { color: /couldn|error|reach|add your/i.test(publishMsg) ? "#ff8074" : "#54e08a" }
+        },
+        publishMsg
+      ))
     )), studioTool === "chat" && /* @__PURE__ */ React.createElement(
       Panel,
       {
@@ -2816,7 +3048,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
       },
       !ghFile ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center" }, /* @__PURE__ */ React.createElement("div", { className: "opacity-50" }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "github", size: 30, strokeWidth: 1.25 })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[12px]", style: { color: "var(--ink-faint)" } }, "Pick a repo, browse to a file, read it here.")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "code-view flex-1" }, ghFile.content), /* @__PURE__ */ React.createElement("div", { className: "mt-3 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: () => navigator.clipboard.writeText(ghFile.content).catch(() => {
       }) }, "Copy Contents"), ghFile.htmlUrl && /* @__PURE__ */ React.createElement("button", { className: "big", onClick: () => window.open(ghFile.htmlUrl, "_blank", "noopener") }, "Open on GitHub \u2197")))
-    )), studioTool === "snippets" && /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Snippets", count: `${SNIPPETS.length} SAVED`, countColor: "var(--brass)", delay: "0.1s", grow: true }, SNIPPETS.map((s, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: s.title }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[12px] leading-relaxed", style: { color: "var(--ink-dim)" } }, s.text), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => copySnippet(i, s.text) }, copiedSnippet === i ? "COPIED \u2713" : "Copy"))))))), /* @__PURE__ */ React.createElement("div", { ref: dockRef, className: "console-dock reveal", style: { animationDelay: "0.65s" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true", className: "console-dock-bg" }), /* @__PURE__ */ React.createElement("div", { className: "console-dock-grid" }, /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "ops" ? "active" : ""}`, onClick: () => setView("ops") }, /* @__PURE__ */ React.createElement(DockMotion, { type: "ops" }), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "OPS")), /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "studio" ? "active" : ""}`, onClick: () => setView("studio") }, /* @__PURE__ */ React.createElement(DockMotion, { type: "studio" }), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Baxstar Studio")), ACTIONS.map((a, i) => /* @__PURE__ */ React.createElement(
+    )), studioTool === "snippets" && /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Snippets", count: `${SNIPPETS.length} SAVED`, countColor: "var(--brass)", delay: "0.1s", grow: true }, SNIPPETS.map((s, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: s.title }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[12px] leading-relaxed", style: { color: "var(--ink-dim)" } }, s.text), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => copySnippet(i, s.text) }, copiedSnippet === i ? "COPIED \u2713" : "Copy"))))))), !leanCaption && /* @__PURE__ */ React.createElement("div", { ref: dockRef, className: "console-dock reveal", style: { animationDelay: "0.65s" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true", className: "console-dock-bg" }), /* @__PURE__ */ React.createElement("div", { className: "console-dock-grid" }, /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "ops" ? "active" : ""}`, onClick: () => setView("ops") }, /* @__PURE__ */ React.createElement(DockMotion, { type: "ops" }), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "OPS")), /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "studio" ? "active" : ""}`, onClick: () => setView("studio") }, /* @__PURE__ */ React.createElement(DockMotion, { type: "studio" }), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Baxstar Studio")), ACTIONS.map((a, i) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: a.label,

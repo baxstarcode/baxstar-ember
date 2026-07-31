@@ -901,25 +901,62 @@ export default function BaxstarEmber() {
     synth.addEventListener?.("voiceschanged", fire, { once: true });
     setTimeout(fire, 700);
   }
-  function sayLocal(short) {
-    return new Promise((res) => whenVoicesReady(() => {
+  // macOS reports well over a hundred local voices. Most are novelty voices, and
+  // some are listed but silent. Taking locals[0] gave one arbitrary voice a single
+  // attempt, so an unlucky pick failed this path deterministically every time.
+  const NOVELTY_VOICE = /eloquence|bad news|good news|bells|boing|bubbles|cellos|deranged|hysterical|jester|junior|organ|pipe|princess|ralph|superstar|trinoids|whisper|wobble|zarvox|albert|fred|kathy|bahh|grandma|grandpa|rocko|shelley|sandy|flo|eddy|reed/i;
+
+  function scoreVoice(v) {
+    let s = 0;
+    if (/premium/i.test(v.name)) s += 60;
+    else if (/enhanced/i.test(v.name)) s += 45;
+    if (/\b(ava|zoe|evan|nathan|allison|samantha|serena)\b/i.test(v.name)) s += 20;
+    if (v.lang === "en-US") s += 30;
+    else if (v.lang && v.lang.startsWith("en")) s += 12;
+    if (v.default) s += 5;
+    if (NOVELTY_VOICE.test(v.name)) s -= 100;
+    return s;
+  }
+
+  function rankedLocals() {
+    const synth = window.speechSynthesis;
+    if (!synth) return [];
+    return synth.getVoices()
+      .filter((v) => v.localService && v.lang && v.lang.startsWith("en"))
+      .sort((a, b) => scoreVoice(b) - scoreVoice(a));
+  }
+
+  function tryVoice(v, short) {
+    return new Promise((res) => {
       const synth = window.speechSynthesis;
-      if (!synth) return res(false);
-      const locals = synth.getVoices().filter((v) => v.localService && v.lang && v.lang.startsWith("en"));
-      if (!locals[0]) return res(false); // no local voice — default may be a broken network voice; use another path
       synth.cancel();
       synth.resume();
       const u = new SpeechSynthesisUtterance(short);
-      u.voice = locals[0]; u.lang = locals[0].lang; voiceRef.current = locals[0];
+      u.voice = v; u.lang = v.lang;
       u.rate = 1.03;
       let ok = false;
       let kick;
-      u.onstart = () => { ok = true; speakingRef.current = true; setSpeaking(true); kick = setInterval(() => synth.resume(), 4000); res(true); };
+      u.onstart = () => { ok = true; voiceRef.current = v; speakingRef.current = true; setSpeaking(true); kick = setInterval(() => synth.resume(), 4000); res(true); };
       const done = () => { clearInterval(kick); speakingRef.current = false; setSpeaking(false); };
       u.onend = done;
       u.onerror = () => { done(); if (!ok) res(false); };
       synth.speak(u);
-      setTimeout(() => { if (!ok) { synth.cancel(); res(false); } }, 1100);
+      // Enhanced and Premium voices load from disk on first use. 1.1s was
+      // cancelling them mid-load and reporting it as a dead path.
+      setTimeout(() => { if (!ok) { synth.cancel(); res(false); } }, 2800);
+    });
+  }
+
+  function sayLocal(short) {
+    return new Promise((res) => whenVoicesReady(async () => {
+      if (!window.speechSynthesis) return res(false);
+      // A voice that already spoke is worth more than any score.
+      const known = voiceRef.current;
+      if (known && (await tryVoice(known, short))) return res(true);
+      for (const v of rankedLocals().filter((v) => v !== known).slice(0, 3)) {
+        if (await tryVoice(v, short)) return res(true);
+      }
+      res(false); // every candidate stayed silent — fall through to another path
     }));
   }
 
@@ -978,9 +1015,11 @@ export default function BaxstarEmber() {
     const ok = await speakCascade("Ember online. Brady, can you hear me?");
     const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     const locals = vs.filter((v) => v.localService);
+    // Name the voice on success and the rejects on failure — "all paths failed"
+    // alone doesn't say whether the picker chose badly or the engine is dead.
     setVoiceDiag(ok
-      ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
-      : "ALL TTS PATHS FAILED · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY? READ ME THIS LINE");
+      ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (voiceRef.current ? voiceRef.current.name : "?") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
+      : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
   }
 
   function stopSpeaking() {
