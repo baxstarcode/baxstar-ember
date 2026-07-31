@@ -109,8 +109,12 @@ at the top.
 
 - **PR #5 merge** — waiting on your 10 minutes with the preview
 - **Worker deploy + OAuth consent** — manual, above
-- **A second PR** for the Worker OAuth code, opened as a draft off the same
-  branch
+- **The Worker OAuth code is in PR #5, not its own PR.** All overnight work had
+  to stay on one branch, and a second PR can't be opened from the same branch.
+  So the voice change and the Worker change land together or not at all. If you
+  want them separable, say so and I'll split the branch — worth doing, since
+  the Worker half is the better-tested half and shouldn't wait on the voice
+  half's verification.
 - **My actual recommendation: stop patching this and rewrite `speak()`.** Six
   passes have each fixed the last and broken something new. The file now
   carries four overlapping concurrency mechanisms — an epoch counter, a
