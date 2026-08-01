@@ -52,9 +52,14 @@ Other rules that are load-bearing, not stylistic:
 ## Design law
 
 Steampunk is the identity; fishing and golf are engraving only. **Warmth only — no blues,
-no purples in primary UI.** `command-console@2x.webp` IS the dock, not a background
-texture. Dock motion animates **light, never geometry**: the mechanisms are painted into
-the asset, so any synthetic shape on top reads as a duplicate.
+no purples in primary UI.**
+
+The dock spec changed 2026-08-01 per Brady: `command-console@2x.webp` is **retired as the
+dock**. Stretched to arbitrary bar sizes it read flat and distorted, and its painted
+nameplates forced absolutely-positioned labels that drifted off-center on phones. The dock
+is now a CSS-built brass bar, `position:fixed` to the bottom of the screen at every width,
+with natively centered labels — do not bring the raster back as the bar. The asset stays
+in `assets/ember/raster/` as reference art only.
 
 ## Doc discipline (Baxstar_AI_Context Rule 15, 2026-08-01)
 

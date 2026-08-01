@@ -112,7 +112,6 @@ const HANDOFF = {
 };
 
 const TOOLS = [
-  { id: "chat",     icon: "chat", label: "Claude Chat" },
   { id: "handoff",  icon: "handoff", label: "AI Handoff" },
   { id: "captions", icon: "quill", label: "Caption Studio" },
   { id: "drive",    icon: "drive", label: "Google Drive" },
@@ -665,81 +664,13 @@ function ContextLever({ side, label, state, onPull }) {
   );
 }
 
-/* ---------- COMMAND DOCK MOTION ----------
-   The dock's six mechanisms are PAINTED INTO command-console@2x.webp — a lever press with
-   two lamps, a gear train, a reactor porthole, a pressure gauge, a ship's wheel and a
-   piston cannon. So motion here is LIGHT ONLY: additive glints, glows and travelling
-   sheen, composited over the artwork with mix-blend-mode:screen.
-
-   Nothing draws a second lever, gear or needle. That is deliberate — the gauge already has
-   a painted needle and the gears already have painted teeth, so any synthetic shape laid on
-   top reads as a duplicate. That is exactly what the old .dock-machine layer did.
-
-   Offsets are percentages of one panel cell, measured off the asset: its panels run
-   x 100–1500 of 1600 (hence the grid's 6.25% inset) and the mechanisms centre near 31%
-   of its height. `d` is the painted part's diameter in asset pixels — width comes from
-   the 233.33px cell, and the round ones are squashed by --dock-squash because
-   object-fit:fill renders those painted circles as ellipses. */
-const DOCK_CELL_PX = 233.33;
-const pctOfCell = (assetPx) => ((assetPx / DOCK_CELL_PX) * 100).toFixed(1) + "%";
-
-const DOCK_MOTION = {
-  // lever press: the two lamps breathe, a highlight strokes along the drum
-  ops: [
-    { c: "dm-lamp", round: true, d: 34, s: { left: "15%", top: "38%" } },
-    { c: "dm-lamp", round: true, d: 34, s: { left: "88%", top: "38%" }, delay: "-0.9s" },
-    { c: "dm-sheen", s: { left: "24%", top: "21%", width: "43%", height: "29%" } },
-  ],
-  // gear train: a glint orbits each painted gear, counter-rotating on the middle one
-  studio: [
-    { c: "dm-spin", round: true, d: 95, s: { left: "54%", top: "26%" } },
-    { c: "dm-spin dm-rev", round: true, d: 64, s: { left: "86%", top: "28%" } },
-    { c: "dm-spin dm-slow", round: true, d: 45, s: { left: "40%", top: "50%" } },
-  ],
-  // reactor porthole: core pulse plus a slow ring sweep
-  miss: [
-    { c: "dm-spin dm-slow", round: true, d: 140, s: { left: "52%", top: "34%" } },
-    { c: "dm-core", round: true, d: 105, s: { left: "52%", top: "34%" } },
-  ],
-  // gauge: an illuminated indicator rides the painted dial — no second needle
-  triage: [{ c: "dm-sweep", round: true, d: 122, s: { left: "43%", top: "27%" } }],
-  // ship's wheel: slow glint around the rim
-  brief: [{ c: "dm-spin dm-slow", round: true, d: 132, s: { left: "48%", top: "27%" } }],
-  // piston cannon: lamp breathes, sheen strokes barrel then cylinder
-  handoff: [
-    { c: "dm-lamp", round: true, d: 40, s: { left: "16%", top: "26%" } },
-    { c: "dm-sheen", s: { left: "23%", top: "21%", width: "75%", height: "12%" } },
-    { c: "dm-sheen", s: { left: "25%", top: "36%", width: "61%", height: "14%" }, delay: "-1.8s" },
-  ],
-};
-
-function DockMotion({ type }) {
-  const parts = DOCK_MOTION[type] || [];
-  return (
-    <span className="dock-motion" aria-hidden="true">
-      {parts.map((p, i) => {
-        // Round parts get a wrapper that carries the ellipse squash, so the child is free
-        // to rotate as a true circle. Sheens are already rectangular — no wrapper needed.
-        if (!p.round) {
-          return <span key={i} className={p.c} style={{ ...p.s, animationDelay: p.delay }} />;
-        }
-        return (
-          <span key={i} className="dm-round" style={{ ...p.s, width: pctOfCell(p.d) }}>
-            <i className={p.c} style={{ animationDelay: p.delay }} />
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
 /* ============================================================
    MAIN COMPONENT
    ============================================================ */
 
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
-  const [studioTool, setStudioTool] = useState("chat");
+  const [studioTool, setStudioTool] = useState("captions");
 
   // steampunk context actions — selected Calls/Inbox item feeds the two levers
   const [selectedComm, setSelectedComm] = useState(null); // { type:"vm"|"email", i }
@@ -756,7 +687,6 @@ export default function BaxstarEmber() {
   const [command, setCommand] = useState("");
   const [focused, setFocused] = useState(false);
   const [thinking, setThinking] = useState(false);
-  const [response, setResponse] = useState("");
   const [error, setError] = useState("");
   const historyRef = useRef([]);
   const [listening, setListening] = useState(false);
@@ -777,7 +707,6 @@ export default function BaxstarEmber() {
   const gasRef = useRef(null);
   const ventRef = useRef(null);
   const scopeRef = useRef(null);
-  const dockRef = useRef(null);          // command dock — see the --dock-squash effect
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
@@ -823,15 +752,16 @@ export default function BaxstarEmber() {
   // Stripped mobile shell: dock + non-caption tools hidden. Set by ?lean=1 / #lean.
   const [leanCaption, setLeanCaption] = useState(false);
 
-  // ---- CLAUDE CHAT state ----
+  // ---- CLAUDE CHAT state (the thread lives on the OPS home page) ----
   const [chatMsgs, setChatMsgs] = useState([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatBusy, setChatBusy] = useState(false);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState("standard");
   const chatEndRef = useRef(null);
+  // greeting-count buttons jump to these two panel columns
+  const callsColRef = useRef(null);
+  const inboxColRef = useRef(null);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMsgs, chatBusy]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [chatMsgs, thinking]);
 
   // ---- GOOGLE DRIVE state ----
   const [driveMsgs, setDriveMsgs] = useState([]);
@@ -839,28 +769,6 @@ export default function BaxstarEmber() {
   const [driveBusy, setDriveBusy] = useState(false);
   const driveEndRef = useRef(null);
   useEffect(() => { driveEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [driveMsgs, driveBusy]);
-
-  /* command-console@2x.webp is 1600x322 and the dock stretches it with object-fit:fill,
-     so every painted circle — gears, porthole, gauge, wheel — renders as an ellipse.
-     Measure that squash and hand it to the motion layer, which scales its glints to
-     match. Without this the round glints sit about twice as tall as the mechanism they
-     belong to and spill onto the nameplate. Re-measures on resize. */
-  useEffect(() => {
-    const el = dockRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const sync = () => {
-      const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      // >1 is legitimate: on a narrow dock the asset is stretched taller than its own
-      // aspect, so the painted circles become ellipses that are taller than they are wide.
-      const squash = (r.height / 322) / (r.width / 1600);
-      el.style.setProperty("--dock-squash", String(Math.max(0.15, Math.min(3, squash))));
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   // ---- HANDOFF state ----
   const [handoffText, setHandoffText] = useState("");
@@ -907,7 +815,7 @@ export default function BaxstarEmber() {
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostWindow(prefs.postWindow);
         if (prefs.coreMode) setCoreMode(prefs.coreMode);
-        if (prefs.studioTool) setStudioTool(prefs.studioTool);
+        if (prefs.studioTool) setStudioTool(prefs.studioTool === "chat" ? "captions" : prefs.studioTool);
       }
       if (Array.isArray(chat)) setChatMsgs(chat);
       if (Array.isArray(drive)) setDriveMsgs(drive);
@@ -1686,20 +1594,35 @@ export default function BaxstarEmber() {
     setThinking(true);
     setError("");
     setCommand("");
-    // The previous answer stays up while she thinks. Clearing it here erased
-    // answer A the instant a queued command B started, so A never rendered.
     try {
       const userMsg = { role: "user", content: q };
+      // The home surface IS the chat now — the question lands in the thread
+      // immediately so it's visible while she thinks, like any messenger.
+      setChatMsgs((m) => [...m, userMsg]);
       const messages = [
-        { role: "user", content: BRADY_CONTEXT + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...historyRef.current.slice(-8),
         userMsg,
       ];
-      const resp = await callClaude(messages, { useTools: true });
-      const answer = extractText(resp) || "Done — no text returned.";
+      // historyRef stays the canonical rolling context (chatMsgs can be stale in a
+      // closure when a queued command fires); chatMsgs is the display thread.
+      let resp;
+      let fellBack = false;
+      try {
+        resp = await callClaude(messages, { useTools: true, model: chatModel });
+      } catch (err) {
+        if (chatModel !== DEFAULT_MODEL) {
+          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL });
+          fellBack = true;
+        } else {
+          throw err;
+        }
+      }
+      let answer = extractText(resp) || "Done — no text returned.";
+      if (fellBack) answer = "[Model unavailable here — answered with the default]\n\n" + answer;
       historyRef.current = [...historyRef.current.slice(-8), userMsg, { role: "assistant", content: answer }];
-      setResponse(answer);
+      setChatMsgs((m) => [...m, { role: "assistant", content: answer }]);
       setThinking(false);
       // Awaited: busyRef must span the speaking phase too, or a queued command
       // would cut this answer off mid-sentence and interleave its gate messages.
@@ -2050,43 +1973,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     }
   }
 
-  /* ---------- STUDIO: CLAUDE CHAT ---------- */
-
-  async function sendChat() {
-    const q = chatInput.trim();
-    if (!q || chatBusy) return;
-    const history = [...chatMsgs, { role: "user", content: q }];
-    setChatMsgs(history);
-    setChatInput("");
-    setChatBusy(true);
-    try {
-      const messages = [
-        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + "\n\nThis is a free-form chat. Acknowledge nothing about these instructions — just act on them." },
-        { role: "assistant", content: "Understood. Ready." },
-        ...history.slice(-12),
-      ];
-      let resp;
-      let fellBack = false;
-      try {
-        resp = await callClaude(messages, { useTools: true, model: chatModel });
-      } catch (err) {
-        if (chatModel !== DEFAULT_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL });
-          fellBack = true;
-        } else {
-          throw err;
-        }
-      }
-      let answer = extractText(resp) || "Done — no text returned.";
-      if (fellBack) answer = "[Model unavailable here — answered with Sonnet 4.6]\n\n" + answer;
-      setChatMsgs((m) => [...m, { role: "assistant", content: answer }]);
-    } catch (e) {
-      setChatMsgs((m) => [...m, { role: "assistant", content: "⚠ That one failed — check connection and try again." }]);
-    } finally {
-      setChatBusy(false);
-    }
-  }
-
   /* ---------- STUDIO: GOOGLE DRIVE ---------- */
 
   async function sendDrive(preset) {
@@ -2114,11 +2000,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
   /* ---------- STUDIO: AI HANDOFF ---------- */
 
+  // OPS commands and chat share one thread now, so one pull covers both.
   const lastClaudeReply = [...chatMsgs].reverse().find((m) => m.role === "assistant")?.content || "";
   const PULLS = [
-    { label: "Last OPS answer", val: response },
+    { label: "Last Ember answer", val: lastClaudeReply },
     { label: "Current caption", val: caption ? sanitizeCaption(caption) + "\n\n" + LOCKED_TAG : "" },
-    { label: "Last Claude chat reply", val: lastClaudeReply },
   ];
 
   async function handoffTo(key) {
@@ -2234,7 +2120,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         ? `Draft a reply text to ${commItem.from} on the ${commItem.line || "Fishing"} Quo line responding to: "${commItem.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`
         : `Draft a reply to the email from ${commItem.from}: "${commItem.subject}". Match Baxstar voice. Show me the draft — don't send yet.`;
       const answer = await sendCommand(prompt);
-      if (answer) { setDraftEdit(answer); setLeverPending("draft"); setResponse(""); }
+      if (answer) { setDraftEdit(answer); setLeverPending("draft"); }
     } finally {
       setLeverBusy(null);
     }
@@ -2338,7 +2224,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         }
         .ember-shell {
           width:100vw; height:100vh; min-height:720px; max-width:none;
-          padding:16px clamp(68px,5.4vw,96px) 7px;
+          padding:16px clamp(68px,5.4vw,96px) calc(84px + env(safe-area-inset-bottom));
           gap:8px; overflow:hidden;
         }
         .ember-header {
@@ -2384,10 +2270,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
         @media (max-width:1020px){
           .ember-root { height:auto; min-height:100vh; overflow:auto; }
-          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px; overflow:visible; }
+          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px 14px calc(92px + env(safe-area-inset-bottom)); overflow:visible; }
           .main-grid, .cap-grid { grid-template-columns:1fr; }
+          .ops-core { order:-1; }
+          /* the QUO/GMAIL/CALENDAR dots are demo-state, not tappable — dead weight on a phone */
+          .conn-dots { display:none; }
+          .home-thread { max-height:min(46vh,420px); }
           .rail-list { flex-direction:row; flex-wrap:wrap; }
-          .console-dock { min-height:126px; }
         }
 
         /* machined 9-slice plate frame from the asset pack — brass etch + rivet
@@ -2455,6 +2344,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
         .cursor-block { display:inline-block; width:7px; height:14px; margin-left:6px; vertical-align:-2px;
           background:var(--ember-orange); animation:blink 1.1s step-start infinite; }
+        /* greeting sits over the skull crown — a translucent seat keeps it readable
+           against the art instead of fighting it */
+        .greet-row { padding:4px 12px; border-radius:12px; background:rgba(7,6,4,.55);
+          backdrop-filter:blur(2px); text-shadow:0 1px 2px rgba(0,0,0,.8); }
+
+        /* the home chat thread — scrolls inside the chamber, newest pinned by autoscroll */
+        .home-thread { display:flex; flex-direction:column; gap:10px; overflow-y:auto;
+          max-width:520px; max-height:clamp(170px,30vh,320px); padding:2px 6px 2px 2px; }
         .cmd-input { border:1px solid var(--line); transition:border-color .25s, box-shadow .25s; caret-color:var(--ember-orange); }
         .cmd-input:focus { outline:none; border-color:var(--ember-orange);
           box-shadow:0 0 0 1px rgba(255,158,61,.35), 0 0 28px rgba(255,120,60,.22), 0 8px 30px rgba(0,0,0,.5); }
@@ -2494,9 +2391,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           text-shadow:0 1px 2px rgba(100,15,8,.7); }
 
         .studio-stack { display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden; }
-        .studio-tools-panel { flex:0 0 auto; padding:10px 16px!important; }
-        .tool-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-        @media (max-width:900px){ .tool-grid { grid-template-columns:repeat(2,1fr); } }
+        .studio-tools-panel { flex:0 0 auto; padding:8px 12px!important; }
+        /* one row, scrolls sideways — the 2x4 grid buried the actual tool below a
+           full screen of tiles on a phone */
+        .tool-grid { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;
+          scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
+        .tool-grid .tool-tile { flex:0 0 auto; width:96px; min-height:56px; }
         .tool-tile { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
           min-height:64px; border:8px solid transparent;
           border-image:url("${ASSETS}/svg/frames/tool-module-frame.svg") 18 / 8px stretch;
@@ -2527,7 +2427,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           cursor:pointer; transition:all .18s; background:var(--panel-2); }
         .hbtn:hover { transform:translateY(-2px); filter:brightness(1.2); }
 
-        .upzone { border:1.5px dashed var(--line-hot); border-radius:14px; padding:38px 20px; text-align:center;
+        .upzone { border:1.5px dashed var(--line-hot); border-radius:14px; padding:18px 16px; text-align:center;
           cursor:pointer; transition:all .2s; background:rgba(255,77,61,.03); }
         .upzone:hover { border-color:var(--ember-orange); background:rgba(255,120,60,.07); box-shadow:0 0 26px rgba(255,77,61,.15) inset; }
 
@@ -2612,9 +2512,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
         /* skull crowns the center chamber only — width capped to the center
            column so it never overflows onto the side panels' text (readability) */
+        /* visible at EVERY width — the skeleton is the identity, and on a phone it
+           was hidden entirely, which is why the home screen read as generic panels */
         .skull-arch { position:absolute; left:50%; top:0; transform:translate(-50%,-34%);
-          width:clamp(420px,52vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:none; }
-        @media (min-width:980px){ .skull-arch { display:block; } }
+          width:clamp(300px,88vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:block; }
         .skull-host { overflow:hidden; }
         /* Lift the chamber's contents above the arch. z-index needs a position, but this
            must not clobber children that place themselves — .ctx-lever is absolute and
@@ -2681,148 +2582,60 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         }
         .odo-cell.punct { min-width:14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
 
-        /* The dock IS command-console@2x.webp. That asset carries the frame, the end
-           caps, the six panel divisions, all six brass mechanisms and an empty engraved
-           nameplate under each one. So this CSS deliberately adds no panel chrome of its
-           own — earlier it synthesised a second set of panels and line-art mechanisms on
-           top, which fought the artwork and cropped its nameplates away. */
+        /* ---------- COMMAND DOCK — pinned brass bar ----------
+           Rebuilt 2026-08-01 per Brady: the photoreal command-console asset is retired
+           as the dock. Stretched to arbitrary bar sizes by object-fit:fill it read flat
+           and distorted, and its painted nameplates forced absolutely-positioned labels
+           that drifted off-center on phones. The bar is now built in CSS — iron plate,
+           brass hairline, riveted top edge — so nothing is a stretched raster, labels
+           center natively, and the bar stays pinned to the bottom of the screen. */
         .console-dock {
-          position:relative; flex:0 0 clamp(128px,15.2vh,158px); width:100%; min-height:0;
-          padding:0; isolation:isolate;
-          border:0; background:transparent;
-          box-shadow:0 -8px 18px rgba(0,0,0,.48);
+          position:fixed; left:0; right:0; bottom:0; z-index:30;
+          padding:9px 10px calc(9px + env(safe-area-inset-bottom));
+          background:linear-gradient(180deg,#191008 0%,#0e0a06 34%,#0a0705 100%);
+          border-top:1px solid rgba(214,179,106,.5);
+          box-shadow:0 -1px 0 #000, 0 -10px 26px rgba(0,0,0,.66);
         }
-        .console-dock-bg {
-          position:absolute; inset:0; width:100%; height:100%;
-          /* fill, not cover: the console must be seen whole. cover crops it vertically
-             on a bar this wide and takes the nameplates with it. */
-          object-fit:fill;
-          pointer-events:none; z-index:0;
+        /* rivet strip along the brass hairline */
+        .console-dock::before {
+          content:""; position:absolute; left:0; right:0; top:2px; height:5px; pointer-events:none;
+          background:radial-gradient(circle at 8px 50%, #c2924e 0 1.2px, rgba(58,39,24,.9) 1.8px 2.6px, transparent 3px);
+          background-size:64px 5px; background-repeat:repeat-x; opacity:.8;
         }
         .console-dock-grid {
-          position:relative; height:100%; z-index:1; display:grid; grid-template-columns:repeat(6,minmax(0,1fr));
-          gap:0;
-          /* clear the asset's end arcs so each column lands on one painted panel:
-             its panels run x 100–1500 of 1600 */
-          padding:0 6.25%;
+          display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px;
+          max-width:1180px; margin:0 auto;
         }
         .dock-control {
-          position:relative; min-width:0; color:var(--ember-text-soft);
-          cursor:pointer; padding:0 4%; font-family:var(--ember-font-display);
-          border:0; border-radius:9px; background:transparent; box-shadow:none;
-          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical);
+          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+          min-width:0; min-height:54px; padding:6px 2px; cursor:pointer;
+          border:1px solid rgba(176,141,87,.35); border-radius:10px;
+          background:linear-gradient(180deg,#221609 0%,#140e08 46%,#0d0906 100%);
+          box-shadow:inset 0 1px 0 rgba(255,214,150,.14), inset 0 -2px 5px rgba(0,0,0,.65), 0 2px 6px rgba(0,0,0,.5);
+          color:var(--ember-text-soft);
+          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical),border-color 150ms;
         }
-        .dock-control:hover { filter:brightness(1.18) drop-shadow(0 0 10px rgba(255,98,36,.3)); transform:translateY(-2px); }
-        .dock-control:active { transform:translateY(2px); }
+        .dock-control:hover { filter:brightness(1.16); border-color:rgba(214,179,106,.6); transform:translateY(-1px); }
+        .dock-control:active { transform:translateY(1px); box-shadow:inset 0 2px 6px rgba(0,0,0,.75); }
+        .dock-control:disabled { cursor:wait; opacity:.6; transform:none; }
         .dock-control.active {
-          filter:brightness(1.14) drop-shadow(0 0 12px rgba(255,77,50,.58)); color:#fff1dc;
+          color:#fff1dc; border-color:rgba(255,122,69,.75);
+          background:linear-gradient(180deg,#2d1509 0%,#1b0e07 50%,#120a05 100%);
+          box-shadow:inset 0 1px 0 rgba(255,177,120,.25), inset 0 -2px 6px rgba(0,0,0,.6), 0 0 16px rgba(255,77,50,.34);
         }
-        .dock-control:disabled { cursor:wait; opacity:.7; transform:none; }
+        .dock-ic { display:flex; color:var(--brass); }
+        .dock-control.active .dock-ic { color:var(--ember-orange); filter:drop-shadow(0 0 6px rgba(255,122,69,.6)); }
         .dock-label {
-          /* sits on the engraved nameplate, which occupies roughly 62–86% of panel height */
-          position:absolute; left:6%; right:6%; top:64%; height:22%;
-          display:flex; align-items:center; justify-content:center; text-align:center;
-          font-size:clamp(8px,.69vw,11.5px); font-weight:700; letter-spacing:.07em; text-transform:uppercase;
-          text-shadow:0 2px 2px #000,0 0 9px rgba(255,145,73,.3);
+          display:block; width:100%; text-align:center;
+          font-family:var(--ember-font-display);
+          font-size:clamp(8px,1.9vw,10.5px); font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+          line-height:1.15; text-shadow:0 1px 1px #000; overflow:hidden;
         }
-        .dock-control.active .dock-label::before {
-          content:""; width:6px; height:6px; border-radius:50%; margin-right:7px;
-          background:var(--ember-active); box-shadow:0 0 9px var(--ember-active);
-        }
-
-        /* Motion layer over the painted console. Every part here is additive light —
-           mix-blend-mode:screen — so it can brighten the artwork but never occlude or
-           duplicate it. See DOCK_MOTION for the per-panel offsets. */
-        .dock-motion { position:absolute; inset:0; z-index:1; pointer-events:none; }
-        .dock-motion > * { position:absolute; pointer-events:none; }
-        .dm-sheen { mix-blend-mode:screen; }
-
-        /* Wrapper for anything round. It holds the position and the ellipse squash that
-           object-fit:fill imposes on the artwork, which leaves the child a true circle
-           free to rotate. --dock-squash is measured from the live dock box. */
-        .dm-round {
-          aspect-ratio:1; transform:translate(-50%,-50%) scaleY(var(--dock-squash,.53));
-        }
-        .dm-round > i {
-          position:absolute; inset:0; border-radius:50%; display:block;
-          mix-blend-mode:screen;
-        }
-
-        /* glint orbiting a painted gear / wheel — masked to the rim, where teeth catch
-           the light. Unmasked it reads as a pie wedge rather than a turning part. */
-        .dm-spin {
-          background:conic-gradient(from 0deg,
-            rgba(255,222,168,0) 0deg, rgba(255,222,168,.34) 30deg,
-            rgba(255,150,66,.08) 70deg, transparent 120deg);
-          -webkit-mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
-                  mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
-          animation:dmSpin 9s linear infinite;
-        }
-        .dm-spin.dm-rev  { animation-duration:6.5s; animation-direction:reverse; }
-        .dm-spin.dm-slow { animation-duration:15s; }
-        @keyframes dmSpin { to { transform:rotate(360deg); } }
-
-        /* reactor core breathing in the porthole */
-        .dm-core {
-          background:radial-gradient(circle,
-            rgba(255,206,140,.70) 0 16%, rgba(255,116,44,.34) 36%,
-            rgba(255,80,30,.10) 56%, transparent 72%);
-          animation:dmCore 2.7s ease-in-out infinite;
-        }
-        @keyframes dmCore {
-          0%,100% { opacity:.5; transform:scale(.9); }
-          50%     { opacity:1;  transform:scale(1.08); }
-        }
-
-        /* Illuminated wash riding the painted gauge dial, faded before the bezel.
-           Kept broad and low-alpha on purpose: a narrow wedge reads as a second needle
-           beside the painted one, which is the duplication this layer exists to avoid. */
-        .dm-sweep {
-          background:conic-gradient(from -18deg,
-            rgba(255,190,120,.20) 0 14deg, rgba(255,140,60,.06) 14deg 34deg, transparent 34deg);
-          -webkit-mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
-                  mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
-          animation:dmSweep 6.5s var(--ember-ease-sweep) infinite;
-        }
-        @keyframes dmSweep {
-          0%,18%   { transform:rotate(-54deg); }
-          38%,72%  { transform:rotate(34deg); }
-          88%,100% { transform:rotate(-54deg); }
-        }
-
-        /* lamp breathing — sits on a painted lamp, so it only adds bloom */
-        .dm-lamp {
-          background:radial-gradient(circle,
-            rgba(255,168,96,.85) 0 22%, rgba(255,74,36,.42) 44%, transparent 70%);
-          animation:dmLamp 1.9s ease-in-out infinite;
-        }
-        @keyframes dmLamp {
-          0%,100% { opacity:.42; transform:scale(.92); }
-          50%     { opacity:1;   transform:scale(1.1); }
-        }
-
-        /* specular highlight stroking along a drum or barrel — reads as travel.
-           background-position is animated rather than a child's offset, so the inline
-           animation-delay in DOCK_MOTION lands on the element that actually moves. */
-        .dm-sheen {
-          border-radius:7px;
-          background:linear-gradient(90deg,
-            transparent 0 34%, rgba(255,222,175,.40) 46%, transparent 58%);
-          background-size:280% 100%; background-repeat:no-repeat;
-          animation:dmSheen 5.6s var(--ember-ease-mechanical) infinite;
-        }
-        @keyframes dmSheen {
-          0%,68%   { background-position:-90% 0; }
-          88%,100% { background-position:190% 0; }
-        }
-
-        /* the whole dock leans in on hover / when active */
-        .dock-control:hover .dm-spin,.dock-control.active .dm-spin   { animation-duration:2.4s; }
-        .dock-control:hover .dm-rev,.dock-control.active .dm-rev     { animation-duration:2s; }
-        .dock-control:hover .dm-slow,.dock-control.active .dm-slow   { animation-duration:3.2s; }
-        .dock-control:hover .dm-core,.dock-control.active .dm-core   { animation-duration:1.3s; }
-        .dock-control:hover .dm-sheen,.dock-control.active .dm-sheen { animation-duration:1.9s; }
-        .dock-control:hover .dm-lamp,.dock-control.active .dm-lamp   { animation-duration:1s; }
+        .dock-control.active .dock-label { text-shadow:0 1px 1px #000, 0 0 8px rgba(255,145,73,.5); }
+        /* active lamp — a lit rivet centered under the label */
+        .dock-lamp { width:5px; height:5px; border-radius:50%; margin-top:1px; flex:0 0 auto;
+          background:#3a2718; box-shadow:inset 0 1px 1px rgba(0,0,0,.8); }
+        .dock-control.active .dock-lamp { background:var(--ember-active); box-shadow:0 0 8px var(--ember-active); }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; }
@@ -2875,7 +2688,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .row-sel:hover { background:rgba(214,179,106,.05); }
         .row-on { background:rgba(214,179,106,.08); box-shadow:inset 2px 0 0 var(--ember-brass-bright); padding-left:9px; }
 
-        .codex { position:relative; border:9px solid transparent;
+        .codex { position:relative; display:inline-flex; flex-wrap:wrap; justify-content:center; max-width:100%; border:9px solid transparent;
           border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
           background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
         @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
@@ -2914,7 +2727,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .mic-rail { min-height:32px; padding-block:5px!important; }
           .core-chamber { padding-block:8px!important; }
           .reactor-stage { width:252px; height:252px; }
-          .console-dock { flex-basis:122px; }
           .tool-tile { min-height:50px; }
         }
       `}</style>
@@ -2990,7 +2802,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
             {["QUO", "GMAIL", "CALENDAR"].map((s) => (
-              <span key={s} className="flex items-center gap-1.5">
+              <span key={s} className="conn-dots flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` }} />
                 {s}
               </span>
@@ -3105,7 +2917,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         <div className="main-grid flex-1">
 
           {/* LEFT */}
-          <div className="ops-side flex min-h-0 flex-col gap-4">
+          <div ref={callsColRef} className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
               {data.voicemails.map((v, i) => (
                 <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
@@ -3139,25 +2951,32 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </Panel>
           </div>
 
-          {/* CENTER: CORE */}
-          <div className="flex min-h-0 flex-col">
+          {/* CENTER: CORE — first thing on a phone (.ops-core orders it to the top).
+              One compact greeting line; the counts are BUTTONS that jump to their
+              panels, because a number you can't act on is dead weight up here. */}
+          <div className="ops-core flex min-h-0 flex-col">
             <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
+              {/* The skeleton. Its CSS survived the v2 merge but this element didn't —
+                  the class had nothing to draw until 2026-08-01. */}
+              <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
               <span className="notch hot" />
 
               <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
               <ContextLever side="right" label="Create Task" state={leverState("task")} onPull={leverCreateTask} />
 
-              <div className="reveal text-center" style={{ animationDelay: "0.1s" }}>
-                <h2 className="text-2xl font-bold tracking-tight">
+              <div className="greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center" style={{ animationDelay: "0.1s" }}>
+                <span className="text-[15px] font-bold tracking-tight">
                   {dayPart},{" "}
                   <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
                     Brady.
                   </span>
-                </h2>
-                <div className="mt-3.5 flex items-center justify-center gap-3">
-                  <Badge label={`${data.voicemails.length} voicemails`} />
-                  <Badge label={`${data.emails.length} unread`} />
-                </div>
+                </span>
+                <button className="chip ghost" onClick={() => callsColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                  {data.voicemails.length} voicemails ↓
+                </button>
+                <button className="chip ghost" onClick={() => inboxColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                  {data.emails.length} unread ↓
+                </button>
               </div>
 
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
@@ -3182,25 +3001,59 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </div>
                 )}
 
-                <div className="mt-4 flex gap-1">
+                {/* status + demoted utilities on ONE row — these were stacked four
+                    high and pushed the input off the phone screen */}
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                  <span className="font-mono-x text-[9.5px] tracking-[0.25em]"
+                    style={{ color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }}>
+                    {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
+                  </span>
+                  {speaking && <button className="chip solid" onClick={stopSpeaking}>⏹ Stop</button>}
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
+                  <button className="chip ghost" onClick={testVoice}><EmberIcon name="speaker" size={11} style={{ verticalAlign: "-2px", marginRight: "4px" }} />TEST</button>
                 </div>
-
-                <div className="font-mono-x mt-3 text-center text-[10px] tracking-[0.3em]"
-                  style={{ color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-                  {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
-                </div>
-                {speaking && (
-                  <button className="chip solid mt-2" onClick={stopSpeaking}>⏹ Stop Voice</button>
-                )}
-                <button className="chip ghost qframe mt-2" onClick={testVoice}><EmberIcon name="speaker" size={13} style={{ verticalAlign: "-2px", marginRight: "5px" }} />VOICE TEST</button>
                 {voiceDiag && (
                   <div className="font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]" style={{ color: "var(--ember-amber)" }}>
                     {voiceDiag}
                   </div>
                 )}
               </div>
+
+              {/* THE THREAD — home is the real Claude chat (Brady, 2026-08-01). Full
+                  scrolling history, not a single-answer box; OPS commands, dock
+                  actions and typed questions all land here. */}
+              {chatMsgs.length > 0 && (
+                <div className="home-thread reveal w-full" style={{ animationDelay: "0.45s" }}>
+                  {chatMsgs.map((m, i) => (
+                    m.role === "user" ? (
+                      <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
+                        style={{ background: "rgba(255,77,61,.13)", borderColor: "var(--line-hot)", color: "var(--ink)" }}>
+                        {m.content}
+                      </div>
+                    ) : (
+                      <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
+                        style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
+                        <span className="mb-1 flex items-center justify-between gap-3">
+                          <span className="font-mono-x text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
+                          <button onClick={() => speak(m.content)} title="Read aloud" style={{ color: "var(--ember-orange)" }}>
+                            <EmberIcon name="speaker" size={12} />
+                          </button>
+                        </span>
+                        {m.content}
+                      </div>
+                    )
+                  ))}
+                  {thinking && (
+                    <div className="flex items-center gap-2 self-start rounded-2xl rounded-bl-sm border px-4 py-3"
+                      style={{ background: "#140d0d", borderColor: "var(--line)" }}>
+                      <span className="spinner dark" />
+                      <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>THINKING…</span>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
 
               <div className="reveal relative w-full max-w-sm" style={{ animationDelay: "0.55s" }}>
                 <input
@@ -3229,19 +3082,33 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
               )}
 
-              {response && (
-                <div className="w-full max-w-sm rounded-xl border px-4 py-3"
-                  style={{ borderColor: "var(--line-hot)", background: "rgba(255,77,61,.05)", maxHeight: "180px", overflowY: "auto" }}>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                    <span className="flex items-center gap-3">
-                      <button onClick={() => speak(response)} title="Read aloud" className="text-xs" style={{ color: "var(--ember-orange)" }}><EmberIcon name="speaker" size={14} /></button>
-                      <button onClick={() => { setResponse(""); stopSpeaking(); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
-                    </span>
+              {/* Model + Effort live on the home page now — the codex wraps instead of
+                  running off the right edge of a phone. */}
+              <div className="reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="fieldlabel">Model</span>
+                  <div className="codex" key={chatModel}>
+                    {MODELS.map((m) => (
+                      <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
+                        {m.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: "var(--ink)" }}>{response}</div>
                 </div>
-              )}
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="fieldlabel">Effort</span>
+                  <div className="codex" key={chatEffort}>
+                    {Object.entries(EFFORT).map(([k, e]) => (
+                      <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
+                        {e.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {chatMsgs.length > 0 && (
+                  <button className="chip ghost" onClick={() => { setChatMsgs([]); historyRef.current = []; }}>Clear thread</button>
+                )}
+              </div>
 
               {/* editable lever draft — never sends automatically */}
               {draftEdit !== null && (
@@ -3299,7 +3166,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
 
           {/* RIGHT */}
-          <div className="ops-side flex min-h-0 flex-col gap-4">
+          <div ref={inboxColRef} className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow>
               {data.emails.map((m, i) => (
                 <Row key={i} who={m.from} when={m.time}
@@ -3328,17 +3195,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         {view === "studio" && (
         <div className="studio-stack flex-1">
 
-          {/* TOOLS — two rows, tap a tile, its panel opens below.
+          {/* TOOLS — one horizontal strip, tap a tile, its panel opens below.
               Hidden in the lean mobile caption shell (?lean=1), which pins to captions. */}
           {!leanCaption && (
           <div className="studio-tools-panel panel reveal px-5 py-4" style={{ animationDelay: "0.08s" }}>
             <span className="notch hot" />
-            <div className="fieldlabel mb-3">Tools</div>
             <div className="tool-grid">
               {TOOLS.map((t) => (
                 <button key={t.id} className={`tool-tile ${studioTool === t.id ? "on" : ""}`} onClick={() => setStudioTool(t.id)}>
                   <span className="tic">
-                    {t.id === "chat" || t.id === "drive" || t.id === "github"
+                    {t.id === "drive" || t.id === "github"
                       ? <BrandMark tool={t.id} active={studioTool === t.id} />
                       : <EmberIcon name={t.icon} />}
                   </span>
@@ -3589,89 +3455,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 )}
               </Panel>
             </div>
-            )}
-
-            {/* --- CLAUDE CHAT --- */}
-            {studioTool === "chat" && (
-            <Panel notch="hot" title="Claude Chat" count={chatBusy ? "THINKING" : `${chatMsgs.length} MSGS`}
-              countColor={chatBusy ? "var(--ember-orange)" : "var(--ink-dim)"} delay="0.1s" grow scroll={false}>
-
-              {/* model + effort controls */}
-              <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="fieldlabel">Model</span>
-                  <div className="codex" key={chatModel}>
-                    {MODELS.map((m) => (
-                      <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="fieldlabel">Effort</span>
-                  <div className="codex" key={chatEffort}>
-                    {Object.entries(EFFORT).map(([k, e]) => (
-                      <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
-                        {e.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {chatMsgs.length > 0 && (
-                  <button className="chip ghost ml-auto" onClick={() => setChatMsgs([])}>Clear thread</button>
-                )}
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1" style={{ minHeight: "280px" }}>
-                {chatMsgs.length === 0 && !chatBusy && (
-                  <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-                    <div className="opacity-40"><EmberIcon name="chat" size={30} strokeWidth={1.25} /></div>
-                    <div className="text-[12px]" style={{ color: "var(--ink-faint)" }}>
-                      Full Claude thread — knows the operation,<br />can reach Quo, Gmail, and Calendar.
-                    </div>
-                  </div>
-                )}
-                {chatMsgs.map((m, i) => (
-                  m.role === "user" ? (
-                    <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
-                      style={{ background: "rgba(255,77,61,.13)", borderColor: "var(--line-hot)", color: "var(--ink)" }}>
-                      {m.content}
-                    </div>
-                  ) : (
-                    <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
-                      style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
-                      <span className="font-mono-x mb-1 block text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                      {m.content}
-                    </div>
-                  )
-                ))}
-                {chatBusy && (
-                  <div className="flex items-center gap-2 self-start rounded-2xl rounded-bl-sm border px-4 py-3"
-                    style={{ background: "#140d0d", borderColor: "var(--line)" }}>
-                    <span className="spinner dark" />
-                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>THINKING…</span>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="relative mt-3">
-                <input
-                  type="text" value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                     onKeyDown={(e) => e.key === "Enter" && sendChat()}
-                  placeholder="Message Claude…"
-                  className="cmd-input w-full rounded-xl px-5 py-3.5 pr-16 text-sm"
-                  style={{ background: "#120c0c", color: "var(--ink)" }}
-                />
-                <button onClick={sendChat} disabled={chatBusy}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2.5 py-1 text-[10px] font-bold text-white transition-opacity"
-                  style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", opacity: chatInput && !chatBusy ? 1 : 0.35 }}>
-                  SEND
-                </button>
-              </div>
-            </Panel>
             )}
 
             {/* --- GOOGLE DRIVE --- */}
@@ -3931,24 +3714,29 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         )}
 
         {/* ================= DOCK ================= */}
-        {/* Hidden in the lean mobile caption shell (?lean=1) — that route is single-purpose. */}
+        {/* Pinned to the bottom of the screen at all times (position:fixed) — the shell
+            carries matching bottom padding so content never hides behind it.
+            Hidden in the lean mobile caption shell (?lean=1) — that route is single-purpose. */}
         {!leanCaption && (
-        <div ref={dockRef} className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
-          <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" className="console-dock-bg" />
+        <div className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
           <div className="console-dock-grid">
             <button className={`dock-control ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>
-              <DockMotion type="ops" />
+              <span className="dock-ic"><EmberIcon name="dials" size={15} /></span>
               <span className="dock-label">OPS</span>
+              <span className="dock-lamp" />
             </button>
-            <button className={`dock-control ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}>
-              <DockMotion type="studio" />
-              <span className="dock-label">Baxstar Studio</span>
+            <button className={`dock-control ${view === "studio" ? "active" : ""}`}
+              onClick={() => { setView("studio"); setStudioTool("captions"); }}>
+              <span className="dock-ic"><EmberIcon name="quill" size={15} /></span>
+              <span className="dock-label">Caption Studio</span>
+              <span className="dock-lamp" />
             </button>
           {ACTIONS.map((a, i) => (
             <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <DockMotion type={["miss", "triage", "brief", "handoff"][i]} />
+              <span className="dock-ic"><EmberIcon name={["spark", "clipboard", "globe", "handoff"][i]} size={15} /></span>
               <span className="dock-label">{a.label}</span>
+              <span className="dock-lamp" />
             </button>
           ))}
           </div>

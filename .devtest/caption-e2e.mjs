@@ -166,7 +166,12 @@ check("vision scan was ONE call for the whole set",
   `calls=${proxyCalls.length}`);
 
 const bodyText = () => page.locator("body").innerText();
-check("species came back from the scan", /SMALLMOUTH BASS/i.test(await bodyText()));
+// waitForFunction, not an instant read — the SCANNING overlay clears a tick before
+// React commits the species text, and reading immediately was flaky.
+const speciesShown = await page.waitForFunction(
+  () => /smallmouth bass/i.test(document.body.innerText), null, { timeout: 5000 }
+).then(() => true, () => false);
+check("species came back from the scan", speciesShown);
 
 /* --- sponsor chips ------------------------------------------------------- */
 
