@@ -45,12 +45,64 @@ Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8g
 The Agent OS lives in the "Baxstar Data Engine" folder: 01 Identity, 02 Context Library, 03 Skills, 04 Memory + Logs, 05 Verification, 06 Agents, 07 Automations, 08 Archive, 09 Handoff (Shared).
 READ ONLY — never modify files. BLUF answers. Name the doc(s) you pulled from.`;
 
-// EDIT HERE if a handle is off — one place, used everywhere.
+/* EDIT HERE if a handle is off — one place, used everywhere.
+
+   Handles are the canonical set from "Baxstar Caption Tool — Consolidation Notes" §2 and
+   the standalone tool at baxstarcode/caption-studio. Two of them are easy to get wrong:
+   Vexus's boat account is @therealvexusboats (NOT @vexusboats, which is a different
+   account) and its apparel/logo account is @therealvexus. Detroit Lake carries two
+   handles, which is why every entry stores a `handles` ARRAY.
+
+   `detect` is the vision key the photo scan sets. Entries without one (Detroit Lake,
+   J&K Marine) aren't visually identifiable and stay manual toggles.
+
+   Tagging is confirm-before-post by design: vision only pre-arms a chip, Brady approves. */
 const SPONSORS = {
-  vexus:  { label: "Vexus",          handle: "@vexusboats" },
-  summit: { label: "Summit Fishing", handle: "@summitfishingequipment" },
-  jk:     { label: "J&K Marine",     handle: "@jandkmarine" },
+  vexus:     { label: "Vexus boat",       handles: ["@therealvexusboats"], detect: "vexusBoat" },
+  vexusLogo: { label: "Vexus apparel",    handles: ["@therealvexus"],      detect: "vexusLogo" },
+  mercury:   { label: "Mercury",          handles: ["@mercurymarine"],     detect: "mercury" },
+  powerPole: { label: "Power-Pole",       handles: ["@power.pole"],        detect: "powerPole" },
+  striker:   { label: "Striker",          handles: ["@strikerbrands"],     detect: "striker" },
+  eternal:   { label: "Eternal Lithium",  handles: ["@eternallithium"],    detect: "eternalLithium" },
+  igogs:     { label: "iGOGS shades",     handles: ["@igogs"],             detect: "sunglasses" },
+  summit:    { label: "Summit Fishing",   handles: ["@summitfishingequipment"], detect: "summit" },
+  detroit:   { label: "Detroit Lake",     handles: ["@dlchamber", "@detroitlakesminnesota"] },
+  jk:        { label: "J&K Marine",       handles: ["@jandkmarine"] },
 };
+
+const SPONSOR_KEYS = Object.keys(SPONSORS);
+
+/* What each detectable brand actually looks like in a boat photo. These go into the vision
+   prompt verbatim — vague keys like "vexusDetected" produced false positives on any white
+   hull, so each one says what to look for and the prompt tells the model to stay
+   conservative. A wrong tag notifies the wrong company, so a miss is cheaper than a hit. */
+const SPONSOR_VISION_HINT = {
+  vexus:     "a Vexus boat — hull, console, deck, or the Vexus name on the boat itself",
+  vexusLogo: "the Vexus name or logo on CLOTHING — a shirt, hat, or jersey, not the boat",
+  mercury:   "a Mercury outboard motor, or the Mercury name/logo on the cowling",
+  powerPole: "a Power-Pole shallow-water anchor — the vertical pole unit on the transom",
+  striker:   "Striker-branded apparel — jacket, bibs, or hat carrying the Striker name",
+  eternal:   "an Eternal Lithium battery or its branding",
+  igogs:     "someone wearing sunglasses (iGOGS is the shades sponsor)",
+  summit:    "Summit Fishing Equipment gear, apparel, or logo",
+};
+
+// Every handle for the chips that are switched on, flattened and de-duplicated.
+function activeHandles(sponsors) {
+  const out = [];
+  SPONSOR_KEYS.forEach((k) => {
+    if (!sponsors[k]?.on) return;
+    SPONSORS[k].handles.forEach((h) => { if (!out.includes(h)) out.push(h); });
+  });
+  return out;
+}
+
+// A fresh chip set: nothing on, nothing detected.
+function blankSponsors() {
+  const s = {};
+  SPONSOR_KEYS.forEach((k) => { s[k] = { on: false, detected: false }; });
+  return s;
+}
 
 const LOCKED_TAG = "#getyourbassingear";
 
@@ -211,15 +263,20 @@ async function maybeConvertHeic(file) {
   return file;
 }
 
-async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
-  file = await maybeConvertHeic(file);
-  const url = URL.createObjectURL(file);
-  const img = await new Promise((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = rej;
-    i.src = url;
-  });
+// One carousel is at most six slides — Instagram's own limit, and the standalone tool's.
+const MAX_PHOTOS = 6;
+
+/* Two renders per photo, deliberately different sizes.
+
+   VISION (<=1280, q0.85) is what the model reads. Every extra pixel is billed on each of
+   the two calls per photo (scan + caption) and buys no accuracy at this task, so it stays
+   small.
+
+   PUBLISH (<=1440, q0.92) is what actually leaves for the Drive outbox and eventually
+   Instagram. 1440px wide is Instagram's ingest ceiling — it downscales anything larger
+   anyway — and doing it here in the browser is also what keeps a six-photo carousel under
+   the Apps Script payload limit and converts iPhone HEIC to JPEG on the way through. */
+async function drawToJpeg(img, MAX, quality) {
   const scale = Math.min(1, MAX / Math.max(img.width, img.height));
   const w = Math.round(img.width * scale);
   const h = Math.round(img.height * scale);
@@ -227,9 +284,48 @@ async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
   c.width = w;
   c.height = h;
   c.getContext("2d").drawImage(img, 0, 0, w, h);
-  URL.revokeObjectURL(url);
-  const dataUrl = c.toDataURL("image/jpeg", quality);
-  return { b64: dataUrl.split(",")[1], preview: dataUrl };
+  return c.toDataURL("image/jpeg", quality);
+}
+
+/* Single-render resize — used by the background-image picker, which wants one big frame
+   and has nothing to do with the caption pipeline's vision/publish split. */
+async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
+  file = await maybeConvertHeic(file);
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const dataUrl = await drawToJpeg(img, MAX, quality);
+    return { b64: dataUrl.split(",")[1], preview: dataUrl };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function renderPhoto(file) {
+  file = await maybeConvertHeic(file);
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const visionUrl = await drawToJpeg(img, 1280, 0.85);
+    const publishUrl = await drawToJpeg(img, 1440, 0.92);
+    return {
+      b64: visionUrl.split(",")[1],        // what the model reads
+      publishB64: publishUrl.split(",")[1], // what gets posted
+      preview: visionUrl,
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function sanitizeCaption(t) {
@@ -240,6 +336,47 @@ function sanitizeCaption(t) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/* Brady's rule, verbatim: "5 max total, counting #getyourbassingear." The locked tag is
+   appended at copy/publish time and always occupies one of the five, so the caption body
+   gets a budget of four.
+
+   The prompt already asks the model for at most three, but a prompt is a request, not a
+   guarantee — this is the enforcement. Extras are trimmed from the END (keeping the ones
+   written first, which are the species tags that matter) and the count is REPORTED rather
+   than silently dropped, so nothing disappears without Brady seeing it. @mentions are not
+   hashtags and never count toward the five. Mirrors capHashtags() in the standalone tool. */
+const MAX_HASHTAGS = 5;
+
+function capCaptionTags(text) {
+  const budget = MAX_HASHTAGS - 1; // the locked tag holds one slot
+  let seen = 0;
+  let dropped = 0;
+  const out = text.replace(/#[\w]+/g, (tag) => {
+    seen += 1;
+    if (seen <= budget) return tag;
+    dropped += 1;
+    return "";
+  });
+  return {
+    text: dropped ? out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim() : text,
+    total: Math.min(seen, budget) + 1, // +1 for the locked tag
+    dropped,
+  };
+}
+
+/* The finished post text. `withHandles: false` is the auto-post form — sponsor handles
+   ride as on-photo Instagram tags there, so repeating them in the caption would tag
+   everyone twice. Copy-to-clipboard uses the handles-inline form. */
+function assembleCaption(caption, sponsors, { withHandles = true } = {}) {
+  const capped = capCaptionTags(sanitizeCaption(caption));
+  const lines = [capped.text, "", LOCKED_TAG];
+  if (withHandles) {
+    const handles = activeHandles(sponsors);
+    if (handles.length) lines.push(handles.join(" "));
+  }
+  return { text: lines.join("\n").trim(), total: capped.total, dropped: capped.dropped };
 }
 
 /* ---------- LOCAL PERSISTENCE ----------
@@ -661,14 +798,11 @@ export default function BaxstarEmber() {
   const [queued, setQueued] = useState("");
 
   // ---- CAPTION STUDIO state ----
-  const [photo, setPhoto] = useState(null);
+  // Up to MAX_PHOTOS slides; one caption covers the set. photos[0] drives the preview.
+  const [photos, setPhotos] = useState([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [fishId, setFishId] = useState(null);
-  const [sponsors, setSponsors] = useState({
-    vexus: { on: false, detected: false },
-    summit: { on: false, detected: false },
-    jk: { on: false },
-  });
+  const [sponsors, setSponsors] = useState(blankSponsors);
   const [lake, setLake] = useState("Detroit Lake");
   const [postWindow, setPostWindow] = useState("4 PM CT");
   const [genBusy, setGenBusy] = useState(false);
@@ -805,11 +939,16 @@ export default function BaxstarEmber() {
 
     // Caption draft recovery — the survives-a-dropped-connection piece.
     const draft = lsGet(CAPTION_DRAFT_KEY, null);
-    if (draft && (draft.caption || draft.photo)) {
-      if (draft.photo) setPhoto(draft.photo);
+    // `photo` (singular) is the pre-carousel draft shape — still restored so a draft written
+    // by an older build isn't stranded.
+    const draftShots = draft?.photos || (draft?.photo ? [draft.photo] : []);
+    if (draft && (draft.caption || draftShots.length)) {
+      if (draftShots.length) setPhotos(draftShots);
       if (draft.caption) setCaption(draft.caption);
       if (draft.fishId) setFishId(draft.fishId);
-      if (draft.sponsors) setSponsors(draft.sponsors);
+      // Merge onto a blank set — a draft saved before a sponsor was added carries only the
+      // old keys, and reading .on off a missing key would throw during render.
+      if (draft.sponsors) setSponsors({ ...blankSponsors(), ...draft.sponsors });
       if (draft.lake) setLake(draft.lake);
       if (draft.postWindow) setPostWindow(draft.postWindow);
       setCaptionRestored(true);
@@ -817,19 +956,21 @@ export default function BaxstarEmber() {
   }, []);
 
   /* Autosave the in-progress caption to localStorage so a dropped lake connection or an
-     accidental reload never loses it. Debounced via React's batching; the photo is only
-     kept when the encoded draft is small enough to fit the localStorage quota (a resized
-     JPEG usually is) — otherwise the text/metadata still survive and the photo is re-picked. */
+     accidental reload never loses it.
+
+     Images are saved on a best-effort ladder, because a six-slide carousel carries two
+     renders each and will not fit a ~5MB localStorage quota: try the full set, then the
+     vision renders alone (roughly half the bytes), then text and metadata only. The
+     caption itself — the part that took a model call to produce — survives every rung. */
   useEffect(() => {
     if (!hydrated.current) return;
-    if (!caption && !photo) { lsDel(CAPTION_DRAFT_KEY); return; }
+    if (!caption && !photos.length) { lsDel(CAPTION_DRAFT_KEY); return; }
     const base = { caption, fishId, sponsors, lake, postWindow, ts: clock };
-    const withPhoto = { ...base, photo };
-    if (!lsSet(CAPTION_DRAFT_KEY, withPhoto)) {
-      // Too big (photo pushed it past quota) — persist without the image.
-      lsSet(CAPTION_DRAFT_KEY, base);
-    }
-  }, [caption, photo, fishId, sponsors, lake, postWindow]);
+    const lean = photos.map(({ b64, preview }) => ({ b64, preview }));
+    if (lsSet(CAPTION_DRAFT_KEY, { ...base, photos })) return;
+    if (lsSet(CAPTION_DRAFT_KEY, { ...base, photos: lean })) return;
+    lsSet(CAPTION_DRAFT_KEY, base);
+  }, [caption, photos, fishId, sponsors, lake, postWindow]);
 
   // fire-and-forget persist that never throws, even if storage is absent
   const persist = (key, val) => {
@@ -1665,50 +1806,94 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
 
   /* ---------- STUDIO: CAPTION PIPELINE ---------- */
 
-  async function handleFile(file) {
-    if (!file) return;
-    // iOS sometimes hands over a HEIC with an empty MIME type, so fall back to the
-    // extension when there's no usable type string.
-    const okType = file.type ? /^image\//i.test(file.type) : /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
-    if (!okType) return;
-    setCapErr("");
+  /* Take one or many files. `replace` starts a fresh post; otherwise the files are
+     appended to the existing carousel up to MAX_PHOTOS. Anything past the cap is reported
+     rather than dropped in silence. */
+  async function handleFiles(fileList, { replace = false } = {}) {
+    const incoming = Array.from(fileList || []).filter((file) => {
+      // iOS sometimes hands over a HEIC with an empty MIME type, so fall back to the
+      // extension when there's no usable type string.
+      return file.type ? /^image\//i.test(file.type) : /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
+    });
+    if (!incoming.length) return;
+
+    const room = replace ? MAX_PHOTOS : MAX_PHOTOS - photos.length;
+    if (room <= 0) { setCapErr(`That's the ${MAX_PHOTOS}-photo limit for one carousel.`); return; }
+    const take = incoming.slice(0, room);
+    const overflow = incoming.length - take.length;
+
+    setCapErr(overflow ? `Added ${take.length} — ${overflow} over the ${MAX_PHOTOS}-photo carousel limit.` : "");
     setCaption("");
     setFishId(null);
     try {
-      const p = await fileToResizedB64(file);
-      setPhoto(p);
-      analyzePhoto(p.b64);
+      const rendered = [];
+      for (const file of take) rendered.push(await renderPhoto(file));
+      const next = replace ? rendered : [...photos, ...rendered];
+      setPhotos(next);
+      analyzePhoto(next);
     } catch (e) {
-      const wasHeic = /image\/(heic|heif)/i.test(file.type) || /\.(heic|heif)$/i.test(file.name || "");
+      const wasHeic = take.some((f) => /image\/(heic|heif)/i.test(f.type) || /\.(heic|heif)$/i.test(f.name || ""));
       setCapErr(wasHeic
         ? "Couldn't decode that HEIC on this device — in iPhone Settings ▸ Camera ▸ Formats pick \"Most Compatible\", or share it as a JPG."
         : "Couldn't read that image — try a JPG or PNG.");
     }
   }
 
-  async function analyzePhoto(b64) {
+  function removePhoto(i) {
+    setPhotos((list) => {
+      const next = list.filter((_, idx) => idx !== i);
+      if (!next.length) { setFishId(null); setCaption(""); }
+      return next;
+    });
+  }
+
+  /* Scan the whole set in ONE vision call — the carousel gets a single caption, so the
+     model needs to see every slide before it names a species or a sponsor. Sponsors that
+     aren't visually identifiable (Detroit Lake, J&K Marine) keep whatever Brady set. */
+  async function analyzePhoto(shots) {
+    const set = (shots || []).filter(Boolean);
+    if (!set.length) return;
     setAnalyzing(true);
-    setSponsors((s) => ({ vexus: { on: false, detected: false }, summit: { on: false, detected: false }, jk: s.jk }));
+    setSponsors((s) => {
+      const next = blankSponsors();
+      SPONSOR_KEYS.forEach((k) => { if (!SPONSORS[k].detect) next[k] = s[k]; });
+      return next;
+    });
     try {
+      const detectLines = SPONSOR_KEYS
+        .filter((k) => SPONSORS[k].detect)
+        .map((k) => `- ${SPONSORS[k].detect}: ${SPONSOR_VISION_HINT[k]}`)
+        .join("\n");
+      const detectFields = SPONSOR_KEYS
+        .filter((k) => SPONSORS[k].detect)
+        .map((k) => `"${SPONSORS[k].detect}":true or false`)
+        .join(",");
       const resp = await callClaude(
         [{
           role: "user",
           content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-            { type: "text", text: `Analyze this fishing photo. Respond with ONLY valid JSON, no markdown:
-{"species":"specific common name, e.g. Smallmouth Bass — or 'No fish detected'","confidence":"high|medium|low","vexusDetected":true or false,"summitDetected":true or false,"notes":"one short line about the shot"}
-vexusDetected: a Vexus boat, hull, console, or Vexus logo is visible. summitDetected: Summit Fishing Equipment gear, apparel, or logo is visible. Be conservative — only true if you can actually see it.` },
+            ...set.map((p) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } })),
+            { type: "text", text: `Analyze ${set.length === 1 ? "this fishing photo" : `these ${set.length} fishing photos — they are one carousel post, so answer for the set as a whole`}. Respond with ONLY valid JSON, no markdown:
+{"species":"specific common name, e.g. Smallmouth Bass — or 'No fish detected'","confidence":"high|medium|low",${detectFields},"notes":"one short line about the shot"}
+
+Brand detection — be CONSERVATIVE. Only true if you can actually see it; a wrong tag notifies the wrong company:
+${detectLines}` },
           ],
         }],
         { useTools: false }
       );
       const parsed = extractJSON(extractText(resp));
       setFishId({ species: parsed.species || "Unknown", confidence: parsed.confidence || "low", notes: parsed.notes || "" });
-      setSponsors((s) => ({
-        vexus: { on: !!parsed.vexusDetected, detected: !!parsed.vexusDetected },
-        summit: { on: !!parsed.summitDetected, detected: !!parsed.summitDetected },
-        jk: s.jk,
-      }));
+      setSponsors((s) => {
+        const next = { ...s };
+        SPONSOR_KEYS.forEach((k) => {
+          const key = SPONSORS[k].detect;
+          if (!key) return;
+          const hit = !!parsed[key];
+          next[k] = { on: hit, detected: hit };
+        });
+        return next;
+      });
     } catch (e) {
       setFishId({ species: "Unknown", confidence: "low", notes: "" });
       setCapErr("Vision scan failed — you can still generate a caption.");
@@ -1718,17 +1903,16 @@ vexusDetected: a Vexus boat, hull, console, or Vexus logo is visible. summitDete
   }
 
   async function generateCaption() {
-    if (!photo || genBusy) return;
+    if (!photos.length || genBusy) return;
     setGenBusy(true);
     setCapErr("");
     setCopied(false);
     try {
-      const handles = Object.entries(sponsors)
-        .filter(([, v]) => v.on)
-        .map(([k]) => SPONSORS[k].handle);
+      const handles = activeHandles(sponsors);
       const prompt = `You write Instagram/Facebook captions for Baxstar Fishing — premium guided fishing out of Detroit Lakes, MN. Voice: premium-but-warm, confident, first-person from the guide. Specific beats generic.
 
 Photo context:
+- ${photos.length === 1 ? "A single photo." : `${photos.length} photos — ONE carousel post. Write a single caption that covers the set, not slide-by-slide.`}
 - Species: ${fishId?.species || "Unknown"} (${fishId?.confidence || "low"} confidence — trust what you see in the photo)
 - Lake: ${lake || "Detroit Lake"}
 - Posting window: ${postWindow}
@@ -1738,15 +1922,15 @@ HARD RULES:
 - NEVER mention Scheels or Scheels rods in any form.
 - Never say "one group per day" or "one trip per day". If referencing exclusivity, say "private trip(s)".
 - Do NOT include the hashtag ${LOCKED_TAG} — it is appended automatically.
-- Up to 3 other relevant hashtags at the very end. 1-3 tasteful emojis max.
+- At most 3 other hashtags, at the very end. The post is hard-capped at ${MAX_HASHTAGS} total and extras are trimmed, so make the ones you pick count. 1-3 tasteful emojis max.
 - 60-120 words with line breaks for rhythm.
 
-Look at the photo and write the caption. Output caption text only — no preamble.`;
+Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. Output caption text only — no preamble.`;
       const resp = await callClaude(
         [{
           role: "user",
           content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: photo.b64 } },
+            ...photos.map((p) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } })),
             { type: "text", text: prompt },
           ],
         }],
@@ -1764,13 +1948,16 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
   async function copyCaption() {
     try {
-      await navigator.clipboard.writeText(sanitizeCaption(caption) + "\n\n" + LOCKED_TAG);
+      await navigator.clipboard.writeText(assembleCaption(caption, sponsors).text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch (e) {
       setCapErr("Clipboard blocked — select and copy manually.");
     }
   }
+
+  // Live hashtag budget for the caption panel — recomputed as Brady edits the textarea.
+  const capState = capCaptionTags(sanitizeCaption(caption || ""));
 
   function toggleSponsor(key) {
     setSponsors((s) => ({ ...s, [key]: { ...s[key], on: !s[key].on } }));
@@ -1785,8 +1972,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
   function discardDraft() {
     lsDel(CAPTION_DRAFT_KEY);
     setCaptionRestored(false);
-    setPhoto(null); setCaption(""); setFishId(null);
-    setSponsors({ vexus: { on: false, detected: false }, summit: { on: false, detected: false }, jk: { on: false } });
+    setPhotos([]); setCaption(""); setFishId(null);
+    setSponsors(blankSponsors());
   }
 
   /* Publish the finished JPEG + caption to Brady's private Drive outbox (an Apps Script
@@ -1797,23 +1984,41 @@ Look at the photo and write the caption. Output caption text only — no preambl
      fall back to an opaque no-cors write (the file still lands; we just can't read a
      confirmation). */
   async function publishToOutbox() {
-    if (!photo || !caption || publishing) return;
+    if (!photos.length || !caption || publishing) return;
     const url = (outboxUrl || "").trim();
     if (!url) { setOutboxOpen(true); setPublishMsg("Add your outbox URL first (gear icon)."); return; }
     setPublishing(true);
     setPublishMsg("");
-    const finalCaption = sanitizeCaption(caption) + "\n\n" + LOCKED_TAG;
-    const handles = Object.entries(sponsors).filter(([, v]) => v.on).map(([k]) => SPONSORS[k].handle);
+
+    /* Two forms of the caption travel together, because they are consumed differently:
+
+       `caption` omits the @handles. Sponsor handles ride as ON-PHOTO Instagram tags (Meta
+       user_tags, which is the version that actually notifies the account), so repeating
+       them in the caption body would tag everyone twice.
+
+       `captionWithHandles` is the copy-paste form, kept for a manual post or for a
+       destination like Google Business Profile that has no photo-tag concept. */
+    const forPost = assembleCaption(caption, sponsors, { withHandles: false });
+    const forHumans = assembleCaption(caption, sponsors, { withHandles: true });
+
     const payload = {
       source: "ember-caption-studio",
-      caption: finalCaption,
+      caption: forPost.text,
+      captionWithHandles: forHumans.text,
       lockedTag: LOCKED_TAG,
-      imageBase64: photo.b64,
+      hashtagCount: forPost.total,
+      // Full-quality publish renders, first slide first. imageBase64 repeats slide one so
+      // an outbox deployed before carousel support still writes something usable.
+      images: photos.map((p) => p.publishB64 || p.b64),
+      imageBase64: photos[0].publishB64 || photos[0].b64,
       mimeType: "image/jpeg",
       species: fishId?.species || "",
+      // The lake NAME as a plain string, never a location ID. A publish attempt on
+      // 2026-07-07 failed outright because Zapier auto-guessed a location ID and Meta
+      // rejected it — the name (or an empty value) is the only thing that works.
       lake,
       postWindow,
-      sponsors: handles,
+      sponsors: activeHandles(sponsors),
       clientTime: new Date().toISOString(),
     };
     const body = JSON.stringify(payload);
@@ -3154,7 +3359,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 count={analyzing ? "SCANNING" : fishId ? `${(fishId.confidence || "").toUpperCase()} ID` : "AWAITING PHOTO"}
                 countColor={analyzing ? "var(--ember-orange)" : fishId ? "#54e08a" : "var(--ink-faint)"} delay="0.1s" grow>
 
-                <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+                <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden"
+                  onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
 
                 {captionRestored && (
                   <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px]"
@@ -3164,31 +3370,63 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   </div>
                 )}
 
-                {!photo ? (
+                {!photos.length ? (
                   <div className="upzone mt-1" onClick={() => fileRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}>
+                    onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
                     <div style={{ color: "var(--ember-amber)", opacity: .7 }}><EmberIcon name="hook" size={34} strokeWidth={1.25} /></div>
-                    <div className="mt-2 text-[13px] font-bold">Drop a fish photo, or click to upload</div>
+                    <div className="mt-2 text-[13px] font-bold">Drop fish photos, or click to upload</div>
                     <div className="mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
-                      Vision auto-scans for species + Vexus / Summit gear
+                      Up to {MAX_PHOTOS} for one carousel · vision auto-scans for species and sponsor gear
                     </div>
                   </div>
                 ) : (
-                  <div className="relative mt-1">
-                    <img src={photo.preview} alt="Catch"
-                      className="w-full rounded-xl border object-cover" style={{ borderColor: "var(--line)", maxHeight: "230px" }} />
-                    {analyzing && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl"
-                        style={{ background: "rgba(8,6,6,.65)" }}>
-                        <span className="spinner dark" />
-                        <span className="font-mono-x text-[9px] tracking-[0.3em]" style={{ color: "var(--ember-orange)" }}>SCANNING…</span>
-                      </div>
+                  <div className="mt-1"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
+                    <div className="relative">
+                      <img src={photos[0].preview} alt="Catch"
+                        className="w-full rounded-xl border object-cover" style={{ borderColor: "var(--line)", maxHeight: "230px" }} />
+                      {analyzing && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl"
+                          style={{ background: "rgba(8,6,6,.65)" }}>
+                          <span className="spinner dark" />
+                          <span className="font-mono-x text-[9px] tracking-[0.3em]" style={{ color: "var(--ember-orange)" }}>SCANNING…</span>
+                        </div>
+                      )}
+                      <button className="chip ghost absolute right-2 top-2" style={{ background: "rgba(8,6,6,.7)" }}
+                        disabled={photos.length >= MAX_PHOTOS}
+                        onClick={() => fileRef.current?.click()}>
+                        {photos.length < MAX_PHOTOS ? "Add photo" : "Carousel full"}
+                      </button>
+                    </div>
+
+                    {/* Slide strip — order is the carousel order, slide 1 is the cover.
+                        Instagram crops every slide to the FIRST slide's aspect ratio. */}
+                    {photos.length > 1 && (
+                      <>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {photos.map((p, i) => (
+                            <div key={i} className="relative">
+                              <img src={p.preview} alt={`Slide ${i + 1}`}
+                                className="rounded-lg border object-cover"
+                                style={{ borderColor: i === 0 ? "var(--brass)" : "var(--line)", width: "56px", height: "56px" }} />
+                              <span className="font-mono-x absolute left-1 top-1 rounded px-1 text-[8px]"
+                                style={{ background: "rgba(8,6,6,.75)", color: i === 0 ? "var(--brass)" : "var(--ink-dim)" }}>
+                                {i + 1}
+                              </span>
+                              <button aria-label={`Remove slide ${i + 1}`}
+                                className="absolute -right-1.5 -top-1.5 rounded-full px-1 text-[10px] font-bold"
+                                style={{ background: "#2a1414", border: "1px solid var(--line)", color: "#ff8074", lineHeight: "14px" }}
+                                onClick={() => removePhoto(i)}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                          {photos.length}/{MAX_PHOTOS} slides · Instagram crops every slide to slide 1's shape
+                        </div>
+                      </>
                     )}
-                    <button className="chip ghost absolute right-2 top-2" style={{ background: "rgba(8,6,6,.7)" }}
-                      onClick={() => fileRef.current?.click()}>
-                      Replace
-                    </button>
                   </div>
                 )}
 
@@ -3212,12 +3450,16 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 <div className="mt-4">
                   <div className="fieldlabel">Sponsor Tags</div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {["vexus", "summit", "jk"].map((k) => (
-                      <button key={k} className={`toggle-chip ${sponsors[k].on ? "on" : ""}`} onClick={() => toggleSponsor(k)}>
+                    {SPONSOR_KEYS.map((k) => (
+                      <button key={k} className={`toggle-chip ${sponsors[k].on ? "on" : ""}`} onClick={() => toggleSponsor(k)}
+                        title={SPONSORS[k].handles.join(" ")}>
                         {SPONSORS[k].label}
-                        {(k === "vexus" || k === "summit") && sponsors[k].detected && <span className="vision-tag">VISION</span>}
+                        {sponsors[k].detected && <span className="vision-tag">VISION</span>}
                       </button>
                     ))}
+                  </div>
+                  <div className="mt-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                    Vision pre-arms what it can see — you confirm before anything is tagged.
                   </div>
                 </div>
 
@@ -3238,7 +3480,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   </div>
                 </div>
 
-                <button className="big primary mt-5 w-full justify-center" disabled={!photo || analyzing || genBusy} onClick={generateCaption}>
+                <button className="big primary mt-5 w-full justify-center" disabled={!photos.length || analyzing || genBusy} onClick={generateCaption}>
                   {genBusy ? <span className="spinner" /> : <EmberIcon name="spark" size={14} />}
                   {genBusy ? "GENERATING…" : "Generate Caption"}
                 </button>
@@ -3277,12 +3519,28 @@ Look at the photo and write the caption. Output caption text only — no preambl
                           {fishId.species.toUpperCase()}
                         </span>
                       )}
-                      {Object.entries(sponsors).filter(([, v]) => v.on).map(([k]) => (
-                        <span key={k} className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
+                      {photos.length > 1 && (
+                        <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
+                          style={{ borderColor: "var(--line)", color: "var(--brass)" }}>
+                          CAROUSEL · {photos.length}
+                        </span>
+                      )}
+                      {activeHandles(sponsors).map((h) => (
+                        <span key={h} className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
                           style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>
-                          {SPONSORS[k].handle}
+                          {h}
                         </span>
                       ))}
+                      {/* Hashtag budget. Brady's rule is 5 total and the locked tag holds one
+                          slot, so anything past four in the body is trimmed on the way out —
+                          reported here rather than dropped silently. */}
+                      <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
+                        style={{
+                          borderColor: capState.dropped ? "rgba(255,128,116,.5)" : "var(--line)",
+                          color: capState.dropped ? "#ff8074" : "var(--ink-dim)",
+                        }}>
+                        {capState.total}/{MAX_HASHTAGS} TAGS{capState.dropped ? ` · ${capState.dropped} TRIMMED` : ""}
+                      </span>
                     </div>
 
                     <div className="mt-4 flex gap-3">
@@ -3296,7 +3554,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
                     {/* Publish → private Drive outbox (review-then-post; never auto-posts to social) */}
                     <div className="mt-3 flex items-center gap-3">
-                      <button className="big flex-1 justify-center" disabled={publishing || !photo} onClick={publishToOutbox}
+                      <button className="big flex-1 justify-center" disabled={publishing || !photos.length} onClick={publishToOutbox}
                         style={{ borderColor: "var(--brass)", color: "var(--candle)" }}>
                         {publishing ? <span className="spinner" /> : <EmberIcon name="drive" size={14} />}
                         {publishing ? "SENDING…" : "Publish to Drive Outbox"}

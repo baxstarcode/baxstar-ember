@@ -51,6 +51,20 @@ Claude Chat · AI Handoff · Caption Studio · Google Drive Librarian · HTML Vi
 
 **Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
 
+#### Caption Studio
+
+Takes up to **6 photos as one carousel**, scans the whole set in a single vision call for
+species and sponsor gear, drafts the caption, hard-caps the post at **5 hashtags** (the
+locked `#getyourbassingear` holds one slot), and publishes full-quality ≤1440px renders to
+a **private Drive outbox** for review. It does not post to Instagram itself.
+
+Sponsor handles live in one place — the `SPONSORS` map in `src/baxstar-ember.jsx` — and are
+the canonical set shared with the standalone tool at
+[baxstarcode/caption-studio](https://github.com/baxstarcode/caption-studio). Deploy the
+outbox from `apps-script/outbox/` (see its `README-DEPLOY.md`).
+
+Phone shortcut: `?tool=captions` opens straight into it, `&lean=1` strips everything else.
+
 ### Running it
 
 **Locally — python3 only, no Node.** The everyday loop.
@@ -78,6 +92,19 @@ hosted and what doesn't.
 > **`index.html` is generated.** Edit `src/baxstar-ember.jsx` and rebuild. Editing
 > `index.html` directly is how the deploy build once ended up a full redesign behind the
 > source with nobody noticing.
+
+### Tests
+
+```bash
+npm test              # proxy worker + Drive outbox — no network, no deps, no browser
+npm run test:caption  # Caption Studio end-to-end in headless Chromium (needs playwright)
+```
+
+`npm test` is safe to run anywhere: the worker tests stub every outbound call, and the
+outbox tests evaluate the real `Code.gs` against a stubbed Drive. `test:caption` drives the
+generated `index.html` with the model and the outbox intercepted — so it exercises the
+canvas renders and the published payload without an API key, a Drive write, or a deploy.
+Run `npm run build` first; it tests the build, not the source.
 
 ---
 
