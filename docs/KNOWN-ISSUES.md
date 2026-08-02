@@ -238,10 +238,18 @@ remaining work, and it's still the biggest open opportunity.
 microphone. Neither exists in CI. The canned path and the syntax are verified; the
 live path is written but untested.
 
-## ~~5. The dock console was hidden behind duplicate CSS chrome~~ — FIXED
+## ~~5. The dock console was hidden behind duplicate CSS chrome~~ — SUPERSEDED
+
+> **2026-08-01 — the console asset is no longer the dock at all.** Brady's mobile pass
+> found the stretched raster read flat and distorted (object-fit:fill squashes 1600×322
+> into whatever the bar happens to be) and its painted nameplates forced
+> absolutely-positioned labels that mis-centered on phones. The dock is now a CSS-built
+> brass bar, pinned `position:fixed` to the bottom at every width, with natively centered
+> labels; `DockMotion`, `DOCK_MOTION`, and the `--dock-squash` observer went with it.
+> Everything below is history of the asset-dock era — don't rebuild on it.
 
 `command-console@2x.webp` is a 1600×322 photoreal brass console: six panels, each with a
-brass mechanism and an empty engraved nameplate for its label. It **is** the dock.
+brass mechanism and an empty engraved nameplate for its label. It **was** the dock.
 
 The v2 CSS treated it as a faint texture — `opacity:.24; mix-blend-mode:luminosity` — and
 synthesised a second set of panels (`.dock-control` borders and gradients) plus line-art

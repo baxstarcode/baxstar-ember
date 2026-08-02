@@ -45,12 +45,64 @@ Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8g
 The Agent OS lives in the "Baxstar Data Engine" folder: 01 Identity, 02 Context Library, 03 Skills, 04 Memory + Logs, 05 Verification, 06 Agents, 07 Automations, 08 Archive, 09 Handoff (Shared).
 READ ONLY — never modify files. BLUF answers. Name the doc(s) you pulled from.`;
 
-// EDIT HERE if a handle is off — one place, used everywhere.
+/* EDIT HERE if a handle is off — one place, used everywhere.
+
+   Handles are the canonical set from "Baxstar Caption Tool — Consolidation Notes" §2 and
+   the standalone tool at baxstarcode/caption-studio. Two of them are easy to get wrong:
+   Vexus's boat account is @therealvexusboats (NOT @vexusboats, which is a different
+   account) and its apparel/logo account is @therealvexus. Detroit Lake carries two
+   handles, which is why every entry stores a `handles` ARRAY.
+
+   `detect` is the vision key the photo scan sets. Entries without one (Detroit Lake,
+   J&K Marine) aren't visually identifiable and stay manual toggles.
+
+   Tagging is confirm-before-post by design: vision only pre-arms a chip, Brady approves. */
 const SPONSORS = {
-  vexus:  { label: "Vexus",          handle: "@vexusboats" },
-  summit: { label: "Summit Fishing", handle: "@summitfishingequipment" },
-  jk:     { label: "J&K Marine",     handle: "@jandkmarine" },
+  vexus:     { label: "Vexus boat",       handles: ["@therealvexusboats"], detect: "vexusBoat" },
+  vexusLogo: { label: "Vexus apparel",    handles: ["@therealvexus"],      detect: "vexusLogo" },
+  mercury:   { label: "Mercury",          handles: ["@mercurymarine"],     detect: "mercury" },
+  powerPole: { label: "Power-Pole",       handles: ["@power.pole"],        detect: "powerPole" },
+  striker:   { label: "Striker",          handles: ["@strikerbrands"],     detect: "striker" },
+  eternal:   { label: "Eternal Lithium",  handles: ["@eternallithium"],    detect: "eternalLithium" },
+  igogs:     { label: "iGOGS shades",     handles: ["@igogs"],             detect: "sunglasses" },
+  summit:    { label: "Summit Fishing",   handles: ["@summitfishingequipment"], detect: "summit" },
+  detroit:   { label: "Detroit Lake",     handles: ["@dlchamber", "@detroitlakesminnesota"] },
+  jk:        { label: "J&K Marine",       handles: ["@jandkmarine"] },
 };
+
+const SPONSOR_KEYS = Object.keys(SPONSORS);
+
+/* What each detectable brand actually looks like in a boat photo. These go into the vision
+   prompt verbatim — vague keys like "vexusDetected" produced false positives on any white
+   hull, so each one says what to look for and the prompt tells the model to stay
+   conservative. A wrong tag notifies the wrong company, so a miss is cheaper than a hit. */
+const SPONSOR_VISION_HINT = {
+  vexus:     "a Vexus boat — hull, console, deck, or the Vexus name on the boat itself",
+  vexusLogo: "the Vexus name or logo on CLOTHING — a shirt, hat, or jersey, not the boat",
+  mercury:   "a Mercury outboard motor, or the Mercury name/logo on the cowling",
+  powerPole: "a Power-Pole shallow-water anchor — the vertical pole unit on the transom",
+  striker:   "Striker-branded apparel — jacket, bibs, or hat carrying the Striker name",
+  eternal:   "an Eternal Lithium battery or its branding",
+  igogs:     "someone wearing sunglasses (iGOGS is the shades sponsor)",
+  summit:    "Summit Fishing Equipment gear, apparel, or logo",
+};
+
+// Every handle for the chips that are switched on, flattened and de-duplicated.
+function activeHandles(sponsors) {
+  const out = [];
+  SPONSOR_KEYS.forEach((k) => {
+    if (!sponsors[k]?.on) return;
+    SPONSORS[k].handles.forEach((h) => { if (!out.includes(h)) out.push(h); });
+  });
+  return out;
+}
+
+// A fresh chip set: nothing on, nothing detected.
+function blankSponsors() {
+  const s = {};
+  SPONSOR_KEYS.forEach((k) => { s[k] = { on: false, detected: false }; });
+  return s;
+}
 
 const LOCKED_TAG = "#getyourbassingear";
 
@@ -59,8 +111,48 @@ const HANDOFF = {
   gemini:  { label: "Gemini",  url: "https://gemini.google.com", color: "#4285f4" },
 };
 
+/* ---------- PROJECTS DASHBOARD DATA ----------
+   SESSION-MAINTAINED, per Baxstar_AI_Context Rule 15: when a session ships work on any
+   of these, it updates pct / outstanding / sessions here in the same commit. Numbers are
+   honest estimates, not telemetry — the point is one glanceable page that can't get lost
+   in a chat the way the first version of this dashboard did.
+   zapierTasks.used is Brady-reported (the client can't query Zapier live); null renders
+   as "not recorded" rather than pretending. Allowance per Rule 14: 1,500/mo. */
+const PROJECTS_META = {
+  updated: "2026-08-01",
+  zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
+};
+
+const PROJECTS = [
+  {
+    cat: "Revenue Generating",
+    items: [
+      { name: "baxstarfishing.com build", pct: 90, platform: "Claude",
+        outstanding: "Schema/SEO polish, PR #24 Open Water page", sessions: "~2" },
+      { name: "Pontoon rentals stack", pct: 100, platform: "Claude",
+        outstanding: "Shipped — checkout + proxy live", sessions: "0" },
+      { name: "Caption Studio v1 (standalone)", pct: 100, platform: "Claude",
+        outstanding: "Shipped — live on GitHub Pages", sessions: "0" },
+      { name: "Caption Studio v2 auto-post", pct: 70, platform: "Claude",
+        outstanding: "Outbox deploy (Brady), Zap wiring, retire GBP mirror", sessions: "~2" },
+      { name: "Lakes Golf Simulator site", pct: 15, platform: "ChatGPT",
+        outstanding: "Tech-camp page only — main site unbuilt", sessions: "~5" },
+    ],
+  },
+  {
+    cat: "Supporting",
+    items: [
+      { name: "Ember / Mission Control", pct: 80, platform: "Claude",
+        outstanding: "Voice merge, MCP OAuth for hosted connectors", sessions: "~3" },
+      { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
+        outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
+      { name: "Asset pipeline docs", pct: 100, platform: "—",
+        outstanding: "Documented — Squoosh/Handbrake/Wix runbooks", sessions: "0" },
+    ],
+  },
+];
+
 const TOOLS = [
-  { id: "chat",     icon: "chat", label: "Claude Chat" },
   { id: "handoff",  icon: "handoff", label: "AI Handoff" },
   { id: "captions", icon: "quill", label: "Caption Studio" },
   { id: "drive",    icon: "drive", label: "Google Drive" },
@@ -211,15 +303,20 @@ async function maybeConvertHeic(file) {
   return file;
 }
 
-async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
-  file = await maybeConvertHeic(file);
-  const url = URL.createObjectURL(file);
-  const img = await new Promise((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = rej;
-    i.src = url;
-  });
+// One carousel is at most six slides — Instagram's own limit, and the standalone tool's.
+const MAX_PHOTOS = 6;
+
+/* Two renders per photo, deliberately different sizes.
+
+   VISION (<=1280, q0.85) is what the model reads. Every extra pixel is billed on each of
+   the two calls per photo (scan + caption) and buys no accuracy at this task, so it stays
+   small.
+
+   PUBLISH (<=1440, q0.92) is what actually leaves for the Drive outbox and eventually
+   Instagram. 1440px wide is Instagram's ingest ceiling — it downscales anything larger
+   anyway — and doing it here in the browser is also what keeps a six-photo carousel under
+   the Apps Script payload limit and converts iPhone HEIC to JPEG on the way through. */
+async function drawToJpeg(img, MAX, quality) {
   const scale = Math.min(1, MAX / Math.max(img.width, img.height));
   const w = Math.round(img.width * scale);
   const h = Math.round(img.height * scale);
@@ -227,9 +324,48 @@ async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
   c.width = w;
   c.height = h;
   c.getContext("2d").drawImage(img, 0, 0, w, h);
-  URL.revokeObjectURL(url);
-  const dataUrl = c.toDataURL("image/jpeg", quality);
-  return { b64: dataUrl.split(",")[1], preview: dataUrl };
+  return c.toDataURL("image/jpeg", quality);
+}
+
+/* Single-render resize — used by the background-image picker, which wants one big frame
+   and has nothing to do with the caption pipeline's vision/publish split. */
+async function fileToResizedB64(file, MAX = 1440, quality = 0.85) {
+  file = await maybeConvertHeic(file);
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const dataUrl = await drawToJpeg(img, MAX, quality);
+    return { b64: dataUrl.split(",")[1], preview: dataUrl };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function renderPhoto(file) {
+  file = await maybeConvertHeic(file);
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const visionUrl = await drawToJpeg(img, 1280, 0.85);
+    const publishUrl = await drawToJpeg(img, 1440, 0.92);
+    return {
+      b64: visionUrl.split(",")[1],        // what the model reads
+      publishB64: publishUrl.split(",")[1], // what gets posted
+      preview: visionUrl,
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function sanitizeCaption(t) {
@@ -240,6 +376,47 @@ function sanitizeCaption(t) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/* Brady's rule, verbatim: "5 max total, counting #getyourbassingear." The locked tag is
+   appended at copy/publish time and always occupies one of the five, so the caption body
+   gets a budget of four.
+
+   The prompt already asks the model for at most three, but a prompt is a request, not a
+   guarantee — this is the enforcement. Extras are trimmed from the END (keeping the ones
+   written first, which are the species tags that matter) and the count is REPORTED rather
+   than silently dropped, so nothing disappears without Brady seeing it. @mentions are not
+   hashtags and never count toward the five. Mirrors capHashtags() in the standalone tool. */
+const MAX_HASHTAGS = 5;
+
+function capCaptionTags(text) {
+  const budget = MAX_HASHTAGS - 1; // the locked tag holds one slot
+  let seen = 0;
+  let dropped = 0;
+  const out = text.replace(/#[\w]+/g, (tag) => {
+    seen += 1;
+    if (seen <= budget) return tag;
+    dropped += 1;
+    return "";
+  });
+  return {
+    text: dropped ? out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim() : text,
+    total: Math.min(seen, budget) + 1, // +1 for the locked tag
+    dropped,
+  };
+}
+
+/* The finished post text. `withHandles: false` is the auto-post form — sponsor handles
+   ride as on-photo Instagram tags there, so repeating them in the caption would tag
+   everyone twice. Copy-to-clipboard uses the handles-inline form. */
+function assembleCaption(caption, sponsors, { withHandles = true } = {}) {
+  const capped = capCaptionTags(sanitizeCaption(caption));
+  const lines = [capped.text, "", LOCKED_TAG];
+  if (withHandles) {
+    const handles = activeHandles(sponsors);
+    if (handles.length) lines.push(handles.join(" "));
+  }
+  return { text: lines.join("\n").trim(), total: capped.total, dropped: capped.dropped };
 }
 
 /* ---------- LOCAL PERSISTENCE ----------
@@ -528,81 +705,13 @@ function ContextLever({ side, label, state, onPull }) {
   );
 }
 
-/* ---------- COMMAND DOCK MOTION ----------
-   The dock's six mechanisms are PAINTED INTO command-console@2x.webp — a lever press with
-   two lamps, a gear train, a reactor porthole, a pressure gauge, a ship's wheel and a
-   piston cannon. So motion here is LIGHT ONLY: additive glints, glows and travelling
-   sheen, composited over the artwork with mix-blend-mode:screen.
-
-   Nothing draws a second lever, gear or needle. That is deliberate — the gauge already has
-   a painted needle and the gears already have painted teeth, so any synthetic shape laid on
-   top reads as a duplicate. That is exactly what the old .dock-machine layer did.
-
-   Offsets are percentages of one panel cell, measured off the asset: its panels run
-   x 100–1500 of 1600 (hence the grid's 6.25% inset) and the mechanisms centre near 31%
-   of its height. `d` is the painted part's diameter in asset pixels — width comes from
-   the 233.33px cell, and the round ones are squashed by --dock-squash because
-   object-fit:fill renders those painted circles as ellipses. */
-const DOCK_CELL_PX = 233.33;
-const pctOfCell = (assetPx) => ((assetPx / DOCK_CELL_PX) * 100).toFixed(1) + "%";
-
-const DOCK_MOTION = {
-  // lever press: the two lamps breathe, a highlight strokes along the drum
-  ops: [
-    { c: "dm-lamp", round: true, d: 34, s: { left: "15%", top: "38%" } },
-    { c: "dm-lamp", round: true, d: 34, s: { left: "88%", top: "38%" }, delay: "-0.9s" },
-    { c: "dm-sheen", s: { left: "24%", top: "21%", width: "43%", height: "29%" } },
-  ],
-  // gear train: a glint orbits each painted gear, counter-rotating on the middle one
-  studio: [
-    { c: "dm-spin", round: true, d: 95, s: { left: "54%", top: "26%" } },
-    { c: "dm-spin dm-rev", round: true, d: 64, s: { left: "86%", top: "28%" } },
-    { c: "dm-spin dm-slow", round: true, d: 45, s: { left: "40%", top: "50%" } },
-  ],
-  // reactor porthole: core pulse plus a slow ring sweep
-  miss: [
-    { c: "dm-spin dm-slow", round: true, d: 140, s: { left: "52%", top: "34%" } },
-    { c: "dm-core", round: true, d: 105, s: { left: "52%", top: "34%" } },
-  ],
-  // gauge: an illuminated indicator rides the painted dial — no second needle
-  triage: [{ c: "dm-sweep", round: true, d: 122, s: { left: "43%", top: "27%" } }],
-  // ship's wheel: slow glint around the rim
-  brief: [{ c: "dm-spin dm-slow", round: true, d: 132, s: { left: "48%", top: "27%" } }],
-  // piston cannon: lamp breathes, sheen strokes barrel then cylinder
-  handoff: [
-    { c: "dm-lamp", round: true, d: 40, s: { left: "16%", top: "26%" } },
-    { c: "dm-sheen", s: { left: "23%", top: "21%", width: "75%", height: "12%" } },
-    { c: "dm-sheen", s: { left: "25%", top: "36%", width: "61%", height: "14%" }, delay: "-1.8s" },
-  ],
-};
-
-function DockMotion({ type }) {
-  const parts = DOCK_MOTION[type] || [];
-  return (
-    <span className="dock-motion" aria-hidden="true">
-      {parts.map((p, i) => {
-        // Round parts get a wrapper that carries the ellipse squash, so the child is free
-        // to rotate as a true circle. Sheens are already rectangular — no wrapper needed.
-        if (!p.round) {
-          return <span key={i} className={p.c} style={{ ...p.s, animationDelay: p.delay }} />;
-        }
-        return (
-          <span key={i} className="dm-round" style={{ ...p.s, width: pctOfCell(p.d) }}>
-            <i className={p.c} style={{ animationDelay: p.delay }} />
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
 /* ============================================================
    MAIN COMPONENT
    ============================================================ */
 
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
-  const [studioTool, setStudioTool] = useState("chat");
+  const [studioTool, setStudioTool] = useState("captions");
 
   // steampunk context actions — selected Calls/Inbox item feeds the two levers
   const [selectedComm, setSelectedComm] = useState(null); // { type:"vm"|"email", i }
@@ -619,7 +728,6 @@ export default function BaxstarEmber() {
   const [command, setCommand] = useState("");
   const [focused, setFocused] = useState(false);
   const [thinking, setThinking] = useState(false);
-  const [response, setResponse] = useState("");
   const [error, setError] = useState("");
   const historyRef = useRef([]);
   const [listening, setListening] = useState(false);
@@ -640,7 +748,6 @@ export default function BaxstarEmber() {
   const gasRef = useRef(null);
   const ventRef = useRef(null);
   const scopeRef = useRef(null);
-  const dockRef = useRef(null);          // command dock — see the --dock-squash effect
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
@@ -661,14 +768,11 @@ export default function BaxstarEmber() {
   const [queued, setQueued] = useState("");
 
   // ---- CAPTION STUDIO state ----
-  const [photo, setPhoto] = useState(null);
+  // Up to MAX_PHOTOS slides; one caption covers the set. photos[0] drives the preview.
+  const [photos, setPhotos] = useState([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [fishId, setFishId] = useState(null);
-  const [sponsors, setSponsors] = useState({
-    vexus: { on: false, detected: false },
-    summit: { on: false, detected: false },
-    jk: { on: false },
-  });
+  const [sponsors, setSponsors] = useState(blankSponsors);
   const [lake, setLake] = useState("Detroit Lake");
   const [postWindow, setPostWindow] = useState("4 PM CT");
   const [genBusy, setGenBusy] = useState(false);
@@ -689,15 +793,16 @@ export default function BaxstarEmber() {
   // Stripped mobile shell: dock + non-caption tools hidden. Set by ?lean=1 / #lean.
   const [leanCaption, setLeanCaption] = useState(false);
 
-  // ---- CLAUDE CHAT state ----
+  // ---- CLAUDE CHAT state (the thread lives on the OPS home page) ----
   const [chatMsgs, setChatMsgs] = useState([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatBusy, setChatBusy] = useState(false);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState("standard");
   const chatEndRef = useRef(null);
+  // greeting-count buttons jump to these two panel columns
+  const callsColRef = useRef(null);
+  const inboxColRef = useRef(null);
   useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMsgs, chatBusy]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [chatMsgs, thinking]);
 
   // ---- GOOGLE DRIVE state ----
   const [driveMsgs, setDriveMsgs] = useState([]);
@@ -705,28 +810,6 @@ export default function BaxstarEmber() {
   const [driveBusy, setDriveBusy] = useState(false);
   const driveEndRef = useRef(null);
   useEffect(() => { driveEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [driveMsgs, driveBusy]);
-
-  /* command-console@2x.webp is 1600x322 and the dock stretches it with object-fit:fill,
-     so every painted circle — gears, porthole, gauge, wheel — renders as an ellipse.
-     Measure that squash and hand it to the motion layer, which scales its glints to
-     match. Without this the round glints sit about twice as tall as the mechanism they
-     belong to and spill onto the nameplate. Re-measures on resize. */
-  useEffect(() => {
-    const el = dockRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const sync = () => {
-      const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      // >1 is legitimate: on a narrow dock the asset is stretched taller than its own
-      // aspect, so the painted circles become ellipses that are taller than they are wide.
-      const squash = (r.height / 322) / (r.width / 1600);
-      el.style.setProperty("--dock-squash", String(Math.max(0.15, Math.min(3, squash))));
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   // ---- HANDOFF state ----
   const [handoffText, setHandoffText] = useState("");
@@ -773,7 +856,7 @@ export default function BaxstarEmber() {
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostWindow(prefs.postWindow);
         if (prefs.coreMode) setCoreMode(prefs.coreMode);
-        if (prefs.studioTool) setStudioTool(prefs.studioTool);
+        if (prefs.studioTool) setStudioTool(prefs.studioTool === "chat" ? "captions" : prefs.studioTool);
       }
       if (Array.isArray(chat)) setChatMsgs(chat);
       if (Array.isArray(drive)) setDriveMsgs(drive);
@@ -805,11 +888,16 @@ export default function BaxstarEmber() {
 
     // Caption draft recovery — the survives-a-dropped-connection piece.
     const draft = lsGet(CAPTION_DRAFT_KEY, null);
-    if (draft && (draft.caption || draft.photo)) {
-      if (draft.photo) setPhoto(draft.photo);
+    // `photo` (singular) is the pre-carousel draft shape — still restored so a draft written
+    // by an older build isn't stranded.
+    const draftShots = draft?.photos || (draft?.photo ? [draft.photo] : []);
+    if (draft && (draft.caption || draftShots.length)) {
+      if (draftShots.length) setPhotos(draftShots);
       if (draft.caption) setCaption(draft.caption);
       if (draft.fishId) setFishId(draft.fishId);
-      if (draft.sponsors) setSponsors(draft.sponsors);
+      // Merge onto a blank set — a draft saved before a sponsor was added carries only the
+      // old keys, and reading .on off a missing key would throw during render.
+      if (draft.sponsors) setSponsors({ ...blankSponsors(), ...draft.sponsors });
       if (draft.lake) setLake(draft.lake);
       if (draft.postWindow) setPostWindow(draft.postWindow);
       setCaptionRestored(true);
@@ -817,19 +905,21 @@ export default function BaxstarEmber() {
   }, []);
 
   /* Autosave the in-progress caption to localStorage so a dropped lake connection or an
-     accidental reload never loses it. Debounced via React's batching; the photo is only
-     kept when the encoded draft is small enough to fit the localStorage quota (a resized
-     JPEG usually is) — otherwise the text/metadata still survive and the photo is re-picked. */
+     accidental reload never loses it.
+
+     Images are saved on a best-effort ladder, because a six-slide carousel carries two
+     renders each and will not fit a ~5MB localStorage quota: try the full set, then the
+     vision renders alone (roughly half the bytes), then text and metadata only. The
+     caption itself — the part that took a model call to produce — survives every rung. */
   useEffect(() => {
     if (!hydrated.current) return;
-    if (!caption && !photo) { lsDel(CAPTION_DRAFT_KEY); return; }
+    if (!caption && !photos.length) { lsDel(CAPTION_DRAFT_KEY); return; }
     const base = { caption, fishId, sponsors, lake, postWindow, ts: clock };
-    const withPhoto = { ...base, photo };
-    if (!lsSet(CAPTION_DRAFT_KEY, withPhoto)) {
-      // Too big (photo pushed it past quota) — persist without the image.
-      lsSet(CAPTION_DRAFT_KEY, base);
-    }
-  }, [caption, photo, fishId, sponsors, lake, postWindow]);
+    const lean = photos.map(({ b64, preview }) => ({ b64, preview }));
+    if (lsSet(CAPTION_DRAFT_KEY, { ...base, photos })) return;
+    if (lsSet(CAPTION_DRAFT_KEY, { ...base, photos: lean })) return;
+    lsSet(CAPTION_DRAFT_KEY, base);
+  }, [caption, photos, fishId, sponsors, lake, postWindow]);
 
   // fire-and-forget persist that never throws, even if storage is absent
   const persist = (key, val) => {
@@ -1545,20 +1635,35 @@ export default function BaxstarEmber() {
     setThinking(true);
     setError("");
     setCommand("");
-    // The previous answer stays up while she thinks. Clearing it here erased
-    // answer A the instant a queued command B started, so A never rendered.
     try {
       const userMsg = { role: "user", content: q };
+      // The home surface IS the chat now — the question lands in the thread
+      // immediately so it's visible while she thinks, like any messenger.
+      setChatMsgs((m) => [...m, userMsg]);
       const messages = [
-        { role: "user", content: BRADY_CONTEXT + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...historyRef.current.slice(-8),
         userMsg,
       ];
-      const resp = await callClaude(messages, { useTools: true });
-      const answer = extractText(resp) || "Done — no text returned.";
+      // historyRef stays the canonical rolling context (chatMsgs can be stale in a
+      // closure when a queued command fires); chatMsgs is the display thread.
+      let resp;
+      let fellBack = false;
+      try {
+        resp = await callClaude(messages, { useTools: true, model: chatModel });
+      } catch (err) {
+        if (chatModel !== DEFAULT_MODEL) {
+          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL });
+          fellBack = true;
+        } else {
+          throw err;
+        }
+      }
+      let answer = extractText(resp) || "Done — no text returned.";
+      if (fellBack) answer = "[Model unavailable here — answered with the default]\n\n" + answer;
       historyRef.current = [...historyRef.current.slice(-8), userMsg, { role: "assistant", content: answer }];
-      setResponse(answer);
+      setChatMsgs((m) => [...m, { role: "assistant", content: answer }]);
       setThinking(false);
       // Awaited: busyRef must span the speaking phase too, or a queued command
       // would cut this answer off mid-sentence and interleave its gate messages.
@@ -1665,50 +1770,94 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
 
   /* ---------- STUDIO: CAPTION PIPELINE ---------- */
 
-  async function handleFile(file) {
-    if (!file) return;
-    // iOS sometimes hands over a HEIC with an empty MIME type, so fall back to the
-    // extension when there's no usable type string.
-    const okType = file.type ? /^image\//i.test(file.type) : /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
-    if (!okType) return;
-    setCapErr("");
+  /* Take one or many files. `replace` starts a fresh post; otherwise the files are
+     appended to the existing carousel up to MAX_PHOTOS. Anything past the cap is reported
+     rather than dropped in silence. */
+  async function handleFiles(fileList, { replace = false } = {}) {
+    const incoming = Array.from(fileList || []).filter((file) => {
+      // iOS sometimes hands over a HEIC with an empty MIME type, so fall back to the
+      // extension when there's no usable type string.
+      return file.type ? /^image\//i.test(file.type) : /\.(heic|heif|jpe?g|png|webp)$/i.test(file.name || "");
+    });
+    if (!incoming.length) return;
+
+    const room = replace ? MAX_PHOTOS : MAX_PHOTOS - photos.length;
+    if (room <= 0) { setCapErr(`That's the ${MAX_PHOTOS}-photo limit for one carousel.`); return; }
+    const take = incoming.slice(0, room);
+    const overflow = incoming.length - take.length;
+
+    setCapErr(overflow ? `Added ${take.length} — ${overflow} over the ${MAX_PHOTOS}-photo carousel limit.` : "");
     setCaption("");
     setFishId(null);
     try {
-      const p = await fileToResizedB64(file);
-      setPhoto(p);
-      analyzePhoto(p.b64);
+      const rendered = [];
+      for (const file of take) rendered.push(await renderPhoto(file));
+      const next = replace ? rendered : [...photos, ...rendered];
+      setPhotos(next);
+      analyzePhoto(next);
     } catch (e) {
-      const wasHeic = /image\/(heic|heif)/i.test(file.type) || /\.(heic|heif)$/i.test(file.name || "");
+      const wasHeic = take.some((f) => /image\/(heic|heif)/i.test(f.type) || /\.(heic|heif)$/i.test(f.name || ""));
       setCapErr(wasHeic
         ? "Couldn't decode that HEIC on this device — in iPhone Settings ▸ Camera ▸ Formats pick \"Most Compatible\", or share it as a JPG."
         : "Couldn't read that image — try a JPG or PNG.");
     }
   }
 
-  async function analyzePhoto(b64) {
+  function removePhoto(i) {
+    setPhotos((list) => {
+      const next = list.filter((_, idx) => idx !== i);
+      if (!next.length) { setFishId(null); setCaption(""); }
+      return next;
+    });
+  }
+
+  /* Scan the whole set in ONE vision call — the carousel gets a single caption, so the
+     model needs to see every slide before it names a species or a sponsor. Sponsors that
+     aren't visually identifiable (Detroit Lake, J&K Marine) keep whatever Brady set. */
+  async function analyzePhoto(shots) {
+    const set = (shots || []).filter(Boolean);
+    if (!set.length) return;
     setAnalyzing(true);
-    setSponsors((s) => ({ vexus: { on: false, detected: false }, summit: { on: false, detected: false }, jk: s.jk }));
+    setSponsors((s) => {
+      const next = blankSponsors();
+      SPONSOR_KEYS.forEach((k) => { if (!SPONSORS[k].detect) next[k] = s[k]; });
+      return next;
+    });
     try {
+      const detectLines = SPONSOR_KEYS
+        .filter((k) => SPONSORS[k].detect)
+        .map((k) => `- ${SPONSORS[k].detect}: ${SPONSOR_VISION_HINT[k]}`)
+        .join("\n");
+      const detectFields = SPONSOR_KEYS
+        .filter((k) => SPONSORS[k].detect)
+        .map((k) => `"${SPONSORS[k].detect}":true or false`)
+        .join(",");
       const resp = await callClaude(
         [{
           role: "user",
           content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-            { type: "text", text: `Analyze this fishing photo. Respond with ONLY valid JSON, no markdown:
-{"species":"specific common name, e.g. Smallmouth Bass — or 'No fish detected'","confidence":"high|medium|low","vexusDetected":true or false,"summitDetected":true or false,"notes":"one short line about the shot"}
-vexusDetected: a Vexus boat, hull, console, or Vexus logo is visible. summitDetected: Summit Fishing Equipment gear, apparel, or logo is visible. Be conservative — only true if you can actually see it.` },
+            ...set.map((p) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } })),
+            { type: "text", text: `Analyze ${set.length === 1 ? "this fishing photo" : `these ${set.length} fishing photos — they are one carousel post, so answer for the set as a whole`}. Respond with ONLY valid JSON, no markdown:
+{"species":"specific common name, e.g. Smallmouth Bass — or 'No fish detected'","confidence":"high|medium|low",${detectFields},"notes":"one short line about the shot"}
+
+Brand detection — be CONSERVATIVE. Only true if you can actually see it; a wrong tag notifies the wrong company:
+${detectLines}` },
           ],
         }],
         { useTools: false }
       );
       const parsed = extractJSON(extractText(resp));
       setFishId({ species: parsed.species || "Unknown", confidence: parsed.confidence || "low", notes: parsed.notes || "" });
-      setSponsors((s) => ({
-        vexus: { on: !!parsed.vexusDetected, detected: !!parsed.vexusDetected },
-        summit: { on: !!parsed.summitDetected, detected: !!parsed.summitDetected },
-        jk: s.jk,
-      }));
+      setSponsors((s) => {
+        const next = { ...s };
+        SPONSOR_KEYS.forEach((k) => {
+          const key = SPONSORS[k].detect;
+          if (!key) return;
+          const hit = !!parsed[key];
+          next[k] = { on: hit, detected: hit };
+        });
+        return next;
+      });
     } catch (e) {
       setFishId({ species: "Unknown", confidence: "low", notes: "" });
       setCapErr("Vision scan failed — you can still generate a caption.");
@@ -1718,17 +1867,16 @@ vexusDetected: a Vexus boat, hull, console, or Vexus logo is visible. summitDete
   }
 
   async function generateCaption() {
-    if (!photo || genBusy) return;
+    if (!photos.length || genBusy) return;
     setGenBusy(true);
     setCapErr("");
     setCopied(false);
     try {
-      const handles = Object.entries(sponsors)
-        .filter(([, v]) => v.on)
-        .map(([k]) => SPONSORS[k].handle);
+      const handles = activeHandles(sponsors);
       const prompt = `You write Instagram/Facebook captions for Baxstar Fishing — premium guided fishing out of Detroit Lakes, MN. Voice: premium-but-warm, confident, first-person from the guide. Specific beats generic.
 
 Photo context:
+- ${photos.length === 1 ? "A single photo." : `${photos.length} photos — ONE carousel post. Write a single caption that covers the set, not slide-by-slide.`}
 - Species: ${fishId?.species || "Unknown"} (${fishId?.confidence || "low"} confidence — trust what you see in the photo)
 - Lake: ${lake || "Detroit Lake"}
 - Posting window: ${postWindow}
@@ -1738,15 +1886,15 @@ HARD RULES:
 - NEVER mention Scheels or Scheels rods in any form.
 - Never say "one group per day" or "one trip per day". If referencing exclusivity, say "private trip(s)".
 - Do NOT include the hashtag ${LOCKED_TAG} — it is appended automatically.
-- Up to 3 other relevant hashtags at the very end. 1-3 tasteful emojis max.
+- At most 3 other hashtags, at the very end. The post is hard-capped at ${MAX_HASHTAGS} total and extras are trimmed, so make the ones you pick count. 1-3 tasteful emojis max.
 - 60-120 words with line breaks for rhythm.
 
-Look at the photo and write the caption. Output caption text only — no preamble.`;
+Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. Output caption text only — no preamble.`;
       const resp = await callClaude(
         [{
           role: "user",
           content: [
-            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: photo.b64 } },
+            ...photos.map((p) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } })),
             { type: "text", text: prompt },
           ],
         }],
@@ -1764,13 +1912,16 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
   async function copyCaption() {
     try {
-      await navigator.clipboard.writeText(sanitizeCaption(caption) + "\n\n" + LOCKED_TAG);
+      await navigator.clipboard.writeText(assembleCaption(caption, sponsors).text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch (e) {
       setCapErr("Clipboard blocked — select and copy manually.");
     }
   }
+
+  // Live hashtag budget for the caption panel — recomputed as Brady edits the textarea.
+  const capState = capCaptionTags(sanitizeCaption(caption || ""));
 
   function toggleSponsor(key) {
     setSponsors((s) => ({ ...s, [key]: { ...s[key], on: !s[key].on } }));
@@ -1785,8 +1936,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
   function discardDraft() {
     lsDel(CAPTION_DRAFT_KEY);
     setCaptionRestored(false);
-    setPhoto(null); setCaption(""); setFishId(null);
-    setSponsors({ vexus: { on: false, detected: false }, summit: { on: false, detected: false }, jk: { on: false } });
+    setPhotos([]); setCaption(""); setFishId(null);
+    setSponsors(blankSponsors());
   }
 
   /* Publish the finished JPEG + caption to Brady's private Drive outbox (an Apps Script
@@ -1797,23 +1948,41 @@ Look at the photo and write the caption. Output caption text only — no preambl
      fall back to an opaque no-cors write (the file still lands; we just can't read a
      confirmation). */
   async function publishToOutbox() {
-    if (!photo || !caption || publishing) return;
+    if (!photos.length || !caption || publishing) return;
     const url = (outboxUrl || "").trim();
     if (!url) { setOutboxOpen(true); setPublishMsg("Add your outbox URL first (gear icon)."); return; }
     setPublishing(true);
     setPublishMsg("");
-    const finalCaption = sanitizeCaption(caption) + "\n\n" + LOCKED_TAG;
-    const handles = Object.entries(sponsors).filter(([, v]) => v.on).map(([k]) => SPONSORS[k].handle);
+
+    /* Two forms of the caption travel together, because they are consumed differently:
+
+       `caption` omits the @handles. Sponsor handles ride as ON-PHOTO Instagram tags (Meta
+       user_tags, which is the version that actually notifies the account), so repeating
+       them in the caption body would tag everyone twice.
+
+       `captionWithHandles` is the copy-paste form, kept for a manual post or for a
+       destination like Google Business Profile that has no photo-tag concept. */
+    const forPost = assembleCaption(caption, sponsors, { withHandles: false });
+    const forHumans = assembleCaption(caption, sponsors, { withHandles: true });
+
     const payload = {
       source: "ember-caption-studio",
-      caption: finalCaption,
+      caption: forPost.text,
+      captionWithHandles: forHumans.text,
       lockedTag: LOCKED_TAG,
-      imageBase64: photo.b64,
+      hashtagCount: forPost.total,
+      // Full-quality publish renders, first slide first. imageBase64 repeats slide one so
+      // an outbox deployed before carousel support still writes something usable.
+      images: photos.map((p) => p.publishB64 || p.b64),
+      imageBase64: photos[0].publishB64 || photos[0].b64,
       mimeType: "image/jpeg",
       species: fishId?.species || "",
+      // The lake NAME as a plain string, never a location ID. A publish attempt on
+      // 2026-07-07 failed outright because Zapier auto-guessed a location ID and Meta
+      // rejected it — the name (or an empty value) is the only thing that works.
       lake,
       postWindow,
-      sponsors: handles,
+      sponsors: activeHandles(sponsors),
       clientTime: new Date().toISOString(),
     };
     const body = JSON.stringify(payload);
@@ -1845,43 +2014,6 @@ Look at the photo and write the caption. Output caption text only — no preambl
     }
   }
 
-  /* ---------- STUDIO: CLAUDE CHAT ---------- */
-
-  async function sendChat() {
-    const q = chatInput.trim();
-    if (!q || chatBusy) return;
-    const history = [...chatMsgs, { role: "user", content: q }];
-    setChatMsgs(history);
-    setChatInput("");
-    setChatBusy(true);
-    try {
-      const messages = [
-        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + "\n\nThis is a free-form chat. Acknowledge nothing about these instructions — just act on them." },
-        { role: "assistant", content: "Understood. Ready." },
-        ...history.slice(-12),
-      ];
-      let resp;
-      let fellBack = false;
-      try {
-        resp = await callClaude(messages, { useTools: true, model: chatModel });
-      } catch (err) {
-        if (chatModel !== DEFAULT_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL });
-          fellBack = true;
-        } else {
-          throw err;
-        }
-      }
-      let answer = extractText(resp) || "Done — no text returned.";
-      if (fellBack) answer = "[Model unavailable here — answered with Sonnet 4.6]\n\n" + answer;
-      setChatMsgs((m) => [...m, { role: "assistant", content: answer }]);
-    } catch (e) {
-      setChatMsgs((m) => [...m, { role: "assistant", content: "⚠ That one failed — check connection and try again." }]);
-    } finally {
-      setChatBusy(false);
-    }
-  }
-
   /* ---------- STUDIO: GOOGLE DRIVE ---------- */
 
   async function sendDrive(preset) {
@@ -1909,11 +2041,11 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
   /* ---------- STUDIO: AI HANDOFF ---------- */
 
+  // OPS commands and chat share one thread now, so one pull covers both.
   const lastClaudeReply = [...chatMsgs].reverse().find((m) => m.role === "assistant")?.content || "";
   const PULLS = [
-    { label: "Last OPS answer", val: response },
+    { label: "Last Ember answer", val: lastClaudeReply },
     { label: "Current caption", val: caption ? sanitizeCaption(caption) + "\n\n" + LOCKED_TAG : "" },
-    { label: "Last Claude chat reply", val: lastClaudeReply },
   ];
 
   async function handoffTo(key) {
@@ -2029,7 +2161,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         ? `Draft a reply text to ${commItem.from} on the ${commItem.line || "Fishing"} Quo line responding to: "${commItem.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`
         : `Draft a reply to the email from ${commItem.from}: "${commItem.subject}". Match Baxstar voice. Show me the draft — don't send yet.`;
       const answer = await sendCommand(prompt);
-      if (answer) { setDraftEdit(answer); setLeverPending("draft"); setResponse(""); }
+      if (answer) { setDraftEdit(answer); setLeverPending("draft"); }
     } finally {
       setLeverBusy(null);
     }
@@ -2073,7 +2205,9 @@ Look at the photo and write the caption. Output caption text only — no preambl
     { label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
     { label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
     { label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
-    { label: "Handoff draft", dot: "var(--ember-dark)", prompt: "Draft a dated Baxstar Handoff Log entry summarizing what we handled in this session (calls, emails, drafts, decisions). Format: INDEX one-liner, then full ENTRY block. Output as copyable text only — do not write anywhere." },
+    // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
+    // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
+    // tool still covers manual pulls.
   ];
 
   /* ============================================================
@@ -2133,7 +2267,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         }
         .ember-shell {
           width:100vw; height:100vh; min-height:720px; max-width:none;
-          padding:16px clamp(68px,5.4vw,96px) 7px;
+          padding:16px clamp(68px,5.4vw,96px) calc(84px + env(safe-area-inset-bottom));
           gap:8px; overflow:hidden;
         }
         .ember-header {
@@ -2179,10 +2313,13 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
         @media (max-width:1020px){
           .ember-root { height:auto; min-height:100vh; overflow:auto; }
-          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px; overflow:visible; }
+          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px 14px calc(92px + env(safe-area-inset-bottom)); overflow:visible; }
           .main-grid, .cap-grid { grid-template-columns:1fr; }
+          .ops-core { order:-1; }
+          /* the QUO/GMAIL/CALENDAR dots are demo-state, not tappable — dead weight on a phone */
+          .conn-dots { display:none; }
+          .home-thread { max-height:min(46vh,420px); }
           .rail-list { flex-direction:row; flex-wrap:wrap; }
-          .console-dock { min-height:126px; }
         }
 
         /* machined 9-slice plate frame from the asset pack — brass etch + rivet
@@ -2250,6 +2387,32 @@ Look at the photo and write the caption. Output caption text only — no preambl
         @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
         .cursor-block { display:inline-block; width:7px; height:14px; margin-left:6px; vertical-align:-2px;
           background:var(--ember-orange); animation:blink 1.1s step-start infinite; }
+        /* projects dashboard — horizontal brass-and-ember bars */
+        .proj-meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 14px;
+          margin-bottom:14px; padding:8px 12px; border:1px solid var(--line); border-radius:10px;
+          background:#100c09; font-size:10px; letter-spacing:.12em; color:var(--ink-dim); }
+        .proj-cat { font-size:11px; font-weight:700; letter-spacing:.24em; text-transform:uppercase;
+          color:var(--brass); border-bottom:1px solid var(--line); padding-bottom:5px; margin-bottom:4px; }
+        .proj-row { padding:9px 0; border-bottom:1px solid rgba(255,90,60,.09); }
+        .proj-row:last-child { border-bottom:none; }
+        .proj-bar { position:relative; height:12px; margin-top:6px; border-radius:7px; overflow:hidden;
+          background:linear-gradient(180deg,#0a0806,#14100c);
+          border:1px solid var(--line); box-shadow:inset 0 2px 4px rgba(0,0,0,.7); }
+        .proj-fill { position:absolute; left:0; top:0; bottom:0; border-radius:6px;
+          background:linear-gradient(90deg,var(--ember-red),var(--ember-orange));
+          box-shadow:0 0 12px rgba(255,98,36,.45), inset 0 1px 0 rgba(255,220,170,.35);
+          transition:width .7s var(--ember-ease-sweep); }
+        .proj-fill[data-pct="100"] { background:linear-gradient(90deg,var(--brass),#e8d3a0);
+          box-shadow:0 0 10px rgba(214,179,106,.4), inset 0 1px 0 rgba(255,240,210,.4); }
+
+        /* greeting sits over the skull crown — a translucent seat keeps it readable
+           against the art instead of fighting it */
+        .greet-row { padding:4px 12px; border-radius:12px; background:rgba(7,6,4,.55);
+          backdrop-filter:blur(2px); text-shadow:0 1px 2px rgba(0,0,0,.8); }
+
+        /* the home chat thread — scrolls inside the chamber, newest pinned by autoscroll */
+        .home-thread { display:flex; flex-direction:column; gap:10px; overflow-y:auto;
+          max-width:520px; max-height:clamp(170px,30vh,320px); padding:2px 6px 2px 2px; }
         .cmd-input { border:1px solid var(--line); transition:border-color .25s, box-shadow .25s; caret-color:var(--ember-orange); }
         .cmd-input:focus { outline:none; border-color:var(--ember-orange);
           box-shadow:0 0 0 1px rgba(255,158,61,.35), 0 0 28px rgba(255,120,60,.22), 0 8px 30px rgba(0,0,0,.5); }
@@ -2289,9 +2452,12 @@ Look at the photo and write the caption. Output caption text only — no preambl
           text-shadow:0 1px 2px rgba(100,15,8,.7); }
 
         .studio-stack { display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden; }
-        .studio-tools-panel { flex:0 0 auto; padding:10px 16px!important; }
-        .tool-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-        @media (max-width:900px){ .tool-grid { grid-template-columns:repeat(2,1fr); } }
+        .studio-tools-panel { flex:0 0 auto; padding:8px 12px!important; }
+        /* one row, scrolls sideways — the 2x4 grid buried the actual tool below a
+           full screen of tiles on a phone */
+        .tool-grid { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;
+          scrollbar-width:thin; -webkit-overflow-scrolling:touch; }
+        .tool-grid .tool-tile { flex:0 0 auto; width:96px; min-height:56px; }
         .tool-tile { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
           min-height:64px; border:8px solid transparent;
           border-image:url("${ASSETS}/svg/frames/tool-module-frame.svg") 18 / 8px stretch;
@@ -2322,7 +2488,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           cursor:pointer; transition:all .18s; background:var(--panel-2); }
         .hbtn:hover { transform:translateY(-2px); filter:brightness(1.2); }
 
-        .upzone { border:1.5px dashed var(--line-hot); border-radius:14px; padding:38px 20px; text-align:center;
+        .upzone { border:1.5px dashed var(--line-hot); border-radius:14px; padding:18px 16px; text-align:center;
           cursor:pointer; transition:all .2s; background:rgba(255,77,61,.03); }
         .upzone:hover { border-color:var(--ember-orange); background:rgba(255,120,60,.07); box-shadow:0 0 26px rgba(255,77,61,.15) inset; }
 
@@ -2407,9 +2573,10 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
         /* skull crowns the center chamber only — width capped to the center
            column so it never overflows onto the side panels' text (readability) */
+        /* visible at EVERY width — the skeleton is the identity, and on a phone it
+           was hidden entirely, which is why the home screen read as generic panels */
         .skull-arch { position:absolute; left:50%; top:0; transform:translate(-50%,-34%);
-          width:clamp(420px,52vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:none; }
-        @media (min-width:980px){ .skull-arch { display:block; } }
+          width:clamp(300px,88vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:block; }
         .skull-host { overflow:hidden; }
         /* Lift the chamber's contents above the arch. z-index needs a position, but this
            must not clobber children that place themselves — .ctx-lever is absolute and
@@ -2476,148 +2643,60 @@ Look at the photo and write the caption. Output caption text only — no preambl
         }
         .odo-cell.punct { min-width:14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
 
-        /* The dock IS command-console@2x.webp. That asset carries the frame, the end
-           caps, the six panel divisions, all six brass mechanisms and an empty engraved
-           nameplate under each one. So this CSS deliberately adds no panel chrome of its
-           own — earlier it synthesised a second set of panels and line-art mechanisms on
-           top, which fought the artwork and cropped its nameplates away. */
+        /* ---------- COMMAND DOCK — pinned brass bar ----------
+           Rebuilt 2026-08-01 per Brady: the photoreal command-console asset is retired
+           as the dock. Stretched to arbitrary bar sizes by object-fit:fill it read flat
+           and distorted, and its painted nameplates forced absolutely-positioned labels
+           that drifted off-center on phones. The bar is now built in CSS — iron plate,
+           brass hairline, riveted top edge — so nothing is a stretched raster, labels
+           center natively, and the bar stays pinned to the bottom of the screen. */
         .console-dock {
-          position:relative; flex:0 0 clamp(128px,15.2vh,158px); width:100%; min-height:0;
-          padding:0; isolation:isolate;
-          border:0; background:transparent;
-          box-shadow:0 -8px 18px rgba(0,0,0,.48);
+          position:fixed; left:0; right:0; bottom:0; z-index:30;
+          padding:9px 10px calc(9px + env(safe-area-inset-bottom));
+          background:linear-gradient(180deg,#191008 0%,#0e0a06 34%,#0a0705 100%);
+          border-top:1px solid rgba(214,179,106,.5);
+          box-shadow:0 -1px 0 #000, 0 -10px 26px rgba(0,0,0,.66);
         }
-        .console-dock-bg {
-          position:absolute; inset:0; width:100%; height:100%;
-          /* fill, not cover: the console must be seen whole. cover crops it vertically
-             on a bar this wide and takes the nameplates with it. */
-          object-fit:fill;
-          pointer-events:none; z-index:0;
+        /* rivet strip along the brass hairline */
+        .console-dock::before {
+          content:""; position:absolute; left:0; right:0; top:2px; height:5px; pointer-events:none;
+          background:radial-gradient(circle at 8px 50%, #c2924e 0 1.2px, rgba(58,39,24,.9) 1.8px 2.6px, transparent 3px);
+          background-size:64px 5px; background-repeat:repeat-x; opacity:.8;
         }
         .console-dock-grid {
-          position:relative; height:100%; z-index:1; display:grid; grid-template-columns:repeat(6,minmax(0,1fr));
-          gap:0;
-          /* clear the asset's end arcs so each column lands on one painted panel:
-             its panels run x 100–1500 of 1600 */
-          padding:0 6.25%;
+          display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px;
+          max-width:1180px; margin:0 auto;
         }
         .dock-control {
-          position:relative; min-width:0; color:var(--ember-text-soft);
-          cursor:pointer; padding:0 4%; font-family:var(--ember-font-display);
-          border:0; border-radius:9px; background:transparent; box-shadow:none;
-          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical);
+          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+          min-width:0; min-height:54px; padding:6px 2px; cursor:pointer;
+          border:1px solid rgba(176,141,87,.35); border-radius:10px;
+          background:linear-gradient(180deg,#221609 0%,#140e08 46%,#0d0906 100%);
+          box-shadow:inset 0 1px 0 rgba(255,214,150,.14), inset 0 -2px 5px rgba(0,0,0,.65), 0 2px 6px rgba(0,0,0,.5);
+          color:var(--ember-text-soft);
+          transition:filter 150ms var(--ember-ease-mechanical),transform 150ms var(--ember-ease-mechanical),border-color 150ms;
         }
-        .dock-control:hover { filter:brightness(1.18) drop-shadow(0 0 10px rgba(255,98,36,.3)); transform:translateY(-2px); }
-        .dock-control:active { transform:translateY(2px); }
+        .dock-control:hover { filter:brightness(1.16); border-color:rgba(214,179,106,.6); transform:translateY(-1px); }
+        .dock-control:active { transform:translateY(1px); box-shadow:inset 0 2px 6px rgba(0,0,0,.75); }
+        .dock-control:disabled { cursor:wait; opacity:.6; transform:none; }
         .dock-control.active {
-          filter:brightness(1.14) drop-shadow(0 0 12px rgba(255,77,50,.58)); color:#fff1dc;
+          color:#fff1dc; border-color:rgba(255,122,69,.75);
+          background:linear-gradient(180deg,#2d1509 0%,#1b0e07 50%,#120a05 100%);
+          box-shadow:inset 0 1px 0 rgba(255,177,120,.25), inset 0 -2px 6px rgba(0,0,0,.6), 0 0 16px rgba(255,77,50,.34);
         }
-        .dock-control:disabled { cursor:wait; opacity:.7; transform:none; }
+        .dock-ic { display:flex; color:var(--brass); }
+        .dock-control.active .dock-ic { color:var(--ember-orange); filter:drop-shadow(0 0 6px rgba(255,122,69,.6)); }
         .dock-label {
-          /* sits on the engraved nameplate, which occupies roughly 62–86% of panel height */
-          position:absolute; left:6%; right:6%; top:64%; height:22%;
-          display:flex; align-items:center; justify-content:center; text-align:center;
-          font-size:clamp(8px,.69vw,11.5px); font-weight:700; letter-spacing:.07em; text-transform:uppercase;
-          text-shadow:0 2px 2px #000,0 0 9px rgba(255,145,73,.3);
+          display:block; width:100%; text-align:center;
+          font-family:var(--ember-font-display);
+          font-size:clamp(8px,1.9vw,10.5px); font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+          line-height:1.15; text-shadow:0 1px 1px #000; overflow:hidden;
         }
-        .dock-control.active .dock-label::before {
-          content:""; width:6px; height:6px; border-radius:50%; margin-right:7px;
-          background:var(--ember-active); box-shadow:0 0 9px var(--ember-active);
-        }
-
-        /* Motion layer over the painted console. Every part here is additive light —
-           mix-blend-mode:screen — so it can brighten the artwork but never occlude or
-           duplicate it. See DOCK_MOTION for the per-panel offsets. */
-        .dock-motion { position:absolute; inset:0; z-index:1; pointer-events:none; }
-        .dock-motion > * { position:absolute; pointer-events:none; }
-        .dm-sheen { mix-blend-mode:screen; }
-
-        /* Wrapper for anything round. It holds the position and the ellipse squash that
-           object-fit:fill imposes on the artwork, which leaves the child a true circle
-           free to rotate. --dock-squash is measured from the live dock box. */
-        .dm-round {
-          aspect-ratio:1; transform:translate(-50%,-50%) scaleY(var(--dock-squash,.53));
-        }
-        .dm-round > i {
-          position:absolute; inset:0; border-radius:50%; display:block;
-          mix-blend-mode:screen;
-        }
-
-        /* glint orbiting a painted gear / wheel — masked to the rim, where teeth catch
-           the light. Unmasked it reads as a pie wedge rather than a turning part. */
-        .dm-spin {
-          background:conic-gradient(from 0deg,
-            rgba(255,222,168,0) 0deg, rgba(255,222,168,.34) 30deg,
-            rgba(255,150,66,.08) 70deg, transparent 120deg);
-          -webkit-mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
-                  mask-image:radial-gradient(circle,transparent 34%,#000 58%,#000 90%,transparent 100%);
-          animation:dmSpin 9s linear infinite;
-        }
-        .dm-spin.dm-rev  { animation-duration:6.5s; animation-direction:reverse; }
-        .dm-spin.dm-slow { animation-duration:15s; }
-        @keyframes dmSpin { to { transform:rotate(360deg); } }
-
-        /* reactor core breathing in the porthole */
-        .dm-core {
-          background:radial-gradient(circle,
-            rgba(255,206,140,.70) 0 16%, rgba(255,116,44,.34) 36%,
-            rgba(255,80,30,.10) 56%, transparent 72%);
-          animation:dmCore 2.7s ease-in-out infinite;
-        }
-        @keyframes dmCore {
-          0%,100% { opacity:.5; transform:scale(.9); }
-          50%     { opacity:1;  transform:scale(1.08); }
-        }
-
-        /* Illuminated wash riding the painted gauge dial, faded before the bezel.
-           Kept broad and low-alpha on purpose: a narrow wedge reads as a second needle
-           beside the painted one, which is the duplication this layer exists to avoid. */
-        .dm-sweep {
-          background:conic-gradient(from -18deg,
-            rgba(255,190,120,.20) 0 14deg, rgba(255,140,60,.06) 14deg 34deg, transparent 34deg);
-          -webkit-mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
-                  mask-image:radial-gradient(circle,#000 0 66%,transparent 84%);
-          animation:dmSweep 6.5s var(--ember-ease-sweep) infinite;
-        }
-        @keyframes dmSweep {
-          0%,18%   { transform:rotate(-54deg); }
-          38%,72%  { transform:rotate(34deg); }
-          88%,100% { transform:rotate(-54deg); }
-        }
-
-        /* lamp breathing — sits on a painted lamp, so it only adds bloom */
-        .dm-lamp {
-          background:radial-gradient(circle,
-            rgba(255,168,96,.85) 0 22%, rgba(255,74,36,.42) 44%, transparent 70%);
-          animation:dmLamp 1.9s ease-in-out infinite;
-        }
-        @keyframes dmLamp {
-          0%,100% { opacity:.42; transform:scale(.92); }
-          50%     { opacity:1;   transform:scale(1.1); }
-        }
-
-        /* specular highlight stroking along a drum or barrel — reads as travel.
-           background-position is animated rather than a child's offset, so the inline
-           animation-delay in DOCK_MOTION lands on the element that actually moves. */
-        .dm-sheen {
-          border-radius:7px;
-          background:linear-gradient(90deg,
-            transparent 0 34%, rgba(255,222,175,.40) 46%, transparent 58%);
-          background-size:280% 100%; background-repeat:no-repeat;
-          animation:dmSheen 5.6s var(--ember-ease-mechanical) infinite;
-        }
-        @keyframes dmSheen {
-          0%,68%   { background-position:-90% 0; }
-          88%,100% { background-position:190% 0; }
-        }
-
-        /* the whole dock leans in on hover / when active */
-        .dock-control:hover .dm-spin,.dock-control.active .dm-spin   { animation-duration:2.4s; }
-        .dock-control:hover .dm-rev,.dock-control.active .dm-rev     { animation-duration:2s; }
-        .dock-control:hover .dm-slow,.dock-control.active .dm-slow   { animation-duration:3.2s; }
-        .dock-control:hover .dm-core,.dock-control.active .dm-core   { animation-duration:1.3s; }
-        .dock-control:hover .dm-sheen,.dock-control.active .dm-sheen { animation-duration:1.9s; }
-        .dock-control:hover .dm-lamp,.dock-control.active .dm-lamp   { animation-duration:1s; }
+        .dock-control.active .dock-label { text-shadow:0 1px 1px #000, 0 0 8px rgba(255,145,73,.5); }
+        /* active lamp — a lit rivet centered under the label */
+        .dock-lamp { width:5px; height:5px; border-radius:50%; margin-top:1px; flex:0 0 auto;
+          background:#3a2718; box-shadow:inset 0 1px 1px rgba(0,0,0,.8); }
+        .dock-control.active .dock-lamp { background:var(--ember-active); box-shadow:0 0 8px var(--ember-active); }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; }
@@ -2670,7 +2749,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .row-sel:hover { background:rgba(214,179,106,.05); }
         .row-on { background:rgba(214,179,106,.08); box-shadow:inset 2px 0 0 var(--ember-brass-bright); padding-left:9px; }
 
-        .codex { position:relative; border:9px solid transparent;
+        .codex { position:relative; display:inline-flex; flex-wrap:wrap; justify-content:center; max-width:100%; border:9px solid transparent;
           border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
           background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
         @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
@@ -2709,7 +2788,6 @@ Look at the photo and write the caption. Output caption text only — no preambl
           .mic-rail { min-height:32px; padding-block:5px!important; }
           .core-chamber { padding-block:8px!important; }
           .reactor-stage { width:252px; height:252px; }
-          .console-dock { flex-basis:122px; }
           .tool-tile { min-height:50px; }
         }
       `}</style>
@@ -2779,13 +2857,13 @@ Look at the photo and write the caption. Output caption text only — no preambl
               </span>
             </h1>
             <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ink-faint)" }}>
-              {view === "ops" ? "OPS" : "BAXSTAR STUDIO"}
+              {view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : "BAXSTAR STUDIO"}
             </span>
           </div>
 
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
             {["QUO", "GMAIL", "CALENDAR"].map((s) => (
-              <span key={s} className="flex items-center gap-1.5">
+              <span key={s} className="conn-dots flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` }} />
                 {s}
               </span>
@@ -2900,7 +2978,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
         <div className="main-grid flex-1">
 
           {/* LEFT */}
-          <div className="ops-side flex min-h-0 flex-col gap-4">
+          <div ref={callsColRef} className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
               {data.voicemails.map((v, i) => (
                 <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
@@ -2934,25 +3012,32 @@ Look at the photo and write the caption. Output caption text only — no preambl
             </Panel>
           </div>
 
-          {/* CENTER: CORE */}
-          <div className="flex min-h-0 flex-col">
+          {/* CENTER: CORE — first thing on a phone (.ops-core orders it to the top).
+              One compact greeting line; the counts are BUTTONS that jump to their
+              panels, because a number you can't act on is dead weight up here. */}
+          <div className="ops-core flex min-h-0 flex-col">
             <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
+              {/* The skeleton. Its CSS survived the v2 merge but this element didn't —
+                  the class had nothing to draw until 2026-08-01. */}
+              <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
               <span className="notch hot" />
 
               <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
               <ContextLever side="right" label="Create Task" state={leverState("task")} onPull={leverCreateTask} />
 
-              <div className="reveal text-center" style={{ animationDelay: "0.1s" }}>
-                <h2 className="text-2xl font-bold tracking-tight">
+              <div className="greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center" style={{ animationDelay: "0.1s" }}>
+                <span className="text-[15px] font-bold tracking-tight">
                   {dayPart},{" "}
                   <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
                     Brady.
                   </span>
-                </h2>
-                <div className="mt-3.5 flex items-center justify-center gap-3">
-                  <Badge label={`${data.voicemails.length} voicemails`} />
-                  <Badge label={`${data.emails.length} unread`} />
-                </div>
+                </span>
+                <button className="chip ghost" onClick={() => callsColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                  {data.voicemails.length} voicemails ↓
+                </button>
+                <button className="chip ghost" onClick={() => inboxColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                  {data.emails.length} unread ↓
+                </button>
               </div>
 
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
@@ -2977,25 +3062,59 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   </div>
                 )}
 
-                <div className="mt-4 flex gap-1">
+                {/* status + demoted utilities on ONE row — these were stacked four
+                    high and pushed the input off the phone screen */}
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                  <span className="font-mono-x text-[9.5px] tracking-[0.25em]"
+                    style={{ color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }}>
+                    {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
+                  </span>
+                  {speaking && <button className="chip solid" onClick={stopSpeaking}>⏹ Stop</button>}
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
+                  <button className="chip ghost" onClick={testVoice}><EmberIcon name="speaker" size={11} style={{ verticalAlign: "-2px", marginRight: "4px" }} />TEST</button>
                 </div>
-
-                <div className="font-mono-x mt-3 text-center text-[10px] tracking-[0.3em]"
-                  style={{ color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-                  {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
-                </div>
-                {speaking && (
-                  <button className="chip solid mt-2" onClick={stopSpeaking}>⏹ Stop Voice</button>
-                )}
-                <button className="chip ghost qframe mt-2" onClick={testVoice}><EmberIcon name="speaker" size={13} style={{ verticalAlign: "-2px", marginRight: "5px" }} />VOICE TEST</button>
                 {voiceDiag && (
                   <div className="font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]" style={{ color: "var(--ember-amber)" }}>
                     {voiceDiag}
                   </div>
                 )}
               </div>
+
+              {/* THE THREAD — home is the real Claude chat (Brady, 2026-08-01). Full
+                  scrolling history, not a single-answer box; OPS commands, dock
+                  actions and typed questions all land here. */}
+              {chatMsgs.length > 0 && (
+                <div className="home-thread reveal w-full" style={{ animationDelay: "0.45s" }}>
+                  {chatMsgs.map((m, i) => (
+                    m.role === "user" ? (
+                      <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
+                        style={{ background: "rgba(255,77,61,.13)", borderColor: "var(--line-hot)", color: "var(--ink)" }}>
+                        {m.content}
+                      </div>
+                    ) : (
+                      <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
+                        style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
+                        <span className="mb-1 flex items-center justify-between gap-3">
+                          <span className="font-mono-x text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
+                          <button onClick={() => speak(m.content)} title="Read aloud" style={{ color: "var(--ember-orange)" }}>
+                            <EmberIcon name="speaker" size={12} />
+                          </button>
+                        </span>
+                        {m.content}
+                      </div>
+                    )
+                  ))}
+                  {thinking && (
+                    <div className="flex items-center gap-2 self-start rounded-2xl rounded-bl-sm border px-4 py-3"
+                      style={{ background: "#140d0d", borderColor: "var(--line)" }}>
+                      <span className="spinner dark" />
+                      <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>THINKING…</span>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
 
               <div className="reveal relative w-full max-w-sm" style={{ animationDelay: "0.55s" }}>
                 <input
@@ -3024,19 +3143,33 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 </div>
               )}
 
-              {response && (
-                <div className="w-full max-w-sm rounded-xl border px-4 py-3"
-                  style={{ borderColor: "var(--line-hot)", background: "rgba(255,77,61,.05)", maxHeight: "180px", overflowY: "auto" }}>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                    <span className="flex items-center gap-3">
-                      <button onClick={() => speak(response)} title="Read aloud" className="text-xs" style={{ color: "var(--ember-orange)" }}><EmberIcon name="speaker" size={14} /></button>
-                      <button onClick={() => { setResponse(""); stopSpeaking(); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
-                    </span>
+              {/* Model + Effort live on the home page now — the codex wraps instead of
+                  running off the right edge of a phone. */}
+              <div className="reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="fieldlabel">Model</span>
+                  <div className="codex" key={chatModel}>
+                    {MODELS.map((m) => (
+                      <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
+                        {m.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: "var(--ink)" }}>{response}</div>
                 </div>
-              )}
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="fieldlabel">Effort</span>
+                  <div className="codex" key={chatEffort}>
+                    {Object.entries(EFFORT).map(([k, e]) => (
+                      <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
+                        {e.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {chatMsgs.length > 0 && (
+                  <button className="chip ghost" onClick={() => { setChatMsgs([]); historyRef.current = []; }}>Clear thread</button>
+                )}
+              </div>
 
               {/* editable lever draft — never sends automatically */}
               {draftEdit !== null && (
@@ -3094,7 +3227,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           </div>
 
           {/* RIGHT */}
-          <div className="ops-side flex min-h-0 flex-col gap-4">
+          <div ref={inboxColRef} className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow>
               {data.emails.map((m, i) => (
                 <Row key={i} who={m.from} when={m.time}
@@ -3123,17 +3256,16 @@ Look at the photo and write the caption. Output caption text only — no preambl
         {view === "studio" && (
         <div className="studio-stack flex-1">
 
-          {/* TOOLS — two rows, tap a tile, its panel opens below.
+          {/* TOOLS — one horizontal strip, tap a tile, its panel opens below.
               Hidden in the lean mobile caption shell (?lean=1), which pins to captions. */}
           {!leanCaption && (
           <div className="studio-tools-panel panel reveal px-5 py-4" style={{ animationDelay: "0.08s" }}>
             <span className="notch hot" />
-            <div className="fieldlabel mb-3">Tools</div>
             <div className="tool-grid">
               {TOOLS.map((t) => (
                 <button key={t.id} className={`tool-tile ${studioTool === t.id ? "on" : ""}`} onClick={() => setStudioTool(t.id)}>
                   <span className="tic">
-                    {t.id === "chat" || t.id === "drive" || t.id === "github"
+                    {t.id === "drive" || t.id === "github"
                       ? <BrandMark tool={t.id} active={studioTool === t.id} />
                       : <EmberIcon name={t.icon} />}
                   </span>
@@ -3154,7 +3286,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 count={analyzing ? "SCANNING" : fishId ? `${(fishId.confidence || "").toUpperCase()} ID` : "AWAITING PHOTO"}
                 countColor={analyzing ? "var(--ember-orange)" : fishId ? "#54e08a" : "var(--ink-faint)"} delay="0.1s" grow>
 
-                <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+                <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple className="hidden"
+                  onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
 
                 {captionRestored && (
                   <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px]"
@@ -3164,31 +3297,63 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   </div>
                 )}
 
-                {!photo ? (
+                {!photos.length ? (
                   <div className="upzone mt-1" onClick={() => fileRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}>
+                    onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
                     <div style={{ color: "var(--ember-amber)", opacity: .7 }}><EmberIcon name="hook" size={34} strokeWidth={1.25} /></div>
-                    <div className="mt-2 text-[13px] font-bold">Drop a fish photo, or click to upload</div>
+                    <div className="mt-2 text-[13px] font-bold">Drop fish photos, or click to upload</div>
                     <div className="mt-1 text-[11px]" style={{ color: "var(--ink-faint)" }}>
-                      Vision auto-scans for species + Vexus / Summit gear
+                      Up to {MAX_PHOTOS} for one carousel · vision auto-scans for species and sponsor gear
                     </div>
                   </div>
                 ) : (
-                  <div className="relative mt-1">
-                    <img src={photo.preview} alt="Catch"
-                      className="w-full rounded-xl border object-cover" style={{ borderColor: "var(--line)", maxHeight: "230px" }} />
-                    {analyzing && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl"
-                        style={{ background: "rgba(8,6,6,.65)" }}>
-                        <span className="spinner dark" />
-                        <span className="font-mono-x text-[9px] tracking-[0.3em]" style={{ color: "var(--ember-orange)" }}>SCANNING…</span>
-                      </div>
+                  <div className="mt-1"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}>
+                    <div className="relative">
+                      <img src={photos[0].preview} alt="Catch"
+                        className="w-full rounded-xl border object-cover" style={{ borderColor: "var(--line)", maxHeight: "230px" }} />
+                      {analyzing && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl"
+                          style={{ background: "rgba(8,6,6,.65)" }}>
+                          <span className="spinner dark" />
+                          <span className="font-mono-x text-[9px] tracking-[0.3em]" style={{ color: "var(--ember-orange)" }}>SCANNING…</span>
+                        </div>
+                      )}
+                      <button className="chip ghost absolute right-2 top-2" style={{ background: "rgba(8,6,6,.7)" }}
+                        disabled={photos.length >= MAX_PHOTOS}
+                        onClick={() => fileRef.current?.click()}>
+                        {photos.length < MAX_PHOTOS ? "Add photo" : "Carousel full"}
+                      </button>
+                    </div>
+
+                    {/* Slide strip — order is the carousel order, slide 1 is the cover.
+                        Instagram crops every slide to the FIRST slide's aspect ratio. */}
+                    {photos.length > 1 && (
+                      <>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {photos.map((p, i) => (
+                            <div key={i} className="relative">
+                              <img src={p.preview} alt={`Slide ${i + 1}`}
+                                className="rounded-lg border object-cover"
+                                style={{ borderColor: i === 0 ? "var(--brass)" : "var(--line)", width: "56px", height: "56px" }} />
+                              <span className="font-mono-x absolute left-1 top-1 rounded px-1 text-[8px]"
+                                style={{ background: "rgba(8,6,6,.75)", color: i === 0 ? "var(--brass)" : "var(--ink-dim)" }}>
+                                {i + 1}
+                              </span>
+                              <button aria-label={`Remove slide ${i + 1}`}
+                                className="absolute -right-1.5 -top-1.5 rounded-full px-1 text-[10px] font-bold"
+                                style={{ background: "#2a1414", border: "1px solid var(--line)", color: "#ff8074", lineHeight: "14px" }}
+                                onClick={() => removePhoto(i)}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                          {photos.length}/{MAX_PHOTOS} slides · Instagram crops every slide to slide 1's shape
+                        </div>
+                      </>
                     )}
-                    <button className="chip ghost absolute right-2 top-2" style={{ background: "rgba(8,6,6,.7)" }}
-                      onClick={() => fileRef.current?.click()}>
-                      Replace
-                    </button>
                   </div>
                 )}
 
@@ -3212,12 +3377,16 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 <div className="mt-4">
                   <div className="fieldlabel">Sponsor Tags</div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {["vexus", "summit", "jk"].map((k) => (
-                      <button key={k} className={`toggle-chip ${sponsors[k].on ? "on" : ""}`} onClick={() => toggleSponsor(k)}>
+                    {SPONSOR_KEYS.map((k) => (
+                      <button key={k} className={`toggle-chip ${sponsors[k].on ? "on" : ""}`} onClick={() => toggleSponsor(k)}
+                        title={SPONSORS[k].handles.join(" ")}>
                         {SPONSORS[k].label}
-                        {(k === "vexus" || k === "summit") && sponsors[k].detected && <span className="vision-tag">VISION</span>}
+                        {sponsors[k].detected && <span className="vision-tag">VISION</span>}
                       </button>
                     ))}
+                  </div>
+                  <div className="mt-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                    Vision pre-arms what it can see — you confirm before anything is tagged.
                   </div>
                 </div>
 
@@ -3238,7 +3407,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   </div>
                 </div>
 
-                <button className="big primary mt-5 w-full justify-center" disabled={!photo || analyzing || genBusy} onClick={generateCaption}>
+                <button className="big primary mt-5 w-full justify-center" disabled={!photos.length || analyzing || genBusy} onClick={generateCaption}>
                   {genBusy ? <span className="spinner" /> : <EmberIcon name="spark" size={14} />}
                   {genBusy ? "GENERATING…" : "Generate Caption"}
                 </button>
@@ -3277,12 +3446,28 @@ Look at the photo and write the caption. Output caption text only — no preambl
                           {fishId.species.toUpperCase()}
                         </span>
                       )}
-                      {Object.entries(sponsors).filter(([, v]) => v.on).map(([k]) => (
-                        <span key={k} className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
+                      {photos.length > 1 && (
+                        <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
+                          style={{ borderColor: "var(--line)", color: "var(--brass)" }}>
+                          CAROUSEL · {photos.length}
+                        </span>
+                      )}
+                      {activeHandles(sponsors).map((h) => (
+                        <span key={h} className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
                           style={{ borderColor: "var(--line)", color: "var(--ink-dim)" }}>
-                          {SPONSORS[k].handle}
+                          {h}
                         </span>
                       ))}
+                      {/* Hashtag budget. Brady's rule is 5 total and the locked tag holds one
+                          slot, so anything past four in the body is trimmed on the way out —
+                          reported here rather than dropped silently. */}
+                      <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
+                        style={{
+                          borderColor: capState.dropped ? "rgba(255,128,116,.5)" : "var(--line)",
+                          color: capState.dropped ? "#ff8074" : "var(--ink-dim)",
+                        }}>
+                        {capState.total}/{MAX_HASHTAGS} TAGS{capState.dropped ? ` · ${capState.dropped} TRIMMED` : ""}
+                      </span>
                     </div>
 
                     <div className="mt-4 flex gap-3">
@@ -3296,7 +3481,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
                     {/* Publish → private Drive outbox (review-then-post; never auto-posts to social) */}
                     <div className="mt-3 flex items-center gap-3">
-                      <button className="big flex-1 justify-center" disabled={publishing || !photo} onClick={publishToOutbox}
+                      <button className="big flex-1 justify-center" disabled={publishing || !photos.length} onClick={publishToOutbox}
                         style={{ borderColor: "var(--brass)", color: "var(--candle)" }}>
                         {publishing ? <span className="spinner" /> : <EmberIcon name="drive" size={14} />}
                         {publishing ? "SENDING…" : "Publish to Drive Outbox"}
@@ -3331,89 +3516,6 @@ Look at the photo and write the caption. Output caption text only — no preambl
                 )}
               </Panel>
             </div>
-            )}
-
-            {/* --- CLAUDE CHAT --- */}
-            {studioTool === "chat" && (
-            <Panel notch="hot" title="Claude Chat" count={chatBusy ? "THINKING" : `${chatMsgs.length} MSGS`}
-              countColor={chatBusy ? "var(--ember-orange)" : "var(--ink-dim)"} delay="0.1s" grow scroll={false}>
-
-              {/* model + effort controls */}
-              <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="fieldlabel">Model</span>
-                  <div className="codex" key={chatModel}>
-                    {MODELS.map((m) => (
-                      <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="fieldlabel">Effort</span>
-                  <div className="codex" key={chatEffort}>
-                    {Object.entries(EFFORT).map(([k, e]) => (
-                      <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
-                        {e.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {chatMsgs.length > 0 && (
-                  <button className="chip ghost ml-auto" onClick={() => setChatMsgs([])}>Clear thread</button>
-                )}
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1" style={{ minHeight: "280px" }}>
-                {chatMsgs.length === 0 && !chatBusy && (
-                  <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-                    <div className="opacity-40"><EmberIcon name="chat" size={30} strokeWidth={1.25} /></div>
-                    <div className="text-[12px]" style={{ color: "var(--ink-faint)" }}>
-                      Full Claude thread — knows the operation,<br />can reach Quo, Gmail, and Calendar.
-                    </div>
-                  </div>
-                )}
-                {chatMsgs.map((m, i) => (
-                  m.role === "user" ? (
-                    <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
-                      style={{ background: "rgba(255,77,61,.13)", borderColor: "var(--line-hot)", color: "var(--ink)" }}>
-                      {m.content}
-                    </div>
-                  ) : (
-                    <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
-                      style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
-                      <span className="font-mono-x mb-1 block text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                      {m.content}
-                    </div>
-                  )
-                ))}
-                {chatBusy && (
-                  <div className="flex items-center gap-2 self-start rounded-2xl rounded-bl-sm border px-4 py-3"
-                    style={{ background: "#140d0d", borderColor: "var(--line)" }}>
-                    <span className="spinner dark" />
-                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>THINKING…</span>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="relative mt-3">
-                <input
-                  type="text" value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                     onKeyDown={(e) => e.key === "Enter" && sendChat()}
-                  placeholder="Message Claude…"
-                  className="cmd-input w-full rounded-xl px-5 py-3.5 pr-16 text-sm"
-                  style={{ background: "#120c0c", color: "var(--ink)" }}
-                />
-                <button onClick={sendChat} disabled={chatBusy}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2.5 py-1 text-[10px] font-bold text-white transition-opacity"
-                  style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", opacity: chatInput && !chatBusy ? 1 : 0.35 }}>
-                  SEND
-                </button>
-              </div>
-            </Panel>
             )}
 
             {/* --- GOOGLE DRIVE --- */}
@@ -3672,27 +3774,86 @@ Look at the photo and write the caption. Output caption text only — no preambl
         </div>
         )}
 
+        {/* ================= PROJECTS VIEW ================= */}
+        {/* The dashboard Brady asked for in the pinned DASHBOARD REQUIREMENTS: every open
+            project as a horizontal bar under its category, with outstanding work and an
+            honest session estimate. Data is the session-maintained PROJECTS constant. */}
+        {view === "projects" && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Panel notch="hot" title="Project Status" count={`UPDATED ${PROJECTS_META.updated}`} countColor="var(--brass)" delay="0.1s" grow>
+            <div className="proj-meta font-mono-x">
+              <span>ZAPIER TASKS&nbsp;
+                <b style={{ color: PROJECTS_META.zapierTasks.used == null ? "var(--ink-faint)" : "var(--ember-amber)" }}>
+                  {PROJECTS_META.zapierTasks.used == null ? "not recorded" : PROJECTS_META.zapierTasks.used}
+                </b>
+                &nbsp;/ {PROJECTS_META.zapierTasks.cap} mo
+              </span>
+              <span style={{ color: "var(--ink-faint)" }}>{PROJECTS_META.zapierTasks.note}</span>
+            </div>
+
+            {PROJECTS.map((group) => (
+              <div key={group.cat} className="mb-4">
+                <div className="proj-cat font-display">{group.cat}</div>
+                {group.items.map((pr) => (
+                  <div key={pr.name} className="proj-row">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[13px] font-semibold">{pr.name}</span>
+                      <span className="font-mono-x shrink-0 text-[10px]" style={{ color: "var(--ember-amber)" }}>
+                        {pr.pct}%
+                        {pr.platform !== "—" && <span style={{ color: "var(--ink-faint)" }}> · {pr.platform.toUpperCase()}</span>}
+                      </span>
+                    </div>
+                    <div className="proj-bar" role="img" aria-label={`${pr.name}: ${pr.pct} percent complete`}>
+                      <span className="proj-fill" style={{ width: `${pr.pct}%` }} data-pct={pr.pct} />
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between gap-3 text-[11px]" style={{ color: "var(--ink-dim)" }}>
+                      <span>{pr.outstanding}</span>
+                      {pr.sessions !== "0" && (
+                        <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>EST {pr.sessions} SESSIONS</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="text-[10px]" style={{ color: "var(--ink-faint)" }}>
+              Session-maintained — Claude updates this with each shipped piece of work. Edit PROJECTS in src to correct anything.
+            </div>
+          </Panel>
+        </div>
+        )}
+
         {/* ================= DOCK ================= */}
-        {/* Hidden in the lean mobile caption shell (?lean=1) — that route is single-purpose. */}
+        {/* Pinned to the bottom of the screen at all times (position:fixed) — the shell
+            carries matching bottom padding so content never hides behind it.
+            Hidden in the lean mobile caption shell (?lean=1) — that route is single-purpose. */}
         {!leanCaption && (
-        <div ref={dockRef} className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
-          <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" className="console-dock-bg" />
+        <div className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
           <div className="console-dock-grid">
             <button className={`dock-control ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>
-              <DockMotion type="ops" />
+              <span className="dock-ic"><EmberIcon name="dials" size={15} /></span>
               <span className="dock-label">OPS</span>
+              <span className="dock-lamp" />
             </button>
-            <button className={`dock-control ${view === "studio" ? "active" : ""}`} onClick={() => setView("studio")}>
-              <DockMotion type="studio" />
-              <span className="dock-label">Baxstar Studio</span>
+            <button className={`dock-control ${view === "studio" ? "active" : ""}`}
+              onClick={() => { setView("studio"); setStudioTool("captions"); }}>
+              <span className="dock-ic"><EmberIcon name="quill" size={15} /></span>
+              <span className="dock-label">Caption Studio</span>
+              <span className="dock-lamp" />
             </button>
           {ACTIONS.map((a, i) => (
             <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <DockMotion type={["miss", "triage", "brief", "handoff"][i]} />
+              <span className="dock-ic"><EmberIcon name={["spark", "clipboard", "globe"][i]} size={15} /></span>
               <span className="dock-label">{a.label}</span>
+              <span className="dock-lamp" />
             </button>
           ))}
+            <button className={`dock-control ${view === "projects" ? "active" : ""}`} onClick={() => setView("projects")}>
+              <span className="dock-ic"><EmberIcon name="folder" size={15} /></span>
+              <span className="dock-label">Projects</span>
+              <span className="dock-lamp" />
+            </button>
           </div>
         </div>
         )}
