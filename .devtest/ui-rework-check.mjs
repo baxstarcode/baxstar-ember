@@ -124,6 +124,28 @@ async function run(label, viewport) {
 
   await page.screenshot({ path: path.join(SHOTS, `captions-${label}.png`), fullPage: mobile });
 
+  // Projects dashboard — dock button lands on it, categories render, bars match pct
+  await page.locator('.dock-control:has-text("Projects")').click();
+  await page.waitForTimeout(1000); // bar width transition
+  const proj = await page.evaluate(() => {
+    const cats = [...document.querySelectorAll(".proj-cat")].map((c) => c.textContent.trim());
+    const bars = [...document.querySelectorAll(".proj-bar")].map((b) => {
+      const fill = b.querySelector(".proj-fill");
+      const pct = Number(fill.dataset.pct);
+      const w = (fill.getBoundingClientRect().width / b.getBoundingClientRect().width) * 100;
+      return Math.abs(w - pct) < 3;
+    });
+    return { cats, bars: bars.length, allMatch: bars.every(Boolean),
+      zapier: /ZAPIER TASKS/.test(document.body.innerText) };
+  });
+  check(`${label}: dock Projects button lands on the dashboard`,
+    proj.cats.includes("Revenue Generating") && proj.cats.includes("Supporting"), JSON.stringify(proj.cats));
+  check(`${label}: 8 horizontal bars, each fill width matches its pct`, proj.bars === 8 && proj.allMatch, JSON.stringify(proj));
+  check(`${label}: Zapier task usage strip present`, proj.zapier);
+  const projOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  check(`${label}: projects view has no horizontal overflow`, projOverflow <= 0, `${projOverflow}px`);
+  await page.screenshot({ path: path.join(SHOTS, `projects-${label}.png`), fullPage: mobile });
+
   check(`${label}: no uncaught page errors`, errors.length === 0, errors.join(" | "));
   await ctx.close();
 }

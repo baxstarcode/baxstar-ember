@@ -111,6 +111,47 @@ const HANDOFF = {
   gemini:  { label: "Gemini",  url: "https://gemini.google.com", color: "#4285f4" },
 };
 
+/* ---------- PROJECTS DASHBOARD DATA ----------
+   SESSION-MAINTAINED, per Baxstar_AI_Context Rule 15: when a session ships work on any
+   of these, it updates pct / outstanding / sessions here in the same commit. Numbers are
+   honest estimates, not telemetry — the point is one glanceable page that can't get lost
+   in a chat the way the first version of this dashboard did.
+   zapierTasks.used is Brady-reported (the client can't query Zapier live); null renders
+   as "not recorded" rather than pretending. Allowance per Rule 14: 1,500/mo. */
+const PROJECTS_META = {
+  updated: "2026-08-01",
+  zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
+};
+
+const PROJECTS = [
+  {
+    cat: "Revenue Generating",
+    items: [
+      { name: "baxstarfishing.com build", pct: 90, platform: "Claude",
+        outstanding: "Schema/SEO polish, PR #24 Open Water page", sessions: "~2" },
+      { name: "Pontoon rentals stack", pct: 100, platform: "Claude",
+        outstanding: "Shipped — checkout + proxy live", sessions: "0" },
+      { name: "Caption Studio v1 (standalone)", pct: 100, platform: "Claude",
+        outstanding: "Shipped — live on GitHub Pages", sessions: "0" },
+      { name: "Caption Studio v2 auto-post", pct: 70, platform: "Claude",
+        outstanding: "Outbox deploy (Brady), Zap wiring, retire GBP mirror", sessions: "~2" },
+      { name: "Lakes Golf Simulator site", pct: 15, platform: "ChatGPT",
+        outstanding: "Tech-camp page only — main site unbuilt", sessions: "~5" },
+    ],
+  },
+  {
+    cat: "Supporting",
+    items: [
+      { name: "Ember / Mission Control", pct: 80, platform: "Claude",
+        outstanding: "Voice merge, MCP OAuth for hosted connectors", sessions: "~3" },
+      { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
+        outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
+      { name: "Asset pipeline docs", pct: 100, platform: "—",
+        outstanding: "Documented — Squoosh/Handbrake/Wix runbooks", sessions: "0" },
+    ],
+  },
+];
+
 const TOOLS = [
   { id: "handoff",  icon: "handoff", label: "AI Handoff" },
   { id: "captions", icon: "quill", label: "Caption Studio" },
@@ -2164,7 +2205,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     { label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
     { label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
     { label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
-    { label: "Handoff draft", dot: "var(--ember-dark)", prompt: "Draft a dated Baxstar Handoff Log entry summarizing what we handled in this session (calls, emails, drafts, decisions). Format: INDEX one-liner, then full ENTRY block. Output as copyable text only — do not write anywhere." },
+    // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
+    // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
+    // tool still covers manual pulls.
   ];
 
   /* ============================================================
@@ -2344,6 +2387,24 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
         .cursor-block { display:inline-block; width:7px; height:14px; margin-left:6px; vertical-align:-2px;
           background:var(--ember-orange); animation:blink 1.1s step-start infinite; }
+        /* projects dashboard — horizontal brass-and-ember bars */
+        .proj-meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 14px;
+          margin-bottom:14px; padding:8px 12px; border:1px solid var(--line); border-radius:10px;
+          background:#100c09; font-size:10px; letter-spacing:.12em; color:var(--ink-dim); }
+        .proj-cat { font-size:11px; font-weight:700; letter-spacing:.24em; text-transform:uppercase;
+          color:var(--brass); border-bottom:1px solid var(--line); padding-bottom:5px; margin-bottom:4px; }
+        .proj-row { padding:9px 0; border-bottom:1px solid rgba(255,90,60,.09); }
+        .proj-row:last-child { border-bottom:none; }
+        .proj-bar { position:relative; height:12px; margin-top:6px; border-radius:7px; overflow:hidden;
+          background:linear-gradient(180deg,#0a0806,#14100c);
+          border:1px solid var(--line); box-shadow:inset 0 2px 4px rgba(0,0,0,.7); }
+        .proj-fill { position:absolute; left:0; top:0; bottom:0; border-radius:6px;
+          background:linear-gradient(90deg,var(--ember-red),var(--ember-orange));
+          box-shadow:0 0 12px rgba(255,98,36,.45), inset 0 1px 0 rgba(255,220,170,.35);
+          transition:width .7s var(--ember-ease-sweep); }
+        .proj-fill[data-pct="100"] { background:linear-gradient(90deg,var(--brass),#e8d3a0);
+          box-shadow:0 0 10px rgba(214,179,106,.4), inset 0 1px 0 rgba(255,240,210,.4); }
+
         /* greeting sits over the skull crown — a translucent seat keeps it readable
            against the art instead of fighting it */
         .greet-row { padding:4px 12px; border-radius:12px; background:rgba(7,6,4,.55);
@@ -2796,7 +2857,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               </span>
             </h1>
             <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ink-faint)" }}>
-              {view === "ops" ? "OPS" : "BAXSTAR STUDIO"}
+              {view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : "BAXSTAR STUDIO"}
             </span>
           </div>
 
@@ -3713,6 +3774,55 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         </div>
         )}
 
+        {/* ================= PROJECTS VIEW ================= */}
+        {/* The dashboard Brady asked for in the pinned DASHBOARD REQUIREMENTS: every open
+            project as a horizontal bar under its category, with outstanding work and an
+            honest session estimate. Data is the session-maintained PROJECTS constant. */}
+        {view === "projects" && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Panel notch="hot" title="Project Status" count={`UPDATED ${PROJECTS_META.updated}`} countColor="var(--brass)" delay="0.1s" grow>
+            <div className="proj-meta font-mono-x">
+              <span>ZAPIER TASKS&nbsp;
+                <b style={{ color: PROJECTS_META.zapierTasks.used == null ? "var(--ink-faint)" : "var(--ember-amber)" }}>
+                  {PROJECTS_META.zapierTasks.used == null ? "not recorded" : PROJECTS_META.zapierTasks.used}
+                </b>
+                &nbsp;/ {PROJECTS_META.zapierTasks.cap} mo
+              </span>
+              <span style={{ color: "var(--ink-faint)" }}>{PROJECTS_META.zapierTasks.note}</span>
+            </div>
+
+            {PROJECTS.map((group) => (
+              <div key={group.cat} className="mb-4">
+                <div className="proj-cat font-display">{group.cat}</div>
+                {group.items.map((pr) => (
+                  <div key={pr.name} className="proj-row">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[13px] font-semibold">{pr.name}</span>
+                      <span className="font-mono-x shrink-0 text-[10px]" style={{ color: "var(--ember-amber)" }}>
+                        {pr.pct}%
+                        {pr.platform !== "—" && <span style={{ color: "var(--ink-faint)" }}> · {pr.platform.toUpperCase()}</span>}
+                      </span>
+                    </div>
+                    <div className="proj-bar" role="img" aria-label={`${pr.name}: ${pr.pct} percent complete`}>
+                      <span className="proj-fill" style={{ width: `${pr.pct}%` }} data-pct={pr.pct} />
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between gap-3 text-[11px]" style={{ color: "var(--ink-dim)" }}>
+                      <span>{pr.outstanding}</span>
+                      {pr.sessions !== "0" && (
+                        <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>EST {pr.sessions} SESSIONS</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="text-[10px]" style={{ color: "var(--ink-faint)" }}>
+              Session-maintained — Claude updates this with each shipped piece of work. Edit PROJECTS in src to correct anything.
+            </div>
+          </Panel>
+        </div>
+        )}
+
         {/* ================= DOCK ================= */}
         {/* Pinned to the bottom of the screen at all times (position:fixed) — the shell
             carries matching bottom padding so content never hides behind it.
@@ -3734,11 +3844,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           {ACTIONS.map((a, i) => (
             <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <span className="dock-ic"><EmberIcon name={["spark", "clipboard", "globe", "handoff"][i]} size={15} /></span>
+              <span className="dock-ic"><EmberIcon name={["spark", "clipboard", "globe"][i]} size={15} /></span>
               <span className="dock-label">{a.label}</span>
               <span className="dock-lamp" />
             </button>
           ))}
+            <button className={`dock-control ${view === "projects" ? "active" : ""}`} onClick={() => setView("projects")}>
+              <span className="dock-ic"><EmberIcon name="folder" size={15} /></span>
+              <span className="dock-label">Projects</span>
+              <span className="dock-lamp" />
+            </button>
           </div>
         </div>
         )}

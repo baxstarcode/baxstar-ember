@@ -82,6 +82,10 @@ What counts as finishing: shipped code, a pushed branch or PR, an adopted decisi
 discovered bug, a corrected earlier claim. Exploration that reached no conclusion still
 gets one line.
 
+Shipping work on any Baxstar project also means bumping the `PROJECTS` constant in
+`src/baxstar-ember.jsx` (pct / outstanding / sessions) — the Projects dashboard is
+session-maintained, and a stale bar misleads Brady the same way a stale log does.
+
 ## Git
 
 Routine `add`/`commit`/`push` on this repo is pre-approved (Rule 12). Always ask first for

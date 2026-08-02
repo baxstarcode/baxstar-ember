@@ -42,7 +42,11 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 
 ## The app — `src/baxstar-ember.jsx`
 
-Two modules: **OPS** and **BAXSTAR STUDIO**.
+Three views: **OPS** (home — the skeleton, the chat thread, the panels), **BAXSTAR
+STUDIO** (tools), and **PROJECTS** (the status dashboard: every open project as a
+horizontal bar under Revenue Generating / Supporting, with outstanding work, session
+estimates, and the Zapier task strip). Projects data is the session-maintained
+`PROJECTS` constant in `src/baxstar-ember.jsx` — update it when work ships.
 
 **Connected services (MCP):** Quo (phones), Gmail, Google Calendar, Google Drive.
 
