@@ -773,7 +773,12 @@ export default function BaxstarEmber() {
   const [analyzing, setAnalyzing] = useState(false);
   const [fishId, setFishId] = useState(null);
   const [sponsors, setSponsors] = useState(blankSponsors);
-  const [lake, setLake] = useState("Detroit Lake");
+  /* Seasonal default, set 2026-08 per Brady: Pelican Lake for the rest of the year.
+     It's the lake the trips are actually on right now, and it feeds the Instagram
+     geotag, so a stale default mislabels the location on every post. Revisit at the
+     turn of the year. Note: a device that already has a saved pref keeps that value —
+     this is the default for a fresh start, not an override. */
+  const [lake, setLake] = useState("Pelican Lake");
   const [postWindow, setPostWindow] = useState("4 PM CT");
   const [genBusy, setGenBusy] = useState(false);
   const [caption, setCaption] = useState("");
@@ -1878,7 +1883,7 @@ ${detectLines}` },
 Photo context:
 - ${photos.length === 1 ? "A single photo." : `${photos.length} photos — ONE carousel post. Write a single caption that covers the set, not slide-by-slide.`}
 - Species: ${fishId?.species || "Unknown"} (${fishId?.confidence || "low"} confidence — trust what you see in the photo)
-- Lake: ${lake || "Detroit Lake"}
+- Lake: ${lake || "Pelican Lake"}
 - Posting window: ${postWindow}
 - Sponsor handles to tag naturally inline: ${handles.length ? handles.join(", ") : "none"}
 
