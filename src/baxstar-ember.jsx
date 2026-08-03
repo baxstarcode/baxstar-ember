@@ -1674,8 +1674,13 @@ export default function BaxstarEmber() {
     const locals = vs.filter((v) => v.localService);
     // Name the voice on success and the rejects on failure — "all paths failed"
     // alone doesn't say whether the picker chose badly or the engine is dead.
+    // testVoice speaks through speakCascade directly, but speak() bails when voice is
+    // toggled off — so a passing test while muted told Brady the engine was fine when in
+    // fact every reply was landing silent. Say that plainly instead.
     setVoiceDiag(ok
-      ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (voiceRef.current ? voiceRef.current.name : "?") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
+      ? (voiceOnRef.current
+          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (voiceRef.current ? voiceRef.current.name : "?") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
+          : "ENGINE WORKS — BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON.")
       : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
   }
 
@@ -3310,6 +3315,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                       ⏹ Stop listening
                     </button>
                   )}
+                  {/* The mute state was only legible in the header (desktop) or a bar above
+                      the fold (phone), so Brady had voice off without knowing and read the
+                      silence as broken audio. State + fix in one tap, next to the status. */}
+                  <button className={`chip ${voiceOn ? "ghost" : "solid"}`}
+                    onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>
+                    {voiceOn ? "VOICE ON" : "VOICE OFF — TAP TO HEAR REPLIES"}
+                  </button>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
                   <button className="chip ghost" onClick={testVoice}><EmberIcon name="speaker" size={11} style={{ verticalAlign: "-2px", marginRight: "4px" }} />TEST</button>
