@@ -9,8 +9,9 @@
     "serve": "python3 -m http.server 8080",
     "test:worker": "node proxy/worker.test.mjs",
     "test:outbox": "node apps-script/outbox/outbox.test.mjs",
+    "test:posttime": "node .devtest/posttime.test.mjs",
     "test:caption": "node .devtest/caption-e2e.mjs",
-    "test": "npm run test:worker && npm run test:outbox"
+    "test": "npm run test:worker && npm run test:outbox && npm run test:posttime"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",

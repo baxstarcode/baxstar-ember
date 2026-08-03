@@ -106,6 +106,74 @@ function blankSponsors() {
 
 const LOCKED_TAG = "#getyourbassingear";
 
+/* ---------- POSTING TIME ----------
+   Stored as 24h "HH:MM" so a custom time is just a value, not a new case. The two
+   presets are the usual windows; the picker covers everything else.
+
+   nextPostAt() is the load-bearing one: it returns a real ISO timestamp for the next
+   occurrence of that wall-clock time in US Central, which is what a Zapier Delay-Until
+   step needs. Sending the label "4 PM CT" instead would make the Zap parse English and
+   guess a date — and guess wrong the moment a caption is written after 4 PM. */
+const POST_PRESETS = ["16:00", "19:00"];
+const POST_TZ = "America/Chicago";
+
+// Minutes Central is offset from UTC at that instant (negative — Central is behind).
+// Derived from Intl rather than hardcoded so CDT/CST switches itself.
+function centralOffsetMinutes(date) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: POST_TZ, hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    }).formatToParts(date).map((p) => [p.type, p.value])
+  );
+  const hour = parts.hour === "24" ? 0 : Number(parts.hour); // some ICU builds emit 24
+  const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, hour, +parts.minute, +parts.second);
+  return (asUTC - date.getTime()) / 60000;
+}
+
+function fmtPostTime(hhmm) {
+  const [h, m] = String(hhmm || "16:00").split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? ":" + String(m).padStart(2, "0") : ""} ${ampm} CT`;
+}
+
+/* Accepts either the new "HH:MM" or a legacy "4 PM CT" label, so a saved pref or a
+   recovered draft from before the picker existed still lands on a valid time. */
+function toPostTime(v) {
+  if (!v) return "16:00";
+  if (/^\d{1,2}:\d{2}$/.test(v)) return v.padStart(5, "0");
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i.exec(String(v).trim());
+  if (!m) return "16:00";
+  let h = Number(m[1]) % 12;
+  if (/PM/i.test(m[3])) h += 12;
+  return `${String(h).padStart(2, "0")}:${m[2] || "00"}`;
+}
+
+// ISO timestamp of the next time it is HH:MM in Central. Today if still ahead, else tomorrow.
+function nextPostAt(hhmm, now = new Date()) {
+  const [h, m] = toPostTime(hhmm).split(":").map(Number);
+  const [y, mo, d] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: POST_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(now).split("-").map(Number);
+
+  // Two passes: the first offset guess can be wrong across a DST boundary.
+  const build = (yy, mm, dd) => {
+    const wall = Date.UTC(yy, mm - 1, dd, h, m, 0);
+    let ms = wall;
+    for (let i = 0; i < 2; i++) ms = wall - centralOffsetMinutes(new Date(ms)) * 60000;
+    return ms;
+  };
+
+  let ms = build(y, mo, d);
+  if (ms <= now.getTime()) {
+    const t = new Date(Date.UTC(y, mo - 1, d) + 86400000);
+    ms = build(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+  }
+  return new Date(ms).toISOString();
+}
+
 const HANDOFF = {
   chatgpt: { label: "ChatGPT", url: "https://chatgpt.com", color: "#10a37f" },
   gemini:  { label: "Gemini",  url: "https://gemini.google.com", color: "#4285f4" },
@@ -779,7 +847,7 @@ export default function BaxstarEmber() {
      turn of the year. Note: a device that already has a saved pref keeps that value —
      this is the default for a fresh start, not an override. */
   const [lake, setLake] = useState("Pelican Lake");
-  const [postWindow, setPostWindow] = useState("4 PM CT");
+  const [postTime, setPostTime] = useState("16:00"); // 24h "HH:MM"
   const [genBusy, setGenBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [capErr, setCapErr] = useState("");
@@ -859,7 +927,7 @@ export default function BaxstarEmber() {
         if (prefs.chatModel) setChatModel(prefs.chatModel);
         if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
         if (prefs.lake) setLake(prefs.lake);
-        if (prefs.postWindow) setPostWindow(prefs.postWindow);
+        if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
         if (prefs.coreMode) setCoreMode(prefs.coreMode);
         if (prefs.studioTool) setStudioTool(prefs.studioTool === "chat" ? "captions" : prefs.studioTool);
       }
@@ -904,7 +972,7 @@ export default function BaxstarEmber() {
       // old keys, and reading .on off a missing key would throw during render.
       if (draft.sponsors) setSponsors({ ...blankSponsors(), ...draft.sponsors });
       if (draft.lake) setLake(draft.lake);
-      if (draft.postWindow) setPostWindow(draft.postWindow);
+      if (draft.postWindow) setPostTime(toPostTime(draft.postWindow));
       setCaptionRestored(true);
     }
   }, []);
@@ -919,12 +987,12 @@ export default function BaxstarEmber() {
   useEffect(() => {
     if (!hydrated.current) return;
     if (!caption && !photos.length) { lsDel(CAPTION_DRAFT_KEY); return; }
-    const base = { caption, fishId, sponsors, lake, postWindow, ts: clock };
+    const base = { caption, fishId, sponsors, lake, postWindow: postTime, ts: clock };
     const lean = photos.map(({ b64, preview }) => ({ b64, preview }));
     if (lsSet(CAPTION_DRAFT_KEY, { ...base, photos })) return;
     if (lsSet(CAPTION_DRAFT_KEY, { ...base, photos: lean })) return;
     lsSet(CAPTION_DRAFT_KEY, base);
-  }, [caption, photos, fishId, sponsors, lake, postWindow]);
+  }, [caption, photos, fishId, sponsors, lake, postTime]);
 
   // fire-and-forget persist that never throws, even if storage is absent
   const persist = (key, val) => {
@@ -936,8 +1004,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { voiceOn, chatModel, chatEffort, lake, postWindow, studioTool, coreMode });
-  }, [voiceOn, chatModel, chatEffort, lake, postWindow, studioTool, coreMode]);
+    if (hydrated.current) persist("ember-prefs", { voiceOn, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode });
+  }, [voiceOn, chatModel, chatEffort, lake, postTime, studioTool, coreMode]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -1884,7 +1952,7 @@ Photo context:
 - ${photos.length === 1 ? "A single photo." : `${photos.length} photos — ONE carousel post. Write a single caption that covers the set, not slide-by-slide.`}
 - Species: ${fishId?.species || "Unknown"} (${fishId?.confidence || "low"} confidence — trust what you see in the photo)
 - Lake: ${lake || "Pelican Lake"}
-- Posting window: ${postWindow}
+- Posting window: ${fmtPostTime(postTime)}
 - Sponsor handles to tag naturally inline: ${handles.length ? handles.join(", ") : "none"}
 
 HARD RULES:
@@ -1986,7 +2054,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       // 2026-07-07 failed outright because Zapier auto-guessed a location ID and Meta
       // rejected it — the name (or an empty value) is the only thing that works.
       lake,
-      postWindow,
+      // Label for humans; postAt is the machine field a Delay-Until step consumes.
+      postWindow: fmtPostTime(postTime),
+      postAt: nextPostAt(postTime),
+      postTimeLocal: postTime,
       sponsors: activeHandles(sponsors),
       clientTime: new Date().toISOString(),
     };
@@ -3405,9 +3476,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <div>
                     <div className="fieldlabel">Posting Window</div>
                     <div className="mt-2 flex gap-2">
-                      {["4 PM CT", "7 PM CT"].map((w) => (
-                        <button key={w} className={`seg ${postWindow === w ? "on" : ""}`} onClick={() => setPostWindow(w)}>{w}</button>
+                      {POST_PRESETS.map((t) => (
+                        <button key={t} className={`seg ${postTime === t ? "on" : ""}`} onClick={() => setPostTime(t)}>
+                          {fmtPostTime(t)}
+                        </button>
                       ))}
+                      <input type="time" value={postTime} aria-label="Custom posting time"
+                        onChange={(e) => setPostTime(e.target.value || "16:00")}
+                        className="cmd-input rounded-lg px-2 py-1.5 text-[12px]"
+                        style={{ background: "#120c0c", color: "var(--ink)", colorScheme: "dark" }} />
                     </div>
                   </div>
                 </div>
@@ -3443,7 +3520,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"
                         style={{ borderColor: "var(--line)", color: "var(--brass)" }}>
-                        POSTS {postWindow.toUpperCase()}
+                        POSTS {fmtPostTime(postTime).toUpperCase()}
                       </span>
                       {fishId && (
                         <span className="font-mono-x rounded-full border px-2.5 py-1 text-[9px] tracking-widest"

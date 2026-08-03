@@ -158,6 +158,10 @@ await page.setInputFiles('input[type="file"]', [
   { name: "catch-2.jpg", mimeType: "image/jpeg", buffer: Buffer.from(b) },
 ]);
 
+// Wait for the slide strip to appear FIRST. Waiting only for "SCANNING" to vanish is a
+// race — before the scan starts the word isn't on the page either, so the check passed
+// instantly and the assertions below read an empty UI.
+await page.waitForFunction(() => /2\/6 slides/.test(document.body.innerText), null, { timeout: 20000 });
 await page.waitForFunction(() => !document.body.innerText.includes("SCANNING"), null, { timeout: 20000 });
 
 check("two files load as a 2-slide carousel", /2\/6 slides/.test(await page.locator("body").innerText()));
@@ -229,7 +233,14 @@ check("published caption is capped at 5 hashtags",
 check("sponsors travel as the tag list, canonical Vexus handle",
   (published.sponsors || []).includes("@therealvexusboats") && !(published.sponsors || []).includes("@vexusboats"),
   JSON.stringify(published.sponsors));
-check("lake is a plain name, not an ID", published.lake === "Detroit Lake", String(published.lake));
+// The invariant is "a name, never an ID" — not one specific lake, which changes with
+// the season. A numeric value here is what Meta hard-rejects.
+check("lake is a plain name, not an ID",
+  typeof published.lake === "string" && published.lake.length > 0 && !/^\d+$/.test(published.lake),
+  String(published.lake));
+check("postAt is an ISO instant a Delay-Until step can consume",
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(published.postAt || "") &&
+  new Date(published.postAt) > new Date(), String(published.postAt));
 check("imageBase64 still carries slide one for older deploys",
   published.imageBase64 === published.images[0]);
 

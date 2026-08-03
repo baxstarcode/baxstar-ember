@@ -33,7 +33,9 @@
  *     "mimeType":    "image/jpeg",
  *     "species":     "Smallmouth Bass",
  *     "lake":        "Detroit Lake",             // a NAME, never a location ID
- *     "postWindow":  "4 PM CT",
+ *     "postWindow":  "4 PM CT",              // human label
+ *     "postAt":      "2026-08-03T21:00:00.000Z", // ISO — what Delay-Until reads
+ *     "postTimeLocal": "16:00",
  *     "sponsors":    ["@therealvexusboats"],     // becomes Instagram Tagged User(s)
  *     "clientTime":  "2026-08-01T09:14:00.000Z"
  *   }
@@ -97,6 +99,11 @@ function doPost(e) {
       species: payload.species || "",
       lake: payload.lake || "",          // NAME only — never a location ID
       postWindow: payload.postWindow || "",
+      // ISO timestamp of the next occurrence of the chosen time in US Central. THIS is
+      // the field a Zapier Delay-Until step should read — postWindow is a human label
+      // and parsing it would make the Zap guess a date.
+      postAt: payload.postAt || "",
+      postTimeLocal: payload.postTimeLocal || "",
       sponsors: payload.sponsors || [],  // → Instagram Tagged User(s)
       clientTime: payload.clientTime || "",
       postId: baseName,                  // ties every slide of one post together
@@ -124,6 +131,7 @@ function doPost(e) {
       "species:  " + (payload.species || "") + "\n" +
       "lake:     " + (payload.lake || "") + "\n" +
       "window:   " + (payload.postWindow || "") + "\n" +
+      "posts at: " + (payload.postAt || "") + "\n" +
       "sponsors: " + ((payload.sponsors || []).join(", ")) + "\n" +
       "slides:   " + shots.length + "\n" +
       "sent:     " + (payload.clientTime || "") + "\n" +
