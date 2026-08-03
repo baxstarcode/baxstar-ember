@@ -322,8 +322,8 @@ const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
 const NO_PROXY_HINT =
   "Ember has no brain here. Hosted builds need a key-holding proxy — set window.EMBER_API_PROXY (docs/DEPLOY.md).";
 
-async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers } = {}) {
-  const body = { model, max_tokens: 1000, messages };
+async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens } = {}) {
+  const body = { model, max_tokens: maxTokens || 1000, messages };
   if (useTools) body.mcp_servers = servers || MCP_SERVERS;
   let res;
   try {
@@ -821,6 +821,9 @@ export default function BaxstarEmber() {
   // core visualizer + voice engine
   const [coreMode, setCoreMode] = useState("enigma"); // "enigma" | "scope"
   const speechUnlockedRef = useRef(false);
+  const inlineGenRef = useRef(0);      // stale-session events must not touch live state
+  const inlineBornRef = useRef(0);     // for the rapid-death guard
+  const inlineFailsRef = useRef(0);
   const inlineRecRef = useRef(null);   // in-page recognition (phones)
   const inlineWantRef = useRef(false); // should it keep restarting?
   const [micArm, setMicArm] = useState(false); // popup blocked at load; first click opens it
@@ -1092,54 +1095,104 @@ export default function BaxstarEmber() {
     voiceRef.current = null;
   }
 
-  function startInlineMic() {
-    unlockSpeech();
+  // iOS kills a REUSED recognition session after a few start/stop cycles --
+  // start() on the old object throws or the object silently never fires events
+  // again, and the swallowed error read as "the mic just quit on me". Every
+  // session is a fresh instance now, and a generation counter keeps a stale
+  // instance's late events from touching live state.
+  function makeInlineRec() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setError("This browser has no speech recognition. Safari or Chrome."); return false; }
-    if (inlineRecRef.current) return true;
+    if (!SR) return null;
     let rec;
-    try { rec = new SR(); } catch (e) { setError("Could not start the mic."); return false; }
-    rec.continuous = true;
+    try { rec = new SR(); } catch (e) { return null; }
+    const gen = ++inlineGenRef.current;
+    // Single-shot on purpose: iOS ends continuous sessions on its own schedule
+    // anyway, and one-phrase sessions deliver finals faster -- she reacts to the
+    // end of your sentence instead of waiting out a long recognition window.
+    rec.continuous = false;
     rec.interimResults = false;
     rec.lang = "en-US";
-    rec.onstart = () => { setListening(true); setMicArm(false); setError(""); };
+    rec.onstart = () => {
+      if (gen !== inlineGenRef.current) return;
+      setListening(true); setMicArm(false); setError("");
+    };
     rec.onerror = (e) => {
+      if (gen !== inlineGenRef.current) return;
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setError("Mic blocked — tap aA in the address bar, Website Settings, Microphone, Allow.");
+        inlineWantRef.current = false;
         inlineRecRef.current = null;
         setListening(false);
+        setError("Mic blocked — tap aA in the address bar, Website Settings, Microphone, Allow.");
       }
+      // no-speech / aborted / network: onend fires next and handles the restart
     };
     rec.onend = () => {
-      // Safari ends the session on its own constantly. Restart unless we are
-      // speaking (the gate) or the user switched it off.
-      if (!inlineRecRef.current) { setListening(false); return; }
-      if (inlineWantRef.current && !speakingRef.current) {
-        try { rec.start(); } catch (e) {}
-      } else { setListening(false); }
+      const resolve = rec.__release;
+      rec.__release = null;
+      if (resolve) resolve(); // someone is waiting for the mic to actually let go
+      if (gen !== inlineGenRef.current) return;
+      inlineRecRef.current = null;
+      if (!inlineWantRef.current || speakingRef.current) { setListening(false); return; }
+      // Rapid-death guard: a session dying instantly over and over means the
+      // service is wedged -- stop burning battery and say so.
+      const now = Date.now();
+      if (now - inlineBornRef.current < 700) {
+        inlineFailsRef.current += 1;
+        if (inlineFailsRef.current >= 6) {
+          inlineWantRef.current = false;
+          setListening(false);
+          setError("The mic keeps dying — tap TAP TO TALK to restart it.");
+          return;
+        }
+      } else {
+        inlineFailsRef.current = 0;
+      }
+      setTimeout(() => {
+        if (inlineWantRef.current && !speakingRef.current && !inlineRecRef.current) startInlineSession();
+      }, 180);
     };
     rec.onresult = (ev) => {
+      if (gen !== inlineGenRef.current) return;
       let text = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         if (ev.results[i].isFinal) text += ev.results[i][0].transcript;
       }
       text = text.trim();
       if (!text) return;
-      // Same gate the bridge path uses: never act on her own voice.
-      if (speakingRef.current || isEcho(text)) return;
+      if (speakingRef.current || isEcho(text)) return; // never act on her own voice
       sendRef.current(text);
     };
+    return rec;
+  }
+
+  function startInlineSession() {
+    const rec = makeInlineRec();
+    if (!rec) return false;
     inlineRecRef.current = rec;
+    inlineBornRef.current = Date.now();
+    try { rec.start(); } catch (e) { inlineRecRef.current = null; return false; }
+    return true;
+  }
+
+  function startInlineMic() {
+    unlockSpeech();
+    if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
+      setError("This browser has no speech recognition. Safari or Chrome.");
+      return false;
+    }
     inlineWantRef.current = true;
-    try { rec.start(); } catch (e) {}
+    inlineFailsRef.current = 0;
+    if (inlineRecRef.current) return true;
+    if (!startInlineSession()) { setError("Could not start the mic."); return false; }
     return true;
   }
 
   function stopInlineMic() {
     inlineWantRef.current = false;
+    inlineGenRef.current += 1; // orphan anything in flight
     const rec = inlineRecRef.current;
     inlineRecRef.current = null;
-    if (rec) { try { rec.stop(); } catch (e) {} }
+    if (rec) { try { rec.abort(); } catch (e) {} }
     setListening(false);
   }
 
@@ -1314,13 +1367,26 @@ export default function BaxstarEmber() {
     cur.r();
   }
 
+  // iOS shares one audio session between the mic and the speaker. Starting TTS
+  // while the mic still holds it produces a "spoken" utterance with no sound --
+  // onstart and onend fire, the app believes she answered, Brady hears nothing.
+  // So the handoff is awaited: abort the session and resolve only when its
+  // onend confirms the channel is free (400ms cap so a wedged session cannot
+  // hold speech hostage).
   function pauseInlineMic() {
     const rec = inlineRecRef.current;
-    if (rec) { try { rec.stop(); } catch (e) {} }   // onend will not restart while speaking
+    if (!rec) return Promise.resolve();
+    return new Promise((resolve) => {
+      let done = false;
+      const settle = () => { if (!done) { done = true; resolve(); } };
+      rec.__release = settle;
+      setTimeout(settle, 400);
+      try { rec.abort(); } catch (e) { settle(); }
+    });
   }
   function resumeInlineMic() {
-    const rec = inlineRecRef.current;
-    if (rec && inlineWantRef.current) { try { rec.start(); } catch (e) {} }
+    if (!inlineWantRef.current || speakingRef.current) return;
+    if (!inlineRecRef.current) startInlineSession();
   }
 
   function postBridge(t) {
@@ -1504,6 +1570,9 @@ export default function BaxstarEmber() {
     const short = text.length > 380 ? text.slice(0, 380) + "… full answer on screen." : text;
     lastSpokenRef.current = normalizeHeard(short);
     lastSpokenAtRef.current = performance.now();
+    // Phones: wait for the mic to actually surrender the audio channel, or the
+    // whole utterance plays into a closed session and comes out silent.
+    if (inlineMic) await pauseInlineMic();
     releaseSpeechEnd();
     speechEndRef.current = null;
     const p = ttsPathRef.current;
@@ -1740,11 +1809,15 @@ export default function BaxstarEmber() {
       // closure when a queued command fires); chatMsgs is the display thread.
       let resp;
       let fellBack = false;
+      // With voice on, the reply is spoken and speech truncates at 380 chars --
+      // every token past that is silent latency. Capping generation is the
+      // single biggest "she answers faster" lever without touching the model.
+      const cap = voiceOnRef.current ? 400 : undefined;
       try {
-        resp = await callClaude(messages, { useTools: true, model: chatModel });
+        resp = await callClaude(messages, { useTools: true, model: chatModel, maxTokens: cap });
       } catch (err) {
         if (chatModel !== DEFAULT_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL });
+          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL, maxTokens: cap });
           fellBack = true;
         } else {
           throw err;
