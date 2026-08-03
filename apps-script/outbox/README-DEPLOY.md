@@ -53,7 +53,12 @@ The metadata is already shaped for it:
 | Caption | `caption` from the description — **no @handles**, they'd double-tag |
 | Tagged User(s) | `sponsors` — up to 9, auto-placed in a 3×3 grid |
 | Location | `lake` **as a plain name**, or empty |
-| Delay until | `postWindow` |
+| Delay until | `postAt` — an ISO instant, ready to use as-is |
+
+**Use `postAt`, not `postWindow`, for the delay.** `postWindow` is a human label like
+"4 PM CT"; making the Zap parse it means guessing a date, and it guesses wrong for any
+caption written after the posting time. `postAt` is already the next occurrence of that
+time in US Central as an ISO timestamp, DST included.
 
 **Never send a location ID.** The 2026-07-07 publish attempt failed outright because
 Zapier auto-guessed one and Meta rejected it with "Location ID invalid". The lake name as

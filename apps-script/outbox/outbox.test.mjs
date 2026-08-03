@@ -94,6 +94,8 @@ const basePayload = (extra = {}) => ({
   species: "Smallmouth Bass",
   lake: "Detroit Lake",
   postWindow: "4 PM CT",
+  postAt: "2026-08-03T21:00:00.000Z",
+  postTimeLocal: "16:00",
   sponsors: ["@therealvexusboats", "@mercurymarine"],
   clientTime: "2026-08-01T14:09:00.000Z",
   ...extra,
@@ -147,7 +149,9 @@ const basePayload = (extra = {}) => ({
   check("metadata: lake is a plain NAME, not a location ID",
     meta.lake === "Detroit Lake" && !/^\d+$/.test(meta.lake));
   check("metadata: slideCount present so a Zap can order the set", meta.slideCount === 2);
-  check("metadata: postWindow present for the Delay-Until step", meta.postWindow === "4 PM CT");
+  check("metadata: postWindow present as the human label", meta.postWindow === "4 PM CT");
+  check("metadata: postAt carries the ISO instant Delay-Until reads",
+    meta.postAt === "2026-08-03T21:00:00.000Z", meta.postAt);
   check("sidecar names every image it wrote",
     res.images.every((n) => api.drive.made.find((f) => /\.txt$/.test(f.name)).content.includes(n)));
 }
