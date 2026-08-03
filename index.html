@@ -471,6 +471,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           name: "baxstarfishing.com build",
           pct: 90,
           platform: "Claude",
+          links: [["site", "https://baxstarfishing.com"], ["wix editor", "https://manage.wix.com/"]],
           outstanding: "Schema/SEO polish, PR #24 Open Water page",
           sessions: "~2"
         },
@@ -478,6 +479,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           name: "Pontoon rentals stack",
           pct: 100,
           platform: "Claude",
+          links: [["repo", "https://github.com/baxstarcode/baxstar-pontoon"]],
           outstanding: "Shipped \u2014 checkout + proxy live",
           sessions: "0"
         },
@@ -485,6 +487,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           name: "Caption Studio v1 (standalone)",
           pct: 100,
           platform: "Claude",
+          links: [["repo", "https://github.com/baxstarcode/caption-studio"]],
           outstanding: "Shipped \u2014 live on GitHub Pages",
           sessions: "0"
         },
@@ -492,6 +495,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           name: "Caption Studio v2 auto-post",
           pct: 70,
           platform: "Claude",
+          links: [["repo", "https://github.com/baxstarcode/caption-studio"], ["zaps", "https://zapier.com/app/zaps"]],
           outstanding: "Outbox deploy (Brady), Zap wiring, retire GBP mirror",
           sessions: "~2"
         },
@@ -499,6 +503,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           name: "Lakes Golf Simulator site",
           pct: 15,
           platform: "ChatGPT",
+          links: [["site", "https://lakesgolfsim.com"]],
           outstanding: "Tech-camp page only \u2014 main site unbuilt",
           sessions: "~5"
         }
@@ -511,6 +516,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           name: "Ember / Mission Control",
           pct: 80,
           platform: "Claude",
+          links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
           outstanding: "Voice merge, MCP OAuth for hosted connectors",
           sessions: "~3"
         },
@@ -531,6 +537,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       ]
     }
   ];
+  function openProjectTabs(links) {
+    if (!links || !links.length) return;
+    links.forEach(([, url], i) => {
+      if (i === 0) window.open(url, "_blank", "noopener");
+      else setTimeout(() => window.open(url, "_blank", "noopener"), i * 250);
+    });
+  }
   const TOOLS = [
     { id: "handoff", icon: "handoff", label: "AI Handoff" },
     { id: "captions", icon: "quill", label: "Caption Studio" },
@@ -2393,6 +2406,15 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         .proj-cat { font-size:11px; font-weight:700; letter-spacing:.24em; text-transform:uppercase;
           color:var(--brass); border-bottom:1px solid var(--line); padding-bottom:5px; margin-bottom:4px; }
         .proj-row { padding:9px 0; border-bottom:1px solid rgba(255,90,60,.09); }
+        .proj-name-link { background:none; border:0; padding:0; text-align:left; cursor:pointer;
+          color:var(--ember-amber); text-decoration:underline; text-underline-offset:2.5px;
+          text-decoration-color:rgba(255,158,61,.45); }
+        .proj-name-link:hover { color:var(--candle); text-decoration-color:var(--candle); }
+        .proj-name-arrow { font-size:10px; opacity:.7; }
+        .proj-chip { display:inline-block; padding:1.5px 7px; border-radius:999px; font-size:9.5px;
+          letter-spacing:.06em; text-transform:uppercase; color:var(--brass);
+          border:1px solid var(--ember-brass-dark); background:transparent; text-decoration:none; }
+        .proj-chip:hover { color:var(--candle); border-color:var(--brass); }
         .proj-row:last-child { border-bottom:none; }
         .proj-bar { position:relative; height:12px; margin-top:6px; border-radius:7px; overflow:hidden;
           background:linear-gradient(180deg,#0a0806,#14100c);
@@ -3589,7 +3611,16 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
       },
       !ghFile ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center" }, /* @__PURE__ */ React.createElement("div", { className: "opacity-50" }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "github", size: 30, strokeWidth: 1.25 })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[12px]", style: { color: "var(--ink-faint)" } }, "Pick a repo, browse to a file, read it here.")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "code-view flex-1" }, ghFile.content), /* @__PURE__ */ React.createElement("div", { className: "mt-3 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: () => navigator.clipboard.writeText(ghFile.content).catch(() => {
       }) }, "Copy Contents"), ghFile.htmlUrl && /* @__PURE__ */ React.createElement("button", { className: "big", onClick: () => window.open(ghFile.htmlUrl, "_blank", "noopener") }, "Open on GitHub \u2197")))
-    )), studioTool === "snippets" && /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Snippets", count: `${SNIPPETS.length} SAVED`, countColor: "var(--brass)", delay: "0.1s", grow: true }, SNIPPETS.map((s, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: s.title }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[12px] leading-relaxed", style: { color: "var(--ink-dim)" } }, s.text), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => copySnippet(i, s.text) }, copiedSnippet === i ? "COPIED \u2713" : "Copy"))))))), view === "projects" && /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Project Status", count: `UPDATED ${PROJECTS_META.updated}`, countColor: "var(--brass)", delay: "0.1s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "proj-meta font-mono-x" }, /* @__PURE__ */ React.createElement("span", null, "ZAPIER TASKS\xA0", /* @__PURE__ */ React.createElement("b", { style: { color: PROJECTS_META.zapierTasks.used == null ? "var(--ink-faint)" : "var(--ember-amber)" } }, PROJECTS_META.zapierTasks.used == null ? "not recorded" : PROJECTS_META.zapierTasks.used), "\xA0/ ", PROJECTS_META.zapierTasks.cap, " mo"), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, PROJECTS_META.zapierTasks.note)), PROJECTS.map((group) => /* @__PURE__ */ React.createElement("div", { key: group.cat, className: "mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "proj-cat font-display" }, group.cat), group.items.map((pr) => /* @__PURE__ */ React.createElement("div", { key: pr.name, className: "proj-row" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { className: "text-[13px] font-semibold" }, pr.name), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[10px]", style: { color: "var(--ember-amber)" } }, pr.pct, "%", pr.platform !== "\u2014" && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, " \xB7 ", pr.platform.toUpperCase()))), /* @__PURE__ */ React.createElement("div", { className: "proj-bar", role: "img", "aria-label": `${pr.name}: ${pr.pct} percent complete` }, /* @__PURE__ */ React.createElement("span", { className: "proj-fill", style: { width: `${pr.pct}%` }, "data-pct": pr.pct })), /* @__PURE__ */ React.createElement("div", { className: "mt-1 flex items-baseline justify-between gap-3 text-[11px]", style: { color: "var(--ink-dim)" } }, /* @__PURE__ */ React.createElement("span", null, pr.outstanding), pr.sessions !== "0" && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, "EST ", pr.sessions, " SESSIONS")))))), /* @__PURE__ */ React.createElement("div", { className: "text-[10px]", style: { color: "var(--ink-faint)" } }, "Session-maintained \u2014 Claude updates this with each shipped piece of work. Edit PROJECTS in src to correct anything."))), !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "console-dock reveal", style: { animationDelay: "0.65s" } }, /* @__PURE__ */ React.createElement("div", { className: "console-dock-grid" }, /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "ops" ? "active" : ""}`, onClick: () => setView("ops") }, /* @__PURE__ */ React.createElement("span", { className: "dock-ic" }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "dials", size: 15 })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "OPS"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })), /* @__PURE__ */ React.createElement(
+    )), studioTool === "snippets" && /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Snippets", count: `${SNIPPETS.length} SAVED`, countColor: "var(--brass)", delay: "0.1s", grow: true }, SNIPPETS.map((s, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: s.title }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[12px] leading-relaxed", style: { color: "var(--ink-dim)" } }, s.text), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => copySnippet(i, s.text) }, copiedSnippet === i ? "COPIED \u2713" : "Copy"))))))), view === "projects" && /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Project Status", count: `UPDATED ${PROJECTS_META.updated}`, countColor: "var(--brass)", delay: "0.1s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "proj-meta font-mono-x" }, /* @__PURE__ */ React.createElement("span", null, "ZAPIER TASKS\xA0", /* @__PURE__ */ React.createElement("b", { style: { color: PROJECTS_META.zapierTasks.used == null ? "var(--ink-faint)" : "var(--ember-amber)" } }, PROJECTS_META.zapierTasks.used == null ? "not recorded" : PROJECTS_META.zapierTasks.used), "\xA0/ ", PROJECTS_META.zapierTasks.cap, " mo"), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, PROJECTS_META.zapierTasks.note)), PROJECTS.map((group) => /* @__PURE__ */ React.createElement("div", { key: group.cat, className: "mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "proj-cat font-display" }, group.cat), group.items.map((pr) => /* @__PURE__ */ React.createElement("div", { key: pr.name, className: "proj-row" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, pr.links && pr.links.length ? /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: "proj-name-link text-[13px] font-semibold",
+        onClick: () => openProjectTabs(pr.links),
+        title: `Open ${pr.links.map(([l]) => l).join(" + ")}`
+      },
+      pr.name,
+      /* @__PURE__ */ React.createElement("span", { className: "proj-name-arrow" }, " \u2197")
+    ) : /* @__PURE__ */ React.createElement("span", { className: "text-[13px] font-semibold" }, pr.name), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[10px]", style: { color: "var(--ember-amber)" } }, pr.pct, "%", pr.platform !== "\u2014" && /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, " \xB7 ", pr.platform.toUpperCase()))), /* @__PURE__ */ React.createElement("div", { className: "proj-bar", role: "img", "aria-label": `${pr.name}: ${pr.pct} percent complete` }, /* @__PURE__ */ React.createElement("span", { className: "proj-fill", style: { width: `${pr.pct}%` }, "data-pct": pr.pct })), /* @__PURE__ */ React.createElement("div", { className: "mt-1 flex items-baseline justify-between gap-3 text-[11px]", style: { color: "var(--ink-dim)" } }, /* @__PURE__ */ React.createElement("span", null, pr.outstanding), pr.sessions !== "0" && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, "EST ", pr.sessions, " SESSIONS")), pr.links && pr.links.length > 1 && /* @__PURE__ */ React.createElement("div", { className: "mt-1 flex flex-wrap gap-1.5" }, pr.links.map(([label, url]) => /* @__PURE__ */ React.createElement("a", { key: url, className: "proj-chip", href: url, target: "_blank", rel: "noopener noreferrer" }, label))))))), /* @__PURE__ */ React.createElement("div", { className: "text-[10px]", style: { color: "var(--ink-faint)" } }, "Session-maintained \u2014 Claude updates this with each shipped piece of work. Edit PROJECTS in src to correct anything."))), !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "console-dock reveal", style: { animationDelay: "0.65s" } }, /* @__PURE__ */ React.createElement("div", { className: "console-dock-grid" }, /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "ops" ? "active" : ""}`, onClick: () => setView("ops") }, /* @__PURE__ */ React.createElement("span", { className: "dock-ic" }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "dials", size: 15 })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "OPS"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })), /* @__PURE__ */ React.createElement(
       "button",
       {
         className: `dock-control ${view === "studio" ? "active" : ""}`,
