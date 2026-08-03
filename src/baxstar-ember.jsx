@@ -2778,6 +2778,15 @@ Look at the photo and write the caption. Output caption text only — no preambl
         .mc-mini { font-size:9px; letter-spacing:.05em; color:var(--brass); background:transparent; border:1px solid var(--ember-brass-dark);
           border-radius:6px; padding:3px 8px; cursor:pointer; }
         .mc-mini:hover { color:var(--candle); border-color:var(--brass); }
+        .mc-resume { color:var(--ember-amber); border-color:rgba(255,158,61,.5); background:rgba(255,158,61,.10); white-space:nowrap; }
+        .mc-resume:hover:not(:disabled) { background:rgba(255,158,61,.20); border-color:rgba(255,158,61,.85); }
+        .mc-resume:disabled { opacity:.35; cursor:default; }
+        .mc-linkchip { display:inline-flex; align-items:center; gap:4px; padding:2px 5px; border-radius:6px;
+          border:1px solid var(--ember-panel-line); background:#0e0c0b; font-size:10px; }
+        .mc-linkchip a { color:var(--ember-amber); text-decoration:underline; text-underline-offset:2px; white-space:nowrap; }
+        .mc-linkchip a:hover { color:var(--candle); }
+        .mc-linkin { width:74px; font-size:9px; padding:1px 4px; }
+        .mc-linkurl { width:150px; }
         .mc-x { color:var(--ink-faint); background:transparent; border:none; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
         .mc-x:hover { color:var(--ember-red); }
       `}</style>
@@ -3798,11 +3807,18 @@ function mcDefaults() {
     zap: { used: 340, allowance: 750, dayOfCycle: dom, daysInCycle: 30 },
     projects: [
       { id: mcUid(), name: "Baxstar Ember", pct: 60, status: "active", revenue: false, sessions: 3, hours: 6, next: "Mission Control + caption polish", updated: d,
+        links: [
+          { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+          { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
+          { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" },
+        ],
         tasks: [{ id: mcUid(), text: "Caption HEIC + Drive outbox", done: true }, { id: mcUid(), text: "Mission Control view", done: false }] },
       { id: mcUid(), name: "Pontoon check-in", pct: 85, status: "active", revenue: true, sessions: 1, hours: 2, next: "Close multi-tab queue TOCTOU", updated: d,
-        tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }] },
-      { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d, tasks: [] },
-      { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d, tasks: [] },
+        links: [], tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }] },
+      { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d,
+        links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }], tasks: [] },
+      { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d,
+        links: [{ id: mcUid(), label: "wix editor", url: "https://manage.wix.com/" }], tasks: [] },
     ],
     decisions: [
       { id: mcUid(), text: "Turn the Caption → IG Zap ON (throwaway test first)", done: false },
@@ -3841,7 +3857,29 @@ function MissionControl() {
   const setZapField = (k, v) => setZap((z) => ({ ...z, [k]: v }));
   const updProject = (id, patch) => setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch, updated: mcToday() } : p)));
   const cycleStatus = (id) => setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, status: MC_STATUSES[(MC_STATUSES.indexOf(p.status) + 1) % MC_STATUSES.length], updated: mcToday() } : p)));
-  const addProject = () => setProjects((ps) => [...ps, { id: mcUid(), name: "New project", pct: 0, status: "active", revenue: false, sessions: 1, hours: 1, next: "", updated: mcToday(), tasks: [] }]);
+  // Older saved data predates links, so always read through a default.
+  const linksOf = (p) => (Array.isArray(p.links) ? p.links : []);
+  const addLink = (pid) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: [...linksOf(p), { id: mcUid(), label: "", url: "" }] } : p)));
+  const updLink = (pid, lid, patch) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: linksOf(p).map((l) => (l.id === lid ? { ...l, ...patch } : l)) } : p)));
+  const delLink = (pid, lid) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: linksOf(p).filter((l) => l.id !== lid) } : p)));
+
+  // Reopen every tab a project needs. The first window.open rides the click's
+  // user gesture; the rest are staggered because browsers block a burst of them
+  // from a single gesture and would silently drop all but the first.
+  const resumeProject = (p) => {
+    const urls = linksOf(p).map((l) => (l.url || "").trim()).filter(Boolean);
+    if (!urls.length) return;
+    urls.forEach((u, i) => {
+      const href = /^https?:\/\//i.test(u) ? u : "https://" + u;
+      if (i === 0) window.open(href, "_blank", "noopener");
+      else setTimeout(() => window.open(href, "_blank", "noopener"), i * 250);
+    });
+  };
+
+  const addProject = () => setProjects((ps) => [...ps, { id: mcUid(), name: "New project", pct: 0, status: "active", revenue: false, sessions: 1, hours: 1, next: "", updated: mcToday(), links: [], tasks: [] }]);
   const delProject = (id) => setProjects((ps) => ps.filter((p) => p.id !== id));
   const addTask = (pid) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: [...p.tasks, { id: mcUid(), text: "New task", done: false }] } : p)));
   const updTask = (pid, tid, patch) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.map((t) => (t.id === tid ? { ...t, ...patch } : t)) } : p)));
@@ -3887,6 +3925,13 @@ function MissionControl() {
                 <div key={p.id} className={`mc-row ${p.status}`}>
                   <div className="flex items-center gap-2">
                     <input className="mc-input flex-1" value={p.name} onChange={(e) => updProject(p.id, { name: e.target.value })} />
+                    {/* The name stays editable, so the link lives beside it -- one tap
+                        reopens every page this project needs to pick back up. */}
+                    <button className="mc-status mc-resume" onClick={() => resumeProject(p)}
+                      disabled={!linksOf(p).some((l) => (l.url || "").trim())}
+                      title={linksOf(p).filter((l) => l.url).map((l) => l.label || l.url).join(" · ") || "add pages below"}>
+                      ↗ resume{linksOf(p).filter((l) => (l.url || "").trim()).length > 1 ? ` (${linksOf(p).filter((l) => (l.url || "").trim()).length})` : ""}
+                    </button>
                     <button className={`mc-status ${statusClass(p.status)}`} onClick={() => cycleStatus(p.id)} title="cycle status">{p.status}</button>
                     <button className={`mc-status ${p.revenue ? "mc-tag-rev" : "mc-tag-norev"}`} onClick={() => updProject(p.id, { revenue: !p.revenue })} title="revenue impact">
                       {p.revenue ? "$ revenue" : "no revenue"}
@@ -3909,6 +3954,27 @@ function MissionControl() {
                   <div className="mt-2 flex items-center gap-1.5">
                     <span className="fieldlabel" style={{ whiteSpace: "nowrap" }}>Next</span>
                     <input className="mc-input flex-1" placeholder="next action" value={p.next} onChange={(e) => updProject(p.id, { next: e.target.value })} />
+                  </div>
+                  {/* Individual pages: click a chip for just that one, or edit them. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {linksOf(p).map((l) => (
+                      <span key={l.id} className="mc-linkchip">
+                        {(l.url || "").trim() ? (
+                          <a href={/^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : "https://" + l.url.trim()}
+                            target="_blank" rel="noopener noreferrer" title={l.url}>
+                            {l.label || l.url}
+                          </a>
+                        ) : (
+                          <span style={{ color: "var(--ink-faint)" }}>{l.label || "untitled"}</span>
+                        )}
+                        <input className="mc-input mc-linkin" placeholder="label" value={l.label}
+                          onChange={(e) => updLink(p.id, l.id, { label: e.target.value })} />
+                        <input className="mc-input mc-linkin mc-linkurl" placeholder="paste the tab URL" value={l.url}
+                          onChange={(e) => updLink(p.id, l.id, { url: e.target.value })} />
+                        <button className="mc-x" onClick={() => delLink(p.id, l.id)} title="remove page">×</button>
+                      </span>
+                    ))}
+                    <button className="mc-mini" onClick={() => addLink(p.id)}>+ page</button>
                   </div>
                   {openRows[p.id] && (
                     <div className="mt-2 rounded-lg p-2" style={{ background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" }}>

@@ -2722,6 +2722,15 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         .mc-mini { font-size:9px; letter-spacing:.05em; color:var(--brass); background:transparent; border:1px solid var(--ember-brass-dark);
           border-radius:6px; padding:3px 8px; cursor:pointer; }
         .mc-mini:hover { color:var(--candle); border-color:var(--brass); }
+        .mc-resume { color:var(--ember-amber); border-color:rgba(255,158,61,.5); background:rgba(255,158,61,.10); white-space:nowrap; }
+        .mc-resume:hover:not(:disabled) { background:rgba(255,158,61,.20); border-color:rgba(255,158,61,.85); }
+        .mc-resume:disabled { opacity:.35; cursor:default; }
+        .mc-linkchip { display:inline-flex; align-items:center; gap:4px; padding:2px 5px; border-radius:6px;
+          border:1px solid var(--ember-panel-line); background:#0e0c0b; font-size:10px; }
+        .mc-linkchip a { color:var(--ember-amber); text-decoration:underline; text-underline-offset:2px; white-space:nowrap; }
+        .mc-linkchip a:hover { color:var(--candle); }
+        .mc-linkin { width:74px; font-size:9px; padding:1px 4px; }
+        .mc-linkurl { width:150px; }
         .mc-x { color:var(--ink-faint); background:transparent; border:none; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
         .mc-x:hover { color:var(--ember-red); }
       `), bgActive && /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0", style: {
@@ -3533,6 +3542,11 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           hours: 6,
           next: "Mission Control + caption polish",
           updated: d,
+          links: [
+            { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+            { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
+            { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" }
+          ],
           tasks: [{ id: mcUid(), text: "Caption HEIC + Drive outbox", done: true }, { id: mcUid(), text: "Mission Control view", done: false }]
         },
         {
@@ -3545,10 +3559,35 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           hours: 2,
           next: "Close multi-tab queue TOCTOU",
           updated: d,
+          links: [],
           tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }]
         },
-        { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d, tasks: [] },
-        { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d, tasks: [] }
+        {
+          id: mcUid(),
+          name: "Caption Studio (Ember)",
+          pct: 70,
+          status: "active",
+          revenue: true,
+          sessions: 2,
+          hours: 4,
+          next: "Deploy outbox Apps Script",
+          updated: d,
+          links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }],
+          tasks: []
+        },
+        {
+          id: mcUid(),
+          name: "Open-water page",
+          pct: 90,
+          status: "blocked",
+          revenue: true,
+          sessions: 1,
+          hours: 1,
+          next: "Brady re-paste + publish in Wix",
+          updated: d,
+          links: [{ id: mcUid(), label: "wix editor", url: "https://manage.wix.com/" }],
+          tasks: []
+        }
       ],
       decisions: [
         { id: mcUid(), text: "Turn the Caption \u2192 IG Zap ON (throwaway test first)", done: false },
@@ -3582,7 +3621,20 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
     const setZapField = (k, v) => setZap((z) => ({ ...z, [k]: v }));
     const updProject = (id, patch) => setProjects((ps) => ps.map((p) => p.id === id ? { ...p, ...patch, updated: mcToday() } : p));
     const cycleStatus = (id) => setProjects((ps) => ps.map((p) => p.id === id ? { ...p, status: MC_STATUSES[(MC_STATUSES.indexOf(p.status) + 1) % MC_STATUSES.length], updated: mcToday() } : p));
-    const addProject = () => setProjects((ps) => [...ps, { id: mcUid(), name: "New project", pct: 0, status: "active", revenue: false, sessions: 1, hours: 1, next: "", updated: mcToday(), tasks: [] }]);
+    const linksOf = (p) => Array.isArray(p.links) ? p.links : [];
+    const addLink = (pid) => setProjects((ps) => ps.map((p) => p.id === pid ? { ...p, links: [...linksOf(p), { id: mcUid(), label: "", url: "" }] } : p));
+    const updLink = (pid, lid, patch) => setProjects((ps) => ps.map((p) => p.id === pid ? { ...p, links: linksOf(p).map((l) => l.id === lid ? { ...l, ...patch } : l) } : p));
+    const delLink = (pid, lid) => setProjects((ps) => ps.map((p) => p.id === pid ? { ...p, links: linksOf(p).filter((l) => l.id !== lid) } : p));
+    const resumeProject = (p) => {
+      const urls = linksOf(p).map((l) => (l.url || "").trim()).filter(Boolean);
+      if (!urls.length) return;
+      urls.forEach((u, i) => {
+        const href = /^https?:\/\//i.test(u) ? u : "https://" + u;
+        if (i === 0) window.open(href, "_blank", "noopener");
+        else setTimeout(() => window.open(href, "_blank", "noopener"), i * 250);
+      });
+    };
+    const addProject = () => setProjects((ps) => [...ps, { id: mcUid(), name: "New project", pct: 0, status: "active", revenue: false, sessions: 1, hours: 1, next: "", updated: mcToday(), links: [], tasks: [] }]);
     const delProject = (id) => setProjects((ps) => ps.filter((p) => p.id !== id));
     const addTask = (pid) => setProjects((ps) => ps.map((p) => p.id === pid ? { ...p, tasks: [...p.tasks, { id: mcUid(), text: "New task", done: false }] } : p));
     const updTask = (pid, tid, patch) => setProjects((ps) => ps.map((p) => p.id === pid ? { ...p, tasks: p.tasks.map((t) => t.id === tid ? { ...t, ...patch } : t) } : p));
@@ -3615,7 +3667,42 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
       /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-2 mt-3" }, /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "% Used"), /* @__PURE__ */ React.createElement("span", { className: `v ${pctUsed >= 100 ? "warn" : ""}` }, Math.round(pctUsed), "%")), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Calls left \xF72"), /* @__PURE__ */ React.createElement("span", { className: "v" }, callsLeft)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Daily burn"), /* @__PURE__ */ React.createElement("span", { className: "v" }, dailyBurn.toFixed(1))), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Proj. end"), /* @__PURE__ */ React.createElement("span", { className: `v ${pacingOver ? "warn" : "ok"}` }, projection)))
     ), /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Projects", count: `${projects.length} TRACKED`, countColor: "var(--brass)", delay: "0.12s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2.5" }, projects.map((p) => {
       const pct = Math.max(0, Math.min(100, mcNum(p.pct)));
-      return /* @__PURE__ */ React.createElement("div", { key: p.id, className: `mc-row ${p.status}` }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", value: p.name, onChange: (e) => updProject(p.id, { name: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: `mc-status ${statusClass(p.status)}`, onClick: () => cycleStatus(p.id), title: "cycle status" }, p.status), /* @__PURE__ */ React.createElement("button", { className: `mc-status ${p.revenue ? "mc-tag-rev" : "mc-tag-norev"}`, onClick: () => updProject(p.id, { revenue: !p.revenue }), title: "revenue impact" }, p.revenue ? "$ revenue" : "no revenue"), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delProject(p.id), title: "remove" }, "\xD7")), /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-wrap mt-2" }, /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-burnt", style: { width: `${pct}%` } }), /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-live", style: { left: `${pct}%`, width: `${100 - pct}%` } }), pct > 0 && pct < 100 && /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-spark", style: { left: `${pct}%` } })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]", style: { color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1" }, "%", /* @__PURE__ */ React.createElement("input", { type: "number", className: "mc-input mc-num", style: { width: 54 }, value: p.pct, onChange: (e) => updProject(p.id, { pct: e.target.value }) })), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1" }, "sessions", /* @__PURE__ */ React.createElement("input", { type: "number", className: "mc-input mc-num", style: { width: 48 }, value: p.sessions, onChange: (e) => updProject(p.id, { sessions: e.target.value }) })), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1" }, "hours", /* @__PURE__ */ React.createElement("input", { type: "number", className: "mc-input mc-num", style: { width: 48 }, value: p.hours, onChange: (e) => updProject(p.id, { hours: e.target.value }) })), /* @__PURE__ */ React.createElement("button", { className: "mc-mini ml-auto", onClick: () => setOpenRows((o) => ({ ...o, [p.id]: !o[p.id] })) }, openRows[p.id] ? "hide tasks" : `tasks (${p.tasks.length})`)), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel", style: { whiteSpace: "nowrap" } }, "Next"), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", placeholder: "next action", value: p.next, onChange: (e) => updProject(p.id, { next: e.target.value }) })), openRows[p.id] && /* @__PURE__ */ React.createElement("div", { className: "mt-2 rounded-lg p-2", style: { background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" } }, p.tasks.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, className: `mc-check ${t.done ? "done" : ""}` }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: t.done, onChange: (e) => updTask(p.id, t.id, { done: e.target.checked }) }), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", style: { background: "transparent", border: "none" }, value: t.text, onChange: (e) => updTask(p.id, t.id, { text: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delTask(p.id, t.id) }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini mt-1", onClick: () => addTask(p.id) }, "+ task")));
+      return /* @__PURE__ */ React.createElement("div", { key: p.id, className: `mc-row ${p.status}` }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", value: p.name, onChange: (e) => updProject(p.id, { name: e.target.value }) }), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "mc-status mc-resume",
+          onClick: () => resumeProject(p),
+          disabled: !linksOf(p).some((l) => (l.url || "").trim()),
+          title: linksOf(p).filter((l) => l.url).map((l) => l.label || l.url).join(" \xB7 ") || "add pages below"
+        },
+        "\u2197 resume",
+        linksOf(p).filter((l) => (l.url || "").trim()).length > 1 ? ` (${linksOf(p).filter((l) => (l.url || "").trim()).length})` : ""
+      ), /* @__PURE__ */ React.createElement("button", { className: `mc-status ${statusClass(p.status)}`, onClick: () => cycleStatus(p.id), title: "cycle status" }, p.status), /* @__PURE__ */ React.createElement("button", { className: `mc-status ${p.revenue ? "mc-tag-rev" : "mc-tag-norev"}`, onClick: () => updProject(p.id, { revenue: !p.revenue }), title: "revenue impact" }, p.revenue ? "$ revenue" : "no revenue"), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delProject(p.id), title: "remove" }, "\xD7")), /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-wrap mt-2" }, /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-burnt", style: { width: `${pct}%` } }), /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-live", style: { left: `${pct}%`, width: `${100 - pct}%` } }), pct > 0 && pct < 100 && /* @__PURE__ */ React.createElement("div", { className: "mc-fuse-spark", style: { left: `${pct}%` } })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]", style: { color: "var(--ink-faint)" } }, /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1" }, "%", /* @__PURE__ */ React.createElement("input", { type: "number", className: "mc-input mc-num", style: { width: 54 }, value: p.pct, onChange: (e) => updProject(p.id, { pct: e.target.value }) })), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1" }, "sessions", /* @__PURE__ */ React.createElement("input", { type: "number", className: "mc-input mc-num", style: { width: 48 }, value: p.sessions, onChange: (e) => updProject(p.id, { sessions: e.target.value }) })), /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-1" }, "hours", /* @__PURE__ */ React.createElement("input", { type: "number", className: "mc-input mc-num", style: { width: 48 }, value: p.hours, onChange: (e) => updProject(p.id, { hours: e.target.value }) })), /* @__PURE__ */ React.createElement("button", { className: "mc-mini ml-auto", onClick: () => setOpenRows((o) => ({ ...o, [p.id]: !o[p.id] })) }, openRows[p.id] ? "hide tasks" : `tasks (${p.tasks.length})`)), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel", style: { whiteSpace: "nowrap" } }, "Next"), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", placeholder: "next action", value: p.next, onChange: (e) => updProject(p.id, { next: e.target.value }) })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap items-center gap-1.5" }, linksOf(p).map((l) => /* @__PURE__ */ React.createElement("span", { key: l.id, className: "mc-linkchip" }, (l.url || "").trim() ? /* @__PURE__ */ React.createElement(
+        "a",
+        {
+          href: /^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : "https://" + l.url.trim(),
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: l.url
+        },
+        l.label || l.url
+      ) : /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, l.label || "untitled"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          className: "mc-input mc-linkin",
+          placeholder: "label",
+          value: l.label,
+          onChange: (e) => updLink(p.id, l.id, { label: e.target.value })
+        }
+      ), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          className: "mc-input mc-linkin mc-linkurl",
+          placeholder: "paste the tab URL",
+          value: l.url,
+          onChange: (e) => updLink(p.id, l.id, { url: e.target.value })
+        }
+      ), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delLink(p.id, l.id), title: "remove page" }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini", onClick: () => addLink(p.id) }, "+ page")), openRows[p.id] && /* @__PURE__ */ React.createElement("div", { className: "mt-2 rounded-lg p-2", style: { background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" } }, p.tasks.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, className: `mc-check ${t.done ? "done" : ""}` }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: t.done, onChange: (e) => updTask(p.id, t.id, { done: e.target.checked }) }), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", style: { background: "transparent", border: "none" }, value: t.text, onChange: (e) => updTask(p.id, t.id, { text: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delTask(p.id, t.id) }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini mt-1", onClick: () => addTask(p.id) }, "+ task")));
     }), /* @__PURE__ */ React.createElement("button", { className: "mc-mini", style: { alignSelf: "flex-start" }, onClick: addProject }, "+ project")))), /* @__PURE__ */ React.createElement("div", { className: "mc-stack", style: { minHeight: 0 } }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Rollups", count: "LIVE", countColor: "var(--ember-orange)", delay: "0.08s", scroll: false }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Total hours left"), /* @__PURE__ */ React.createElement("span", { className: "v" }, totalHours)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Total sessions"), /* @__PURE__ */ React.createElement("span", { className: "v" }, totalSessions)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Avg complete"), /* @__PURE__ */ React.createElement("span", { className: "v" }, avgPct, "%")), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Effort on revenue"), /* @__PURE__ */ React.createElement("span", { className: `v ${revEffortPct < 50 ? "warn" : "ok"}` }, revEffortPct, "%"))), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[10px] leading-relaxed", style: { color: "var(--ink-faint)" } }, revEffortPct < 50 ? "Under half of remaining effort is on revenue projects \u2014 worth a rebalance." : "Most remaining effort is pointed at revenue. Good.")), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Decision Queue", count: `${decisions.filter((d) => !d.done).length} OPEN`, countColor: "var(--brass)", delay: "0.16s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, decisions.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, className: `mc-check ${d.done ? "done" : ""}` }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: d.done, onChange: (e) => updDecision(d.id, { done: e.target.checked }) }), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", style: { background: "transparent", border: "none" }, value: d.text, onChange: (e) => updDecision(d.id, { text: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delDecision(d.id) }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini mt-1", style: { alignSelf: "flex-start" }, onClick: addDecision }, "+ decision")))));
   }
   function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge }) {
