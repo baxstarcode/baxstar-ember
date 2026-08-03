@@ -37,6 +37,13 @@ HARD RULE — schedule and messages: if a tool is unavailable or returns nothing
 // Appended to the system turn only while the voice toggle is on. Without this
 // she answers from self-knowledge — "I'm text-based" — because nothing told
 // her the reply is read aloud.
+/* Sent when spoken output is OFF. Without it the model had no idea the app can speak at
+   all, and invented a limitation — it told Brady "I'm not able to push audio to your
+   device from my end… you'd need text-to-speech enabled on your side", which is both
+   wrong and unfixable-sounding. The app speaks every reply whenever voice is on. */
+const VOICE_OFF_CONTEXT = `
+Spoken output is currently OFF in the app, so this reply will be read on screen, not heard. If asked to speak: say voice is switched off and it turns back on with the VOICE button — never claim you are unable to produce audio or that speech is something the user must add on their end. The app speaks your replies whenever voice is on.`;
+
 const VOICE_CONTEXT = `
 Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only — never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no URLs read out loud. Numbers and times said the way a person says them.`;
 
@@ -614,7 +621,7 @@ function buildBridgeHtml() {
     + 'setTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
     + 'function killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
+    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="micOff"){if(active){stopSR();}}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
     + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
     + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
     + 'if(m.t==="close"){window.close();}});\n'
@@ -1211,6 +1218,22 @@ export default function BaxstarEmber() {
     setListening(false);
   }
 
+  /* A SPOKEN off switch. Saying "go to sleep" used to be sent to the model like any
+     other question — she'd answer it, the bridge auto-restarted recognition, and twenty
+     seconds later she'd ask what she could help with again. There was no way to end a
+     session by voice, only by finding the popup window's Stop button.
+
+     Matched on the WHOLE utterance, not a substring, so "should we stop at the landing"
+     stays a normal question. */
+  const SLEEP_RE = /^\s*(?:ok(?:ay)?\s+)?(?:ember[,\s]+)?(?:please\s+)?(go to sleep|goodbye|good bye|bye|stop listening|stop talking|stop|quiet|be quiet|shut up|mute|sleep|that'?s all|that is all|never ?mind|we'?re done|i'?m done|thanks that'?s all)\s*[.!]?\s*$/i;
+
+  function stopAllMics() {
+    stopInlineMic();
+    const w = popupRef.current;
+    if (w && !w.closed) { try { w.postMessage({ ch: "EMBERMIC", t: "micOff" }, "*"); } catch (e) {} }
+    setListening(false);
+  }
+
   function toggleMic() {
     if (inlineMic) {
       if (inlineRecRef.current) stopInlineMic();
@@ -1794,6 +1817,17 @@ export default function BaxstarEmber() {
   async function sendCommand(text) {
     const q = (text ?? command).trim();
     if (!q) return;
+
+    // Handled locally and never sent to the model — the whole point is that it ENDS the
+    // exchange rather than continuing it.
+    if (SLEEP_RE.test(q)) {
+      setCommand("");
+      stopSpeaking();
+      stopAllMics();
+      setChatMsgs((m) => [...m, { role: "user", content: q },
+        { role: "assistant", content: "Going quiet. Tap the mic when you need me." }]);
+      return null;
+    }
     // A spoken command landing mid-answer used to be dropped on the floor — the
     // guard read `thinking` and returned. Hold the latest one and run it once the
     // current answer has been spoken, handing this caller the answer it will get
@@ -1815,7 +1849,7 @@ export default function BaxstarEmber() {
       // immediately so it's visible while she thinks, like any messenger.
       setChatMsgs((m) => [...m, userMsg]);
       const messages = [
-        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : "") + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : VOICE_OFF_CONTEXT) + "\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...historyRef.current.slice(-8),
         userMsg,
@@ -3268,6 +3302,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
                   </span>
                   {speaking && <button className="chip solid" onClick={stopSpeaking}>⏹ Stop</button>}
+                  {/* An off switch that is always reachable while the mic is live. It used
+                      to live only in the popup bridge window, so on the desktop the only
+                      way to stop a runaway session was to find that window. */}
+                  {listening && (
+                    <button className="chip solid" onClick={() => { stopSpeaking(); stopAllMics(); }}>
+                      ⏹ Stop listening
+                    </button>
+                  )}
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
                   <button className="chip ghost" onClick={testVoice}><EmberIcon name="speaker" size={11} style={{ verticalAlign: "-2px", marginRight: "4px" }} />TEST</button>
