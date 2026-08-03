@@ -825,7 +825,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [analyzing, setAnalyzing] = useState(false);
     const [fishId, setFishId] = useState(null);
     const [sponsors, setSponsors] = useState(blankSponsors);
-    const [lake, setLake] = useState("Detroit Lake");
+    const [lake, setLake] = useState("Pelican Lake");
     const [postWindow, setPostWindow] = useState("4 PM CT");
     const [genBusy, setGenBusy] = useState(false);
     const [caption, setCaption] = useState("");
@@ -1868,7 +1868,7 @@ ${detectLines}` }
 Photo context:
 - ${photos.length === 1 ? "A single photo." : `${photos.length} photos \u2014 ONE carousel post. Write a single caption that covers the set, not slide-by-slide.`}
 - Species: ${(fishId == null ? void 0 : fishId.species) || "Unknown"} (${(fishId == null ? void 0 : fishId.confidence) || "low"} confidence \u2014 trust what you see in the photo)
-- Lake: ${lake || "Detroit Lake"}
+- Lake: ${lake || "Pelican Lake"}
 - Posting window: ${postWindow}
 - Sponsor handles to tag naturally inline: ${handles.length ? handles.join(", ") : "none"}
 
