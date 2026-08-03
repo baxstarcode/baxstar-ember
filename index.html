@@ -1634,7 +1634,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const ok = await speakCascade("Ember online. Brady, can you hear me?");
       const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
       const locals = vs.filter((v) => v.localService);
-      setVoiceDiag(ok ? "WORKING \u2014 PATH " + ttsPathRef.current.toUpperCase() + " \xB7 " + (voiceRef.current ? voiceRef.current.name : "?") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL)" : "ALL TTS PATHS FAILED \xB7 TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL) \xB7 DID THE CHIME PLAY?");
+      setVoiceDiag(ok ? voiceOnRef.current ? "WORKING \u2014 PATH " + ttsPathRef.current.toUpperCase() + " \xB7 " + (voiceRef.current ? voiceRef.current.name : "?") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL)" : "ENGINE WORKS \u2014 BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON." : "ALL TTS PATHS FAILED \xB7 TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL) \xB7 DID THE CHIME PLAY?");
     }
     function stopSpeaking() {
       var _a2;
@@ -3098,7 +3098,18 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
     ), speaking && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: stopSpeaking }, "\u23F9 Stop"), listening && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => {
       stopSpeaking();
       stopAllMics();
-    } }, "\u23F9 Stop listening"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: testVoice }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "speaker", size: 11, style: { verticalAlign: "-2px", marginRight: "4px" } }), "TEST")), voiceDiag && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]", style: { color: "var(--ember-amber)" } }, voiceDiag)), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "home-thread reveal w-full", style: { animationDelay: "0.45s" } }, chatMsgs.map((m, i) => m.role === "user" ? /* @__PURE__ */ React.createElement(
+    } }, "\u23F9 Stop listening"), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: `chip ${voiceOn ? "ghost" : "solid"}`,
+        onClick: () => {
+          unlockSpeech();
+          setVoiceOn(!voiceOn);
+        },
+        "aria-pressed": voiceOn
+      },
+      voiceOn ? "VOICE ON" : "VOICE OFF \u2014 TAP TO HEAR REPLIES"
+    ), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: testVoice }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "speaker", size: 11, style: { verticalAlign: "-2px", marginRight: "4px" } }), "TEST")), voiceDiag && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]", style: { color: "var(--ember-amber)" } }, voiceDiag)), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "home-thread reveal w-full", style: { animationDelay: "0.45s" } }, chatMsgs.map((m, i) => m.role === "user" ? /* @__PURE__ */ React.createElement(
       "div",
       {
         key: i,
