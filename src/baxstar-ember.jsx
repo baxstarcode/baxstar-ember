@@ -526,6 +526,20 @@ function lsDel(key) {
 }
 
 const OUTBOX_URL_KEY = "ember-outbox-url";
+
+/* The deployed Drive-outbox endpoint, baked in so a fresh browser, a wiped phone, or a
+   cleared cache just works — localStorage alone meant re-pasting this by hand on every
+   device and after every "clear browsing data".
+
+   Safe to keep here: this repo is private, and the built page is served behind Cloudflare
+   Access gated to Brady's own two emails, so the URL isn't publicly readable either way.
+   It also isn't a credential — the worst it grants is writing files into that one private
+   Drive folder.
+
+   The in-app field still overrides it (localStorage wins), which is the escape hatch if
+   the deployment ever mints a new URL before this constant is updated. */
+const DEFAULT_OUTBOX_URL =
+  "https://script.google.com/macros/s/AKfycby-xcjTOM4tabBgVc-Jpy66_B8kpgROT86Z7J8Qz3wx5DRI94W_tySk3HzexCv9g6VE/exec";
 const CAPTION_DRAFT_KEY = "ember-caption-draft";
 
 /* ---------- GOOGLE DRIVE ICON ---------- */
@@ -976,8 +990,9 @@ export default function BaxstarEmber() {
     } catch (e) { /* no location — artifact/SSR */ }
 
     // Outbox endpoint (deployment URL, not a secret).
+    // A device-specific override wins; otherwise fall back to the built-in endpoint.
     const savedUrl = lsGet(OUTBOX_URL_KEY, "");
-    if (typeof savedUrl === "string" && savedUrl) setOutboxUrl(savedUrl);
+    setOutboxUrl(typeof savedUrl === "string" && savedUrl ? savedUrl : DEFAULT_OUTBOX_URL);
 
     // Caption draft recovery — the survives-a-dropped-connection piece.
     const draft = lsGet(CAPTION_DRAFT_KEY, null);
@@ -2092,8 +2107,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
   function saveOutboxUrl(u) {
     const v = (u || "").trim();
-    setOutboxUrl(v);
-    if (v) lsSet(OUTBOX_URL_KEY, v); else lsDel(OUTBOX_URL_KEY);
+    // Emptying the field means "go back to the built-in endpoint", not "break publishing".
+    if (v && v !== DEFAULT_OUTBOX_URL) { setOutboxUrl(v); lsSet(OUTBOX_URL_KEY, v); }
+    else { setOutboxUrl(v || DEFAULT_OUTBOX_URL); lsDel(OUTBOX_URL_KEY); }
   }
 
   function discardDraft() {
