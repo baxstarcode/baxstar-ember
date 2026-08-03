@@ -904,7 +904,6 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [copied, setCopied] = useState(false);
     const fileRef = useRef(null);
     const [outboxUrl, setOutboxUrl] = useState("");
-    const [outboxOpen, setOutboxOpen] = useState(false);
     const [publishing, setPublishing] = useState(false);
     const [publishMsg, setPublishMsg] = useState("");
     const [captionRestored, setCaptionRestored] = useState(false);
@@ -2043,8 +2042,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       if (!photos.length || !caption || publishing) return;
       const url = (outboxUrl || "").trim();
       if (!url) {
-        setOutboxOpen(true);
-        setPublishMsg("Add your outbox URL first (gear icon).");
+        setPublishMsg("Add your Drive Outbox URL first \u2014 the field is in the left panel.");
         return;
       }
       setPublishing(true);
@@ -3374,6 +3372,24 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           style: { background: "#120c0c", color: "var(--ink)", colorScheme: "dark" }
         }
       )))),
+      /* @__PURE__ */ React.createElement("div", { className: "mt-4" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, "Drive Outbox"), /* @__PURE__ */ React.createElement(
+        "span",
+        {
+          className: "font-mono-x text-[9px] tracking-[0.2em]",
+          style: { color: outboxUrl ? "#54e08a" : "var(--ember-amber)" }
+        },
+        outboxUrl ? "CONNECTED" : "NOT SET"
+      )), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: outboxUrl,
+          onChange: (e) => saveOutboxUrl(e.target.value),
+          placeholder: "Paste your Apps Script /exec URL here",
+          "aria-label": "Drive outbox URL",
+          className: "cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]",
+          style: { background: "#120c0c", color: "var(--ink)" }
+        }
+      ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[10px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Saved on this device. Publishing drops the photo + caption into a private Drive folder \u2014 it does ", /* @__PURE__ */ React.createElement("b", null, "not"), " post to Instagram by itself.")),
       /* @__PURE__ */ React.createElement("button", { className: "big primary mt-5 w-full justify-center", disabled: !photos.length || analyzing || genBusy, onClick: generateCaption }, genBusy ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: "spark", size: 14 }), genBusy ? "GENERATING\u2026" : "Generate Caption"),
       capErr && /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-xs font-semibold", style: { color: "#ff8074" } }, capErr)
     ), /* @__PURE__ */ React.createElement(
@@ -3439,26 +3455,17 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         MAX_HASHTAGS,
         " TAGS",
         capState.dropped ? ` \xB7 ${capState.dropped} TRIMMED` : ""
-      )), /* @__PURE__ */ React.createElement("div", { className: "mt-4 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: copyCaption }, copied ? "COPIED \u2713" : "Copy Caption"), /* @__PURE__ */ React.createElement("button", { className: "big", disabled: genBusy, onClick: generateCaption }, genBusy ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : "Regenerate")), /* @__PURE__ */ React.createElement("div", { className: "mt-3 flex items-center gap-3" }, /* @__PURE__ */ React.createElement(
+      )), /* @__PURE__ */ React.createElement("div", { className: "mt-4 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: copyCaption }, copied ? "COPIED \u2713" : "Copy Caption"), /* @__PURE__ */ React.createElement("button", { className: "big", disabled: genBusy, onClick: generateCaption }, genBusy ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : "Regenerate")), /* @__PURE__ */ React.createElement(
         "button",
         {
-          className: "big flex-1 justify-center",
+          className: "big mt-3 w-full justify-center",
           disabled: publishing || !photos.length,
           onClick: publishToOutbox,
           style: { borderColor: "var(--brass)", color: "var(--candle)" }
         },
         publishing ? /* @__PURE__ */ React.createElement("span", { className: "spinner" }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: "drive", size: 14 }),
         publishing ? "SENDING\u2026" : "Publish to Drive Outbox"
-      ), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", title: "Outbox settings", onClick: () => setOutboxOpen((o) => !o) }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "dials", size: 13, style: { verticalAlign: "-2px" } }))), outboxOpen && /* @__PURE__ */ React.createElement("div", { className: "mt-2 rounded-lg border p-3", style: { borderColor: "var(--line)", background: "#120c0c" } }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, "Drive Outbox URL (Apps Script /exec)"), /* @__PURE__ */ React.createElement(
-        "input",
-        {
-          value: outboxUrl,
-          onChange: (e) => saveOutboxUrl(e.target.value),
-          placeholder: "https://script.google.com/macros/s/\u2026/exec",
-          className: "cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]",
-          style: { background: "#0c0808", color: "var(--ink)" }
-        }
-      ), /* @__PURE__ */ React.createElement("div", { className: "mt-1.5 text-[10px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Deploy ", /* @__PURE__ */ React.createElement("code", null, "apps-script/outbox/Code.gs"), " as a Web App, paste its ", /* @__PURE__ */ React.createElement("code", null, "/exec"), " URL here. Saved on this device. Publishing drops the JPEG + caption into a private Drive folder for review \u2014 it does ", /* @__PURE__ */ React.createElement("b", null, "not"), " post to Instagram or Facebook.")), publishMsg && /* @__PURE__ */ React.createElement(
+      ), publishMsg && /* @__PURE__ */ React.createElement(
         "div",
         {
           className: "mt-2 text-[11px] font-semibold",
