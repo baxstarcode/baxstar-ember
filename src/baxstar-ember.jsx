@@ -879,6 +879,7 @@ export default function BaxstarEmber() {
   // It's a deployment URL, not a secret, so localStorage is the right home — it must
   // persist outside the artifact where window.storage doesn't exist.
   const [outboxUrl, setOutboxUrl] = useState("");
+  const [outboxEdit, setOutboxEdit] = useState(false); // reveal the field again after setup
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState("");
   const [captionRestored, setCaptionRestored] = useState(false);
@@ -3594,28 +3595,46 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </div>
                 </div>
 
-                {/* Outbox endpoint lives HERE, always visible. It used to hide behind an
-                    icon that only rendered once a caption existed — which meant the
-                    one-time setup step was unreachable until after you'd done the thing
-                    it configures. Brady got genuinely lost looking for it. */}
-                <div className="mt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="fieldlabel">Drive Outbox</div>
-                    <span className="font-mono-x text-[9px] tracking-[0.2em]"
-                      style={{ color: outboxUrl ? "#54e08a" : "var(--ember-amber)" }}>
-                      {outboxUrl ? "CONNECTED" : "NOT SET"}
-                    </span>
+                {/* The outbox endpoint is a ONE-TIME, PER-DEVICE setup step, so it earns
+                    permanent space only until it's done. Unset: the full field, impossible
+                    to miss. Set: a single quiet line with a Change link. It has been both
+                    too hidden (behind an icon that needed a finished caption to appear) and
+                    too loud (a permanent form field in the panel used on every trip) —
+                    this is the middle. */}
+                {!outboxUrl ? (
+                  <div className="mt-4 rounded-lg border p-3"
+                    style={{ borderColor: "rgba(255,177,59,.45)", background: "rgba(255,177,59,.05)" }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="fieldlabel" style={{ color: "var(--ember-amber)" }}>Drive Outbox — one-time setup</div>
+                      <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ember-amber)" }}>NOT SET</span>
+                    </div>
+                    <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
+                      placeholder="Paste your Apps Script /exec URL here"
+                      aria-label="Drive outbox URL"
+                      className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
+                      style={{ background: "#120c0c", color: "var(--ink)" }} />
+                    <div className="mt-1 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+                      Saved on this device, then this box goes away. Publishing drops the photo +
+                      caption into a private Drive folder — it does <b>not</b> post to Instagram by itself.
+                    </div>
                   </div>
-                  <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
-                    placeholder="Paste your Apps Script /exec URL here"
-                    aria-label="Drive outbox URL"
-                    className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
-                    style={{ background: "#120c0c", color: "var(--ink)" }} />
-                  <div className="mt-1 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
-                    Saved on this device. Publishing drops the photo + caption into a private
-                    Drive folder — it does <b>not</b> post to Instagram by itself.
+                ) : outboxEdit ? (
+                  <div className="mt-4">
+                    <div className="fieldlabel">Drive Outbox URL</div>
+                    <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
+                      autoFocus aria-label="Drive outbox URL"
+                      className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
+                      style={{ background: "#120c0c", color: "var(--ink)" }} />
+                    <button className="chip ghost mt-2" onClick={() => setOutboxEdit(false)}>Done</button>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-3 flex items-center gap-2 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                    <span style={{ color: "#54e08a" }}>●</span>
+                    <span>Drive outbox connected</span>
+                    <button className="underline" style={{ color: "var(--ink-faint)" }}
+                      onClick={() => setOutboxEdit(true)}>change</button>
+                  </div>
+                )}
 
                 <button className="big primary mt-5 w-full justify-center" disabled={!photos.length || analyzing || genBusy} onClick={generateCaption}>
                   {genBusy ? <span className="spinner" /> : <EmberIcon name="spark" size={14} />}
