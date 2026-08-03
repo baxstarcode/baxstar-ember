@@ -196,14 +196,19 @@ const PROJECTS = [
     cat: "Revenue Generating",
     items: [
       { name: "baxstarfishing.com build", pct: 90, platform: "Claude",
+        links: [["site", "https://baxstarfishing.com"], ["wix editor", "https://manage.wix.com/"]],
         outstanding: "Schema/SEO polish, PR #24 Open Water page", sessions: "~2" },
       { name: "Pontoon rentals stack", pct: 100, platform: "Claude",
+        links: [["repo", "https://github.com/baxstarcode/baxstar-pontoon"]],
         outstanding: "Shipped — checkout + proxy live", sessions: "0" },
       { name: "Caption Studio v1 (standalone)", pct: 100, platform: "Claude",
+        links: [["repo", "https://github.com/baxstarcode/caption-studio"]],
         outstanding: "Shipped — live on GitHub Pages", sessions: "0" },
       { name: "Caption Studio v2 auto-post", pct: 70, platform: "Claude",
+        links: [["repo", "https://github.com/baxstarcode/caption-studio"], ["zaps", "https://zapier.com/app/zaps"]],
         outstanding: "Outbox deploy (Brady), Zap wiring, retire GBP mirror", sessions: "~2" },
       { name: "Lakes Golf Simulator site", pct: 15, platform: "ChatGPT",
+        links: [["site", "https://lakesgolfsim.com"]],
         outstanding: "Tech-camp page only — main site unbuilt", sessions: "~5" },
     ],
   },
@@ -211,6 +216,7 @@ const PROJECTS = [
     cat: "Supporting",
     items: [
       { name: "Ember / Mission Control", pct: 80, platform: "Claude",
+        links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
         outstanding: "Voice merge, MCP OAuth for hosted connectors", sessions: "~3" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
@@ -219,6 +225,17 @@ const PROJECTS = [
     ],
   },
 ];
+
+// Reopen every page a project needs. A burst of window.open from one gesture
+// gets blocked after the first, so only the first rides the click and the rest
+// are staggered.
+function openProjectTabs(links) {
+  if (!links || !links.length) return;
+  links.forEach(([, url], i) => {
+    if (i === 0) window.open(url, "_blank", "noopener");
+    else setTimeout(() => window.open(url, "_blank", "noopener"), i * 250);
+  });
+}
 
 const TOOLS = [
   { id: "handoff",  icon: "handoff", label: "AI Handoff" },
@@ -2470,6 +2487,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .proj-cat { font-size:11px; font-weight:700; letter-spacing:.24em; text-transform:uppercase;
           color:var(--brass); border-bottom:1px solid var(--line); padding-bottom:5px; margin-bottom:4px; }
         .proj-row { padding:9px 0; border-bottom:1px solid rgba(255,90,60,.09); }
+        .proj-name-link { background:none; border:0; padding:0; text-align:left; cursor:pointer;
+          color:var(--ember-amber); text-decoration:underline; text-underline-offset:2.5px;
+          text-decoration-color:rgba(255,158,61,.45); }
+        .proj-name-link:hover { color:var(--candle); text-decoration-color:var(--candle); }
+        .proj-name-arrow { font-size:10px; opacity:.7; }
+        .proj-chip { display:inline-block; padding:1.5px 7px; border-radius:999px; font-size:9.5px;
+          letter-spacing:.06em; text-transform:uppercase; color:var(--brass);
+          border:1px solid var(--ember-brass-dark); background:transparent; text-decoration:none; }
+        .proj-chip:hover { color:var(--candle); border-color:var(--brass); }
         .proj-row:last-child { border-bottom:none; }
         .proj-bar { position:relative; height:12px; margin-top:6px; border-radius:7px; overflow:hidden;
           background:linear-gradient(180deg,#0a0806,#14100c);
@@ -3879,7 +3905,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 {group.items.map((pr) => (
                   <div key={pr.name} className="proj-row">
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-[13px] font-semibold">{pr.name}</span>
+                      {pr.links && pr.links.length ? (
+                        <button className="proj-name-link text-[13px] font-semibold" onClick={() => openProjectTabs(pr.links)}
+                          title={`Open ${pr.links.map(([l]) => l).join(" + ")}`}>
+                          {pr.name}
+                          <span className="proj-name-arrow"> ↗</span>
+                        </button>
+                      ) : (
+                        <span className="text-[13px] font-semibold">{pr.name}</span>
+                      )}
                       <span className="font-mono-x shrink-0 text-[10px]" style={{ color: "var(--ember-amber)" }}>
                         {pr.pct}%
                         {pr.platform !== "—" && <span style={{ color: "var(--ink-faint)" }}> · {pr.platform.toUpperCase()}</span>}
@@ -3894,6 +3928,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                         <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>EST {pr.sessions} SESSIONS</span>
                       )}
                     </div>
+                    {pr.links && pr.links.length > 1 && (
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {pr.links.map(([label, url]) => (
+                          <a key={url} className="proj-chip" href={url} target="_blank" rel="noopener noreferrer">{label}</a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
