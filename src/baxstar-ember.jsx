@@ -879,7 +879,6 @@ export default function BaxstarEmber() {
   // It's a deployment URL, not a secret, so localStorage is the right home — it must
   // persist outside the artifact where window.storage doesn't exist.
   const [outboxUrl, setOutboxUrl] = useState("");
-  const [outboxOpen, setOutboxOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState("");
   const [captionRestored, setCaptionRestored] = useState(false);
@@ -2113,7 +2112,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
   async function publishToOutbox() {
     if (!photos.length || !caption || publishing) return;
     const url = (outboxUrl || "").trim();
-    if (!url) { setOutboxOpen(true); setPublishMsg("Add your outbox URL first (gear icon)."); return; }
+    if (!url) { setPublishMsg("Add your Drive Outbox URL first — the field is in the left panel."); return; }
     setPublishing(true);
     setPublishMsg("");
 
@@ -3595,6 +3594,29 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </div>
                 </div>
 
+                {/* Outbox endpoint lives HERE, always visible. It used to hide behind an
+                    icon that only rendered once a caption existed — which meant the
+                    one-time setup step was unreachable until after you'd done the thing
+                    it configures. Brady got genuinely lost looking for it. */}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="fieldlabel">Drive Outbox</div>
+                    <span className="font-mono-x text-[9px] tracking-[0.2em]"
+                      style={{ color: outboxUrl ? "#54e08a" : "var(--ember-amber)" }}>
+                      {outboxUrl ? "CONNECTED" : "NOT SET"}
+                    </span>
+                  </div>
+                  <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
+                    placeholder="Paste your Apps Script /exec URL here"
+                    aria-label="Drive outbox URL"
+                    className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
+                    style={{ background: "#120c0c", color: "var(--ink)" }} />
+                  <div className="mt-1 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+                    Saved on this device. Publishing drops the photo + caption into a private
+                    Drive folder — it does <b>not</b> post to Instagram by itself.
+                  </div>
+                </div>
+
                 <button className="big primary mt-5 w-full justify-center" disabled={!photos.length || analyzing || genBusy} onClick={generateCaption}>
                   {genBusy ? <span className="spinner" /> : <EmberIcon name="spark" size={14} />}
                   {genBusy ? "GENERATING…" : "Generate Caption"}
@@ -3668,31 +3690,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     </div>
 
                     {/* Publish → private Drive outbox (review-then-post; never auto-posts to social) */}
-                    <div className="mt-3 flex items-center gap-3">
-                      <button className="big flex-1 justify-center" disabled={publishing || !photos.length} onClick={publishToOutbox}
-                        style={{ borderColor: "var(--brass)", color: "var(--candle)" }}>
-                        {publishing ? <span className="spinner" /> : <EmberIcon name="drive" size={14} />}
-                        {publishing ? "SENDING…" : "Publish to Drive Outbox"}
-                      </button>
-                      <button className="chip ghost" title="Outbox settings" onClick={() => setOutboxOpen((o) => !o)}>
-                        <EmberIcon name="dials" size={13} style={{ verticalAlign: "-2px" }} />
-                      </button>
-                    </div>
-
-                    {outboxOpen && (
-                      <div className="mt-2 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "#120c0c" }}>
-                        <div className="fieldlabel">Drive Outbox URL (Apps Script /exec)</div>
-                        <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
-                          placeholder="https://script.google.com/macros/s/…/exec"
-                          className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
-                          style={{ background: "#0c0808", color: "var(--ink)" }} />
-                        <div className="mt-1.5 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
-                          Deploy <code>apps-script/outbox/Code.gs</code> as a Web App, paste its <code>/exec</code> URL here.
-                          Saved on this device. Publishing drops the JPEG + caption into a private Drive folder for review —
-                          it does <b>not</b> post to Instagram or Facebook.
-                        </div>
-                      </div>
-                    )}
+                    <button className="big mt-3 w-full justify-center" disabled={publishing || !photos.length} onClick={publishToOutbox}
+                      style={{ borderColor: "var(--brass)", color: "var(--candle)" }}>
+                      {publishing ? <span className="spinner" /> : <EmberIcon name="drive" size={14} />}
+                      {publishing ? "SENDING…" : "Publish to Drive Outbox"}
+                    </button>
 
                     {publishMsg && (
                       <div className="mt-2 text-[11px] font-semibold"
