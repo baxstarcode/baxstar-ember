@@ -861,12 +861,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [voiceOn, setVoiceOn] = useState(true);
     const [coreMode, setCoreMode] = useState("enigma");
     const speechUnlockedRef = useRef(false);
+    const earModeRef = useRef("off");
+    const followTimerRef = useRef(null);
+    const armTimerRef = useRef(null);
     const inlineGenRef = useRef(0);
     const inlineBornRef = useRef(0);
     const inlineFailsRef = useRef(0);
     const inlineRecRef = useRef(null);
-    const inlineWantRef = useRef(false);
     const [micArm, setMicArm] = useState(false);
+    const [earState, setEarState] = useState("off");
+    const [voiceChoice, setVoiceChoice] = useState("");
+    const voiceChoiceRef = useRef("");
+    const [voiceList, setVoiceList] = useState([]);
     const [speaking, setSpeaking] = useState(false);
     const speakingRef = useRef(false);
     const voiceRef = useRef(null);
@@ -922,6 +928,22 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       voiceOnRef.current = voiceOn;
     }, [voiceOn]);
     useEffect(() => {
+      voiceChoiceRef.current = voiceChoice;
+      if (voiceChoice) voiceRef.current = null;
+    }, [voiceChoice]);
+    useEffect(() => {
+      var _a2;
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      const fill = () => setVoiceList(synth.getVoices().filter((v) => v.lang && v.lang.startsWith("en")));
+      fill();
+      (_a2 = synth.addEventListener) == null ? void 0 : _a2.call(synth, "voiceschanged", fill);
+      return () => {
+        var _a3;
+        return (_a3 = synth.removeEventListener) == null ? void 0 : _a3.call(synth, "voiceschanged", fill);
+      };
+    }, []);
+    useEffect(() => {
       var _a2;
       (_a2 = chatEndRef.current) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, [chatMsgs, thinking]);
@@ -953,9 +975,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     useEffect(() => {
       (async () => {
         const load = async (key) => {
+          var _a2;
           try {
-            const r = await window.storage.get(key, false);
-            return (r == null ? void 0 : r.value) ? JSON.parse(r.value) : null;
+            if ((_a2 = window.storage) == null ? void 0 : _a2.get) {
+              const r = await window.storage.get(key, false);
+              return (r == null ? void 0 : r.value) ? JSON.parse(r.value) : null;
+            }
+            const v = localStorage.getItem(key);
+            return v ? JSON.parse(v) : null;
           } catch (e) {
             return null;
           }
@@ -969,6 +996,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (b == null ? void 0 : b.choice) setBg(b);
         if (prefs) {
           if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
+          if (typeof prefs.voiceChoice === "string") setVoiceChoice(prefs.voiceChoice);
           if (prefs.chatModel) setChatModel(prefs.chatModel);
           if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
           if (prefs.lake) setLake(prefs.lake);
@@ -1026,9 +1054,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const persist = (key, val) => {
       var _a2;
       try {
-        const p = (_a2 = window.storage) == null ? void 0 : _a2.set(key, JSON.stringify(val), false);
-        if (p && p.catch) p.catch(() => {
-        });
+        const json = JSON.stringify(val);
+        if ((_a2 = window.storage) == null ? void 0 : _a2.set) {
+          const p = window.storage.set(key, json, false);
+          if (p && p.catch) p.catch(() => {
+          });
+        } else {
+          localStorage.setItem(key, json);
+        }
       } catch (e) {
       }
     };
@@ -1039,8 +1072,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24));
     }, [driveMsgs]);
     useEffect(() => {
-      if (hydrated.current) persist("ember-prefs", { voiceOn, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode });
-    }, [voiceOn, chatModel, chatEffort, lake, postTime, studioTool, coreMode]);
+      if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode });
+    }, [voiceOn, voiceChoice, chatModel, chatEffort, lake, postTime, studioTool, coreMode]);
     async function saveBg(next) {
       setBg(next);
       setBgMenu(false);
@@ -1070,7 +1103,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const clock = now.toLocaleString("en-US", { weekday: "short", month: "short", day: "2-digit", hour: "numeric", minute: "2-digit" }).toUpperCase().replace(",", " \xB7");
     const hour = now.getHours();
     const dayPart = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
-    const inlineMic = typeof navigator !== "undefined" && (/iP(hone|ad|od)/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1 || !window.open);
+    const isPhone = typeof navigator !== "undefined" && (/iP(hone|ad|od)/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1 || !window.open);
+    const hasSR = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    const inlineMic = isPhone;
     function unlockSpeech() {
       var _a2;
       if (speechUnlockedRef.current) return;
@@ -1096,7 +1131,42 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       } catch (e) {
       }
       if (ttsPathRef.current === "mp3") ttsPathRef.current = null;
-      voiceRef.current = null;
+      if (!voiceChoiceRef.current) voiceRef.current = null;
+    }
+    function setEar(mode) {
+      earModeRef.current = mode;
+      setEarState(mode);
+    }
+    function clearEarTimers() {
+      if (followTimerRef.current) {
+        clearTimeout(followTimerRef.current);
+        followTimerRef.current = null;
+      }
+      if (armTimerRef.current) {
+        clearTimeout(armTimerRef.current);
+        armTimerRef.current = null;
+      }
+    }
+    const WAKE_RE = /\b(?:ember|amber|embers)[\s,!.]*(?:a?wake|awaken|wake\s*up)\b/i;
+    function wakePing() {
+      try {
+        const C = window.AudioContext || window.webkitAudioContext;
+        const ctx = new C();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.frequency.value = 1318;
+        g.gain.setValueAtTime(0.07, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(1e-3, ctx.currentTime + 0.18);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        o.stop(ctx.currentTime + 0.18);
+        setTimeout(() => {
+          var _a2;
+          return (_a2 = ctx.close) == null ? void 0 : _a2.call(ctx);
+        }, 400);
+      } catch (e) {
+      }
     }
     function makeInlineRec() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1120,10 +1190,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       rec.onerror = (e) => {
         if (gen !== inlineGenRef.current) return;
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-          inlineWantRef.current = false;
+          clearEarTimers();
+          setEar("off");
           inlineRecRef.current = null;
           setListening(false);
-          setError("Mic blocked \u2014 tap aA in the address bar, Website Settings, Microphone, Allow.");
+          setError(isPhone ? "Mic blocked \u2014 tap aA in the address bar, Website Settings, Microphone, Allow." : "Mic blocked \u2014 click the lock icon by the address bar and allow the microphone.");
         }
       };
       rec.onend = () => {
@@ -1132,7 +1203,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (resolve) resolve();
         if (gen !== inlineGenRef.current) return;
         inlineRecRef.current = null;
-        if (!inlineWantRef.current || speakingRef.current) {
+        if (earModeRef.current === "off" || speakingRef.current) {
           setListening(false);
           return;
         }
@@ -1140,16 +1211,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (now2 - inlineBornRef.current < 700) {
           inlineFailsRef.current += 1;
           if (inlineFailsRef.current >= 6) {
-            inlineWantRef.current = false;
+            clearEarTimers();
+            setEar("off");
             setListening(false);
-            setError("The mic keeps dying \u2014 tap TAP TO TALK to restart it.");
+            setError("The mic keeps dying \u2014 tap the mic to restart it.");
             return;
           }
         } else {
           inlineFailsRef.current = 0;
         }
         setTimeout(() => {
-          if (inlineWantRef.current && !speakingRef.current && !inlineRecRef.current) startInlineSession();
+          if (earModeRef.current !== "off" && !speakingRef.current && !inlineRecRef.current) startInlineSession();
         }, 180);
       };
       rec.onresult = (ev) => {
@@ -1161,6 +1233,27 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         text = text.trim();
         if (!text) return;
         if (speakingRef.current || isEcho(text)) return;
+        const mode = earModeRef.current;
+        if (mode === "passive") {
+          const m = text.match(WAKE_RE);
+          if (!m) return;
+          wakePing();
+          const tail = text.slice(m.index + m[0].length).replace(/^[\s,!.—-]+/, "").trim();
+          if (tail) {
+            clearEarTimers();
+            sendRef.current(tail);
+            return;
+          }
+          setEar("armed");
+          if (armTimerRef.current) clearTimeout(armTimerRef.current);
+          armTimerRef.current = setTimeout(() => {
+            armTimerRef.current = null;
+            if (earModeRef.current === "armed") setEar("passive");
+          }, 2600);
+          return;
+        }
+        clearEarTimers();
+        if (mode === "armed") setEar("passive");
         sendRef.current(text);
       };
       return rec;
@@ -1178,23 +1271,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
       return true;
     }
-    function startInlineMic() {
-      unlockSpeech();
-      if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
-        setError("This browser has no speech recognition. Safari or Chrome.");
-        return false;
-      }
-      inlineWantRef.current = true;
-      inlineFailsRef.current = 0;
-      if (inlineRecRef.current) return true;
-      if (!startInlineSession()) {
-        setError("Could not start the mic.");
-        return false;
-      }
-      return true;
-    }
-    function stopInlineMic() {
-      inlineWantRef.current = false;
+    function releaseMic() {
+      clearEarTimers();
+      setEar("off");
       inlineGenRef.current += 1;
       const rec = inlineRecRef.current;
       inlineRecRef.current = null;
@@ -1206,9 +1285,44 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
       setListening(false);
     }
+    function openTalkWindow() {
+      unlockSpeech();
+      if (!hasSR) {
+        setError("This browser has no speech recognition. Safari or Chrome.");
+        return false;
+      }
+      clearEarTimers();
+      setEar("live");
+      inlineFailsRef.current = 0;
+      if (!inlineRecRef.current && !startInlineSession()) {
+        setEar("off");
+        setError("Could not start the mic.");
+        return false;
+      }
+      followTimerRef.current = setTimeout(() => {
+        followTimerRef.current = null;
+        if (!speakingRef.current && !busyRef.current && earModeRef.current === "live") releaseMic();
+      }, 9e3);
+      return true;
+    }
+    function startEar() {
+      unlockSpeech();
+      if (!hasSR) return false;
+      clearEarTimers();
+      setEar("passive");
+      inlineFailsRef.current = 0;
+      if (!inlineRecRef.current && !startInlineSession()) {
+        setEar("off");
+        return false;
+      }
+      return true;
+    }
+    function stopInlineMic() {
+      releaseMic();
+    }
     const SLEEP_RE = /^\s*(?:ok(?:ay)?\s+)?(?:ember[,\s]+)?(?:please\s+)?(go to sleep|goodbye|good bye|bye|stop listening|stop talking|stop|quiet|be quiet|shut up|mute|sleep|that'?s all|that is all|never ?mind|we'?re done|i'?m done|thanks that'?s all)\s*[.!]?\s*$/i;
     function stopAllMics() {
-      stopInlineMic();
+      releaseMic();
       const w = popupRef.current;
       if (w && !w.closed) {
         try {
@@ -1219,9 +1333,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       setListening(false);
     }
     function toggleMic() {
-      if (inlineMic) {
-        if (inlineRecRef.current) stopInlineMic();
-        else startInlineMic();
+      if (hasSR) {
+        if (isPhone) {
+          if (earModeRef.current !== "off") releaseMic();
+          else openTalkWindow();
+        } else {
+          if (earModeRef.current !== "off") releaseMic();
+          else startEar();
+        }
         return;
       }
       const w = popupRef.current;
@@ -1246,7 +1365,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       return true;
     }
     useEffect(() => {
-      if (inlineMic) {
+      if (isPhone) {
         setMicArm(true);
         const un = () => {
           window.removeEventListener("pointerdown", un);
@@ -1254,6 +1373,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         };
         window.addEventListener("pointerdown", un);
         return;
+      }
+      if (hasSR) {
+        const t2 = setTimeout(() => {
+          startEar();
+        }, 600);
+        return () => clearTimeout(t2);
       }
       const t = setTimeout(() => {
         if (!openMicBridge(true)) {
@@ -1371,7 +1496,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       });
     }
     function resumeInlineMic() {
-      if (!inlineWantRef.current || speakingRef.current) return;
+      if (earModeRef.current === "off" || speakingRef.current) return;
+      if (isPhone) {
+        clearEarTimers();
+        setEar("live");
+        followTimerRef.current = setTimeout(() => {
+          followTimerRef.current = null;
+          if (!speakingRef.current && !busyRef.current && earModeRef.current === "live") releaseMic();
+        }, 8e3);
+      } else if (earModeRef.current === "armed") {
+        setEar("passive");
+      }
       if (!inlineRecRef.current) startInlineSession();
     }
     function postBridge(t) {
@@ -1461,9 +1596,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function sayLocal(short, slot) {
       return new Promise((res) => whenVoicesReady(async () => {
         if (!window.speechSynthesis) return res(false);
+        const vs = window.speechSynthesis.getVoices();
+        const picked = voiceChoiceRef.current ? vs.find((v) => v.name === voiceChoiceRef.current) : null;
+        if (picked && await tryVoice(picked, short, slot)) return res(true);
         const known = voiceRef.current;
-        if (known && await tryVoice(known, short, slot)) return res(true);
-        for (const v of rankedLocals().filter((v2) => v2 !== known).slice(0, 3)) {
+        if (known && known !== picked && await tryVoice(known, short, slot)) return res(true);
+        for (const v of rankedLocals().filter((v2) => v2 !== known && v2 !== picked).slice(0, 3)) {
           if (await tryVoice(v, short, slot)) return res(true);
         }
         res(false);
@@ -1587,7 +1725,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const short = text.length > 380 ? text.slice(0, 380) + "\u2026 full answer on screen." : text;
       lastSpokenRef.current = normalizeHeard(short);
       lastSpokenAtRef.current = performance.now();
-      if (inlineMic) await pauseInlineMic();
+      if (hasSR) await pauseInlineMic();
       releaseSpeechEnd();
       speechEndRef.current = null;
       const p = ttsPathRef.current;
@@ -2528,6 +2666,9 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         @keyframes chipShine { to { background-position:-220% 0; } }
         .chip.ghost { border-color:var(--line); color:var(--ink-dim); background:transparent; }
         .chip.ghost:hover { border-color:var(--line-hot); color:var(--ink); }
+        .voice-pick { background:#120c0c; color:var(--ember-amber); border:1px solid var(--ember-brass-dark);
+          border-radius:8px; font-size:10px; padding:4px 8px; max-width:220px; }
+        .voice-pick:focus { outline:none; border-color:var(--brass); }
         .chip:disabled { opacity:.35; cursor:default; }
 
         .big { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:700; letter-spacing:.06em;
@@ -3028,7 +3169,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         style: listening ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" } : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
       },
       /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 13, style: { verticalAlign: "-2px", marginRight: "6px" } }),
-      listening ? "LISTENING \u2014 TAP TO STOP" : "TAP TO TALK TO EMBER"
+      earState !== "off" ? "IN CONVERSATION \u2014 TAP TO END" : "TAP TO TALK TO EMBER"
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -3041,14 +3182,44 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         style: voiceOn ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" } : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }
       },
       voiceOn ? "VOICE ON" : "MUTED"
-    )), !inlineMic && micArm && !listening && /* @__PURE__ */ React.createElement(
+    )), inlineMic && earState === "off" && !micArm && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x text-center text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "MIC RELEASED \u2014 YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP"), voiceList.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "HER VOICE"), /* @__PURE__ */ React.createElement(
+      "select",
+      {
+        className: "voice-pick font-mono-x",
+        value: voiceChoice,
+        onChange: (e) => {
+          unlockSpeech();
+          setVoiceChoice(e.target.value);
+        }
+      },
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "Automatic"),
+      voiceList.map((v) => /* @__PURE__ */ React.createElement("option", { key: v.name, value: v.name }, v.name, v.localService ? "" : " (network)"))
+    ), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: testVoice, style: { fontSize: "9px", padding: "3px 8px" } }, "HEAR IT")), !inlineMic && hasSR && earState === "passive" && /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        onClick: toggleMic,
+        role: "button",
+        className: "mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]",
+        style: { cursor: "pointer", borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }
+      },
+      /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 12, style: { verticalAlign: "-2px", marginRight: "6px" } }),
+      'EAR ON \u2014 SAY "EMBER, AWAKE" \xB7 CLICK TO TURN OFF'
+    ), !inlineMic && hasSR && earState === "armed" && /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]",
+        style: { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.10)", color: "#9fe89f" }
+      },
+      /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 12, style: { verticalAlign: "-2px", marginRight: "6px" } }),
+      "AWAKE \u2014 WHAT DO YOU NEED?"
+    ), !inlineMic && micArm && !listening && !hasSR && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]",
         style: { borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }
       },
       /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 12, style: { verticalAlign: "-2px", marginRight: "6px" } }),
-      "MIC ARMED \u2014 CLICK ANYWHERE TO GO LIVE \xB7 ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD"
+      "MIC ARMED \u2014 CLICK ANYWHERE TO GO LIVE"
     ), error && /* @__PURE__ */ React.createElement(
       "div",
       {
