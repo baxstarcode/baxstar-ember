@@ -321,6 +321,8 @@ const DEMO = {
             where the platform injects credentials.
    Hosted → set window.EMBER_API_PROXY to a server-side proxy that holds the key.
             See docs/DEPLOY.md. Never put an API key in this file — it ships to the browser. */
+const BUILD_STAMP = "__EMBER_BUILD__".startsWith("__") ? "dev" : "__EMBER_BUILD__";
+
 const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
 const API_ENDPOINT =
   (typeof window !== "undefined" && window.EMBER_API_PROXY) || ANTHROPIC_DIRECT;
@@ -857,6 +859,8 @@ export default function BaxstarEmber() {
   const [micArm, setMicArm] = useState(false);
   const [earState, setEarState] = useState("off"); // UI mirror of earModeRef
   const [voiceChoice, setVoiceChoice] = useState("");   // "" = automatic
+  const [voiceTrace, setVoiceTrace] = useState([]);      // last few speech events, on screen
+  const voiceTraceRef = useRef([]);
   const voiceChoiceRef = useRef("");
   const [voiceList, setVoiceList] = useState([]);       // device voices, for the picker // popup blocked at load; first click opens it
   const [speaking, setSpeaking] = useState(false);
@@ -933,14 +937,28 @@ export default function BaxstarEmber() {
     // let the next utterance audition the choice first.
     if (voiceChoice) voiceRef.current = null;
   }, [voiceChoice]);
-  // The picker needs the device's voices; iOS delivers them late via the event.
+  // The picker needs the device's voices. iOS delivers them LATE — often only
+  // after the first utterance, sometimes without ever firing voiceschanged
+  // (Chrome iOS in particular). One mount-time read left the picker invisible
+  // on Brady's phone, which read as "the voices you wired up aren't there".
+  // Poll for ~8s and keep the event listener as a bonus.
   useEffect(() => {
     const synth = window.speechSynthesis;
     if (!synth) return;
-    const fill = () => setVoiceList(synth.getVoices().filter((v) => v.lang && v.lang.startsWith("en")));
+    let tries = 0;
+    const fill = () => {
+      const vs = synth.getVoices().filter((v) => v.lang && v.lang.startsWith("en"));
+      if (vs.length) setVoiceList((old) => (vs.length >= old.length ? vs : old));
+      return vs.length;
+    };
     fill();
+    const iv = setInterval(() => {
+      tries += 1;
+      const n = fill();
+      if ((n && tries > 4) || tries > 20) clearInterval(iv);
+    }, 400);
     synth.addEventListener?.("voiceschanged", fill);
-    return () => synth.removeEventListener?.("voiceschanged", fill);
+    return () => { clearInterval(iv); synth.removeEventListener?.("voiceschanged", fill); };
   }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [chatMsgs, thinking]);
 
@@ -1165,6 +1183,15 @@ export default function BaxstarEmber() {
   // iOS kills a REUSED recognition session after a few start/stop cycles, so
   // every session is a fresh instance, and a generation counter keeps a stale
   // instance's late events away from live state.
+
+  // Flight recorder for the speech path. Brady can screenshot this instead of
+  // describing silence from a truck; the entries name the exact step that died.
+  function traceAdd(line) {
+    const stamp = new Date().toTimeString().slice(0, 8);
+    const arr = [...voiceTraceRef.current.slice(-5), stamp + " " + line];
+    voiceTraceRef.current = arr;
+    setVoiceTrace(arr);
+  }
 
   function setEar(mode) {
     earModeRef.current = mode;
@@ -1396,7 +1423,18 @@ export default function BaxstarEmber() {
       setMicArm(true);
       const un = () => { window.removeEventListener("pointerdown", un); unlockSpeech(); };
       window.addEventListener("pointerdown", un);
-      return;
+      // Every later tap nudges the engine too: iOS sometimes leaves synthesis
+      // paused after mic use, and a queued reply sits silent until resumed.
+      const pump = () => {
+        try {
+          const synth = window.speechSynthesis;
+          if (!synth) return;
+          synth.resume();
+          if (speechEndResolveRef.current && !synth.speaking) traceAdd("tap-pump: reply pending but engine idle");
+        } catch (e) {}
+      };
+      window.addEventListener("pointerdown", pump);
+      return () => { window.removeEventListener("pointerdown", un); window.removeEventListener("pointerdown", pump); };
     }
     if (hasSR) {
       const t = setTimeout(() => { startEar(); }, 600);
@@ -1614,13 +1652,14 @@ export default function BaxstarEmber() {
       // flipping it back off — that combination latches the self-hearing guard
       // shut and silently drops every spoken command from then on.
       u.onstart = () => {
+        traceAdd(`▶ speaking: ${v.name}`);
         ok = true; voiceRef.current = v;
         if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
         kick = setInterval(() => synth.resume(), 4000);
         res(true);
       };
       u.onend = finish;
-      u.onerror = () => { finish(); if (!ok) res(false); };
+      u.onerror = (e) => { if (!ok) traceAdd(`✕ ${v.name}: ${(e && e.error) || "error"}`); finish(); if (!ok) res(false); };
       // Chrome wedges if speak() lands in the same tick as cancel() — the queue
       // hasn't flushed and the new utterance silently never starts. Give it a
       // beat, and clear any leftover speaking state before trying again.
@@ -1638,7 +1677,7 @@ export default function BaxstarEmber() {
       }, 120);
       // Enhanced and Premium voices load from disk on first use. 1.1s was
       // cancelling them mid-load and reporting it as a dead path.
-      setTimeout(() => { if (!ok) { synth.cancel(); finish(); res(false); } }, 3000);
+      setTimeout(() => { if (!ok) { traceAdd(`⏱ ${v.name}: silent 3s`); synth.cancel(); finish(); res(false); } }, 3000);
     });
   }
 
@@ -1715,6 +1754,7 @@ export default function BaxstarEmber() {
         };
         if (slot) { slot.token = token; slot.finish = finish; }
         a.onplaying = () => {
+          traceAdd("▶ speaking: mp3 fallback (Brian)");
           ok = true;
           if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
           res(true);
@@ -1752,8 +1792,16 @@ export default function BaxstarEmber() {
     lastSpokenRef.current = normalizeHeard(short);
     lastSpokenAtRef.current = performance.now();
     // Phones: wait for the mic to actually surrender the audio channel, or the
-    // whole utterance plays into a closed session and comes out silent.
-    if (hasSR) await pauseInlineMic();
+    // whole utterance plays into a closed session and comes out silent. The
+    // session's onend is necessary but iOS deactivates the underlying audio
+    // session AFTER that, on its own clock — the extra settle is for the gap
+    // TEST-works-but-replies-are-silent lives in.
+    if (hasSR) {
+      const t0 = performance.now();
+      await pauseInlineMic();
+      if (isPhone) await new Promise((r) => setTimeout(r, 550));
+      traceAdd(`reply ${short.length}ch · mic freed ${Math.round(performance.now() - t0)}ms · path ${ttsPathRef.current || "audition"}`);
+    }
     releaseSpeechEnd();
     speechEndRef.current = null;
     const p = ttsPathRef.current;
@@ -1770,6 +1818,7 @@ export default function BaxstarEmber() {
       started = await speakCascade(short, slot);
     }
     if (!started) {
+      traceAdd("✕ every path silent — gave up");
       setError("No speech path worked — hit VOICE TEST under the core and read me the amber line.");
       return;
     }
@@ -3358,6 +3407,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               ))}
             </select>
             <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
+          </div>
+        )}
+        {inlineMic && voiceTrace.length > 0 && (
+          <div className="font-mono-x rounded-lg border px-3 py-1.5 text-[8px] leading-relaxed"
+            style={{ borderColor: "var(--ember-panel-line)", background: "#0c0a09", color: "var(--ink-faint)" }}>
+            {voiceTrace.slice(-3).map((l, i) => <div key={i}>{l}</div>)}
+            <div style={{ color: "var(--brass)" }}>BUILD {BUILD_STAMP} — screenshot this if she goes silent</div>
           </div>
         )}
         {!inlineMic && hasSR && earState === "passive" && (
