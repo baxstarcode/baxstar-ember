@@ -48,9 +48,14 @@ const IMPORT_LINE = 'import { useState, useEffect, useRef } from "react";';
 if (!raw.includes(IMPORT_LINE)) die(`expected import line not found in ${SRC}\n  looked for: ${IMPORT_LINE}`);
 if (!raw.includes("export default function BaxstarEmber()")) die("expected `export default function BaxstarEmber()` in source");
 
+// Stamp the build so a phone screenshot can prove which build it's running —
+// "did the deploy reach you" stops being a debate.
+const buildStamp = new Date().toISOString().slice(0, 16).replace("T", " ") + "Z";
+
 const jsx = raw
   .replace(IMPORT_LINE, "const { useState, useEffect, useRef } = React;")
   .replace("export default function BaxstarEmber()", "function BaxstarEmber()")
+  .replaceAll("__EMBER_BUILD__", buildStamp)
   + `\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(BaxstarEmber));\n`;
 
 let compiled;
