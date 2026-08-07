@@ -850,6 +850,7 @@ export default function BaxstarEmber() {
   // except the wake phrase (desktop). 'armed': wake heard, waiting briefly for
   // the command. 'live': capturing commands directly (phone tap-to-talk window).
   const earModeRef = useRef("off");
+  const earLastActiveRef = useRef(0);    // last wake/command; the ear sleeps when this goes stale
   const followTimerRef = useRef(null);   // phone: release deadline after an exchange
   const armTimerRef = useRef(null);      // wake heard, command window countdown
   const inlineGenRef = useRef(0);      // stale-session events must not touch live state
@@ -1208,6 +1209,11 @@ export default function BaxstarEmber() {
   // what's my day" answers immediately, no second breath needed.
   const WAKE_RE = /\b(?:ember|amber|embers)[\s,!.]*(?:a?wake|awaken|wake\s*up)\b/i;
 
+  // How long the desktop ear stays open with no wake phrase before it releases
+  // the mic. Long enough to cover a boat ride between spots; short enough that
+  // a tab left open overnight isn't a live microphone.
+  const EAR_IDLE_MS = 30 * 60 * 1000;
+
   // Soft ping: "I heard my name." Distinct from the boot chime — shorter,
   // higher, quieter.
   function wakePing() {
@@ -1274,6 +1280,17 @@ export default function BaxstarEmber() {
       } else {
         inlineFailsRef.current = 0;
       }
+      // The ear is allowed to be always-on, not on forever: with no wake phrase
+      // for EAR_IDLE_MS it goes back to sleep instead of holding an open mic
+      // over an empty room. Waking it is one tap.
+      if (earModeRef.current === "passive" &&
+          Date.now() - earLastActiveRef.current > EAR_IDLE_MS) {
+        clearEarTimers();
+        setEar("off");
+        setListening(false);
+        setError("Quiet for a while, so the mic went to sleep — tap it to wake her.");
+        return;
+      }
       setTimeout(() => {
         if (earModeRef.current !== "off" && !speakingRef.current && !inlineRecRef.current) startInlineSession();
       }, 180);
@@ -1291,6 +1308,7 @@ export default function BaxstarEmber() {
       if (mode === "passive") {
         const m = text.match(WAKE_RE);
         if (!m) return; // not for her — discarded, never sent anywhere
+        earLastActiveRef.current = Date.now();
         wakePing();
         const tail = text.slice(m.index + m[0].length).replace(/^[\s,!.—-]+/, "").trim();
         if (tail) { clearEarTimers(); sendRef.current(tail); return; }
@@ -1305,6 +1323,7 @@ export default function BaxstarEmber() {
         return;
       }
       // armed or live: this IS the command
+      earLastActiveRef.current = Date.now();
       clearEarTimers();
       if (mode === "armed") setEar("passive"); // desktop returns to wake-listening
       sendRef.current(text);
@@ -1341,6 +1360,7 @@ export default function BaxstarEmber() {
     if (!hasSR) { setError("This browser has no speech recognition. Safari or Chrome."); return false; }
     clearEarTimers();
     setEar("live");
+    earLastActiveRef.current = Date.now();
     inlineFailsRef.current = 0;
     if (!inlineRecRef.current && !startInlineSession()) {
       setEar("off");
@@ -1362,6 +1382,7 @@ export default function BaxstarEmber() {
     if (!hasSR) return false;
     clearEarTimers();
     setEar("passive");
+    earLastActiveRef.current = Date.now();
     inlineFailsRef.current = 0;
     if (!inlineRecRef.current && !startInlineSession()) { setEar("off"); return false; }
     return true;
@@ -1436,21 +1457,14 @@ export default function BaxstarEmber() {
       window.addEventListener("pointerdown", pump);
       return () => { window.removeEventListener("pointerdown", un); window.removeEventListener("pointerdown", pump); };
     }
-    if (hasSR) {
-      const t = setTimeout(() => { startEar(); }, 600);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => {
-      if (!openMicBridge(true)) {
-        setMicArm(true);
-        const arm = () => {
-          window.removeEventListener("pointerdown", arm);
-          openMicBridge(true);
-        };
-        window.addEventListener("pointerdown", arm);
-      }
-    }, 350);
-    return () => clearTimeout(t);
+    // The mic NEVER self-starts. It used to: the ear opened 600ms after load
+    // (and the no-SR path auto-opened the bridge popup), so any tab that merely
+    // rendered Ember — a shared laptop, an automated test — was streaming room
+    // audio to the browser's recognition service with no tap ever given. During
+    // one automated run it transcribed a stretch of ambient house conversation
+    // straight into the thread. Listening is consent: it starts at the mic
+    // control or not at all.
+    if (!hasSR) setMicArm(true); // show the bridge button; opening it is a click
   }, []);
 
   /* ---------- OPS: SPEECH — three-path cascade with diagnostics ---------- */

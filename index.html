@@ -615,7 +615,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-04 23:46Z".startsWith("__") ? "dev" : "2026-08-04 23:46Z";
+  const BUILD_STAMP = "2026-08-07 05:07Z".startsWith("__") ? "dev" : "2026-08-07 05:07Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -863,6 +863,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [coreMode, setCoreMode] = useState("enigma");
     const speechUnlockedRef = useRef(false);
     const earModeRef = useRef("off");
+    const earLastActiveRef = useRef(0);
     const followTimerRef = useRef(null);
     const armTimerRef = useRef(null);
     const inlineGenRef = useRef(0);
@@ -1168,6 +1169,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
     }
     const WAKE_RE = /\b(?:ember|amber|embers)[\s,!.]*(?:a?wake|awaken|wake\s*up)\b/i;
+    const EAR_IDLE_MS = 30 * 60 * 1e3;
     function wakePing() {
       try {
         const C = window.AudioContext || window.webkitAudioContext;
@@ -1240,6 +1242,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         } else {
           inlineFailsRef.current = 0;
         }
+        if (earModeRef.current === "passive" && Date.now() - earLastActiveRef.current > EAR_IDLE_MS) {
+          clearEarTimers();
+          setEar("off");
+          setListening(false);
+          setError("Quiet for a while, so the mic went to sleep \u2014 tap it to wake her.");
+          return;
+        }
         setTimeout(() => {
           if (earModeRef.current !== "off" && !speakingRef.current && !inlineRecRef.current) startInlineSession();
         }, 180);
@@ -1257,6 +1266,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (mode === "passive") {
           const m = text.match(WAKE_RE);
           if (!m) return;
+          earLastActiveRef.current = Date.now();
           wakePing();
           const tail = text.slice(m.index + m[0].length).replace(/^[\s,!.—-]+/, "").trim();
           if (tail) {
@@ -1272,6 +1282,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           }, 2600);
           return;
         }
+        earLastActiveRef.current = Date.now();
         clearEarTimers();
         if (mode === "armed") setEar("passive");
         sendRef.current(text);
@@ -1313,6 +1324,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
       clearEarTimers();
       setEar("live");
+      earLastActiveRef.current = Date.now();
       inlineFailsRef.current = 0;
       if (!inlineRecRef.current && !startInlineSession()) {
         setEar("off");
@@ -1330,6 +1342,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!hasSR) return false;
       clearEarTimers();
       setEar("passive");
+      earLastActiveRef.current = Date.now();
       inlineFailsRef.current = 0;
       if (!inlineRecRef.current && !startInlineSession()) {
         setEar("off");
@@ -1407,23 +1420,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           window.removeEventListener("pointerdown", pump);
         };
       }
-      if (hasSR) {
-        const t2 = setTimeout(() => {
-          startEar();
-        }, 600);
-        return () => clearTimeout(t2);
-      }
-      const t = setTimeout(() => {
-        if (!openMicBridge(true)) {
-          setMicArm(true);
-          const arm = () => {
-            window.removeEventListener("pointerdown", arm);
-            openMicBridge(true);
-          };
-          window.addEventListener("pointerdown", arm);
-        }
-      }, 350);
-      return () => clearTimeout(t);
+      if (!hasSR) setMicArm(true);
     }, []);
     function chime() {
       var _a2;

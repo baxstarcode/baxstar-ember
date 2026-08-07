@@ -383,3 +383,25 @@ only external request is the font stylesheet.
 That is the right trade for local iteration: no compile step, readable component stack
 traces, and it runs on python3 alone, which matters because there is no Node on Brady's
 Mac. `index.html` is the artifact that must be self-contained, and it is.
+
+## ~~10. The mic self-started on page load and never went back to sleep~~ — RESOLVED
+
+Merely opening Ember started the desktop ear 600ms later (the no-SpeechRecognition
+path even auto-opened the mic-bridge popup), and once listening, nothing but a tap or
+sleep phrase ever stopped it. The passive ear discards non-wake text locally, but the
+Web Speech API still streams the room's audio to the browser vendor's recognizer the
+whole time — so any rendered tab was a live microphone with no consent gesture. This
+was caught in the wild: an automated browser test transcribed a stretch of ambient
+house conversation into the chat thread, and Ember replied to two fragments as if
+they were prompts.
+
+Two rules now: **the mic never self-starts** (listening begins at the mic control or
+not at all — the no-SR path shows the bridge button instead of opening it), and **the
+ear sleeps after 30 quiet minutes** (`EAR_IDLE_MS`; no wake phrase for that long
+releases the mic with a status line saying how to wake her). Wake/command activity
+refreshes the window. Phone tap-to-talk already self-released after its 9s follow
+window and is unchanged.
+
+**Verified:** all four suites green (worker 35, outbox 27, posttime 24, sleep 50);
+rebuilt `index.html` + `_preview.html` carry the change; headless load renders with
+zero page errors.
