@@ -286,6 +286,27 @@ async function startAndCookie(provider, env = baseEnv, f = stubFetch([])) {
   const res = await worker.fetch(post(chat({ mcp_servers: [{ name: "gmail", url: "https://x" }] })), env, {}, { fetch: f });
   check("block 2 degrade path intact: chat survives a dead connector", res.status === 200 && res.headers.get("x-ember-connectors") === "degraded");
   check("retry drops connectors and the beta header", !JSON.parse(f.calls[1].body).mcp_servers);
+  check("degraded header is exposed cross-origin, not just set", (res.headers.get("access-control-expose-headers") || "").includes("x-ember-connectors"));
+}
+
+{
+  // Live failure, 2026-08: Anthropic's real error text is "Error while communicating
+  // with MCP server." — no "auth" substring. A guard requiring both words never
+  // fires on it, so a single dead connector took plain chat down with it, which is
+  // the exact failure this retry exists to prevent. Regression-locked here because
+  // the previous test's fixture text happened to contain "auth" and passed either way.
+  let n = 0;
+  const f = stubFetch([
+    ["api.anthropic.com", () => {
+      n++;
+      return n === 1
+        ? jsonRes({ error: { message: "Error while communicating with MCP server." } }, 400)
+        : jsonRes({ ok: true });
+    }],
+  ]);
+  const env = { ...baseEnv, MCP_TOKEN_GMAIL: "stale" };
+  const res = await worker.fetch(post(chat({ mcp_servers: [{ name: "gmail", url: "https://x" }] })), env, {}, { fetch: f });
+  check("degrades on Anthropic's real error text, which never mentions auth", res.status === 200 && res.headers.get("x-ember-connectors") === "degraded");
 }
 
 {

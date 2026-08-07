@@ -91,6 +91,10 @@ function corsHeaders(origin, env) {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
+    // Without this, the custom degraded-connectors signal below is set on the
+    // response but invisible to page JS — the browser only exposes
+    // Content-Type cross-origin unless a header is named here.
+    "Access-Control-Expose-Headers": "x-ember-connectors",
   };
   if (ok) h["Access-Control-Allow-Origin"] = origin;
   return { headers: h, ok };
@@ -533,7 +537,7 @@ export default {
     // question, let the connector panels fall back to demo data.
     if (upstream.status >= 400 && body.mcp_servers) {
       const raw = await upstream.clone().text();
-      if (/mcp server/i.test(raw) && /auth/i.test(raw)) {
+      if (/mcp server/i.test(raw)) {
         const { mcp_servers, ...withoutConnectors } = body;
         const retryHeaders = { ...upstreamHeaders };
         delete retryHeaders["anthropic-beta"];
