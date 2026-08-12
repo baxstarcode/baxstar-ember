@@ -538,7 +538,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const OUTBOX_URL_KEY = "ember-outbox-url";
   const CAPTION_DRAFT_KEY = "ember-caption-draft";
   function buildBridgeHtml() {
-    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Stop Listening</button><div class="note">Keep this little window open \u2014 it feeds your voice to Ember. Close it to end voice input.</div><script>\nvar P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction canHear(){return active&&!sayBusy&&!extBusy;}\nfunction regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("LISTENING");}catch(e){setSt(/already/i.test(String(e&&e.message))?"LISTENING":"MIC UNAVAILABLE - TAP START");}}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){if(canHear()){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\nactive=true;post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";regain();}\nfunction stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\ndocument.getElementById("btn").onclick=function(){active?stopSR():startSR();};\nnavigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\nvar C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){setSt("MIC PERMISSION DENIED");});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nvar sayGen=0;\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\nfunction go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nvar done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nu.onstart=function(){if(done||gen!==sayGen)return;started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\nu.onend=fin;u.onerror=fin;\nvar started=false;setTimeout(function(){if(gen!==sayGen)return;try{synth.speak(u);}catch(e){fin();return;}\nsetTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nfunction killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nwindow.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\nif(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\nif(m.t==="micResume"){extBusy=false;regain();}\nif(m.t==="close"){window.close();}});\nwindow.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n<\/script></body></html>';
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}#st{font-size:11px;letter-spacing:.2em;color:#a08a82}#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}</style></head><body><h1>EMBER MIC BRIDGE</h1><div id="st">STARTING\u2026</div><div id="bar"><div id="fill"></div></div><button id="btn">Turn Mic Off</button><div class="note">Voice mode stays live while this window is open. Tap the mic in Ember or this button to turn it off.</div><script>\nvar P=window.opener;var active=false;var rec=null;var stream=null;var audioCtx=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\nfunction post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\nfunction setSt(s){document.getElementById("st").textContent=s;}\nfunction canHear(){return active&&!sayBusy&&!extBusy;}\nfunction regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("STARTING\u2026");}catch(e){var already=/already/i.test(String(e&&e.message));setSt(already?"LISTENING":"MIC UNAVAILABLE - TAP START");if(already)post({t:"listening",on:true});}}else{post({t:"listening",on:false});setSt(extBusy||sayBusy?"MUTED - EMBER SPEAKING":"PAUSED");}}\nfunction startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){post({t:"error",message:"This browser has no speech recognition. Use Safari or Chrome."});setTimeout(closeBridge,0);return;}\nrec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\nrec.onstart=function(){setSt("LISTENING");post({t:"listening",on:true});};\nrec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\nrec.onend=function(){post({t:"listening",on:false});if(canHear()){try{rec.start();}catch(e){}}};\nrec.onerror=function(ev){if(ev.error==="not-allowed"||ev.error==="service-not-allowed"){active=false;post({t:"error",message:"Mic blocked \u2014 allow microphone access, then tap the mic again."});setTimeout(closeBridge,0);}};\nactive=true;post({t:"session",on:true});document.getElementById("btn").textContent="Turn Mic Off";regain();}\nfunction releaseMedia(){if(stream){stream.getTracks().forEach(function(t){t.stop();});stream=null;}if(audioCtx){try{audioCtx.close();}catch(e){}audioCtx=null;}an=null;}\nfunction closeBridge(){active=false;try{rec&&rec.abort();}catch(e){}post({t:"listening",on:false});post({t:"session",on:false});releaseMedia();window.close();}\ndocument.getElementById("btn").onclick=closeBridge;\nvar gum=navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;if(!gum){post({t:"error",message:"Microphone access requires Safari or Chrome over HTTPS."});setTimeout(closeBridge,0);}else gum.call(navigator.mediaDevices,{audio:true}).then(function(s){\nstream=s;var C=window.AudioContext||window.webkitAudioContext;audioCtx=new C();an=audioCtx.createAnalyser();an.fftSize=256;audioCtx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\nfunction loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\ndocument.getElementById("fill").style.width=(v*100)+"%";\nif(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\nrequestAnimationFrame(loop);}loop();startSR();\n}).catch(function(){active=false;post({t:"error",message:"Mic permission denied \u2014 allow microphone access, then tap the mic again."});setTimeout(closeBridge,0);});\nfunction pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\nif(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\nvar sayGen=0;\nfunction say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\nfunction go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\nvar u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\nvar done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nu.onstart=function(){if(done||gen!==sayGen)return;started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\nu.onend=fin;u.onerror=fin;\nvar started=false;setTimeout(function(){if(gen!==sayGen)return;try{synth.speak(u);}catch(e){fin();return;}\nsetTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\nif(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\nfunction killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\nwindow.addEventListener("message",function(e){if(e.source!==P)return;var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?closeBridge():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\nif(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\nif(m.t==="micResume"){extBusy=false;regain();}\nif(m.t==="close"){closeBridge();}});\nwindow.onbeforeunload=function(){releaseMedia();post({t:"closed"});post({t:"listening",on:false});post({t:"session",on:false});};\n<\/script></body></html>';
   }
   const ICON_GLYPHS = {
     chat: /* @__PURE__ */ React.createElement("path", { d: "M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-7l-4.5 4v-4A3 3 0 0 1 4 13z" }),
@@ -669,7 +669,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const speechUnlockedRef = useRef(false);
     const inlineRecRef = useRef(null);
     const inlineWantRef = useRef(false);
-    const [micArm, setMicArm] = useState(false);
+    const inlineGateRef = useRef(false);
+    const [micOn, setMicOn] = useState(false);
     const [speaking, setSpeaking] = useState(false);
     const speakingRef = useRef(false);
     const voiceRef = useRef(null);
@@ -919,6 +920,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (ttsPathRef.current === "mp3") ttsPathRef.current = null;
       voiceRef.current = null;
     }
+    function setVoiceEnabled(on) {
+      voiceOnRef.current = on;
+      setVoiceOn(on);
+    }
     function startInlineMic() {
       unlockSpeech();
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -938,14 +943,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       rec.interimResults = false;
       rec.lang = "en-US";
       rec.onstart = () => {
+        setMicOn(true);
         setListening(true);
-        setMicArm(false);
         setError("");
       };
       rec.onerror = (e) => {
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
           setError("Mic blocked \u2014 tap aA in the address bar, Website Settings, Microphone, Allow.");
           inlineRecRef.current = null;
+          inlineWantRef.current = false;
+          setVoiceEnabled(false);
+          setMicOn(false);
           setListening(false);
         }
       };
@@ -954,7 +962,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           setListening(false);
           return;
         }
-        if (inlineWantRef.current && !speakingRef.current) {
+        if (inlineWantRef.current && !inlineGateRef.current) {
           try {
             rec.start();
           } catch (e) {
@@ -977,7 +985,15 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       inlineWantRef.current = true;
       try {
         rec.start();
+        setVoiceEnabled(true);
+        setMicOn(true);
+        setError("");
       } catch (e) {
+        inlineRecRef.current = null;
+        inlineWantRef.current = false;
+        setMicOn(false);
+        setError("Could not start the mic. Tap again to retry.");
+        return false;
       }
       return true;
     }
@@ -987,60 +1003,72 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       inlineRecRef.current = null;
       if (rec) {
         try {
-          rec.stop();
+          rec.abort();
         } catch (e) {
         }
       }
+      setMicOn(false);
       setListening(false);
     }
-    function toggleMic() {
+    function stopMicSession() {
+      setVoiceEnabled(false);
       if (inlineMic) {
-        if (inlineRecRef.current) stopInlineMic();
+        stopInlineMic();
+        stopSpeaking();
+        return;
+      }
+      const w = popupRef.current;
+      popupRef.current = null;
+      if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: "close" }, "*");
+      bridgeLevelRef.current = { v: 0, wave: null, ts: 0 };
+      setMicOn(false);
+      setListening(false);
+      stopSpeaking();
+    }
+    function toggleMic() {
+      unlockSpeech();
+      if (inlineMic) {
+        if (inlineRecRef.current) stopMicSession();
         else startInlineMic();
         return;
       }
       const w = popupRef.current;
       if (w && !w.closed) {
-        w.postMessage({ ch: "EMBERMIC", t: "toggle" }, "*");
-        w.focus();
+        stopMicSession();
         return;
       }
       openMicBridge();
     }
-    function openMicBridge(silent = false) {
+    function openMicBridge() {
       stopSpeaking();
       const url = URL.createObjectURL(new Blob([buildBridgeHtml()], { type: "text/html" }));
       const w = window.open(url, "emberMic", "width=400,height=300");
       if (!w) {
-        if (!silent) setError("Popup blocked \u2014 allow popups for claude.ai so the Mic Bridge can open.");
+        setError("Popup blocked \u2014 allow popups for claude.ai so the Mic Bridge can open.");
         return false;
       }
       popupRef.current = w;
-      setMicArm(false);
+      setVoiceEnabled(true);
+      setMicOn(true);
+      setError("");
       setTimeout(() => URL.revokeObjectURL(url), 2e4);
       return true;
     }
     useEffect(() => {
-      if (inlineMic) {
-        setMicArm(true);
-        const un = () => {
-          window.removeEventListener("pointerdown", un);
-          unlockSpeech();
-        };
-        window.addEventListener("pointerdown", un);
-        return;
-      }
-      const t = setTimeout(() => {
-        if (!openMicBridge(true)) {
-          setMicArm(true);
-          const arm = () => {
-            window.removeEventListener("pointerdown", arm);
-            openMicBridge(true);
-          };
-          window.addEventListener("pointerdown", arm);
+      return () => {
+        inlineWantRef.current = false;
+        const rec = inlineRecRef.current;
+        inlineRecRef.current = null;
+        if (rec) {
+          try {
+            rec.abort();
+          } catch (e) {
+          }
         }
-      }, 350);
-      return () => clearTimeout(t);
+        const w = popupRef.current;
+        popupRef.current = null;
+        if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: "close" }, "*");
+      };
     }, []);
     function chime() {
       var _a2;
@@ -1129,7 +1157,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const rec = inlineRecRef.current;
       if (rec) {
         try {
-          rec.stop();
+          rec.abort();
         } catch (e) {
         }
       }
@@ -1149,12 +1177,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }
     function beginSpeech() {
       const epoch = ++speechEpochRef.current;
+      inlineGateRef.current = true;
       postBridge("micPause");
       pauseInlineMic();
       return epoch;
     }
     function endSpeech(epoch) {
       if (epoch !== speechEpochRef.current) return;
+      inlineGateRef.current = false;
       postBridge("micResume");
       resumeInlineMic();
     }
@@ -1407,6 +1437,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function stopSpeaking() {
       var _a2;
       speechEpochRef.current++;
+      inlineGateRef.current = false;
       (_a2 = window.speechSynthesis) == null ? void 0 : _a2.cancel();
       if (audioElRef.current) {
         try {
@@ -1591,13 +1622,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     useEffect(() => {
       const onMsg = (e) => {
         var _a2;
+        if (e.source !== popupRef.current) return;
         const m = e.data || {};
         if (m.ch !== "EMBERMIC") return;
+        if (m.t === "error" && m.message) setError(m.message);
         if (m.t === "lvl") bridgeLevelRef.current = { v: m.v, wave: m.w, ts: performance.now() };
-        if (m.t === "listening") {
-          setListening(!!m.on);
-          if (m.on) setMicArm(false);
-        }
+        if (m.t === "session") setMicOn(!!m.on);
+        if (m.t === "listening") setListening(!!m.on);
         if (m.t === "speaking") {
           const oursToBelieve = ttsPathRef.current === "bridge" || !!bridgeEndRef.current;
           if (oursToBelieve) {
@@ -1611,13 +1642,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           }
         }
         if (m.t === "closed") {
-          setListening(false);
-          speakingRef.current = false;
-          setSpeaking(false);
           popupRef.current = null;
+          setVoiceEnabled(false);
+          setMicOn(false);
+          setListening(false);
           const endBridge = bridgeEndRef.current;
           bridgeEndRef.current = null;
           if (endBridge) endBridge();
+          stopSpeaking();
         }
         if (m.t === "transcript" && m.text) {
           if (!speakingRef.current && !isEcho(m.text)) sendRef.current(m.text);
@@ -2783,13 +2815,13 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
-        onClick: () => setVoiceOn(!voiceOn),
+        onClick: () => setVoiceEnabled(!voiceOn),
         title: "Spoken replies",
         className: `header-control tgl font-mono-x ${voiceOn ? "on" : ""}`,
         "aria-pressed": voiceOn
       },
       /* @__PURE__ */ React.createElement("svg", { className: "tgl-track", viewBox: "0 0 112 52", width: "30", height: "14", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("rect", { x: "2", y: "2", width: "108", height: "48", rx: "24", fill: "#0A0907", stroke: "#5F4428", strokeWidth: "4" }), /* @__PURE__ */ React.createElement("path", { d: "M26 26h60", stroke: "#3A281B", strokeWidth: "10", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("g", { className: "tgl-knob-g" }, /* @__PURE__ */ React.createElement("circle", { cx: "30", cy: "26", r: "17", className: "tgl-knob-o", strokeWidth: "3" }), /* @__PURE__ */ React.createElement("circle", { cx: "30", cy: "26", r: "5", className: "tgl-knob-i" }))),
-      voiceOn ? "VOICE ON" : "VOICE OFF"
+      voiceOn ? "SPEAKER ON" : "SPEAKER OFF"
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -2869,38 +2901,31 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), inlineMic && // Phone controls: big targets, always visible. Left = mic, right =
-    // spoken replies. Small header chips are unusable in a truck.
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), inlineMic && // Phone controls: big targets, always visible. The mic is a true
+    // session toggle: one tap starts it and the same control stops it.
     /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: toggleMic,
+        "aria-pressed": micOn,
         className: "mic-rail font-mono-x flex-1 rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]",
-        style: listening ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" } : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+        style: micOn ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" } : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
       },
       /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 13, style: { verticalAlign: "-2px", marginRight: "6px" } }),
-      listening ? "LISTENING \u2014 TAP TO STOP" : "TAP TO TALK TO EMBER"
+      micOn ? listening ? "LISTENING \u2014 TAP TO STOP" : "MIC ON \u2014 TAP TO STOP" : "TAP TO TALK TO EMBER"
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => {
           unlockSpeech();
-          setVoiceOn(!voiceOn);
+          setVoiceEnabled(!voiceOn);
         },
         "aria-pressed": voiceOn,
         className: "font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]",
         style: voiceOn ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" } : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }
       },
-      voiceOn ? "VOICE ON" : "MUTED"
-    )), !inlineMic && micArm && !listening && /* @__PURE__ */ React.createElement(
-      "div",
-      {
-        className: "mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]",
-        style: { borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }
-      },
-      /* @__PURE__ */ React.createElement(EmberIcon, { name: "mic", size: 12, style: { verticalAlign: "-2px", marginRight: "6px" } }),
-      "MIC ARMED \u2014 CLICK ANYWHERE TO GO LIVE \xB7 ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD"
-    ), error && /* @__PURE__ */ React.createElement(
+      voiceOn ? "SPEAKER ON" : "MUTED"
+    )), error && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "rounded-lg border px-4 py-2 text-xs font-semibold",
@@ -2933,13 +2958,52 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         e.stopPropagation();
         sendCommand(`Create a Quo task to call back ${v.from} (${v.line || "Fishing"} line) tomorrow morning re: ${v.vm ? "their voicemail" : "their missed call"}.`);
       } }, "Task"))
-    ))), /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Today's Revenue", count: "+$1,240", countColor: "#ffb87a", codexCount: true, delay: "0.25s" }, /* @__PURE__ */ React.createElement(Odometer, { value: "$01,240" }), /* @__PURE__ */ React.createElement(Row, { who: "2 FareHarbor bookings" }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-xs", style: { color: "var(--ink-dim)" } }, "Rod upgrade \xD72 \xB7 Trip Protection \xD71")))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-col" }, /* @__PURE__ */ React.createElement("div", { className: `core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}` }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement(ContextLever, { side: "left", label: "Draft Reply", state: leverState("draft"), onPull: leverDraftReply }), /* @__PURE__ */ React.createElement(ContextLever, { side: "right", label: "Create Task", state: leverState("task"), onPull: leverCreateTask }), /* @__PURE__ */ React.createElement("div", { className: "reveal text-center", style: { animationDelay: "0.1s" } }, /* @__PURE__ */ React.createElement("h2", { className: "text-2xl font-bold tracking-tight" }, dayPart, ",", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } }, "Brady.")), /* @__PURE__ */ React.createElement("div", { className: "mt-3.5 flex items-center justify-center gap-3" }, /* @__PURE__ */ React.createElement(Badge, { label: `${data.voicemails.length} voicemails` }), /* @__PURE__ */ React.createElement(Badge, { label: `${data.emails.length} unread` }))), /* @__PURE__ */ React.createElement("div", { className: "reveal core-wrap flex flex-col items-center", style: { animationDelay: "0.35s" } }, coreMode === "enigma" ? /* @__PURE__ */ React.createElement("div", { className: "reactor-stage", onClick: toggleMic, role: "button", "aria-label": "Voice input" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/reactor-bezel@2x.webp`, alt: "", "aria-hidden": "true", className: "reactor-bezel" }), /* @__PURE__ */ React.createElement("div", { className: "reactor-core-orb" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/controls/mic-orb-shell.svg`, alt: "", "aria-hidden": "true", className: "orb-shell" }), /* @__PURE__ */ React.createElement("div", { ref: gasRef, className: "gas-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "gas g1" }), /* @__PURE__ */ React.createElement("div", { className: "gas g2" }), /* @__PURE__ */ React.createElement("div", { className: "gas g3" }), /* @__PURE__ */ React.createElement("div", { className: "gas g4" })), /* @__PURE__ */ React.createElement("div", { ref: ventRef, className: "pointer-events-none absolute z-10", style: { inset: "-26px" } }))) : /* @__PURE__ */ React.createElement("div", { className: "scope-bezel mx-auto my-6", onClick: toggleMic, role: "button", "aria-label": "Voice input" }, /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", left: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", right: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", left: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", right: "6px" } }), /* @__PURE__ */ React.createElement("canvas", { ref: scopeRef, width: "300", height: "110", style: { display: "block" } })), /* @__PURE__ */ React.createElement("div", { className: "mt-4 flex gap-1" }, /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE")), /* @__PURE__ */ React.createElement(
+    ))), /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Today's Revenue", count: "+$1,240", countColor: "#ffb87a", codexCount: true, delay: "0.25s" }, /* @__PURE__ */ React.createElement(Odometer, { value: "$01,240" }), /* @__PURE__ */ React.createElement(Row, { who: "2 FareHarbor bookings" }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-xs", style: { color: "var(--ink-dim)" } }, "Rod upgrade \xD72 \xB7 Trip Protection \xD71")))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-col" }, /* @__PURE__ */ React.createElement("div", { className: `core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}` }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement(ContextLever, { side: "left", label: "Draft Reply", state: leverState("draft"), onPull: leverDraftReply }), /* @__PURE__ */ React.createElement(ContextLever, { side: "right", label: "Create Task", state: leverState("task"), onPull: leverCreateTask }), /* @__PURE__ */ React.createElement("div", { className: "reveal text-center", style: { animationDelay: "0.1s" } }, /* @__PURE__ */ React.createElement("h2", { className: "text-2xl font-bold tracking-tight" }, dayPart, ",", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } }, "Brady.")), /* @__PURE__ */ React.createElement("div", { className: "mt-3.5 flex items-center justify-center gap-3" }, /* @__PURE__ */ React.createElement(Badge, { label: `${data.voicemails.length} voicemails` }), /* @__PURE__ */ React.createElement(Badge, { label: `${data.emails.length} unread` }))), /* @__PURE__ */ React.createElement("div", { className: "reveal core-wrap flex flex-col items-center", style: { animationDelay: "0.35s" } }, coreMode === "enigma" ? /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "reactor-stage",
+        onClick: toggleMic,
+        onKeyDown: (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleMic();
+          }
+        },
+        role: "button",
+        tabIndex: 0,
+        "aria-label": micOn ? "Turn microphone off" : "Turn microphone on",
+        "aria-pressed": micOn
+      },
+      /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/reactor-bezel@2x.webp`, alt: "", "aria-hidden": "true", className: "reactor-bezel" }),
+      /* @__PURE__ */ React.createElement("div", { className: "reactor-core-orb" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/controls/mic-orb-shell.svg`, alt: "", "aria-hidden": "true", className: "orb-shell" }), /* @__PURE__ */ React.createElement("div", { ref: gasRef, className: "gas-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "gas g1" }), /* @__PURE__ */ React.createElement("div", { className: "gas g2" }), /* @__PURE__ */ React.createElement("div", { className: "gas g3" }), /* @__PURE__ */ React.createElement("div", { className: "gas g4" })), /* @__PURE__ */ React.createElement("div", { ref: ventRef, className: "pointer-events-none absolute z-10", style: { inset: "-26px" } }))
+    ) : /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "scope-bezel mx-auto my-6",
+        onClick: toggleMic,
+        onKeyDown: (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleMic();
+          }
+        },
+        role: "button",
+        tabIndex: 0,
+        "aria-label": micOn ? "Turn microphone off" : "Turn microphone on",
+        "aria-pressed": micOn
+      },
+      /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", left: "6px" } }),
+      /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", right: "6px" } }),
+      /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", left: "6px" } }),
+      /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", right: "6px" } }),
+      /* @__PURE__ */ React.createElement("canvas", { ref: scopeRef, width: "300", height: "110", style: { display: "block" } })
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-4 flex gap-1" }, /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE")), /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "font-mono-x mt-3 text-center text-[10px] tracking-[0.3em]",
         style: { color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }
       },
-      thinking ? "THINKING\u2026" : listening ? "LISTENING\u2026" : speaking ? "SPEAKING\u2026" : "TAP TO OPEN MIC"
+      thinking ? "THINKING\u2026" : speaking ? "SPEAKING\u2026" : listening ? "LISTENING \u2014 TAP TO TURN OFF" : micOn ? "MIC ON \u2014 TAP TO TURN OFF" : "MIC OFF \u2014 TAP TO TURN ON"
     ), speaking && /* @__PURE__ */ React.createElement("button", { className: "chip solid mt-2", onClick: stopSpeaking }, "\u23F9 Stop Voice"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost qframe mt-2", onClick: testVoice }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "speaker", size: 13, style: { verticalAlign: "-2px", marginRight: "5px" } }), "VOICE TEST"), voiceDiag && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]", style: { color: "var(--ember-amber)" } }, voiceDiag)), /* @__PURE__ */ React.createElement("div", { className: "reveal relative w-full max-w-sm", style: { animationDelay: "0.55s" } }, /* @__PURE__ */ React.createElement(
       "input",
       {

@@ -283,32 +283,34 @@ function buildBridgeHtml() {
     + '</style></head><body>'
     + '<h1>EMBER MIC BRIDGE</h1><div id="st">STARTING…</div>'
     + '<div id="bar"><div id="fill"></div></div>'
-    + '<button id="btn">Stop Listening</button>'
-    + '<div class="note">Keep this little window open — it feeds your voice to Ember. Close it to end voice input.</div>'
+    + '<button id="btn">Turn Mic Off</button>'
+    + '<div class="note">Voice mode stays live while this window is open. Tap the mic in Ember or this button to turn it off.</div>'
     + '<scr' + 'ipt>\n'
-    + 'var P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\n'
+    + 'var P=window.opener;var active=false;var rec=null;var stream=null;var audioCtx=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\n'
     + 'function post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\n'
     + 'function setSt(s){document.getElementById("st").textContent=s;}\n'
     + 'function canHear(){return active&&!sayBusy&&!extBusy;}\n'
     // start() throws if recognition is already running (harmless) or if the mic
     // is genuinely unavailable (not harmless). Swallowing both and claiming
     // LISTENING regardless meant a dead mic looked identical to a live one.
-    + 'function regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("LISTENING");}catch(e){setSt(/already/i.test(String(e&&e.message))?"LISTENING":"MIC UNAVAILABLE - TAP START");}}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\n'
-    + 'function startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\n'
+    + 'function regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("STARTING…");}catch(e){var already=/already/i.test(String(e&&e.message));setSt(already?"LISTENING":"MIC UNAVAILABLE - TAP START");if(already)post({t:"listening",on:true});}}else{post({t:"listening",on:false});setSt(extBusy||sayBusy?"MUTED - EMBER SPEAKING":"PAUSED");}}\n'
+    + 'function startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){post({t:"error",message:"This browser has no speech recognition. Use Safari or Chrome."});setTimeout(closeBridge,0);return;}\n'
     + 'rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\n'
+    + 'rec.onstart=function(){setSt("LISTENING");post({t:"listening",on:true});};\n'
     + 'rec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\n'
-    + 'rec.onend=function(){if(canHear()){try{rec.start();}catch(e){}}};\n'
-    + 'rec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\n'
-    + 'active=true;post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";regain();}\n'
-    + 'function stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\n'
-    + 'document.getElementById("btn").onclick=function(){active?stopSR():startSR();};\n'
-    + 'navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\n'
-    + 'var C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\n'
+    + 'rec.onend=function(){post({t:"listening",on:false});if(canHear()){try{rec.start();}catch(e){}}};\n'
+    + 'rec.onerror=function(ev){if(ev.error==="not-allowed"||ev.error==="service-not-allowed"){active=false;post({t:"error",message:"Mic blocked — allow microphone access, then tap the mic again."});setTimeout(closeBridge,0);}};\n'
+    + 'active=true;post({t:"session",on:true});document.getElementById("btn").textContent="Turn Mic Off";regain();}\n'
+    + 'function releaseMedia(){if(stream){stream.getTracks().forEach(function(t){t.stop();});stream=null;}if(audioCtx){try{audioCtx.close();}catch(e){}audioCtx=null;}an=null;}\n'
+    + 'function closeBridge(){active=false;try{rec&&rec.abort();}catch(e){}post({t:"listening",on:false});post({t:"session",on:false});releaseMedia();window.close();}\n'
+    + 'document.getElementById("btn").onclick=closeBridge;\n'
+    + 'var gum=navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;if(!gum){post({t:"error",message:"Microphone access requires Safari or Chrome over HTTPS."});setTimeout(closeBridge,0);}else gum.call(navigator.mediaDevices,{audio:true}).then(function(s){\n'
+    + 'stream=s;var C=window.AudioContext||window.webkitAudioContext;audioCtx=new C();an=audioCtx.createAnalyser();an.fftSize=256;audioCtx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\n'
     + 'function loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\n'
     + 'document.getElementById("fill").style.width=(v*100)+"%";\n'
     + 'if(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\n'
     + 'requestAnimationFrame(loop);}loop();startSR();\n'
-    + '}).catch(function(){setSt("MIC PERMISSION DENIED");});\n'
+    + '}).catch(function(){active=false;post({t:"error",message:"Mic permission denied — allow microphone access, then tap the mic again."});setTimeout(closeBridge,0);});\n'
     + 'function pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
     + 'if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\n'
     // A superseded utterance never posts 'speaking on' (a late start would otherwise
@@ -338,11 +340,11 @@ function buildBridgeHtml() {
     + 'setTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
     + 'function killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
+    + 'window.addEventListener("message",function(e){if(e.source!==P)return;var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?closeBridge():startSR();}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
     + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
     + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
-    + 'if(m.t==="close"){window.close();}});\n'
-    + 'window.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n'
+    + 'if(m.t==="close"){closeBridge();}});\n'
+    + 'window.onbeforeunload=function(){releaseMedia();post({t:"closed"});post({t:"listening",on:false});post({t:"session",on:false});};\n'
     + '</scr' + 'ipt></body></html>';
 }
 
@@ -630,7 +632,8 @@ export default function BaxstarEmber() {
   const speechUnlockedRef = useRef(false);
   const inlineRecRef = useRef(null);   // in-page recognition (phones)
   const inlineWantRef = useRef(false); // should it keep restarting?
-  const [micArm, setMicArm] = useState(false); // popup blocked at load; first click opens it
+  const inlineGateRef = useRef(false); // speech pause starts before TTS onstart fires
+  const [micOn, setMicOn] = useState(false); // explicit user-controlled voice-input session
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
   const voiceRef = useRef(null);        // best TTS voice on this device
@@ -912,6 +915,13 @@ export default function BaxstarEmber() {
     voiceRef.current = null;
   }
 
+  function setVoiceEnabled(on) {
+    // Keep the async command pipeline in sync in the same tick. A React effect
+    // alone is too late when voice mode is stopped while Ember is still thinking.
+    voiceOnRef.current = on;
+    setVoiceOn(on);
+  }
+
   function startInlineMic() {
     unlockSpeech();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -922,11 +932,14 @@ export default function BaxstarEmber() {
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
-    rec.onstart = () => { setListening(true); setMicArm(false); setError(""); };
+    rec.onstart = () => { setMicOn(true); setListening(true); setError(""); };
     rec.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         setError("Mic blocked — tap aA in the address bar, Website Settings, Microphone, Allow.");
         inlineRecRef.current = null;
+        inlineWantRef.current = false;
+        setVoiceEnabled(false);
+        setMicOn(false);
         setListening(false);
       }
     };
@@ -934,7 +947,7 @@ export default function BaxstarEmber() {
       // Safari ends the session on its own constantly. Restart unless we are
       // speaking (the gate) or the user switched it off.
       if (!inlineRecRef.current) { setListening(false); return; }
-      if (inlineWantRef.current && !speakingRef.current) {
+      if (inlineWantRef.current && !inlineGateRef.current) {
         try { rec.start(); } catch (e) {}
       } else { setListening(false); }
     };
@@ -951,7 +964,18 @@ export default function BaxstarEmber() {
     };
     inlineRecRef.current = rec;
     inlineWantRef.current = true;
-    try { rec.start(); } catch (e) {}
+    try {
+      rec.start();
+      setVoiceEnabled(true);
+      setMicOn(true);
+      setError("");
+    } catch (e) {
+      inlineRecRef.current = null;
+      inlineWantRef.current = false;
+      setMicOn(false);
+      setError("Could not start the mic. Tap again to retry.");
+      return false;
+    }
     return true;
   }
 
@@ -959,62 +983,71 @@ export default function BaxstarEmber() {
     inlineWantRef.current = false;
     const rec = inlineRecRef.current;
     inlineRecRef.current = null;
-    if (rec) { try { rec.stop(); } catch (e) {} }
+    if (rec) { try { rec.abort(); } catch (e) {} }
+    setMicOn(false);
     setListening(false);
   }
 
-  function toggleMic() {
+  function stopMicSession() {
+    setVoiceEnabled(false);
     if (inlineMic) {
-      if (inlineRecRef.current) stopInlineMic();
+      stopInlineMic();
+      stopSpeaking();
+      return;
+    }
+    const w = popupRef.current;
+    popupRef.current = null;
+    if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: "close" }, "*");
+    bridgeLevelRef.current = { v: 0, wave: null, ts: 0 };
+    setMicOn(false);
+    setListening(false);
+    stopSpeaking();
+  }
+
+  function toggleMic() {
+    unlockSpeech();
+    if (inlineMic) {
+      if (inlineRecRef.current) stopMicSession();
       else startInlineMic();
       return;
     }
     const w = popupRef.current;
     if (w && !w.closed) {
-      w.postMessage({ ch: "EMBERMIC", t: "toggle" }, "*");
-      w.focus();
+      stopMicSession();
       return;
     }
     openMicBridge();
   }
 
-  function openMicBridge(silent = false) {
+  function openMicBridge() {
     stopSpeaking();
     const url = URL.createObjectURL(new Blob([buildBridgeHtml()], { type: "text/html" }));
     const w = window.open(url, "emberMic", "width=400,height=300");
     if (!w) {
-      if (!silent) setError("Popup blocked — allow popups for claude.ai so the Mic Bridge can open.");
+      setError("Popup blocked — allow popups for claude.ai so the Mic Bridge can open.");
       return false;
     }
     popupRef.current = w;
-    setMicArm(false);
+    setVoiceEnabled(true);
+    setMicOn(true);
+    setError("");
     setTimeout(() => URL.revokeObjectURL(url), 20000);
     return true;
   }
 
-  // MIC ON BY DEFAULT: open the bridge the moment the app loads. If the browser
-  // blocks the load-time popup, arm it — the user's FIRST click anywhere opens it.
+  // Voice input is opt-in. Never request microphone permission or open the
+  // top-level bridge until the user presses the mic control. Tear everything
+  // down on unmount so an orphaned popup cannot keep the microphone alive.
   useEffect(() => {
-    if (inlineMic) {
-      // iOS will not grant the mic without a real user gesture, so arm the
-      // first tap rather than failing silently at load. Any tap at all also
-      // unlocks the speech engine, so typed commands get spoken replies too.
-      setMicArm(true);
-      const un = () => { window.removeEventListener("pointerdown", un); unlockSpeech(); };
-      window.addEventListener("pointerdown", un);
-      return;
-    }
-    const t = setTimeout(() => {
-      if (!openMicBridge(true)) {
-        setMicArm(true);
-        const arm = () => {
-          window.removeEventListener("pointerdown", arm);
-          openMicBridge(true);
-        };
-        window.addEventListener("pointerdown", arm);
-      }
-    }, 350);
-    return () => clearTimeout(t);
+    return () => {
+      inlineWantRef.current = false;
+      const rec = inlineRecRef.current;
+      inlineRecRef.current = null;
+      if (rec) { try { rec.abort(); } catch (e) {} }
+      const w = popupRef.current;
+      popupRef.current = null;
+      if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t: "close" }, "*");
+    };
   }, []);
 
   /* ---------- OPS: SPEECH — three-path cascade with diagnostics ---------- */
@@ -1136,7 +1169,7 @@ export default function BaxstarEmber() {
 
   function pauseInlineMic() {
     const rec = inlineRecRef.current;
-    if (rec) { try { rec.stop(); } catch (e) {} }   // onend will not restart while speaking
+    if (rec) { try { rec.abort(); } catch (e) {} }
   }
   function resumeInlineMic() {
     const rec = inlineRecRef.current;
@@ -1149,12 +1182,16 @@ export default function BaxstarEmber() {
   }
   function beginSpeech() {
     const epoch = ++speechEpochRef.current;
+    // Close the inline gate before aborting recognition. TTS onstart arrives
+    // later; using speakingRef alone let onend restart the mic in that gap.
+    inlineGateRef.current = true;
     postBridge("micPause");
     pauseInlineMic();
     return epoch;
   }
   function endSpeech(epoch) {
     if (epoch !== speechEpochRef.current) return; // superseded — not ours to reopen
+    inlineGateRef.current = false;
     postBridge("micResume");
     resumeInlineMic();
   }
@@ -1397,6 +1434,7 @@ export default function BaxstarEmber() {
     // us, then reopen it ourselves — pause() fires neither ended nor error, so
     // nothing else ever would, and the mic would stay dead for good.
     speechEpochRef.current++;
+    inlineGateRef.current = false;
     window.speechSynthesis?.cancel();
     if (audioElRef.current) { try { audioElRef.current.pause(); } catch (e) {} audioElRef.current = null; }
     speakingRef.current = false;
@@ -1587,10 +1625,16 @@ export default function BaxstarEmber() {
   // receive voice + levels from the Mic Bridge popup
   useEffect(() => {
     const onMsg = (e) => {
+      // The bridge uses a blob URL, so it has no stable origin to compare.
+      // Match the exact window instead; otherwise any page could forge a
+      // transcript message and make Ember execute it as Brady's command.
+      if (e.source !== popupRef.current) return;
       const m = e.data || {};
       if (m.ch !== "EMBERMIC") return;
+      if (m.t === "error" && m.message) setError(m.message);
       if (m.t === "lvl") bridgeLevelRef.current = { v: m.v, wave: m.w, ts: performance.now() };
-      if (m.t === "listening") { setListening(!!m.on); if (m.on) setMicArm(false); }
+      if (m.t === "session") setMicOn(!!m.on);
+      if (m.t === "listening") setListening(!!m.on);
       if (m.t === "speaking") {
         // Only believe the bridge about speech the bridge is producing. Its own
         // say() finishing used to clear speakingRef while THIS window was mid
@@ -1609,16 +1653,17 @@ export default function BaxstarEmber() {
         if (!m.on && bridgeEndRef.current) { bridgeEndRef.current(); bridgeEndRef.current = null; }
       }
       if (m.t === "closed") {
-        setListening(false); speakingRef.current = false; setSpeaking(false); popupRef.current = null;
-        // The popup's own note invites closing it, and closing it mid-answer
-        // posts "closed" but never "speaking off" — so the speech we were
-        // waiting on ends with nothing to announce it.
-        // Only end speech the BRIDGE was producing. TTS is often local or mp3
-        // while the popup is merely listening; releasing unconditionally cut
-        // her off mid-sentence the moment he closed the mic window.
+        popupRef.current = null;
+        setVoiceEnabled(false);
+        setMicOn(false);
+        setListening(false);
+        // Closing the bridge is the same action as tapping the active mic:
+        // end the full voice session, whichever speech path is currently live,
+        // and release any bridge promise so later commands cannot queue forever.
         const endBridge = bridgeEndRef.current;
         bridgeEndRef.current = null;
         if (endBridge) endBridge();
+        stopSpeaking();
       }
       if (m.t === "transcript" && m.text) {
         // Two layers, because the gate closes a beat after speech starts and a
@@ -2880,7 +2925,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
               <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="14" height="14"
                 style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "4px" }} />BG
             </button>
-            <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
+            <button onClick={() => setVoiceEnabled(!voiceOn)} title="Spoken replies"
               className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}>
               <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
                 <rect x="2" y="2" width="108" height="48" rx="24" fill="#0A0907" stroke="#5F4428" strokeWidth="4" />
@@ -2890,7 +2935,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
                   <circle cx="30" cy="26" r="5" className="tgl-knob-i" />
                 </g>
               </svg>
-              {voiceOn ? "VOICE ON" : "VOICE OFF"}
+              {voiceOn ? "SPEAKER ON" : "SPEAKER OFF"}
             </button>
             <button onClick={syncLive} disabled={syncing}
               className="header-control sync-control flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
@@ -2943,33 +2988,26 @@ Look at the photo and write the caption. Output caption text only — no preambl
         </header>
 
         {inlineMic && (
-          // Phone controls: big targets, always visible. Left = mic, right =
-          // spoken replies. Small header chips are unusable in a truck.
+          // Phone controls: big targets, always visible. The mic is a true
+          // session toggle: one tap starts it and the same control stops it.
           <div className="flex gap-2">
-            <button onClick={toggleMic}
+            <button onClick={toggleMic} aria-pressed={micOn}
               className="mic-rail font-mono-x flex-1 rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
-              style={listening
+              style={micOn
                 ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" }
                 : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
               <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />
-              {listening ? "LISTENING — TAP TO STOP" : "TAP TO TALK TO EMBER"}
+              {micOn ? (listening ? "LISTENING — TAP TO STOP" : "MIC ON — TAP TO STOP") : "TAP TO TALK TO EMBER"}
             </button>
-            <button onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+            <button onClick={() => { unlockSpeech(); setVoiceEnabled(!voiceOn); }} aria-pressed={voiceOn}
               className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
               style={voiceOn
                 ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
                 : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }}>
-              {voiceOn ? "VOICE ON" : "MUTED"}
+              {voiceOn ? "SPEAKER ON" : "MUTED"}
             </button>
           </div>
         )}
-        {!inlineMic && micArm && !listening && (
-          <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
-            style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
-            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE · ALLOW POPUPS FOR CLAUDE.AI AND IT'S AUTOMATIC EVERY LOAD
-          </div>
-        )}
-
         {error && (
           <div className="rounded-lg border px-4 py-2 text-xs font-semibold"
             style={{ borderColor: "rgba(255,77,61,.5)", background: "rgba(255,77,61,.08)", color: "#ff8074" }}>
@@ -3039,7 +3077,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
                 {coreMode === "enigma" ? (
-                  <div className="reactor-stage" onClick={toggleMic} role="button" aria-label="Voice input">
+                  <div className="reactor-stage" onClick={toggleMic} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMic(); } }}
+                    role="button" tabIndex={0} aria-label={micOn ? "Turn microphone off" : "Turn microphone on"} aria-pressed={micOn}>
                     <img src={`${ASSETS}/raster/reactor-bezel@2x.webp`} alt="" aria-hidden="true" className="reactor-bezel" />
                     <div className="reactor-core-orb">
                       <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
@@ -3050,7 +3089,8 @@ Look at the photo and write the caption. Output caption text only — no preambl
                     </div>
                   </div>
                 ) : (
-                  <div className="scope-bezel mx-auto my-6" onClick={toggleMic} role="button" aria-label="Voice input">
+                  <div className="scope-bezel mx-auto my-6" onClick={toggleMic} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMic(); } }}
+                    role="button" tabIndex={0} aria-label={micOn ? "Turn microphone off" : "Turn microphone on"} aria-pressed={micOn}>
                     <span className="scope-screw" style={{ top: "5px", left: "6px" }} />
                     <span className="scope-screw" style={{ top: "5px", right: "6px" }} />
                     <span className="scope-screw" style={{ bottom: "5px", left: "6px" }} />
@@ -3066,7 +3106,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
 
                 <div className="font-mono-x mt-3 text-center text-[10px] tracking-[0.3em]"
                   style={{ color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-                  {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
+                  {thinking ? "THINKING…" : speaking ? "SPEAKING…" : listening ? "LISTENING — TAP TO TURN OFF" : micOn ? "MIC ON — TAP TO TURN OFF" : "MIC OFF — TAP TO TURN ON"}
                 </div>
                 {speaking && (
                   <button className="chip solid mt-2" onClick={stopSpeaking}>⏹ Stop Voice</button>
