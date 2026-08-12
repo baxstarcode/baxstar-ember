@@ -15,7 +15,10 @@
  * This file is served same-origin; there is no CDN dependency. It is a no-op in any
  * context without service-worker support (e.g. the Claude artifact sandbox).
  */
-const CACHE = "ember-shell-v1";
+// Bump whenever shell behavior changes. v2 specifically retires the build that
+// opened the mic automatically and prevents an authenticated tab from staying
+// on that cached shell while a private window receives the new one.
+const CACHE = "ember-shell-v2";
 
 self.addEventListener("install", (event) => {
   // Take over as soon as possible; the app is single-page and safe to update eagerly.

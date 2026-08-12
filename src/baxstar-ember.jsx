@@ -630,9 +630,11 @@ export default function BaxstarEmber() {
   // core visualizer + voice engine
   const [coreMode, setCoreMode] = useState("enigma"); // "enigma" | "scope"
   const speechUnlockedRef = useRef(false);
-  const inlineRecRef = useRef(null);   // in-page recognition (phones)
+  const inlineRecRef = useRef(null);   // in-page recognition (hosted app + phones)
   const inlineWantRef = useRef(false); // should it keep restarting?
   const inlineGateRef = useRef(false); // speech pause starts before TTS onstart fires
+  const inlineRestartRef = useRef(null);
+  const inlineRestartAttemptRef = useRef(0);
   const [micOn, setMicOn] = useState(false); // explicit user-controlled voice-input session
   const [speaking, setSpeaking] = useState(false);
   const speakingRef = useRef(false);
@@ -884,15 +886,18 @@ export default function BaxstarEmber() {
 
   /* ---------- VOICE (Web Speech) ---------- */
 
-  // iOS Safari refuses getUserMedia and SpeechRecognition to a blob: popup --
-  // that window has an opaque origin, and no amount of granting mic permission
-  // in Settings changes it. On a phone we skip the bridge entirely and listen in
-  // this page, which has a real origin and the tap that started it.
-  const inlineMic =
+  // The hosted Pages app is already top-level and should own its microphone
+  // directly. The popup bridge exists only for embedded artifact contexts whose
+  // iframe cannot request mic permission. Sending the hosted app through a blob
+  // popup made private/incognito sessions especially fragile: TTS could work in
+  // the page while speech input silently died in the separate popup.
+  const mobileMic =
     typeof navigator !== "undefined" &&
-    (/iP(hone|ad|od)/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
-      !window.open);
+    (/Android|Mobi|iP(hone|ad|od)/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+  let topLevelMic = true;
+  try { topLevelMic = window.self === window.top; } catch (e) { topLevelMic = false; }
+  const inlineMic = topLevelMic || mobileMic || !window.open;
 
   // iOS keeps speechSynthesis mute until a tap-context utterance unlocks it.
   // Her replies arrive after a network wait -- outside any tap -- so without
@@ -922,34 +927,93 @@ export default function BaxstarEmber() {
     setVoiceOn(on);
   }
 
+  function cancelInlineRestart() {
+    if (inlineRestartRef.current) clearTimeout(inlineRestartRef.current);
+    inlineRestartRef.current = null;
+  }
+
+  function failInlineMic(message, rec) {
+    if (rec && inlineRecRef.current && rec !== inlineRecRef.current) return;
+    cancelInlineRestart();
+    inlineRestartAttemptRef.current = 0;
+    inlineWantRef.current = false;
+    const live = inlineRecRef.current;
+    inlineRecRef.current = null;
+    if (live) { try { live.abort(); } catch (e) {} }
+    setVoiceEnabled(false);
+    setMicOn(false);
+    setListening(false);
+    if (message) setError(message);
+  }
+
+  function scheduleInlineRestart(rec) {
+    if (rec !== inlineRecRef.current || !inlineWantRef.current || inlineGateRef.current) return;
+    cancelInlineRestart();
+    const attempt = inlineRestartAttemptRef.current;
+    const delay = Math.min(1200, 180 + attempt * 170);
+    inlineRestartRef.current = setTimeout(() => {
+      inlineRestartRef.current = null;
+      if (rec !== inlineRecRef.current || !inlineWantRef.current || inlineGateRef.current) return;
+      try {
+        rec.start();
+      } catch (e) {
+        // WebKit often rejects a restart issued too close to onend. Back off and
+        // retry instead of swallowing InvalidStateError and leaving a green but
+        // dead microphone on screen.
+        inlineRestartAttemptRef.current += 1;
+        if (inlineRestartAttemptRef.current < 6) scheduleInlineRestart(rec);
+        else failInlineMic("The mic stopped restarting. Tap the mic to reconnect.", rec);
+      }
+    }, delay);
+  }
+
   function startInlineMic() {
     unlockSpeech();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setError("This browser has no speech recognition. Safari or Chrome."); return false; }
+    if (!SR) {
+      failInlineMic("This browser has no speech recognition. Use Safari or Chrome.");
+      return false;
+    }
     if (inlineRecRef.current) return true;
     let rec;
-    try { rec = new SR(); } catch (e) { setError("Could not start the mic."); return false; }
+    try { rec = new SR(); }
+    catch (e) { failInlineMic("Could not create a speech-recognition session."); return false; }
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
-    rec.onstart = () => { setMicOn(true); setListening(true); setError(""); };
+    rec.onstart = () => {
+      if (rec !== inlineRecRef.current || !inlineWantRef.current) return;
+      cancelInlineRestart();
+      inlineRestartAttemptRef.current = 0;
+      setMicOn(true);
+      setListening(true);
+      setError("");
+    };
     rec.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        setError("Mic blocked — tap aA in the address bar, Website Settings, Microphone, Allow.");
-        inlineRecRef.current = null;
-        inlineWantRef.current = false;
-        setVoiceEnabled(false);
-        setMicOn(false);
-        setListening(false);
+      if (rec !== inlineRecRef.current) return;
+      const code = e.error || "unknown";
+      setListening(false);
+      // Expected lifecycle events. onend owns the restart after ordinary silence
+      // and abort is how Ember closes the mic while she speaks.
+      if (code === "aborted" || code === "no-speech") return;
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        failInlineMic("Mic blocked — allow microphone access for this site, then tap the mic again.", rec);
+      } else if (code === "audio-capture") {
+        failInlineMic("No microphone is available. Check the device input and tap the mic again.", rec);
+      } else if (code === "network") {
+        failInlineMic("Speech recognition lost its connection. Check the network and tap the mic again.", rec);
+      } else if (code === "language-not-supported") {
+        failInlineMic("English speech recognition is not available in this browser.", rec);
+      } else {
+        failInlineMic(`Speech input stopped (${code}). Tap the mic to retry.`, rec);
       }
     };
     rec.onend = () => {
-      // Safari ends the session on its own constantly. Restart unless we are
-      // speaking (the gate) or the user switched it off.
-      if (!inlineRecRef.current) { setListening(false); return; }
-      if (inlineWantRef.current && !inlineGateRef.current) {
-        try { rec.start(); } catch (e) {}
-      } else { setListening(false); }
+      setListening(false);
+      if (rec !== inlineRecRef.current) return;
+      // Safari and Chrome both end recognition sessions on their own. Restart
+      // after a short delay unless Ember is speaking or Brady turned voice off.
+      if (inlineWantRef.current && !inlineGateRef.current) scheduleInlineRestart(rec);
     };
     rec.onresult = (ev) => {
       let text = "";
@@ -964,22 +1028,24 @@ export default function BaxstarEmber() {
     };
     inlineRecRef.current = rec;
     inlineWantRef.current = true;
+    inlineRestartAttemptRef.current = 0;
     try {
+      // Initial start stays inside the actual tap event so browser permission
+      // prompts and iOS audio policies can accept it.
       rec.start();
       setVoiceEnabled(true);
       setMicOn(true);
       setError("");
     } catch (e) {
-      inlineRecRef.current = null;
-      inlineWantRef.current = false;
-      setMicOn(false);
-      setError("Could not start the mic. Tap again to retry.");
+      failInlineMic("Could not start the mic. Tap again to retry.", rec);
       return false;
     }
     return true;
   }
 
   function stopInlineMic() {
+    cancelInlineRestart();
+    inlineRestartAttemptRef.current = 0;
     inlineWantRef.current = false;
     const rec = inlineRecRef.current;
     inlineRecRef.current = null;
@@ -1041,6 +1107,7 @@ export default function BaxstarEmber() {
   useEffect(() => {
     return () => {
       inlineWantRef.current = false;
+      cancelInlineRestart();
       const rec = inlineRecRef.current;
       inlineRecRef.current = null;
       if (rec) { try { rec.abort(); } catch (e) {} }
@@ -1173,7 +1240,7 @@ export default function BaxstarEmber() {
   }
   function resumeInlineMic() {
     const rec = inlineRecRef.current;
-    if (rec && inlineWantRef.current) { try { rec.start(); } catch (e) {} }
+    if (rec && inlineWantRef.current) scheduleInlineRestart(rec);
   }
 
   function postBridge(t) {
@@ -2987,7 +3054,7 @@ Look at the photo and write the caption. Output caption text only — no preambl
           )}
         </header>
 
-        {inlineMic && (
+        {mobileMic && (
           // Phone controls: big targets, always visible. The mic is a true
           // session toggle: one tap starts it and the same control stops it.
           <div className="flex gap-2">

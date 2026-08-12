@@ -154,7 +154,9 @@ window.EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
    no CDN. Ship sw.js + manifest.webmanifest + assets/ember/icon.svg alongside index.html. */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+      .then(function (registration) { return registration.update(); })
+      .catch(function () {});
   });
 }
 </script>

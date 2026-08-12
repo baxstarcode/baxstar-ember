@@ -333,7 +333,9 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
    no CDN. Ship sw.js + manifest.webmanifest + assets/ember/icon.svg alongside index.html. */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+      .then(function (registration) { return registration.update(); })
+      .catch(function () {});
   });
 }
 </script>
@@ -670,6 +672,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const inlineRecRef = useRef(null);
     const inlineWantRef = useRef(false);
     const inlineGateRef = useRef(false);
+    const inlineRestartRef = useRef(null);
+    const inlineRestartAttemptRef = useRef(0);
     const [micOn, setMicOn] = useState(false);
     const [speaking, setSpeaking] = useState(false);
     const speakingRef = useRef(false);
@@ -892,7 +896,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const clock = now.toLocaleString("en-US", { weekday: "short", month: "short", day: "2-digit", hour: "numeric", minute: "2-digit" }).toUpperCase().replace(",", " \xB7");
     const hour = now.getHours();
     const dayPart = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
-    const inlineMic = typeof navigator !== "undefined" && (/iP(hone|ad|od)/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1 || !window.open);
+    const mobileMic = typeof navigator !== "undefined" && (/Android|Mobi|iP(hone|ad|od)/i.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    let topLevelMic = true;
+    try {
+      topLevelMic = window.self === window.top;
+    } catch (e) {
+      topLevelMic = false;
+    }
+    const inlineMic = topLevelMic || mobileMic || !window.open;
     function unlockSpeech() {
       var _a2;
       if (speechUnlockedRef.current) return;
@@ -924,11 +935,50 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       voiceOnRef.current = on;
       setVoiceOn(on);
     }
+    function cancelInlineRestart() {
+      if (inlineRestartRef.current) clearTimeout(inlineRestartRef.current);
+      inlineRestartRef.current = null;
+    }
+    function failInlineMic(message, rec) {
+      if (rec && inlineRecRef.current && rec !== inlineRecRef.current) return;
+      cancelInlineRestart();
+      inlineRestartAttemptRef.current = 0;
+      inlineWantRef.current = false;
+      const live2 = inlineRecRef.current;
+      inlineRecRef.current = null;
+      if (live2) {
+        try {
+          live2.abort();
+        } catch (e) {
+        }
+      }
+      setVoiceEnabled(false);
+      setMicOn(false);
+      setListening(false);
+      if (message) setError(message);
+    }
+    function scheduleInlineRestart(rec) {
+      if (rec !== inlineRecRef.current || !inlineWantRef.current || inlineGateRef.current) return;
+      cancelInlineRestart();
+      const attempt = inlineRestartAttemptRef.current;
+      const delay = Math.min(1200, 180 + attempt * 170);
+      inlineRestartRef.current = setTimeout(() => {
+        inlineRestartRef.current = null;
+        if (rec !== inlineRecRef.current || !inlineWantRef.current || inlineGateRef.current) return;
+        try {
+          rec.start();
+        } catch (e) {
+          inlineRestartAttemptRef.current += 1;
+          if (inlineRestartAttemptRef.current < 6) scheduleInlineRestart(rec);
+          else failInlineMic("The mic stopped restarting. Tap the mic to reconnect.", rec);
+        }
+      }, delay);
+    }
     function startInlineMic() {
       unlockSpeech();
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) {
-        setError("This browser has no speech recognition. Safari or Chrome.");
+        failInlineMic("This browser has no speech recognition. Use Safari or Chrome.");
         return false;
       }
       if (inlineRecRef.current) return true;
@@ -936,40 +986,41 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       try {
         rec = new SR();
       } catch (e) {
-        setError("Could not start the mic.");
+        failInlineMic("Could not create a speech-recognition session.");
         return false;
       }
       rec.continuous = true;
       rec.interimResults = false;
       rec.lang = "en-US";
       rec.onstart = () => {
+        if (rec !== inlineRecRef.current || !inlineWantRef.current) return;
+        cancelInlineRestart();
+        inlineRestartAttemptRef.current = 0;
         setMicOn(true);
         setListening(true);
         setError("");
       };
       rec.onerror = (e) => {
-        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-          setError("Mic blocked \u2014 tap aA in the address bar, Website Settings, Microphone, Allow.");
-          inlineRecRef.current = null;
-          inlineWantRef.current = false;
-          setVoiceEnabled(false);
-          setMicOn(false);
-          setListening(false);
+        if (rec !== inlineRecRef.current) return;
+        const code = e.error || "unknown";
+        setListening(false);
+        if (code === "aborted" || code === "no-speech") return;
+        if (code === "not-allowed" || code === "service-not-allowed") {
+          failInlineMic("Mic blocked \u2014 allow microphone access for this site, then tap the mic again.", rec);
+        } else if (code === "audio-capture") {
+          failInlineMic("No microphone is available. Check the device input and tap the mic again.", rec);
+        } else if (code === "network") {
+          failInlineMic("Speech recognition lost its connection. Check the network and tap the mic again.", rec);
+        } else if (code === "language-not-supported") {
+          failInlineMic("English speech recognition is not available in this browser.", rec);
+        } else {
+          failInlineMic(`Speech input stopped (${code}). Tap the mic to retry.`, rec);
         }
       };
       rec.onend = () => {
-        if (!inlineRecRef.current) {
-          setListening(false);
-          return;
-        }
-        if (inlineWantRef.current && !inlineGateRef.current) {
-          try {
-            rec.start();
-          } catch (e) {
-          }
-        } else {
-          setListening(false);
-        }
+        setListening(false);
+        if (rec !== inlineRecRef.current) return;
+        if (inlineWantRef.current && !inlineGateRef.current) scheduleInlineRestart(rec);
       };
       rec.onresult = (ev) => {
         let text = "";
@@ -983,21 +1034,21 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       };
       inlineRecRef.current = rec;
       inlineWantRef.current = true;
+      inlineRestartAttemptRef.current = 0;
       try {
         rec.start();
         setVoiceEnabled(true);
         setMicOn(true);
         setError("");
       } catch (e) {
-        inlineRecRef.current = null;
-        inlineWantRef.current = false;
-        setMicOn(false);
-        setError("Could not start the mic. Tap again to retry.");
+        failInlineMic("Could not start the mic. Tap again to retry.", rec);
         return false;
       }
       return true;
     }
     function stopInlineMic() {
+      cancelInlineRestart();
+      inlineRestartAttemptRef.current = 0;
       inlineWantRef.current = false;
       const rec = inlineRecRef.current;
       inlineRecRef.current = null;
@@ -1057,6 +1108,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     useEffect(() => {
       return () => {
         inlineWantRef.current = false;
+        cancelInlineRestart();
         const rec = inlineRecRef.current;
         inlineRecRef.current = null;
         if (rec) {
@@ -1164,12 +1216,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }
     function resumeInlineMic() {
       const rec = inlineRecRef.current;
-      if (rec && inlineWantRef.current) {
-        try {
-          rec.start();
-        } catch (e) {
-        }
-      }
+      if (rec && inlineWantRef.current) scheduleInlineRestart(rec);
     }
     function postBridge(t) {
       const w = popupRef.current;
@@ -2901,7 +2948,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), inlineMic && // Phone controls: big targets, always visible. The mic is a true
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), mobileMic && // Phone controls: big targets, always visible. The mic is a true
     // session toggle: one tap starts it and the same control stops it.
     /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
       "button",
