@@ -462,6 +462,44 @@ async function renderPhoto(file) {
   }
 }
 
+/* Story/vertical render: 1080x1920. The photo sits contained in the frame over a
+   blurred, zoomed copy of itself — the standard story treatment, and it means a
+   landscape fish photo still fills the screen instead of floating on black. */
+async function renderStoryFromB64(b64) {
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = "data:image/jpeg;base64," + b64;
+  });
+  const W = 1080, H = 1920;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  const cover = Math.max(W / img.width, H / img.height);
+  ctx.filter = "blur(36px)";
+  ctx.drawImage(img, (W - img.width * cover) / 2, (H - img.height * cover) / 2, img.width * cover, img.height * cover);
+  ctx.filter = "none";
+  ctx.fillStyle = "rgba(0,0,0,.22)"; // settle the blur so the photo pops
+  ctx.fillRect(0, 0, W, H);
+  const fit = Math.min(W / img.width, H / img.height, 1.6);
+  const fw = img.width * fit, fh = img.height * fit;
+  ctx.drawImage(img, (W - fw) / 2, (H - fh) / 2, fw, fh);
+  return c.toDataURL("image/jpeg", 0.92).split(",")[1];
+}
+
+/* Where a post can go. Feed surfaces consume the caption; story surfaces consume
+   the 9:16 renders and no caption body. Video-only surfaces stay visible but
+   disabled until the video pipeline exists — an honest grey beats a dead toggle. */
+const SURFACES = [
+  { id: "ig_feed",  label: "IG FEED",  needsVideo: false },
+  { id: "fb_page",  label: "FB PAGE",  needsVideo: false },
+  { id: "ig_story", label: "IG STORY", needsVideo: false },
+  { id: "fb_story", label: "FB STORY", needsVideo: false },
+  { id: "ig_reel",  label: "REEL",     needsVideo: true },
+  { id: "tiktok",   label: "TIKTOK",   needsVideo: true },
+];
+
 function sanitizeCaption(t) {
   return t
     .replace(/```/g, "")
@@ -905,6 +943,8 @@ export default function BaxstarEmber() {
      this is the default for a fresh start, not an override. */
   const [lake, setLake] = useState("Pelican Lake");
   const [postTime, setPostTime] = useState("16:00"); // 24h "HH:MM"
+  // Destinations. IG feed on by default — that is the pipeline that exists today.
+  const [surfaces, setSurfaces] = useState({ ig_feed: true });
   const [genBusy, setGenBusy] = useState(false);
   const [caption, setCaption] = useState("");
   const [capErr, setCapErr] = useState("");
@@ -1015,6 +1055,7 @@ export default function BaxstarEmber() {
       if (prefs) {
         if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
         if (typeof prefs.voiceChoice === "string") setVoiceChoice(prefs.voiceChoice);
+        if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
         if (prefs.chatModel) setChatModel(prefs.chatModel);
         if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
         if (prefs.lake) setLake(prefs.lake);
@@ -1103,8 +1144,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode });
-  }, [voiceOn, voiceChoice, chatModel, chatEffort, lake, postTime, studioTool, coreMode]);
+    if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode });
+  }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -2375,8 +2416,23 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     if (!photos.length || !caption || publishing) return;
     const url = (outboxUrl || "").trim();
     if (!url) { setPublishMsg("Add your Drive Outbox URL first — the field is in the left panel."); return; }
+    const picked = SURFACES.filter((sf) => surfaces[sf.id] && !sf.needsVideo).map((sf) => sf.id);
+    if (!picked.length) { setPublishMsg("Pick at least one destination — tap IG FEED, a story, or FB PAGE."); return; }
     setPublishing(true);
     setPublishMsg("");
+    // Stories consume a 9:16 render; build them only when a story surface is on,
+    // and only now — at upload time it would slow every photo for a format that
+    // is usually off.
+    let storyImages = [];
+    if (picked.includes("ig_story") || picked.includes("fb_story")) {
+      try {
+        storyImages = await Promise.all(photos.map((p) => renderStoryFromB64(p.publishB64 || p.b64)));
+      } catch (e) {
+        setPublishing(false);
+        setPublishMsg("Story render failed — post without the story surfaces or re-add the photo.");
+        return;
+      }
+    }
 
     /* Two forms of the caption travel together, because they are consumed differently:
 
@@ -2411,6 +2467,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       postTimeLocal: postTime,
       sponsors: activeHandles(sponsors),
       clientTime: new Date().toISOString(),
+      /* v2: where this goes and in what shape. Old outbox deployments ignore
+         unknown fields, so nothing breaks behind; the Zap branches on these. */
+      payloadVersion: 2,
+      format: photos.length > 1 ? "carousel" : "post",
+      surfaces: picked,
+      storyImages,
     };
     const body = JSON.stringify(payload);
     try {
@@ -2422,7 +2484,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       let ok = res.ok;
       try { const j = await res.json(); ok = ok && (j.ok !== false); } catch (e) { /* opaque/non-JSON */ }
       if (ok) {
-        setPublishMsg("✓ Sent to the Drive outbox — review and post from there.");
+        setPublishMsg(`✓ Sent to the Drive outbox for ${picked.length} destination${picked.length > 1 ? "s" : ""} — review and post from there.`);
         lsDel(CAPTION_DRAFT_KEY);
       } else {
         setPublishMsg("Outbox responded with an error — check the Apps Script deployment.");
@@ -2872,6 +2934,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .voice-pick { background:#120c0c; color:var(--ember-amber); border:1px solid var(--ember-brass-dark);
           border-radius:8px; font-size:10px; padding:4px 8px; max-width:220px; }
         .voice-pick:focus { outline:none; border-color:var(--brass); }
+        .surface-chip:disabled { opacity:.35; cursor:default; text-decoration:line-through; }
         .chip:disabled { opacity:.35; cursor:default; }
 
         .big { display:flex; align-items:center; gap:10px; font-size:12px; font-weight:700; letter-spacing:.06em;
@@ -3909,6 +3972,29 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                         style={{ background: "#120c0c", color: "var(--ink)", colorScheme: "dark" }} />
                     </div>
                   </div>
+                </div>
+
+                {/* Destinations. One tap adds a surface; the payload carries the set and
+                    the Zap fans out. Video surfaces are visible but disabled until the
+                    video pipeline exists — an honest grey beats a dead toggle. */}
+                <div className="mt-4">
+                  <div className="fieldlabel">Where It Goes</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {SURFACES.map((sf) => (
+                      <button key={sf.id} disabled={sf.needsVideo}
+                        aria-pressed={!!surfaces[sf.id]}
+                        title={sf.needsVideo ? "Needs video — coming in the video phase" : ""}
+                        className={`seg surface-chip ${surfaces[sf.id] && !sf.needsVideo ? "on" : ""}`}
+                        onClick={() => setSurfaces((cur) => ({ ...cur, [sf.id]: !cur[sf.id] }))}>
+                        {sf.label}{sf.needsVideo ? " ·🎬" : ""}
+                      </button>
+                    ))}
+                  </div>
+                  {(surfaces.ig_story || surfaces.fb_story) && (
+                    <div className="mt-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                      Stories go out as 9:16 renders of your photos — no caption text on a story.
+                    </div>
+                  )}
                 </div>
 
                 {/* The outbox endpoint is a ONE-TIME, PER-DEVICE setup step, so it earns
