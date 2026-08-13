@@ -84,7 +84,13 @@ const reply = (text) => ({
   usage: { input_tokens: 10, output_tokens: 10 },
 });
 
-const browser = await chromium.launch();
+// Sandboxed CI environments (Claude Code on the web included) pre-install a
+// Chromium at a fixed path instead of Playwright's per-version cache. Use it
+// when it exists so the test runs without a 100MB browser download.
+const PREINSTALLED = "/opt/pw-browsers/chromium";
+const browser = await chromium.launch(
+  (await import("fs")).existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {}
+);
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await ctx.newPage();
 
@@ -217,8 +223,17 @@ check("the trimmed hashtags really are gone", !clip.includes("#walleye") && !cli
 
 /* --- publish ------------------------------------------------------------- */
 
+// v2 destinations: IG FEED is on by default; add IG STORY so the 9:16 render
+// path runs for real inside the browser canvas.
+await page.locator('button.surface-chip:has-text("IG STORY")').click();
 await page.locator('button:has-text("Publish to Drive Outbox")').click();
-await page.waitForFunction(() => /Sent|outbox/i.test(document.body.innerText), null, { timeout: 15000 });
+// Wait for the CAPTURE, not for page text — "outbox" appears in the button
+// label itself, so the old innerText wait resolved instantly and only won the
+// race because publish used to be synchronous-fast. Story rendering isn't.
+{
+  const t0 = Date.now();
+  while (!published && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
+}
 
 check("publish reached the outbox", !!published);
 check("publish sent BOTH slides", (published.images || []).length === 2, String((published.images || []).length));
@@ -243,6 +258,25 @@ check("postAt is an ISO instant a Delay-Until step can consume",
   new Date(published.postAt) > new Date(), String(published.postAt));
 check("imageBase64 still carries slide one for older deploys",
   published.imageBase64 === published.images[0]);
+
+/* v2 destination contract — the Zap branches on these. */
+check("payloadVersion is 2", published.payloadVersion === 2);
+check("two slides declare a carousel", published.format === "carousel", String(published.format));
+check("surfaces carry the tapped set, feed + story",
+  Array.isArray(published.surfaces) && published.surfaces.includes("ig_feed") && published.surfaces.includes("ig_story"),
+  JSON.stringify(published.surfaces));
+check("video-only surfaces cannot leak into the payload",
+  !(published.surfaces || []).some((x) => x === "ig_reel" || x === "tiktok"));
+check("story renders exist, one per slide", (published.storyImages || []).length === (published.images || []).length,
+  String((published.storyImages || []).length));
+check("story render is a decodable 1080x1920 JPEG", await (async () => {
+  const dim = await page.evaluate(async (b64) => {
+    const i = new Image();
+    await new Promise((res, rej) => { i.onload = res; i.onerror = rej; i.src = "data:image/jpeg;base64," + b64; });
+    return [i.width, i.height];
+  }, published.storyImages[0]);
+  return dim[0] === 1080 && dim[1] === 1920;
+})());
 
 /* The renders: vision small, publish large, and both actually decodable JPEGs. */
 const dims = await page.evaluate(async (imgs) => {
