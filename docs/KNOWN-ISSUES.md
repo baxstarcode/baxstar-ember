@@ -213,10 +213,25 @@ Hosted today: chat, Caption Studio, HTML Viewer, Image Filters, Snippets, AI Han
 and GitHub all work. "What'd I miss", Triage inbox, Schedule, and Drive Librarian do not.
 See `docs/DEPLOY.md` §4.
 
-## 4. Voice layer: real brain wired, app merge still open
+## 4. Voice layer: real brain wired, shared-brain drift closed 2026-08-14
 
 **Severity:** feature gap
-**Status:** half done
+**Status:** the drift surface is closed; remaining duplication is deliberate
+
+**2026-08-14 update.** Everything the app and the voice rig SHARE now comes from
+`src/baxstar-ember.jsx` via `scripts/sync-standalone.py`: proxy URL, model, MCP servers,
+`BRADY_CONTEXT`, **and the spoken ruleset** — the rig's hand-written `SPOKEN_RULES` block
+claimed "no counterpart in the app," which stopped being true when `VOICE_CONTEXT` landed,
+and the two had already diverged in wording. `VOICE_CONTEXT` is now the one canonical
+spoken ruleset (it absorbed the rig's concrete pronunciation examples) and the sync writes
+it into the rig's generated config. `npm run build` also invokes the sync now, so editing
+src and building refreshes the rig even when `./start-ember.sh` never runs.
+
+What stays two implementations ON PURPOSE: the demo page's simple speech engine and its
+canned offline brain. That page is the zero-dependency, works-from-file:// wife/investor
+demo; porting the app's full gate/epoch speech machinery into it would make it need the
+app's build. The app's own voice surface (mic, ear, sleep phrases, flight recorder) is the
+real one and has long since outgrown the rig's engine.
 
 `voice/ember-demo.html` no longer answers only from hardcoded string matching. It now
 routes spoken questions through Claude via the same proxy, with the real `BRADY_CONTEXT`,

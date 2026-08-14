@@ -44,8 +44,12 @@ HARD RULE — schedule and messages: if a tool is unavailable or returns nothing
 const VOICE_OFF_CONTEXT = `
 Spoken output is currently OFF in the app, so this reply will be read on screen, not heard. If asked to speak: say voice is switched off and it turns back on with the VOICE button — never claim you are unable to produce audio or that speech is something the user must add on their end. The app speaks your replies whenever voice is on.`;
 
+/* The ONE spoken ruleset. The voice rig (voice/ember-demo.html) speaks with these same
+   rules — scripts/sync-standalone.py copies this constant into its generated config, the
+   same way it copies BRADY_CONTEXT. It used to keep its own hand-written version, which
+   drifted from this one — same failure as the old config drift, just with prose. */
 const VOICE_CONTEXT = `
-Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only — never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no URLs read out loud. Numbers and times said the way a person says them.`;
+Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only — never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no headings. Never say a URL or an email address unless asked for it directly. Numbers and times said the way a person says them: 'two eighteen, three two five, six eight five seven', 'a hundred forty nine a month', 'eighty two percent'.`;
 
 const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
 Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns) — the canonical source of truth.
@@ -222,9 +226,9 @@ const PROJECTS = [
   {
     cat: "Supporting",
     items: [
-      { name: "Ember / Mission Control", pct: 80, platform: "Claude",
+      { name: "Ember / Mission Control", pct: 85, platform: "Claude",
         links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Voice merge, MCP OAuth for hosted connectors", sessions: "~3" },
+        outstanding: "MCP OAuth for hosted connectors (voice merge shipped 8/14)", sessions: "~2" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",

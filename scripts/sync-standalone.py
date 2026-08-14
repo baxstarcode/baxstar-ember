@@ -106,9 +106,12 @@ def sync_voice_config() -> None:
 
     voice/ember-demo.html keeps its own speech engine — mic capture, the scored
     local-voice picker, the MP3 fallback chain — all hand-written and untouched here.
-    Only the Baxstar facts it shares with the app are generated, because those are what
-    silently drifted: its BRADY_CONTEXT fell behind the app's, and its proxy stayed null
-    for hours after the Worker went live.
+    Everything the two surfaces SHARE is generated, because shared copies are what
+    silently drifted: its BRADY_CONTEXT fell behind the app's, its proxy stayed null
+    for hours after the Worker went live, and its spoken ruleset diverged from the
+    app's VOICE_CONTEXT once that constant existed. Proxy, model, servers, context,
+    and spoken rules all come from the app source now; only the demo-only pieces
+    (canned offline brain, the simple speech engine) stay hand-written.
     """
     if not VOICE.exists():
         print("sync: voice/ember-demo.html not found — skipping voice config")
@@ -126,12 +129,14 @@ def sync_voice_config() -> None:
     context = grab(r"const BRADY_CONTEXT = `(.*?)`;", "BRADY_CONTEXT")
     servers = grab(r"const MCP_SERVERS = \[(.*?)\];", "MCP_SERVERS")
     model = grab(r'const DEFAULT_MODEL = "([^"]+)";', "DEFAULT_MODEL")
+    spoken = grab(r"const VOICE_CONTEXT = `(.*?)`;", "VOICE_CONTEXT")
 
     block = (
         "var EMBER_API_PROXY = " + json.dumps(PROXY_URL) + ";\n"
         "var EMBER_MODEL = " + json.dumps(model) + ";\n"
         "var MCP_SERVERS = [" + servers + "];\n"
-        "var BRADY_CONTEXT = " + json.dumps(context) + ";"
+        "var BRADY_CONTEXT = " + json.dumps(context) + ";\n"
+        "var SPOKEN_RULES = " + json.dumps(spoken) + ";"
     )
 
     text = VOICE.read_text(encoding="utf-8")

@@ -355,7 +355,7 @@ HARD RULE \u2014 schedule and messages: if a tool is unavailable or returns noth
   const VOICE_OFF_CONTEXT = `
 Spoken output is currently OFF in the app, so this reply will be read on screen, not heard. If asked to speak: say voice is switched off and it turns back on with the VOICE button \u2014 never claim you are unable to produce audio or that speech is something the user must add on their end. The app speaks your replies whenever voice is on.`;
   const VOICE_CONTEXT = `
-Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only \u2014 never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no URLs read out loud. Numbers and times said the way a person says them.`;
+Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only \u2014 never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no headings. Never say a URL or an email address unless asked for it directly. Numbers and times said the way a person says them: 'two eighteen, three two five, six eight five seven', 'a hundred forty nine a month', 'eighty two percent'.`;
   const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
 Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns) \u2014 the canonical source of truth.
 The Agent OS lives in the "Baxstar Data Engine" folder: 01 Identity, 02 Context Library, 03 Skills, 04 Memory + Logs, 05 Verification, 06 Agents, 07 Automations, 08 Archive, 09 Handoff (Shared).
@@ -516,11 +516,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       items: [
         {
           name: "Ember / Mission Control",
-          pct: 80,
+          pct: 85,
           platform: "Claude",
           links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-          outstanding: "Voice merge, MCP OAuth for hosted connectors",
-          sessions: "~3"
+          outstanding: "MCP OAuth for hosted connectors (voice merge shipped 8/14)",
+          sessions: "~2"
         },
         {
           name: "Agent OS logs + trimmers",
@@ -615,7 +615,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-13 08:28Z".startsWith("__") ? "dev" : "2026-08-13 08:28Z";
+  const BUILD_STAMP = "2026-08-14 06:24Z".startsWith("__") ? "dev" : "2026-08-14 06:24Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
