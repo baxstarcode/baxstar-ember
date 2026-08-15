@@ -226,6 +226,21 @@ check("the trimmed hashtags really are gone", !clip.includes("#walleye") && !cli
 // v2 destinations: IG FEED is on by default; add IG STORY so the 9:16 render
 // path runs for real inside the browser canvas.
 await page.locator('button.surface-chip:has-text("IG STORY")').click();
+
+/* --- feed-aspect gate ----------------------------------------------------
+   Slide 2 (900x1200, h/w 1.333) is taller than Instagram's 4:5 feed ceiling. With a
+   feed surface on, the FIRST Publish press must warn and send nothing — Meta would
+   otherwise crop or reject the photo hours later with nobody watching the Zap. */
+await page.locator('button:has-text("Publish to Drive Outbox")').click();
+await page.waitForFunction(() => /taller than Instagram/.test(document.body.innerText), null, { timeout: 10000 });
+check("tall slide trips the feed-aspect gate before anything is sent", !published);
+check("the gate names the offending slide", /Slide 2 is/.test(await page.locator("body").innerText()));
+
+// FIT 4:5 crops the feed render (the story render keeps the full frame) and the
+// flag disappears with the reason for it.
+await page.locator('button[aria-label="Fit slide 2 to 4:5"]').click();
+await page.waitForFunction(() => !document.querySelector('button[aria-label="Fit slide 2 to 4:5"]'), null, { timeout: 10000 });
+
 await page.locator('button:has-text("Publish to Drive Outbox")').click();
 // Wait for the CAPTURE, not for page text — "outbox" appears in the button
 // label itself, so the old innerText wait resolved instantly and only won the
@@ -291,8 +306,16 @@ const dims = await page.evaluate(async (imgs) => {
 
 check("slide 1 publish render is capped at 1440 on its long edge",
   Math.max(...dims.publish[0]) === 1440, JSON.stringify(dims.publish[0]));
-check("a photo already under the ceiling is not upscaled",
-  dims.publish[1][0] === 900 && dims.publish[1][1] === 1200, JSON.stringify(dims.publish[1]));
+check("a photo already under the ceiling is not upscaled (width survives the 4:5 fit)",
+  dims.publish[1][0] === 900, JSON.stringify(dims.publish[1]));
+check("the fitted slide publishes at exactly 4:5",
+  dims.publish[1][1] === 1125, JSON.stringify(dims.publish[1]));
+/* Not asserted here: that slide 2's STORY render used the full tall frame rather
+   than the 4:5 crop. The story treatment blurs and letterboxes, so the two sources
+   produce near-identical pixels at 1080x1920 and any sampling check would be
+   flakier than the one-line source guarantee it verifies (storyB64 is captured
+   before the crop and renderStoryFromB64 prefers it). Stated so nobody mistakes
+   the omission for coverage. */
 
 const visionDims = await page.evaluate(async (b64) => new Promise((res) => {
   const i = new Image();

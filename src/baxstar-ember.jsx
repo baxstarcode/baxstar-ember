@@ -460,6 +460,9 @@ async function renderPhoto(file) {
       b64: visionUrl.split(",")[1],        // what the model reads
       publishB64: publishUrl.split(",")[1], // what gets posted
       preview: visionUrl,
+      // Natural dimensions, kept for the feed-aspect guard. Only the ratio is read.
+      w: img.width,
+      h: img.height,
     };
   } finally {
     URL.revokeObjectURL(url);
@@ -490,6 +493,46 @@ async function renderStoryFromB64(b64) {
   const fw = img.width * fit, fh = img.height * fit;
   ctx.drawImage(img, (W - fw) / 2, (H - fh) / 2, fw, fh);
   return c.toDataURL("image/jpeg", 0.92).split(",")[1];
+}
+
+/* Instagram's feed ceiling for portrait photos is 4:5. Anything taller — including a
+   plain uncropped 3:4 phone vertical — gets machine-cropped or rejected by Meta at
+   publish time, hours later, with nobody watching the Zap. So the app flags it while
+   Brady is still looking at the screen. 1.26 instead of 1.25 exact so a true 4:5 crop
+   that picked up a rounding pixel isn't nagged. Stories are exempt: 9:16 is their
+   native shape. */
+const FEED_MAX_HW = 1.26;
+const tallForFeed = (p) => !!p && p.w > 0 && p.h / p.w > FEED_MAX_HW;
+
+/* Center-crop a photo's PUBLISH render to 4:5 for the feed. The pre-crop render is
+   kept on the photo as storyB64 so a story still gets the full tall frame — the crop
+   changes only what feed surfaces see. The vision render is left alone; the model
+   captions the composition either way. Center crop on purpose: the fish is framed
+   mid-shot or Brady recrops in Snapseed, whose eye outranks any slider here. */
+async function cropPublishTo45(p) {
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = "data:image/jpeg;base64," + (p.publishB64 || p.b64);
+  });
+  const w = img.width;
+  const targetH = Math.round(w * 1.25);
+  const sy = Math.max(0, Math.round((img.height - targetH) / 2));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = targetH;
+  c.getContext("2d").drawImage(img, 0, sy, w, targetH, 0, 0, w, targetH);
+  const dataUrl = c.toDataURL("image/jpeg", 0.92);
+  return {
+    ...p,
+    storyB64: p.storyB64 || p.publishB64 || p.b64,
+    publishB64: dataUrl.split(",")[1],
+    preview: dataUrl,
+    w,
+    h: targetH,
+    cropped45: true,
+  };
 }
 
 /* Where a post can go. Feed surfaces consume the caption; story surfaces consume
@@ -954,6 +997,11 @@ export default function BaxstarEmber() {
   const [capErr, setCapErr] = useState("");
   const [copied, setCopied] = useState(false);
   const fileRef = useRef(null);
+  // Feed-aspect gate: armed by the first Publish press that finds a too-tall slide,
+  // so the second press means "send as-is". Any change to the set or the
+  // destinations re-arms the warning — a new tall photo gets its own first press.
+  const tallOkRef = useRef(false);
+  useEffect(() => { tallOkRef.current = false; }, [photos, surfaces]);
 
   // ---- CAPTION: PUBLISH → DRIVE OUTBOX ----
   // The outbox URL is the deployed Apps Script /exec endpoint (see apps-script/outbox/).
@@ -2279,6 +2327,19 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
     });
   }
 
+  /* One tap on a TALL flag crops that slide's feed render to 4:5. The tall original
+     survives on the photo as storyB64, so stories keep the full frame. */
+  async function fitPhoto45(i) {
+    const p = photos[i];
+    if (!p) return;
+    try {
+      const fixed = await cropPublishTo45(p);
+      setPhotos((list) => list.map((q, idx) => (idx === i ? fixed : q)));
+    } catch (e) {
+      setCapErr("Couldn't crop that photo — remove it and re-add it.");
+    }
+  }
+
   /* Scan the whole set in ONE vision call — the carousel gets a single caption, so the
      model needs to see every slide before it names a species or a sponsor. Sponsors that
      aren't visually identifiable (Detroit Lake, J&K Marine) keep whatever Brady set. */
@@ -2422,6 +2483,20 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     if (!url) { setPublishMsg("Add your Drive Outbox URL first — the field is in the left panel."); return; }
     const picked = SURFACES.filter((sf) => surfaces[sf.id] && !sf.needsVideo).map((sf) => sf.id);
     if (!picked.length) { setPublishMsg("Pick at least one destination — tap IG FEED, a story, or FB PAGE."); return; }
+    // Feed-aspect gate. A slide taller than 4:5 headed for a feed surface will be
+    // machine-cropped or rejected by Meta at post time — hours from now, silently.
+    // First press warns and names the slides; a second press is Brady's explicit
+    // "send as-is" and goes through. Stories never trip this — 9:16 is their shape.
+    const feedPicked = picked.includes("ig_feed") || picked.includes("fb_page");
+    const tallSlides = photos.map((p, i) => (tallForFeed(p) ? i + 1 : 0)).filter(Boolean);
+    if (feedPicked && tallSlides.length && !tallOkRef.current) {
+      tallOkRef.current = true;
+      setPublishMsg(
+        (tallSlides.length === 1 ? `Slide ${tallSlides[0]} is` : `Slides ${tallSlides.join(", ")} are`) +
+        " taller than Instagram's 4:5 feed limit — Meta will crop or reject at post time. Tap FIT 4:5 on the flagged photo, or hit Publish again to send as-is."
+      );
+      return;
+    }
     setPublishing(true);
     setPublishMsg("");
     // Stories consume a 9:16 render; build them only when a story surface is on,
@@ -2430,7 +2505,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     let storyImages = [];
     if (picked.includes("ig_story") || picked.includes("fb_story")) {
       try {
-        storyImages = await Promise.all(photos.map((p) => renderStoryFromB64(p.publishB64 || p.b64)));
+        // storyB64 is the pre-crop original when a slide was fitted to 4:5 for the
+        // feed — a story should show the full tall frame Brady shot, not the crop.
+        storyImages = await Promise.all(photos.map((p) => renderStoryFromB64(p.storyB64 || p.publishB64 || p.b64)));
       } catch (e) {
         setPublishing(false);
         setPublishMsg("Story render failed — post without the story surfaces or re-add the photo.");
@@ -3891,6 +3968,21 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                         onClick={() => fileRef.current?.click()}>
                         {photos.length < MAX_PHOTOS ? "Add photo" : "Carousel full"}
                       </button>
+                      {/* Feed-aspect flag on the cover photo. Only speaks when a feed
+                          surface is on — a story-only post is allowed to be tall. */}
+                      {(surfaces.ig_feed || surfaces.fb_page) && tallForFeed(photos[0]) && (
+                        <button className="chip absolute bottom-2 left-2 text-[10px] font-bold"
+                          style={{ background: "rgba(8,6,6,.8)", border: "1px solid var(--ember-amber)", color: "var(--ember-amber)" }}
+                          onClick={() => fitPhoto45(0)}>
+                          TALLER THAN 4:5 FEED — FIT 4:5
+                        </button>
+                      )}
+                      {photos[0]?.cropped45 && (
+                        <span className="font-mono-x absolute bottom-2 left-2 rounded px-1.5 py-0.5 text-[9px] tracking-[0.15em]"
+                          style={{ background: "rgba(8,6,6,.75)", color: "#54e08a" }}>
+                          FEED 4:5 ✓ STORY KEEPS FULL FRAME
+                        </span>
+                      )}
                     </div>
 
                     {/* Slide strip — order is the carousel order, slide 1 is the cover.
@@ -3902,7 +3994,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                             <div key={i} className="relative">
                               <img src={p.preview} alt={`Slide ${i + 1}`}
                                 className="rounded-lg border object-cover"
-                                style={{ borderColor: i === 0 ? "var(--brass)" : "var(--line)", width: "56px", height: "56px" }} />
+                                style={{
+                                  borderColor: (surfaces.ig_feed || surfaces.fb_page) && tallForFeed(p)
+                                    ? "var(--ember-amber)"
+                                    : i === 0 ? "var(--brass)" : "var(--line)",
+                                  width: "56px", height: "56px",
+                                }} />
                               <span className="font-mono-x absolute left-1 top-1 rounded px-1 text-[8px]"
                                 style={{ background: "rgba(8,6,6,.75)", color: i === 0 ? "var(--brass)" : "var(--ink-dim)" }}>
                                 {i + 1}
@@ -3911,6 +4008,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                                 className="absolute -right-1.5 -top-1.5 rounded-full px-1 text-[10px] font-bold"
                                 style={{ background: "#2a1414", border: "1px solid var(--line)", color: "#ff8074", lineHeight: "14px" }}
                                 onClick={() => removePhoto(i)}>×</button>
+                              {(surfaces.ig_feed || surfaces.fb_page) && tallForFeed(p) && (
+                                <button aria-label={`Fit slide ${i + 1} to 4:5`}
+                                  className="font-mono-x absolute bottom-0 left-0 right-0 rounded-b-lg px-0 py-0.5 text-[7px] font-bold tracking-[0.1em]"
+                                  style={{ background: "rgba(8,6,6,.85)", color: "var(--ember-amber)", border: "none" }}
+                                  onClick={() => fitPhoto45(i)}>
+                                  FIT 4:5
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
