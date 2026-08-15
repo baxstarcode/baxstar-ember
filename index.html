@@ -495,11 +495,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         },
         {
           name: "Caption Studio v2 auto-post",
-          pct: 70,
+          pct: 75,
           platform: "Claude",
           links: [["repo", "https://github.com/baxstarcode/caption-studio"], ["zaps", "https://zapier.com/app/zaps"]],
-          outstanding: "Outbox deploy (Brady), Zap wiring, retire GBP mirror",
-          sessions: "~2"
+          outstanding: "Zap live steps (sample staged 8/14 \u2014 10 min in editor), share-target PR #4, retire GBP mirror",
+          sessions: "~1"
         },
         {
           name: "Lakes Golf Simulator site",
@@ -615,7 +615,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-14 06:24Z".startsWith("__") ? "dev" : "2026-08-14 06:24Z";
+  const BUILD_STAMP = "2026-08-15 03:26Z".startsWith("__") ? "dev" : "2026-08-15 03:26Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
