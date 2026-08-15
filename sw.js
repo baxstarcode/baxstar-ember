@@ -15,7 +15,11 @@
  * This file is served same-origin; there is no CDN dependency. It is a no-op in any
  * context without service-worker support (e.g. the Claude artifact sandbox).
  */
-const CACHE = "ember-shell-v1";
+// v2 bump 2026-08-15: Brady's phone was serving a stale cached shell — old
+// enough to predate the mic-never-self-starts fix and the orb tap-to-talk —
+// which read as bugs that were already fixed. Bumping the name evicts every
+// old copy on next open.
+const CACHE = "ember-shell-v2";
 
 self.addEventListener("install", (event) => {
   // Take over as soon as possible; the app is single-page and safe to update eagerly.

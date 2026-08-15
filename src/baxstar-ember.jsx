@@ -1019,6 +1019,59 @@ export default function BaxstarEmber() {
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState("standard");
+
+  /* Today's revenue is MANUAL — Brady sets it, nothing invents it. The panel
+     used to show a hardcoded demo number ("+$1,240 · 2 FareHarbor bookings")
+     that read as real; Brady called it out 2026-08-15. Stored with its date so
+     yesterday's number can't masquerade as today's. Real automatic revenue
+     waits for a booking-system connection that doesn't exist yet. */
+  const [revToday, setRevToday] = useState(null); // { n: 450, d: "2026-08-15" }
+  const localDay = () => new Date().toLocaleDateString("en-CA");
+  const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n));
+  function editRevenue() {
+    const cur = revSet ? String(revToday.n) : "";
+    const raw = window.prompt("Today's revenue, in dollars (numbers only — leave empty to clear):", cur);
+    if (raw === null) return;
+    const n = parseInt(String(raw).replace(/[^0-9]/g, ""), 10);
+    if (!String(raw).trim() || isNaN(n)) { setRevToday(null); return; }
+    setRevToday({ n, d: localDay() });
+  }
+  // Odometer face: at least 5 digits so the tiles keep their instrument look.
+  const odoFmt = (n) => {
+    const s = String(n).padStart(5, "0");
+    return "$" + s.slice(0, -3) + "," + s.slice(-3);
+  };
+
+  /* Talk-to-type for the command box: one-shot dictation that fills the input
+     and stops. Deliberately separate from the ear/talk-window machinery — this
+     must never send on its own, and it must not fight the conversation mic. */
+  const [dictating, setDictating] = useState(false);
+  const dictRecRef = useRef(null);
+  function toggleDictation() {
+    if (dictRecRef.current) {
+      try { dictRecRef.current.abort(); } catch (e) {}
+      dictRecRef.current = null;
+      setDictating(false);
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setError("This browser has no speech recognition. Safari or Chrome."); return; }
+    stopAllMics(); // dictation and the conversation mic must not share the channel
+    let rec;
+    try { rec = new SR(); } catch (e) { return; }
+    rec.lang = "en-US";
+    rec.continuous = false;
+    rec.interimResults = true; // words appear in the box as he says them
+    rec.onresult = (ev) => {
+      let text = "";
+      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
+      setCommand(text);
+    };
+    rec.onend = () => { dictRecRef.current = null; setDictating(false); };
+    rec.onerror = () => {};
+    dictRecRef.current = rec;
+    try { rec.start(); setDictating(true); } catch (e) { dictRecRef.current = null; }
+  }
   const chatEndRef = useRef(null);
   // greeting-count buttons jump to these two panel columns
   const callsColRef = useRef(null);
@@ -1110,6 +1163,7 @@ export default function BaxstarEmber() {
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
         if (prefs.chatModel) setChatModel(prefs.chatModel);
         if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+        if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
         if (prefs.coreMode) setCoreMode(prefs.coreMode);
@@ -1196,8 +1250,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode });
-  }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode]);
+    if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
+  }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -1306,6 +1360,10 @@ export default function BaxstarEmber() {
   // the mic. Long enough to cover a boat ride between spots; short enough that
   // a tab left open overnight isn't a live microphone.
   const EAR_IDLE_MS = 30 * 60 * 1000;
+  // Phone talk window: how much TRUE silence ends the conversation. Generous on
+  // purpose — Brady thinks between sentences on the water; interim speech
+  // refreshes this clock so it never counts against a sentence in progress.
+  const LIVE_IDLE_MS = 15000;
 
   // Soft ping: "I heard my name." Distinct from the boot chime — shorter,
   // higher, quieter.
@@ -1333,7 +1391,11 @@ export default function BaxstarEmber() {
     // Single-shot on purpose: iOS ends continuous sessions on its own schedule
     // anyway, and one-phrase sessions deliver finals faster.
     rec.continuous = false;
-    rec.interimResults = false;
+    // Phone talk windows get interim results — not for their text, but as a
+    // "he's still talking" heartbeat so the follow window can't cut a sentence
+    // in half. The desktop ear stays finals-only: interims from room noise
+    // would keep bumping the activity clock and defeat the 30-minute sleep.
+    rec.interimResults = isPhone;
     rec.lang = "en-US";
     rec.onstart = () => {
       if (gen !== inlineGenRef.current) return;
@@ -1391,9 +1453,14 @@ export default function BaxstarEmber() {
     rec.onresult = (ev) => {
       if (gen !== inlineGenRef.current) return;
       let text = "";
+      let sawInterim = false;
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         if (ev.results[i].isFinal) text += ev.results[i][0].transcript;
+        else sawInterim = true;
       }
+      // Mid-sentence speech refreshes the talk window's idle clock, so a long
+      // slow question can't get the mic yanked out from under it.
+      if (sawInterim && earModeRef.current === "live") earLastActiveRef.current = Date.now();
       text = text.trim();
       if (!text) return;
       if (speakingRef.current || isEcho(text)) return; // never act on her own voice
@@ -1460,12 +1527,29 @@ export default function BaxstarEmber() {
       setError("Could not start the mic.");
       return false;
     }
-    followTimerRef.current = setTimeout(() => {
-      followTimerRef.current = null;
-      // busy/speaking: the window renews after she finishes; don't yank it now
-      if (!speakingRef.current && !busyRef.current && earModeRef.current === "live") releaseMic();
-    }, 9000);
+    armFollowTimer();
     return true;
+  }
+
+  /* The talk window used to be a hard fuse — 9 seconds to speak, 8 between
+     exchanges — and it fired even mid-sentence, which is how Brady kept getting
+     cut off. Now it's an idle check: the mic releases only after LIVE_IDLE_MS
+     of true silence, with interim speech results refreshing the clock, and it
+     re-checks instead of guillotining. Busy/speaking defers the check. */
+  function armFollowTimer() {
+    if (followTimerRef.current) clearTimeout(followTimerRef.current);
+    const check = () => {
+      followTimerRef.current = null;
+      if (earModeRef.current !== "live") return;
+      if (speakingRef.current || busyRef.current) {
+        followTimerRef.current = setTimeout(check, 2000);
+        return;
+      }
+      const idle = Date.now() - earLastActiveRef.current;
+      if (idle >= LIVE_IDLE_MS) releaseMic();
+      else followTimerRef.current = setTimeout(check, LIVE_IDLE_MS - idle + 250);
+    };
+    followTimerRef.current = setTimeout(check, LIVE_IDLE_MS);
   }
 
   // Desktop: the ear. Always listening while on, but passive — everything that
@@ -1698,13 +1782,12 @@ export default function BaxstarEmber() {
     if (earModeRef.current === "off" || speakingRef.current) return;
     if (isPhone) {
       // The conversation continues: renew the follow-up window so he can answer
-      // back without tapping, then release for real if he stays quiet.
+      // back without tapping. Restamp the clock — her answer may have taken
+      // longer than the idle ceiling, and that must not count against him.
       clearEarTimers();
       setEar("live");
-      followTimerRef.current = setTimeout(() => {
-        followTimerRef.current = null;
-        if (!speakingRef.current && !busyRef.current && earModeRef.current === "live") releaseMic();
-      }, 8000);
+      earLastActiveRef.current = Date.now();
+      armFollowTimer();
     } else if (earModeRef.current === "armed") {
       setEar("passive");
     }
@@ -2888,6 +2971,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-core { order:-1; }
           /* the QUO/GMAIL/CALENDAR dots are demo-state, not tappable — dead weight on a phone */
           .conn-dots { display:none; }
+          /* Header on a phone: one tight band, not a tall stack. Brand shrinks,
+             controls pack close and wrap horizontally — Brady's 8/15 note was
+             that the words must spread OUT so the header stops eating the
+             screen before the skull even appears. */
+          .ember-header { row-gap:3px; }
+          .ember-header h1.brand-title { font-size:17px !important; }
+          .ember-header > div:first-child { gap:8px !important; }
+          .ember-header > div:first-child > div:first-child { height:26px !important; width:26px !important; font-size:12px !important; border-radius:8px !important; }
+          .ember-header > div:last-child { column-gap:9px !important; row-gap:3px !important; font-size:9px !important; }
+          .ember-header .header-control { padding:2px 7px !important; font-size:9px !important; }
           .home-thread { max-height:min(46vh,420px); }
           .rail-list { flex-direction:row; flex-wrap:wrap; }
         }
@@ -3274,8 +3367,20 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           background:linear-gradient(180deg,#2d1509 0%,#1b0e07 50%,#120a05 100%);
           box-shadow:inset 0 1px 0 rgba(255,177,120,.25), inset 0 -2px 6px rgba(0,0,0,.6), 0 0 16px rgba(255,77,50,.34);
         }
-        .dock-ic { display:flex; color:var(--brass); }
-        .dock-control.active .dock-ic { color:var(--ember-orange); filter:drop-shadow(0 0 6px rgba(255,122,69,.6)); }
+        /* Brass instrument tiles — back per Brady 2026-08-15, done right this time.
+           Each button shows ITS OWN slice of command-console@2x.webp at a LOCKED
+           aspect ratio (no object-fit:fill anywhere), cropped to the mechanism
+           area ABOVE the painted nameplates — so the HTML label underneath never
+           fights painted text and centers natively at every width. The 2026-08-01
+           failures were stretch distortion and label drift; both are structurally
+           impossible in this form. Panels occupy x=100..1500 of the 1600px strip. */
+        .dock-art { position:relative; width:min(64px,86%); aspect-ratio:233/200; overflow:hidden;
+          border-radius:7px; background:#0d0906;
+          box-shadow:inset 0 0 0 1px rgba(214,179,106,.28), inset 0 -6px 10px rgba(0,0,0,.45); }
+        .dock-art img { position:absolute; top:0; width:685.7%; max-width:none; height:auto;
+          left:calc(var(--panel-x) * -1); pointer-events:none; }
+        .dock-control.active .dock-art { box-shadow:inset 0 0 0 1px rgba(255,122,69,.55), 0 0 12px rgba(255,77,50,.35); }
+        .dock-control.active .dock-art img { filter:brightness(1.2) saturate(1.08); }
         .dock-label {
           display:block; width:100%; text-align:center;
           font-family:var(--ember-font-display);
@@ -3466,8 +3571,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="14" height="14"
                 style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "4px" }} />BG
             </button>
+            {/* Brady's spec: orange while voice is on (it starts on), darker with
+                "TAP FOR VOICE MODE" when off — the state reads at a glance. */}
             <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
-              className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}>
+              className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}
+              style={voiceOn ? { color: "var(--ember-orange)" } : { color: "#8a8078", opacity: 0.85 }}>
               <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
                 <rect x="2" y="2" width="108" height="48" rx="24" fill="#0A0907" stroke="#5F4428" strokeWidth="4" />
                 <path d="M26 26h60" stroke="#3A281B" strokeWidth="10" strokeLinecap="round" />
@@ -3476,7 +3584,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <circle cx="30" cy="26" r="5" className="tgl-knob-i" />
                 </g>
               </svg>
-              {voiceOn ? "VOICE ON" : "VOICE OFF"}
+              {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
             </button>
             <button onClick={syncLive} disabled={syncing}
               className="header-control sync-control flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
@@ -3545,7 +3653,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               style={voiceOn
                 ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
                 : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }}>
-              {voiceOn ? "VOICE ON" : "MUTED"}
+              {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
             </button>
           </div>
         )}
@@ -3631,10 +3739,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               ))}
             </Panel>
 
-            <Panel notch="hot" title="Today's Revenue" count="+$1,240" countColor="#ffb87a" codexCount delay="0.25s">
-              <Odometer value="$01,240" />
-              <Row who="2 FareHarbor bookings">
-                <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>Rod upgrade ×2 · Trip Protection ×1</div>
+            {/* Revenue is set by Brady, never invented — a hardcoded demo number
+                used to live here and read as real, which is worse than nothing. */}
+            <Panel notch="hot" title="Today's Revenue" count={revSet ? `+$${revToday.n.toLocaleString()}` : "—"} countColor="#ffb87a" codexCount delay="0.25s">
+              <Odometer value={revSet ? odoFmt(revToday.n) : "$--,---"} />
+              <Row who={revSet ? "Set by you today" : "Not logged yet"}>
+                <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>
+                  <button className="chip ghost" onClick={editRevenue}>{revSet ? "Update" : "Set today's number"}</button>
+                </div>
               </Row>
             </Panel>
           </div>
@@ -3708,9 +3820,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   {/* The mute state was only legible in the header (desktop) or a bar above
                       the fold (phone), so Brady had voice off without knowing and read the
                       silence as broken audio. State + fix in one tap, next to the status. */}
-                  <button className={`chip ${voiceOn ? "ghost" : "solid"}`}
-                    onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>
-                    {voiceOn ? "VOICE ON" : "VOICE OFF — TAP TO HEAR REPLIES"}
+                  <button className="chip"
+                    onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+                    style={voiceOn
+                      ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+                      : { borderColor: "rgba(120,110,100,.5)", background: "rgba(60,54,48,.35)", color: "#8a8078" }}>
+                    {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
                   </button>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
@@ -3772,6 +3887,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     Ask anything — "what'd I miss?"<span className="cursor-block" />
                   </span>
                 )}
+                {/* Talk-to-type: fills the box, never sends by itself. */}
+                <button onClick={toggleDictation} title="Talk to type" aria-pressed={dictating} aria-label="Dictate into the command box"
+                  className="absolute right-14 top-1/2 -translate-y-1/2 rounded-md px-1.5 py-1"
+                  style={{ color: dictating ? "var(--ember-red)" : "var(--ink-faint)", filter: dictating ? "drop-shadow(0 0 6px rgba(255,77,61,.7))" : "none" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <rect x="9" y="2" width="6" height="12" rx="3" />
+                    <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
+                    <path d="M12 18v4" />
+                  </svg>
+                </button>
                 <button onClick={() => sendCommand()}
                   className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2.5 py-1 text-[10px] font-bold text-white transition-opacity"
                   style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", opacity: command ? 1 : 0.35 }}>
@@ -4566,26 +4691,26 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         <div className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
           <div className="console-dock-grid">
             <button className={`dock-control ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>
-              <span className="dock-ic"><EmberIcon name="dials" size={15} /></span>
+              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": "42.857%" }} /></span>
               <span className="dock-label">OPS</span>
               <span className="dock-lamp" />
             </button>
             <button className={`dock-control ${view === "studio" ? "active" : ""}`}
               onClick={() => { setView("studio"); setStudioTool("captions"); }}>
-              <span className="dock-ic"><EmberIcon name="quill" size={15} /></span>
+              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": "142.857%" }} /></span>
               <span className="dock-label">Caption Studio</span>
               <span className="dock-lamp" />
             </button>
           {ACTIONS.map((a, i) => (
             <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <span className="dock-ic"><EmberIcon name={["spark", "clipboard", "globe"][i]} size={15} /></span>
+              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": `${242.857 + i * 100}%` }} /></span>
               <span className="dock-label">{a.label}</span>
               <span className="dock-lamp" />
             </button>
           ))}
             <button className={`dock-control ${view === "projects" ? "active" : ""}`} onClick={() => setView("projects")}>
-              <span className="dock-ic"><EmberIcon name="folder" size={15} /></span>
+              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": "542.857%" }} /></span>
               <span className="dock-label">Projects</span>
               <span className="dock-lamp" />
             </button>
