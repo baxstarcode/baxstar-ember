@@ -54,12 +54,14 @@ Other rules that are load-bearing, not stylistic:
 Steampunk is the identity; fishing and golf are engraving only. **Warmth only — no blues,
 no purples in primary UI.**
 
-The dock spec changed 2026-08-01 per Brady: `command-console@2x.webp` is **retired as the
-dock**. Stretched to arbitrary bar sizes it read flat and distorted, and its painted
-nameplates forced absolutely-positioned labels that drifted off-center on phones. The dock
-is now a CSS-built brass bar, `position:fixed` to the bottom of the screen at every width,
-with natively centered labels — do not bring the raster back as the bar. The asset stays
-in `assets/ember/raster/` as reference art only.
+The dock spec changed twice, both per Brady. 2026-08-01: `command-console@2x.webp` retired
+as one stretched bar — `object-fit:fill` distorted it and its painted nameplates forced
+absolutely-positioned labels that drifted on phones. 2026-08-15: Brady wanted the steampunk
+buttons back, so the asset returned **as six per-button tiles** (`.dock-art`): each button
+shows its own panel slice at a locked aspect ratio, cropped above the painted nameplates,
+with the label as natively-centered HTML text below. The bar itself stays CSS-built and
+`position:fixed`. Never render the raster as one stretched strip, and never put label text
+on the painted nameplates — those are the two failures that got it benched the first time.
 
 ## Doc discipline (Baxstar_AI_Context Rule 15, 2026-08-01)
 
