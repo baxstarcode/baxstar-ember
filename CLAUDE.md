@@ -34,13 +34,14 @@ npm run test:caption  # Caption Studio end-to-end in headless Chromium (needs pl
 
 ## Caption Studio
 
-Sponsor handles live in exactly one place — the `SPONSORS` map in `src/baxstar-ember.jsx` —
-and are the canonical set shared with the standalone tool at
-[baxstarcode/caption-studio](https://github.com/baxstarcode/caption-studio). **When either
-side changes, check the other.** These two drifted once already, and the result was Ember
-tagging `@vexusboats` when Brady's sponsor is `@therealvexusboats` — a different account,
-notified on every sponsored post. Two front doors is deliberate (bookmarkable URL at the
-lake vs. command center); the drift is the cost, so this is the first thing to check.
+Sponsor handles live in the `SPONSORS` map in `src/baxstar-ember.jsx` and are shared with
+the standalone tool at [baxstarcode/caption-studio](https://github.com/baxstarcode/caption-studio).
+Drift between the two is checked by a machine, not by you: `npm run test:sponsors`
+(`scripts/check-sponsor-drift.mjs`) compares the two sets exactly, and the `sponsor-drift`
+GitHub Action runs it on sponsor-touching pushes, PRs, and weekly. If it fails, fix the
+side that is wrong in its own repo — the historical failure was `@vexusboats` shipping when
+the sponsor is `@therealvexusboats`, a different real account notified on every post. If
+you change `SPONSORS`, run the check before pushing; that's the whole obligation.
 
 Other rules that are load-bearing, not stylistic:
 - Hashtags are hard-capped at 5 **including** the locked `#getyourbassingear`.
