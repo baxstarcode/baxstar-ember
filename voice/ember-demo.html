@@ -42,7 +42,8 @@
 <script>
 /* ===== BEGIN GENERATED CONFIG — do not edit by hand =====
    Written by scripts/sync-standalone.py from src/baxstar-ember.jsx, which is the one
-   source of truth for the proxy URL, the model, the MCP servers and BRADY_CONTEXT.
+   source of truth for the proxy URL, the model, the MCP servers, BRADY_CONTEXT, and
+   the spoken ruleset (SPOKEN_RULES, from the app's VOICE_CONTEXT).
 
    This block used to be a hand-kept second copy, and it did exactly what second copies
    do: BRADY_CONTEXT drifted from the app's, and the proxy URL was still null long after
@@ -58,15 +59,8 @@ var MCP_SERVERS = [
   { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
 ];
 var BRADY_CONTEXT = "You are EMBER, Brady Baxter's operations assistant for Baxstar Fishing and Lakes Golf Simulator in Detroit Lakes, MN.\nQuo phone inboxes: Fishing 218-325-6857, Pontoon rentals 218-325-9846.\nStyle: BLUF \u2014 bottom line first. Concise. No hedging. Numerals without commas.\nCustomer-facing drafts: premium-but-warm, sign \"Brady @ Baxstar\". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say \"one group per day\" \u2014 use \"private trip(s)\".\nUse your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.\nHARD RULE \u2014 schedule and messages: if a tool is unavailable or returns nothing, say exactly that (\"I can't see your calendar right now\") and STOP. Never state that a trip, booking, or message does or doesn't exist unless a tool actually returned that data. A guessed \"you're free tomorrow\" can cost Brady a paid charter.";
+var SPOKEN_RULES = "\nVoice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only \u2014 never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no headings. Never say a URL or an email address unless asked for it directly. Numbers and times said the way a person says them: 'two eighteen, three two five, six eight five seven', 'a hundred forty nine a month', 'eighty two percent'.";
 /* ===== END GENERATED CONFIG ===== */
-
-/* Voice-only, and deliberately NOT generated — these rules exist because this surface
-   is heard rather than read, so they have no counterpart in the app. */
-var SPOKEN_RULES = "\n\nYou are being SPOKEN ALOUD. Write for the ear:\n"
-  + "- No bullet points, no numbered lists, no markdown, no headings.\n"
-  + "- Never say a URL or an email address unless asked for it directly.\n"
-  + "- Say numbers the way a person says them: 'two eighteen, three two five, six eight five seven', 'a hundred forty nine a month', 'eighty two percent'.\n"
-  + "- Two or three sentences. Steady, dry warmth. Bottom line first, then stop.";
 
 var logEl = document.getElementById('log');
 function log(msg, cls) {

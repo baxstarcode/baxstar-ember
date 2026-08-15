@@ -170,6 +170,23 @@ if ("serviceWorker" in navigator) {
 
 fs.writeFileSync(OUT, html);
 
+/* ---------- 5. refresh the other generated surfaces ---------- */
+
+// The voice rig's config block (and _preview.html) are owned by
+// scripts/sync-standalone.py — one generator per artifact, and this is not it. But a
+// session that edits BRADY_CONTEXT or VOICE_CONTEXT in src and only runs `npm run build`
+// would ship an index.html ahead of a voice rig still carrying the old prose — the same
+// stale-generated-file class this build exists to prevent. So the build ASKS the owning
+// generator to run. Best-effort: python3 is everywhere node is, but a build must not
+// fail over the preview harness.
+try {
+  execFileSync("python3", [path.join(ROOT, "scripts", "sync-standalone.py")], { stdio: ["ignore", "ignore", "pipe"] });
+  console.log("build: ran scripts/sync-standalone.py — voice config + _preview.html refreshed");
+} catch (e) {
+  console.warn("build: WARNING — could not run scripts/sync-standalone.py (" + (e.message || e).split("\n")[0] + ")");
+  console.warn("       voice/ember-demo.html's generated config may now lag src — run ./start-ember.sh once to refresh it.");
+}
+
 const kb = (n) => (n / 1024).toFixed(1) + "KB";
 console.log("build: wrote index.html — self-contained, no CDN");
 console.log(`  react + react-dom  ${kb(reactJs.length + reactDomJs.length)}  (inlined, was fetched from unpkg)`);
