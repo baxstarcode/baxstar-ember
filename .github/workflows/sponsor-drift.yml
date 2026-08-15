@@ -1,0 +1,24 @@
+# The machine that replaced a hand rule. The sponsor handles live in two apps
+# (this repo and baxstarcode/caption-studio); they drifted once and a real,
+# wrong account got notified on every sponsored post. This checks the two sets
+# on every sponsor-relevant push, on PRs, and weekly — because the OTHER repo
+# can drift while this one sleeps.
+name: sponsor-drift
+on:
+  push:
+    branches: [main]
+    paths: ["src/baxstar-ember.jsx", "scripts/check-sponsor-drift.mjs"]
+  pull_request:
+    paths: ["src/baxstar-ember.jsx", "scripts/check-sponsor-drift.mjs"]
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC — morning in Detroit Lakes
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/check-sponsor-drift.mjs
