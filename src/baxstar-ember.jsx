@@ -19,7 +19,12 @@ import { useState, useEffect, useRef } from "react";
 /* ---------- CONFIG ---------- */
 
 const MCP_SERVERS = [
-  { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
+  // Quo is DESCOPED (2026-08-19, verified live): mcp.quo.com only accepts OAuth
+  // clients on Quo's own allowlist — dynamic registration rejects every redirect
+  // URI we control, and a valid API key is refused as a bearer. Worse than
+  // useless in this list: one dead connector trips the worker's degrade guard,
+  // which strips ALL connectors from the retry, taking Gmail and Calendar down
+  // with it. Do not re-add without a Quo-issued client id.
   { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
   { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
 ];
@@ -3557,7 +3562,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
 
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
-            {["QUO", "GMAIL", "CALENDAR"].map((s) => (
+            {["GMAIL", "CALENDAR"].map((s) => (
               <span key={s} className="conn-dots flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` }} />
                 {s}
