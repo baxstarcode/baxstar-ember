@@ -420,3 +420,18 @@ window and is unchanged.
 **Verified:** all four suites green (worker 35, outbox 27, posttime 24, sleep 50);
 rebuilt `index.html` + `_preview.html` carry the change; headless load renders with
 zero page errors.
+
+## 11. Quo cannot be a connector — their side, not ours
+
+**Severity:** none — descoped deliberately (2026-08-19), recorded so nobody retries it
+
+`mcp.quo.com` accepts only OAuth clients on Quo's own allowlist. Verified live, three
+ways: dynamic registration (`/register`) returns `invalid_redirect_uri` for every URI we
+control (workers.dev callback, the custom domain, and a throwaway); their settings UI
+offers no place to register an app or redirect URI; and a valid Quo API key pasted into
+`MCP_TOKEN_QUO` is refused as a bearer at the MCP handshake. Worse than useless in
+`MCP_SERVERS`: the dead connector tripped the worker's degrade guard on every request,
+and the guard's retry strips ALL connectors — so Quo's corpse was taking Gmail and
+Calendar down with it. Removed from `MCP_SERVERS` and the header dots. Do not re-add
+without a Quo-issued client id (their support is the only door). The worker's
+`MCP_TOKEN_QUO` support is intact and harmless if that ever happens.

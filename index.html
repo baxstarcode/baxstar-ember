@@ -340,7 +340,12 @@ if ("serviceWorker" in navigator) {
 <script>(() => {
   const { useState, useEffect, useRef } = React;
   const MCP_SERVERS = [
-    { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
+    // Quo is DESCOPED (2026-08-19, verified live): mcp.quo.com only accepts OAuth
+    // clients on Quo's own allowlist — dynamic registration rejects every redirect
+    // URI we control, and a valid API key is refused as a bearer. Worse than
+    // useless in this list: one dead connector trips the worker's degrade guard,
+    // which strips ALL connectors from the retry, taking Gmail and Calendar down
+    // with it. Do not re-add without a Quo-issued client id.
     { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
     { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" }
   ];
@@ -615,7 +620,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-15 21:25Z".startsWith("__") ? "dev" : "2026-08-15 21:25Z";
+  const BUILD_STAMP = "2026-08-19 20:03Z".startsWith("__") ? "dev" : "2026-08-19 20:03Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -3300,7 +3305,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         style: { background: "linear-gradient(135deg,var(--ember-red),var(--ember-dark))", boxShadow: "0 0 24px rgba(255,77,61,.5)" }
       },
       "B"
-    ), /* @__PURE__ */ React.createElement("h1", { className: "brand-title font-display font-extrabold leading-none tracking-[0.13em]" }, "BAXSTAR", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: "drop-shadow(0 0 12px rgba(255,90,50,.35))" } }, "EMBER")), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.25em]", style: { color: "var(--ink-faint)" } }, view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : "BAXSTAR STUDIO")), /* @__PURE__ */ React.createElement("div", { className: "font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider", style: { color: "var(--ink-dim)" } }, ["QUO", "GMAIL", "CALENDAR"].map((s) => /* @__PURE__ */ React.createElement("span", { key: s, className: "conn-dots flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "h-1.5 w-1.5 rounded-full", style: { background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` } }), s)), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, live ? "LIVE" : "DEMO", " \xB7 ", clock), /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("h1", { className: "brand-title font-display font-extrabold leading-none tracking-[0.13em]" }, "BAXSTAR", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: "drop-shadow(0 0 12px rgba(255,90,50,.35))" } }, "EMBER")), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.25em]", style: { color: "var(--ink-faint)" } }, view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : "BAXSTAR STUDIO")), /* @__PURE__ */ React.createElement("div", { className: "font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider", style: { color: "var(--ink-dim)" } }, ["GMAIL", "CALENDAR"].map((s) => /* @__PURE__ */ React.createElement("span", { key: s, className: "conn-dots flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "h-1.5 w-1.5 rounded-full", style: { background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` } }), s)), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, live ? "LIVE" : "DEMO", " \xB7 ", clock), /* @__PURE__ */ React.createElement(
       "button",
       {
         onClick: () => setBgMenu(!bgMenu),
