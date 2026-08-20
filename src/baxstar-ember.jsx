@@ -684,7 +684,7 @@ function buildBridgeHtml() {
     + 'if(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\n'
     + 'requestAnimationFrame(loop);}loop();startSR();\n'
     + '}).catch(function(){setSt("MIC PERMISSION DENIED");});\n'
-    + 'function pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
+    + 'function pickV(want){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];if(want){for(var i=0;i<vs.length;i++){if(vs[i].name===want)return vs[i];}}var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium/i.test(v.name))s+=60;else if(/enhanced/i.test(v.name))s+=45;else if(/natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen|ava|zoe|evan|nathan|allison|serena/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;if(/compact/i.test(v.name))s-=40;if(/eloquence|bad news|good news|bells|boing|bubbles|cellos|deranged|hysterical|jester|junior|organ|pipe|princess|ralph|superstar|trinoids|whisper|wobble|zarvox|albert|fred|kathy|bahh|grandma|grandpa|rocko|shelley|sandy|flo|eddy|reed/i.test(v.name))s-=100;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
     + 'if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\n'
     // A superseded utterance never posts 'speaking on' (a late start would otherwise
     // latch the gate shut, since its end is suppressed) and never calls cancel() --
@@ -695,9 +695,9 @@ function buildBridgeHtml() {
     // onvoiceschanged could both fire, and the second go()'s cancel() ran the
     // first one's fin(), reopening the mic mid-sentence.
     + 'var sayGen=0;\n'
-    + 'function say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
+    + 'function say(text,want){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
     + 'function go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
-    + 'var u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
+    + 'var u=new SpeechSynthesisUtterance(text);var v=pickV(want);if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
     + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
     // If the swallow-watchdog already gave up on this utterance, a late start is
     // the engine talking over whatever replaced it — and its onend would be
@@ -713,7 +713,7 @@ function buildBridgeHtml() {
     + 'setTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
     + 'function killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="micOff"){if(active){stopSR();}}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
+    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="micOff"){if(active){stopSR();}}if(m.t==="say"&&m.text){say(m.text,m.voice||"");}if(m.t==="stopSay"){killSay();}\n'
     + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
     + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
     + 'if(m.t==="close"){window.close();}});\n'
@@ -1911,7 +1911,7 @@ export default function BaxstarEmber() {
         };
       }
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
-      w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
+      w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: voiceChoiceRef.current || (voiceRef.current && voiceRef.current.name) || "" }, "*");
       setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -2103,9 +2103,13 @@ export default function BaxstarEmber() {
       const score = (v) => {
         let s = 0;
         if (v.localService) s += 100;
-        if (/premium|enhanced|natural|neural/i.test(v.name)) s += 40;
-        if (/samantha|alex|aria|zira|david|daniel|karen|moira/i.test(v.name)) s += 25;
+        if (/premium/i.test(v.name)) s += 60;
+        else if (/enhanced/i.test(v.name)) s += 45;
+        else if (/natural|neural/i.test(v.name)) s += 40;
+        if (/samantha|alex|aria|zira|david|daniel|karen|moira|ava|zoe|evan|nathan|allison|serena/i.test(v.name)) s += 25;
         if (v.lang === "en-US") s += 10;
+        if (/compact/i.test(v.name)) s -= 40;
+        if (NOVELTY_VOICE.test(v.name)) s -= 100;
         return s;
       };
       voiceRef.current = en.slice().sort((a, b) => score(b) - score(a))[0] || null;
