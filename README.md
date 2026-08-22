@@ -42,14 +42,18 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 
 ## The app — `src/baxstar-ember.jsx`
 
-Two modules: **OPS** and **BAXSTAR STUDIO**.
+Three views: **OPS**, **MISSION CONTROL**, and **BAXSTAR STUDIO**.
 
 **Connected services (MCP):** Quo (phones), Gmail, Google Calendar, Google Drive.
 
 **Studio tools (8):**
 Claude Chat · AI Handoff · Caption Studio · Google Drive Librarian · HTML Viewer · Image Filters · GitHub · Snippets
 
-**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
+**Mission Control:** editable project fuses, next actions, task lists, resumable page
+links, Zapier usage and pacing, effort rollups, and a decision queue. Its state persists
+in browser local storage.
+
+**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC, and explicit persistent voice mode.
 
 ### Running it
 
