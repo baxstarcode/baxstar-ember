@@ -468,6 +468,40 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     chatgpt: { label: "ChatGPT", url: "https://chatgpt.com", color: "#10a37f" },
     gemini: { label: "Gemini", url: "https://gemini.google.com", color: "#4285f4" }
   };
+  const NEURAL_VOICES = [
+    { id: "en-US-JennyNeural", label: "Jenny \u2014 natural, warm" },
+    { id: "en-US-AriaNeural", label: "Aria \u2014 natural, bright" },
+    { id: "en-US-MichelleNeural", label: "Michelle \u2014 natural, even" },
+    { id: "en-US-GuyNeural", label: "Guy \u2014 natural, radio" },
+    { id: "en-US-ChristopherNeural", label: "Christopher \u2014 natural, deep" }
+  ];
+  const SILENT_WAV = (() => {
+    try {
+      const n = 400;
+      const b = new Uint8Array(44 + n * 2);
+      const dv = new DataView(b.buffer);
+      const tag = (o, s2) => {
+        for (let i = 0; i < s2.length; i++) b[o + i] = s2.charCodeAt(i);
+      };
+      tag(0, "RIFF");
+      dv.setUint32(4, 36 + n * 2, true);
+      tag(8, "WAVEfmt ");
+      dv.setUint32(16, 16, true);
+      dv.setUint16(20, 1, true);
+      dv.setUint16(22, 1, true);
+      dv.setUint32(24, 8e3, true);
+      dv.setUint32(28, 16e3, true);
+      dv.setUint16(32, 2, true);
+      dv.setUint16(34, 16, true);
+      tag(36, "data");
+      dv.setUint32(40, n * 2, true);
+      let s = "";
+      for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+      return "data:audio/wav;base64," + btoa(s);
+    } catch (e) {
+      return "";
+    }
+  })();
   const PROJECTS_META = {
     updated: "2026-08-01",
     zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" }
@@ -526,7 +560,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           pct: 90,
           platform: "Claude",
           links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-          outstanding: "MCP OAuth for hosted connectors (Mission Control merged from Codex fork 8/22)",
+          outstanding: "Natural voice built 8/22 \u2014 needs the 2-min Worker paste to go live. Then MCP OAuth",
           sessions: "~1"
         },
         {
@@ -622,7 +656,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-22 05:25Z".startsWith("__") ? "dev" : "2026-08-22 05:25Z";
+  const BUILD_STAMP = "2026-08-22 05:51Z".startsWith("__") ? "dev" : "2026-08-22 05:51Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -960,6 +994,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     });
     const ttsPathRef = useRef(null);
     const audioElRef = useRef(null);
+    const neuralElRef = useRef(null);
+    const neuralDownUntilRef = useRef(0);
+    const neuralVoiceRef = useRef(null);
     const bridgeAckRef = useRef(null);
     const busyRef = useRef(false);
     const pendingRef = useRef(null);
@@ -1282,6 +1319,20 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           var _a3;
           return (_a3 = ctx.close) == null ? void 0 : _a3.call(ctx);
         }, 300);
+      } catch (e) {
+      }
+      try {
+        if (!neuralElRef.current && SILENT_WAV) {
+          const a = new Audio(SILENT_WAV);
+          a.play().then(() => {
+            try {
+              a.pause();
+            } catch (e) {
+            }
+          }).catch(() => {
+          });
+          neuralElRef.current = a;
+        }
       } catch (e) {
       }
       if (ttsPathRef.current === "mp3") ttsPathRef.current = null;
@@ -1793,6 +1844,120 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         res(false);
       }));
     }
+    function neuralPick() {
+      const c = voiceChoiceRef.current || "";
+      if (c.startsWith("ember:")) return c.slice(6);
+      if (!c) return NEURAL_VOICES[0].id;
+      return null;
+    }
+    async function sayNeural(short, slot) {
+      const base = typeof window !== "undefined" && window.EMBER_API_PROXY || "";
+      const voice = neuralPick();
+      if (!base || !voice || Date.now() < neuralDownUntilRef.current) return false;
+      let blobUrl = "";
+      let synthMs = 0;
+      try {
+        const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const t0 = performance.now();
+        const kill = ctrl ? setTimeout(() => ctrl.abort(), 4e3) : null;
+        let r;
+        try {
+          r = await fetch(base.replace(/\/$/, "") + "/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: short, voice }),
+            signal: ctrl ? ctrl.signal : void 0
+          });
+        } finally {
+          if (kill) clearTimeout(kill);
+        }
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const blob = await r.blob();
+        if (!blob || blob.size < 200) throw new Error("empty audio");
+        blobUrl = URL.createObjectURL(blob);
+        synthMs = Math.round(performance.now() - t0);
+      } catch (e) {
+        if (blobUrl) {
+          try {
+            URL.revokeObjectURL(blobUrl);
+          } catch (e2) {
+          }
+        }
+        neuralDownUntilRef.current = Date.now() + 5 * 60 * 1e3;
+        traceAdd("\u2715 natural voice offline (" + String(e && e.message || e).slice(0, 40) + ") \u2014 device voice takes over");
+        return false;
+      }
+      return new Promise((res) => {
+        const prev = audioElRef.current;
+        if (prev) {
+          try {
+            prev.pause();
+          } catch (e) {
+          }
+        }
+        const epoch = beginSpeech();
+        const token = armSpeechEnd();
+        const a = neuralElRef.current || new Audio();
+        try {
+          a.pause();
+        } catch (e) {
+        }
+        a.src = blobUrl;
+        audioElRef.current = a;
+        let ok = false;
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (epoch === speechEpochRef.current) {
+            speakingRef.current = false;
+            setSpeaking(false);
+          }
+          endSpeech(epoch);
+          releaseSpeechEnd(token);
+          try {
+            URL.revokeObjectURL(blobUrl);
+          } catch (e) {
+          }
+        };
+        if (slot) {
+          slot.token = token;
+          slot.finish = finish;
+        }
+        const bail = (why) => {
+          if (!settled && !ok) {
+            neuralDownUntilRef.current = Date.now() + 60 * 1e3;
+            traceAdd("\u2715 natural playback " + why + " \u2014 device voice takes over");
+          }
+          finish();
+          if (!ok) res(false);
+        };
+        a.onplaying = () => {
+          const name = voice.replace(/^en-US-/, "").replace(/Neural$/, "");
+          traceAdd("\u25B6 speaking: " + name + " (natural) \xB7 synth " + synthMs + "ms");
+          ok = true;
+          neuralVoiceRef.current = name;
+          if (epoch === speechEpochRef.current) {
+            speakingRef.current = true;
+            setSpeaking(true);
+          }
+          res(true);
+        };
+        a.onended = finish;
+        a.onerror = () => bail("media error");
+        a.play().catch(() => bail("blocked"));
+        setTimeout(() => {
+          if (!ok) {
+            try {
+              a.pause();
+            } catch (e) {
+            }
+            if (audioElRef.current === a) audioElRef.current = null;
+            bail("silent 2.5s");
+          }
+        }, 2500);
+      });
+    }
     function sayViaBridge(short, slot) {
       return new Promise((res) => {
         const w = popupRef.current;
@@ -1817,7 +1982,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             res(true);
           }
         };
-        w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: voiceChoiceRef.current || voiceRef.current && voiceRef.current.name || "" }, "*");
+        w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: voiceChoiceRef.current && !voiceChoiceRef.current.startsWith("ember:") ? voiceChoiceRef.current : voiceRef.current && voiceRef.current.name || "" }, "*");
         setTimeout(() => {
           if (settled) return;
           settled = true;
@@ -1893,6 +2058,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       });
     }
     async function speakCascade(short, slot) {
+      if (await sayNeural(short, slot)) {
+        ttsPathRef.current = "neural";
+        return true;
+      }
       if (await sayLocal(short, slot)) {
         ttsPathRef.current = "local";
         return true;
@@ -1923,7 +2092,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const p = ttsPathRef.current;
       const slot = { token: void 0, finish: null };
       let started = false;
-      if (p === "local") started = await sayLocal(short, slot);
+      if (p === "neural") started = await sayNeural(short, slot);
+      else if (p === "local") started = await sayLocal(short, slot);
       else if (p === "bridge") started = await sayViaBridge(short, slot);
       else if (p === "mp3") started = await playMp3(short, slot);
       if (!started) {
@@ -1962,10 +2132,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       } catch (e) {
       }
       ttsPathRef.current = null;
+      neuralDownUntilRef.current = 0;
       const ok = await speakCascade("Ember online. Brady, can you hear me?");
       const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
       const locals = vs.filter((v) => v.localService);
-      setVoiceDiag(ok ? voiceOnRef.current ? "WORKING \u2014 PATH " + ttsPathRef.current.toUpperCase() + " \xB7 " + (voiceRef.current ? voiceRef.current.name : "?") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL)" : "ENGINE WORKS \u2014 BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON." : "ALL TTS PATHS FAILED \xB7 TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL) \xB7 DID THE CHIME PLAY?");
+      setVoiceDiag(ok ? voiceOnRef.current ? "WORKING \u2014 PATH " + ttsPathRef.current.toUpperCase() + " \xB7 " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : voiceRef.current ? voiceRef.current.name : "?") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL)" : "ENGINE WORKS \u2014 BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON." : "ALL TTS PATHS FAILED \xB7 TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " \xB7 " + vs.length + " VOICES (" + locals.length + " LOCAL) \xB7 DID THE CHIME PLAY?");
     }
     function stopSpeaking() {
       var _a2;
@@ -3508,18 +3679,20 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         style: voiceOn ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" } : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }
       },
       voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"
-    )), inlineMic && earState === "off" && !micArm && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x text-center text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "MIC RELEASED \u2014 YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP"), voiceList.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "HER VOICE"), /* @__PURE__ */ React.createElement(
+    )), inlineMic && earState === "off" && !micArm && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x text-center text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "MIC RELEASED \u2014 YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "HER VOICE"), /* @__PURE__ */ React.createElement(
       "select",
       {
         className: "voice-pick font-mono-x",
         value: voiceChoice,
         onChange: (e) => {
           unlockSpeech();
+          neuralDownUntilRef.current = 0;
           setVoiceChoice(e.target.value);
         }
       },
-      /* @__PURE__ */ React.createElement("option", { value: "" }, "Automatic"),
-      voiceList.map((v) => /* @__PURE__ */ React.createElement("option", { key: v.name, value: v.name }, v.name, v.localService ? "" : " (network)"))
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "Automatic \u2014 natural first"),
+      /* @__PURE__ */ React.createElement("optgroup", { label: "EMBER \u2014 NATURAL" }, NEURAL_VOICES.map((v) => /* @__PURE__ */ React.createElement("option", { key: v.id, value: "ember:" + v.id }, v.label))),
+      voiceList.length > 0 && /* @__PURE__ */ React.createElement("optgroup", { label: "THIS DEVICE" }, voiceList.map((v) => /* @__PURE__ */ React.createElement("option", { key: v.name, value: v.name }, v.name, v.localService ? "" : " (network)")))
     ), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: testVoice, style: { fontSize: "9px", padding: "3px 8px" } }, "HEAR IT")), inlineMic && voiceTrace.length > 0 && /* @__PURE__ */ React.createElement(
       "div",
       {
