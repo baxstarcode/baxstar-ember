@@ -64,6 +64,25 @@ with the label as natively-centered HTML text below. The bar itself stays CSS-bu
 `position:fixed`. Never render the raster as one stretched strip, and never put label text
 on the painted nameplates — those are the two failures that got it benched the first time.
 
+## Commercialization-first (Baxstar_AI_Context Rule 17, 2026-08-22)
+
+Every build here is constructed as if a paying client will one day receive a copy — Brady's
+hard rule, and the drivers are security, commercial-grade strength, and flexibility:
+
+- Secrets server-side only (the Worker pattern — already law above). Server-side
+  authorization on every endpoint. Key-rotation path documented.
+- Brady-specifics — names, IDs, URLs, sponsor lists, prices, endpoints — live in declared
+  config blocks (`SPONSORS`, `PROJECTS`, `EMBER_API_PROXY`...), never scattered through
+  logic. A second client means new config, not a rewrite.
+- Tests and a deploy doc a stranger could follow are part of "done", not extras.
+- Zero-marginal-cost infra by default (Workers/Pages/Apps Script); a metered dependency
+  needs a stated reason and a monthly-cost line.
+- No assets or licenses that would block resale.
+- Existing code is brought up to this standard when touched — never a big-bang rewrite.
+
+The full rule and the C-suite review hats ([CEO] scope / [CFO] cost+pricing / [IT]
+security red-team, findings tagged in logs and the Agent Relay) live in Baxstar_AI_Context.
+
 ## Doc discipline (Baxstar_AI_Context Rule 15, 2026-08-01)
 
 **After finishing any piece of work here, update Brady's docs before the turn ends.** Not a
