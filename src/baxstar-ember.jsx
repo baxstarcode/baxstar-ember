@@ -202,6 +202,37 @@ const HANDOFF = {
    in a chat the way the first version of this dashboard did.
    zapierTasks.used is Brady-reported (the client can't query Zapier live); null renders
    as "not recorded" rather than pretending. Allowance per Rule 14: 1,500/mo. */
+// Ember's own voice: Microsoft neural voices, synthesized by the Worker's /tts
+// route (free, no key). These are the product — the device voices in the picker
+// are the fallback ladder for when the Worker is unreachable.
+const NEURAL_VOICES = [
+  { id: "en-US-JennyNeural", label: "Jenny — natural, warm" },
+  { id: "en-US-AriaNeural", label: "Aria — natural, bright" },
+  { id: "en-US-MichelleNeural", label: "Michelle — natural, even" },
+  { id: "en-US-GuyNeural", label: "Guy — natural, radio" },
+  { id: "en-US-ChristopherNeural", label: "Christopher — natural, deep" },
+];
+
+// A beat of silence as a data URI — a WAV built by hand, no asset, no fetch.
+// Played once inside the first tap to "bless" a reusable <audio> element:
+// iOS only lets an element that has already played under a user gesture start
+// audio later on its own, and Ember's replies arrive long after the tap.
+const SILENT_WAV = (() => {
+  try {
+    const n = 400; // 50ms at 8kHz
+    const b = new Uint8Array(44 + n * 2);
+    const dv = new DataView(b.buffer);
+    const tag = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+    tag(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); tag(8, "WAVEfmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 8000, true); dv.setUint32(28, 16000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    tag(36, "data"); dv.setUint32(40, n * 2, true);
+    let s = "";
+    for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    return "data:audio/wav;base64," + btoa(s);
+  } catch (e) { return ""; }
+})();
+
 const PROJECTS_META = {
   updated: "2026-08-01",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
@@ -233,7 +264,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 90, platform: "Claude",
         links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "MCP OAuth for hosted connectors (Mission Control merged from Codex fork 8/22)", sessions: "~1" },
+        outstanding: "Natural voice built 8/22 — needs the 2-min Worker paste to go live. Then MCP OAuth", sessions: "~1" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -966,8 +997,11 @@ export default function BaxstarEmber() {
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
-  const ttsPathRef = useRef(null);      // "local" | "bridge" | "mp3" once proven
-  const audioElRef = useRef(null);      // mp3 fallback element
+  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" | "mp3" once proven
+  const audioElRef = useRef(null);      // whichever <audio> is speaking right now
+  const neuralElRef = useRef(null);     // gesture-blessed <audio> the neural path reuses (iOS)
+  const neuralDownUntilRef = useRef(0); // /tts failed — skip its latency until this passes
+  const neuralVoiceRef = useRef(null);  // which natural voice actually spoke (diag line)
   const bridgeAckRef = useRef(null);    // resolves when bridge confirms speaking
   const busyRef = useRef(false);        // a command is in flight — state lags, this doesn't
   const pendingRef = useRef(null);      // what he said while she was still answering
@@ -1328,6 +1362,14 @@ export default function BaxstarEmber() {
     try {
       const C = window.AudioContext || window.webkitAudioContext;
       const ctx = new C(); ctx.resume?.(); setTimeout(() => ctx.close?.(), 300);
+    } catch (e) {}
+    try {
+      // Bless the neural path's reusable element while still inside the tap.
+      if (!neuralElRef.current && SILENT_WAV) {
+        const a = new Audio(SILENT_WAV);
+        a.play().then(() => { try { a.pause(); } catch (e) {} }).catch(() => {});
+        neuralElRef.current = a;
+      }
     } catch (e) {}
     if (ttsPathRef.current === "mp3") ttsPathRef.current = null; // proven against a mute engine — void it
     if (!voiceChoiceRef.current) voiceRef.current = null;
@@ -1893,6 +1935,105 @@ export default function BaxstarEmber() {
     }));
   }
 
+  // Path 0 — Ember's own voice: the Worker's /tts route synthesizes a neural
+  // MP3 and an <audio> element plays it. This is the modern voice; the paths
+  // below are the fallback ladder, not the product. Any failure marks the path
+  // down for a while so replies never pay a dead fetch's latency twice — the
+  // picker and HEAR IT clear the mark, so recovery is one tap, not a reload.
+  function neuralPick() {
+    const c = voiceChoiceRef.current || "";
+    if (c.startsWith("ember:")) return c.slice(6);
+    if (!c) return NEURAL_VOICES[0].id; // Automatic prefers the natural voice
+    return null; // an explicit device-voice pick is honored, not overridden
+  }
+
+  async function sayNeural(short, slot) {
+    const base = (typeof window !== "undefined" && window.EMBER_API_PROXY) || "";
+    const voice = neuralPick();
+    if (!base || !voice || Date.now() < neuralDownUntilRef.current) return false;
+    let blobUrl = "";
+    let synthMs = 0;
+    try {
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const t0 = performance.now();
+      // Past 4s the device voice is the better answer — and without the abort,
+      // a dead Worker would stall every reply by the browser's fetch timeout.
+      const kill = ctrl ? setTimeout(() => ctrl.abort(), 4000) : null;
+      let r;
+      try {
+        r = await fetch(base.replace(/\/$/, "") + "/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: short, voice }),
+          signal: ctrl ? ctrl.signal : undefined,
+        });
+      } finally { if (kill) clearTimeout(kill); }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = await r.blob();
+      if (!blob || blob.size < 200) throw new Error("empty audio");
+      blobUrl = URL.createObjectURL(blob);
+      synthMs = Math.round(performance.now() - t0);
+    } catch (e) {
+      if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch (e2) {} }
+      neuralDownUntilRef.current = Date.now() + 5 * 60 * 1000;
+      traceAdd("✕ natural voice offline (" + String((e && e.message) || e).slice(0, 40) + ") — device voice takes over");
+      return false;
+    }
+    return new Promise((res) => {
+      const prev = audioElRef.current;
+      if (prev) { try { prev.pause(); } catch (e) {} }
+      const epoch = beginSpeech();
+      const token = armSpeechEnd();
+      // Reuse the tap-blessed element when there is one: iOS refuses play() on
+      // a fresh element outside a gesture, and replies arrive long after the tap.
+      const a = neuralElRef.current || new Audio();
+      try { a.pause(); } catch (e) {}
+      a.src = blobUrl;
+      audioElRef.current = a;
+      let ok = false;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
+        endSpeech(epoch);
+        releaseSpeechEnd(token);
+        try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+      };
+      if (slot) { slot.token = token; slot.finish = finish; }
+      // Playback failing after a good synth usually means the element was
+      // never blessed — back off for a minute, not five, so the next tap
+      // (which re-blesses) restores the natural voice without a reload.
+      const bail = (why) => {
+        if (!settled && !ok) {
+          neuralDownUntilRef.current = Date.now() + 60 * 1000;
+          traceAdd("✕ natural playback " + why + " — device voice takes over");
+        }
+        finish();
+        if (!ok) res(false);
+      };
+      a.onplaying = () => {
+        const name = voice.replace(/^en-US-/, "").replace(/Neural$/, "");
+        traceAdd("▶ speaking: " + name + " (natural) · synth " + synthMs + "ms");
+        ok = true;
+        neuralVoiceRef.current = name;
+        if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
+        res(true);
+      };
+      a.onended = finish;
+      a.onerror = () => bail("media error");
+      a.play().catch(() => bail("blocked"));
+      // A stalled element fires neither event — don't let it wedge the reply.
+      setTimeout(() => {
+        if (!ok) {
+          try { a.pause(); } catch (e) {}
+          if (audioElRef.current === a) audioElRef.current = null;
+          bail("silent 2.5s");
+        }
+      }, 2500);
+    });
+  }
+
   // Path 2 — Mic Bridge popup does the speaking (top-level engine)
   function sayViaBridge(short, slot) {
     return new Promise((res) => {
@@ -1911,7 +2052,9 @@ export default function BaxstarEmber() {
         };
       }
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
-      w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: voiceChoiceRef.current || (voiceRef.current && voiceRef.current.name) || "" }, "*");
+      // An "ember:" pick is a Worker voice the bridge's engine can't find by
+      // name — send the auto-pick instead of a name that matches nothing.
+      w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: (voiceChoiceRef.current && !voiceChoiceRef.current.startsWith("ember:") ? voiceChoiceRef.current : (voiceRef.current && voiceRef.current.name) || "") }, "*");
       setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -1970,6 +2113,7 @@ export default function BaxstarEmber() {
   }
 
   async function speakCascade(short, slot) {
+    if (await sayNeural(short, slot)) { ttsPathRef.current = "neural"; return true; }
     if (await sayLocal(short, slot)) { ttsPathRef.current = "local"; return true; }
     if (await sayViaBridge(short, slot)) { ttsPathRef.current = "bridge"; return true; }
     if (await playMp3(short, slot)) { ttsPathRef.current = "mp3"; return true; }
@@ -2005,7 +2149,8 @@ export default function BaxstarEmber() {
     // ceiling could end a long answer that started after it.
     const slot = { token: undefined, finish: null };
     let started = false;
-    if (p === "local") started = await sayLocal(short, slot);
+    if (p === "neural") started = await sayNeural(short, slot);
+    else if (p === "local") started = await sayLocal(short, slot);
     else if (p === "bridge") started = await sayViaBridge(short, slot);
     else if (p === "mp3") started = await playMp3(short, slot);
     if (!started) {
@@ -2056,6 +2201,7 @@ export default function BaxstarEmber() {
     stopSpeaking();
     try { chime(); } catch (e) {}
     ttsPathRef.current = null;
+    neuralDownUntilRef.current = 0; // HEAR IT doubles as the natural voice's retry button
     const ok = await speakCascade("Ember online. Brady, can you hear me?");
     const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     const locals = vs.filter((v) => v.localService);
@@ -2066,7 +2212,7 @@ export default function BaxstarEmber() {
     // fact every reply was landing silent. Say that plainly instead.
     setVoiceDiag(ok
       ? (voiceOnRef.current
-          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (voiceRef.current ? voiceRef.current.name : "?") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
+          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
           : "ENGINE WORKS — BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON.")
       : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
   }
@@ -3736,19 +3882,26 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             MIC RELEASED — YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP
           </div>
         )}
-        {voiceList.length > 0 && (
-          <div className="flex items-center justify-center gap-2">
-            <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
-            <select className="voice-pick font-mono-x" value={voiceChoice}
-              onChange={(e) => { unlockSpeech(); setVoiceChoice(e.target.value); }}>
-              <option value="">Automatic</option>
-              {voiceList.map((v) => (
-                <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " (network)"}</option>
+        <div className="flex items-center justify-center gap-2">
+          <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
+          <select className="voice-pick font-mono-x" value={voiceChoice}
+            onChange={(e) => { unlockSpeech(); neuralDownUntilRef.current = 0; setVoiceChoice(e.target.value); }}>
+            <option value="">Automatic — natural first</option>
+            <optgroup label="EMBER — NATURAL">
+              {NEURAL_VOICES.map((v) => (
+                <option key={v.id} value={"ember:" + v.id}>{v.label}</option>
               ))}
-            </select>
-            <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
-          </div>
-        )}
+            </optgroup>
+            {voiceList.length > 0 && (
+              <optgroup label="THIS DEVICE">
+                {voiceList.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " (network)"}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
+        </div>
         {inlineMic && voiceTrace.length > 0 && (
           <div className="font-mono-x rounded-lg border px-3 py-1.5 text-[8px] leading-relaxed"
             style={{ borderColor: "var(--ember-panel-line)", background: "#0c0a09", color: "var(--ink-faint)" }}>

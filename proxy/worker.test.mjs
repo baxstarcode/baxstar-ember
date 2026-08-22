@@ -318,6 +318,142 @@ async function startAndCookie(provider, env = baseEnv, f = stubFetch([])) {
   check("non-OAuth GET is still refused", res.status === 405);
 }
 
+// --- /tts: the natural voice ----------------------------------------------
+//
+// The Edge synth speaks WebSocket, so the stub fetch returns a fake upgraded
+// socket: on receiving the SSML frame it emits two binary audio frames in the
+// real wire format (2-byte big-endian header length, then the header, then MP3
+// payload) and a turn.end text frame.
+
+function edgeFrame(headerText, payload) {
+  const h = new TextEncoder().encode(headerText);
+  const p = new TextEncoder().encode(payload);
+  const buf = new Uint8Array(2 + h.length + p.length);
+  buf[0] = h.length >> 8;
+  buf[1] = h.length & 0xff;
+  buf.set(h, 2);
+  buf.set(p, 2 + h.length);
+  return buf.buffer;
+}
+
+function fakeEdgeSocket(opts = {}) {
+  const listeners = {};
+  const sent = [];
+  const emit = (data) => (listeners.message || []).forEach((fn) => fn({ data }));
+  const sock = {
+    sent,
+    accepted: false,
+    closed: false,
+    accept() { this.accepted = true; },
+    close() { this.closed = true; },
+    addEventListener(t, fn) { (listeners[t] = listeners[t] || []).push(fn); },
+    send(frame) {
+      sent.push(String(frame));
+      if (!String(frame).includes("Path:ssml")) return;
+      queueMicrotask(() => {
+        if (!opts.silent) {
+          emit(edgeFrame("X-RequestId:x\r\nContent-Type:audio/mpeg\r\nPath:audio\r\n", "MP3A"));
+          emit(edgeFrame("X-RequestId:x\r\nContent-Type:audio/mpeg\r\nPath:audio\r\n", "MP3B"));
+          // Metadata frames ride the same socket — they must not land in the audio.
+          emit(edgeFrame("X-RequestId:x\r\nPath:audio.metadata\r\n", "{\"Metadata\":[]}"));
+        }
+        emit("X-RequestId:x\r\nPath:turn.end\r\n\r\n{}");
+      });
+    },
+  };
+  return sock;
+}
+
+const ttsPost = (body, headers = {}) =>
+  new Request("https://proxy.example.workers.dev/tts", {
+    method: "POST",
+    headers: { Origin: ORIGIN, "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+
+{
+  const sock = fakeEdgeSocket();
+  const f = stubFetch([["speech.platform.bing.com", { status: 101, webSocket: sock }]]);
+  const res = await worker.fetch(ttsPost({ text: "Hey Brady.", voice: "en-US-JennyNeural" }), baseEnv, {}, { fetch: f, now: () => 1755840000000 });
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const audio = new TextDecoder().decode(bytes);
+  check("tts returns the concatenated audio frames as audio/mpeg", res.status === 200 && res.headers.get("Content-Type") === "audio/mpeg" && audio === "MP3AMP3B",
+    "got " + res.status + " " + JSON.stringify(audio));
+  check("tts response carries CORS for the allowed origin", res.headers.get("Access-Control-Allow-Origin") === ORIGIN);
+  check("tts closes the synth socket when the turn ends", sock.closed);
+
+  const call = f.calls[0];
+  const u = new URL(call.url);
+  check("tts upgrade asks for a websocket with the Edge disguise",
+    call.init.headers["Upgrade"] === "websocket" && /Edg\/140/.test(call.init.headers["User-Agent"] || "") &&
+    (call.init.headers["Origin"] || "").startsWith("chrome-extension://") && /Microsoft Edge/.test(call.init.headers["sec-ch-ua"] || ""),
+    "a Chromium-shaped request without these gets an empty-body 403 (probed live 2026-08-22)");
+  // Pinned from the live handshake that produced audible MP3 on 2026-08-22.
+  // If the ticks math regresses (seconds vs ticks, missing 5-min floor), this
+  // catches it offline instead of as a mystery 403 in production.
+  check("tts Sec-MS-GEC is the pinned hash for the fixed clock",
+    u.searchParams.get("Sec-MS-GEC") === "2306AEBD08A72D452BD975BCC36E7B41335FE42E975869D2C28FAD6F70998FC0" &&
+    u.searchParams.get("Sec-MS-GEC-Version") === "1-140.0.3485.14" &&
+    u.searchParams.get("TrustedClientToken") === "6A5AA1D4EAFF4E9FB37E23D68491D6F4");
+
+  const ssml = sock.sent.find((s) => s.includes("Path:ssml")) || "";
+  const config = sock.sent.find((s) => s.includes("Path:speech.config")) || "";
+  check("tts requests mp3 output and the asked-for voice",
+    /audio-24khz-48kbitrate-mono-mp3/.test(config) && /name='en-US-JennyNeural'/.test(ssml));
+}
+
+{
+  const sock = fakeEdgeSocket();
+  const f = stubFetch([["speech.platform.bing.com", { status: 101, webSocket: sock }]]);
+  await worker.fetch(ttsPost({ text: "Bass < 5 lbs & \"hot\" bite, Brady's spot", voice: "en-US-GuyNeural" }), baseEnv, {}, { fetch: f, now: () => 1755840000000 });
+  const ssml = sock.sent.find((s) => s.includes("Path:ssml")) || "";
+  check("tts escapes SSML metacharacters in the spoken text",
+    ssml.includes("Bass &lt; 5 lbs &amp; &quot;hot&quot; bite, Brady&apos;s spot") && !/<\s*5/.test(ssml),
+    "unescaped text would let a spoken reply inject markup into the synth");
+  check("tts honors a voice from the allowlist", /name='en-US-GuyNeural'/.test(ssml));
+}
+
+{
+  const sock = fakeEdgeSocket();
+  const f = stubFetch([["speech.platform.bing.com", { status: 101, webSocket: sock }]]);
+  await worker.fetch(ttsPost({ text: "hi", voice: "en-US-SomethingElseNeural" }), baseEnv, {}, { fetch: f, now: () => 1755840000000 });
+  const ssml = sock.sent.find((s) => s.includes("Path:ssml")) || "";
+  check("tts falls back to the default voice off the allowlist", /name='en-US-JennyNeural'/.test(ssml),
+    "an open voice field would let callers probe the whole catalog through us");
+}
+
+{
+  const res = await worker.fetch(ttsPost({ text: "hi" }, { Origin: "https://evil.example" }), baseEnv, {}, { fetch: stubFetch([]) });
+  check("tts is behind the same origin gate as chat", res.status === 403);
+}
+
+{
+  const res = await worker.fetch(ttsPost({ text: "" }), baseEnv, {}, { fetch: stubFetch([]) });
+  const res2 = await worker.fetch(ttsPost({ text: "x".repeat(1001) }), baseEnv, {}, { fetch: stubFetch([]) });
+  check("tts refuses empty and oversized text", res.status === 400 && res2.status === 400);
+}
+
+{
+  const f = stubFetch([["speech.platform.bing.com", { status: 403, webSocket: null }]]);
+  const res = await worker.fetch(ttsPost({ text: "hi" }), baseEnv, {}, { fetch: f, now: () => 1755840000000 });
+  check("tts surfaces a refused upgrade as 502, not a hang", res.status === 502);
+}
+
+{
+  const sock = fakeEdgeSocket({ silent: true });
+  const f = stubFetch([["speech.platform.bing.com", { status: 101, webSocket: sock }]]);
+  const res = await worker.fetch(ttsPost({ text: "hi" }), baseEnv, {}, { fetch: f, now: () => 1755840000000 });
+  check("tts with a turn that produced no audio is 502, so the app falls back", res.status === 502);
+}
+
+{
+  const { ANTHROPIC_API_KEY, ...noKey } = baseEnv;
+  const sock = fakeEdgeSocket();
+  const f = stubFetch([["speech.platform.bing.com", { status: 101, webSocket: sock }]]);
+  const res = await worker.fetch(ttsPost({ text: "hi" }), noKey, {}, { fetch: f, now: () => 1755840000000 });
+  check("tts works without an Anthropic key — it never touches the API", res.status === 200);
+}
+
 // --- report ---------------------------------------------------------------
 
 let failed = 0;
