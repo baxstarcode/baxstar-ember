@@ -43,6 +43,11 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 ## The app — `src/baxstar-ember.jsx`
 
 Three views: **OPS** (home — the skeleton, the chat thread, the panels), **BAXSTAR
+
+**Mission Control:** editable project fuses, next actions, task lists, resumable page
+links, Zapier usage and pacing, effort rollups, and a decision queue. Its state persists
+in browser local storage.
+
 STUDIO** (tools), and **PROJECTS** (the status dashboard: every open project as a
 horizontal bar under Revenue Generating / Supporting, with outstanding work, session
 estimates, and the Zapier task strip). Projects data is the session-maintained

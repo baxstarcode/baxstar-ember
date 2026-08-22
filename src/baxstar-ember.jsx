@@ -3359,6 +3359,71 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px;
           max-width:1180px; margin:0 auto;
         }
+        /* ---------- MISSION CONTROL (iron/bronze) ---------- */
+        .mc-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; min-height:0; }
+        @media (max-width:1020px){ .mc-grid { grid-template-columns:1fr; } }
+        .mc-stack { display:flex; flex-direction:column; gap:12px; min-height:0; }
+        .mc-input { border:1px solid var(--line); background:#0f0d0b; color:var(--candle);
+          border-radius:7px; padding:5px 8px; font-size:12px; caret-color:var(--brass); }
+        .mc-input:focus { outline:none; border-color:var(--brass); box-shadow:0 0 0 3px rgba(176,141,87,.14); }
+        .mc-num { width:74px; text-align:right; font-variant-numeric:tabular-nums; }
+        .mc-metric { display:flex; flex-direction:column; gap:2px; padding:8px 10px; border-radius:9px;
+          border:1px solid var(--ember-panel-line); background:linear-gradient(180deg,#131110,#0c0b0a); }
+        .mc-metric .k { font-size:8.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-faint); }
+        .mc-metric .v { font-size:19px; font-weight:800; color:var(--candle); font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+        .mc-metric .v.warn { color:var(--ember-red); }
+        .mc-metric .v.ok { color:#54e08a; }
+        /* Zapier task meter bar */
+        .mc-meter { height:12px; border-radius:7px; overflow:hidden; border:1px solid var(--ember-brass-dark);
+          background:repeating-linear-gradient(45deg,#0e0d0b,#0e0d0b 6px,#121110 6px,#121110 12px); position:relative; }
+        .mc-meter-fill { height:100%; transition:width .4s var(--ember-ease-sweep);
+          background:linear-gradient(90deg,var(--brass),var(--ember-amber)); }
+        .mc-meter-fill.warn { background:linear-gradient(90deg,var(--copper),var(--ember-red)); }
+        .mc-meter-mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--candle); opacity:.55; }
+        /* project fuse row */
+        .mc-fuse-wrap { position:relative; height:14px; border-radius:8px;
+          background:linear-gradient(180deg,#0c0b0a,#100e0c); border:1px solid var(--ember-panel-line); overflow:hidden; }
+        .mc-fuse-burnt { position:absolute; left:0; top:0; bottom:0;
+          background:repeating-linear-gradient(90deg,#241a12,#241a12 3px,#1c140d 3px,#1c140d 6px); opacity:.9; }
+        .mc-fuse-live { position:absolute; top:0; bottom:0;
+          background:linear-gradient(90deg,rgba(176,141,87,.25),var(--brass) 60%,var(--ember-amber)); }
+        .mc-fuse-spark { position:absolute; top:50%; width:9px; height:9px; margin-top:-4.5px; margin-left:-4.5px;
+          border-radius:50%; background:radial-gradient(circle,#fff,var(--ember-orange) 45%,transparent 70%);
+          box-shadow:0 0 9px 2px rgba(255,120,60,.75); animation:mcSpark 1.5s ease-in-out infinite; }
+        @keyframes mcSpark { 0%,100%{ transform:scale(1); opacity:.9; } 50%{ transform:scale(1.35); opacity:1; } }
+        .mc-row { border:1px solid var(--ember-panel-line); border-radius:11px; padding:10px 12px;
+          background:linear-gradient(180deg,var(--ember-panel-alt),var(--ember-panel)); }
+        .mc-row.blocked { border-color:rgba(217,60,43,.5); }
+        .mc-row.frozen { opacity:.72; }
+        .mc-row.kill { border-color:var(--ember-red); box-shadow:0 0 0 1px rgba(255,77,50,.25), 0 0 18px rgba(255,50,30,.12); }
+        .mc-status { font-size:8.5px; font-weight:800; letter-spacing:.16em; text-transform:uppercase;
+          padding:2px 8px; border-radius:20px; border:1px solid; cursor:pointer; background:transparent; }
+        .mc-st-active { color:#54e08a; border-color:rgba(84,224,138,.5); }
+        .mc-st-blocked { color:var(--ember-red); border-color:rgba(217,60,43,.55); }
+        .mc-st-parked { color:var(--ember-amber); border-color:rgba(255,177,59,.5); }
+        .mc-st-frozen { color:var(--gunmetal); border-color:rgba(120,120,132,.6); }
+        .mc-tag-rev { color:#54e08a; border-color:rgba(84,224,138,.5); }
+        .mc-tag-norev { color:var(--ink-faint); border-color:var(--line); }
+        .mc-chip { font-size:8.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+          padding:2px 8px; border-radius:20px; border:1px solid var(--line); color:var(--ink-dim); }
+        .mc-check { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px; color:var(--ink-dim); }
+        .mc-check input { accent-color:var(--brass); width:14px; height:14px; }
+        .mc-check.done span { text-decoration:line-through; opacity:.55; }
+        .mc-mini { font-size:9px; letter-spacing:.05em; color:var(--brass); background:transparent; border:1px solid var(--ember-brass-dark);
+          border-radius:6px; padding:3px 8px; cursor:pointer; }
+        .mc-mini:hover { color:var(--candle); border-color:var(--brass); }
+        .mc-resume { color:var(--ember-amber); border-color:rgba(255,158,61,.5); background:rgba(255,158,61,.10); white-space:nowrap; }
+        .mc-resume:hover:not(:disabled) { background:rgba(255,158,61,.20); border-color:rgba(255,158,61,.85); }
+        .mc-resume:disabled { opacity:.35; cursor:default; }
+        .mc-linkchip { display:inline-flex; align-items:center; gap:4px; padding:2px 5px; border-radius:6px;
+          border:1px solid var(--ember-panel-line); background:#0e0c0b; font-size:10px; }
+        .mc-linkchip a { color:var(--ember-amber); text-decoration:underline; text-underline-offset:2px; white-space:nowrap; }
+        .mc-linkchip a:hover { color:var(--candle); }
+        .mc-linkin { width:74px; font-size:9px; padding:1px 4px; }
+        .mc-linkurl { width:150px; }
+        .mc-x { color:var(--ink-faint); background:transparent; border:none; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
+        .mc-x:hover { color:var(--ember-red); }
+
         .dock-control {
           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
           min-width:0; min-height:54px; padding:6px 2px; cursor:pointer;
@@ -3561,7 +3626,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               </span>
             </h1>
             <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ink-faint)" }}>
-              {view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : "BAXSTAR STUDIO"}
+              {view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : view === "mission" ? "MISSION CONTROL" : "BAXSTAR STUDIO"}
             </span>
           </div>
 
@@ -4632,6 +4697,18 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         {/* The dashboard Brady asked for in the pinned DASHBOARD REQUIREMENTS: every open
             project as a horizontal bar under its category, with outstanding work and an
             honest session estimate. Data is the session-maintained PROJECTS constant. */}
+        {/* ================= PROJECT BOARDS ================= */}
+        {/* One dock tile (Projects — the dock stays at its lawful six), two boards
+            behind it: the glanceable session-maintained bars, and Mission Control,
+            Brady's editable command board ported from the Codex line's fork. */}
+        {(view === "projects" || view === "mission") && (
+          <div className="flex justify-center gap-2">
+            <button className={`seg sm ${view === "projects" ? "on" : ""}`} onClick={() => setView("projects")}>QUICK BARS</button>
+            <button className={`seg sm ${view === "mission" ? "on" : ""}`} onClick={() => setView("mission")}>MISSION CONTROL</button>
+          </div>
+        )}
+        {view === "mission" && <MissionControl />}
+
         {view === "projects" && (
         <div className="flex min-h-0 flex-1 flex-col">
           <Panel notch="hot" title="Project Status" count={`UPDATED ${PROJECTS_META.updated}`} countColor="var(--brass)" delay="0.1s" grow>
@@ -4794,5 +4871,244 @@ function Badge({ label }) {
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--ember-amber)", boxShadow: "0 0 8px var(--ember-amber)" }} />
       {label}
     </span>
+  );
+}
+
+/* ================= MISSION CONTROL (ported from mission-control-draft) =================
+   The terminal/Codex line built this view on a fork; the voice commits riding with it
+   were superseded by the ear machine, but the view itself is the product Brady uses.
+   Ported onto main so both AI lines finally build one codebase. */
+const MC_KEY = "ember-mc";
+const MC_STATUSES = ["active", "blocked", "parked", "frozen"];
+const mcUid = () => Math.random().toString(36).slice(2, 9);
+const mcToday = () => { try { return new Date().toISOString().slice(0, 10); } catch (e) { return ""; } };
+const mcNum = (x) => { const n = Number(x); return isFinite(n) ? n : 0; };
+
+function mcDefaults() {
+  const d = mcToday();
+  const dom = (() => { try { return new Date().getDate(); } catch (e) { return 15; } })();
+  return {
+    zap: { used: 340, allowance: 750, dayOfCycle: dom, daysInCycle: 30 },
+    projects: [
+      { id: mcUid(), name: "Baxstar Ember", pct: 60, status: "active", revenue: false, sessions: 3, hours: 6, next: "Mission Control + caption polish", updated: d,
+        links: [
+          { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+          { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
+          { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" },
+        ],
+        tasks: [{ id: mcUid(), text: "Caption HEIC + Drive outbox", done: true }, { id: mcUid(), text: "Mission Control view", done: false }] },
+      { id: mcUid(), name: "Pontoon check-in", pct: 85, status: "active", revenue: true, sessions: 1, hours: 2, next: "Close multi-tab queue TOCTOU", updated: d,
+        links: [], tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }] },
+      { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d,
+        links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }], tasks: [] },
+      { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d,
+        links: [{ id: mcUid(), label: "wix editor", url: "https://manage.wix.com/" }], tasks: [] },
+    ],
+    decisions: [
+      { id: mcUid(), text: "Turn the Caption → IG Zap ON (throwaway test first)", done: false },
+      { id: mcUid(), text: "Deploy the Drive-outbox Apps Script", done: false },
+      { id: mcUid(), text: "Merge the voice rig into the app (one brain)", done: false },
+    ],
+  };
+}
+
+function MissionControl() {
+  const init = (typeof window !== "undefined" && lsGet(MC_KEY, null)) || mcDefaults();
+  const [zap, setZap] = useState(init.zap || mcDefaults().zap);
+  const [projects, setProjects] = useState(init.projects || []);
+  const [decisions, setDecisions] = useState(init.decisions || []);
+  const [openRows, setOpenRows] = useState({});
+  useEffect(() => { lsSet(MC_KEY, { zap, projects, decisions }); }, [zap, projects, decisions]);
+
+  // --- Zapier meter math ---
+  const used = mcNum(zap.used), allowance = mcNum(zap.allowance);
+  const dayOfCycle = mcNum(zap.dayOfCycle), daysInCycle = mcNum(zap.daysInCycle);
+  const pctUsed = allowance > 0 ? (used / allowance) * 100 : 0;
+  const callsLeft = Math.max(0, Math.floor((allowance - used) / 2));
+  const dailyBurn = dayOfCycle > 0 ? used / dayOfCycle : 0;
+  const projection = Math.round(dailyBurn * daysInCycle);
+  const pacingOver = allowance > 0 && projection > allowance;
+  const projMark = allowance > 0 ? Math.max(0, Math.min(100, (projection / allowance) * 100)) : 0;
+
+  // --- rollups ---
+  const totalHours = projects.reduce((s, p) => s + mcNum(p.hours), 0);
+  const totalSessions = projects.reduce((s, p) => s + mcNum(p.sessions), 0);
+  const avgPct = projects.length ? Math.round(projects.reduce((s, p) => s + mcNum(p.pct), 0) / projects.length) : 0;
+  const revHours = projects.filter((p) => p.revenue).reduce((s, p) => s + mcNum(p.hours), 0);
+  const revEffortPct = totalHours > 0 ? Math.round((revHours / totalHours) * 100) : 0;
+
+  // --- mutators ---
+  const setZapField = (k, v) => setZap((z) => ({ ...z, [k]: v }));
+  const updProject = (id, patch) => setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch, updated: mcToday() } : p)));
+  const cycleStatus = (id) => setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, status: MC_STATUSES[(MC_STATUSES.indexOf(p.status) + 1) % MC_STATUSES.length], updated: mcToday() } : p)));
+  // Older saved data predates links, so always read through a default.
+  const linksOf = (p) => (Array.isArray(p.links) ? p.links : []);
+  const addLink = (pid) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: [...linksOf(p), { id: mcUid(), label: "", url: "" }] } : p)));
+  const updLink = (pid, lid, patch) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: linksOf(p).map((l) => (l.id === lid ? { ...l, ...patch } : l)) } : p)));
+  const delLink = (pid, lid) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: linksOf(p).filter((l) => l.id !== lid) } : p)));
+
+  // Reopen every tab a project needs. The first window.open rides the click's
+  // user gesture; the rest are staggered because browsers block a burst of them
+  // from a single gesture and would silently drop all but the first.
+  const resumeProject = (p) => {
+    const urls = linksOf(p).map((l) => (l.url || "").trim()).filter(Boolean);
+    if (!urls.length) return;
+    urls.forEach((u, i) => {
+      const href = /^https?:\/\//i.test(u) ? u : "https://" + u;
+      if (i === 0) window.open(href, "_blank", "noopener");
+      else setTimeout(() => window.open(href, "_blank", "noopener"), i * 250);
+    });
+  };
+
+  const addProject = () => setProjects((ps) => [...ps, { id: mcUid(), name: "New project", pct: 0, status: "active", revenue: false, sessions: 1, hours: 1, next: "", updated: mcToday(), links: [], tasks: [] }]);
+  const delProject = (id) => setProjects((ps) => ps.filter((p) => p.id !== id));
+  const addTask = (pid) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: [...p.tasks, { id: mcUid(), text: "New task", done: false }] } : p)));
+  const updTask = (pid, tid, patch) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.map((t) => (t.id === tid ? { ...t, ...patch } : t)) } : p)));
+  const delTask = (pid, tid) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.filter((t) => t.id !== tid) } : p)));
+  const addDecision = () => setDecisions((d) => [...d, { id: mcUid(), text: "New decision", done: false }]);
+  const updDecision = (id, patch) => setDecisions((d) => d.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const delDecision = (id) => setDecisions((d) => d.filter((x) => x.id !== id));
+
+  const statusClass = (s) => ({ active: "mc-st-active", blocked: "mc-st-blocked", parked: "mc-st-parked", frozen: "mc-st-frozen" }[s] || "mc-st-active");
+
+  return (
+    <div className="mc-grid flex-1" style={{ minHeight: 0 }}>
+      {/* LEFT — meter + projects */}
+      <div className="mc-stack" style={{ minHeight: 0 }}>
+        <Panel notch="cool" title="Zapier Task Meter" count={pacingOver ? "PACING OVER" : "ON PACE"}
+          countColor={pacingOver ? "var(--ember-red)" : "#54e08a"} delay="0.05s" scroll={false}>
+          <div className="grid grid-cols-4 gap-2">
+            {[["used", "Used"], ["allowance", "Allowance"], ["dayOfCycle", "Day of cycle"], ["daysInCycle", "Days in cycle"]].map(([k, label]) => (
+              <label key={k} className="flex flex-col gap-1">
+                <span className="fieldlabel">{label}</span>
+                <input type="number" className="mc-input mc-num" style={{ width: "100%", textAlign: "left" }}
+                  value={zap[k]} onChange={(e) => setZapField(k, e.target.value)} />
+              </label>
+            ))}
+          </div>
+          <div className="mc-meter mt-3">
+            <div className={`mc-meter-fill ${pacingOver ? "warn" : ""}`} style={{ width: `${Math.max(0, Math.min(100, pctUsed))}%` }} />
+            <div className="mc-meter-mark" title="projected cycle end" style={{ left: `${projMark}%` }} />
+          </div>
+          <div className="grid grid-cols-4 gap-2 mt-3">
+            <div className="mc-metric"><span className="k">% Used</span><span className={`v ${pctUsed >= 100 ? "warn" : ""}`}>{Math.round(pctUsed)}%</span></div>
+            <div className="mc-metric"><span className="k">Calls left ÷2</span><span className="v">{callsLeft}</span></div>
+            <div className="mc-metric"><span className="k">Daily burn</span><span className="v">{dailyBurn.toFixed(1)}</span></div>
+            <div className="mc-metric"><span className="k">Proj. end</span><span className={`v ${pacingOver ? "warn" : "ok"}`}>{projection}</span></div>
+          </div>
+        </Panel>
+
+        <Panel notch="hot" title="Projects" count={`${projects.length} TRACKED`} countColor="var(--brass)" delay="0.12s" grow>
+          <div className="flex flex-col gap-2.5">
+            {projects.map((p) => {
+              const pct = Math.max(0, Math.min(100, mcNum(p.pct)));
+              return (
+                <div key={p.id} className={`mc-row ${p.status}`}>
+                  <div className="flex items-center gap-2">
+                    <input className="mc-input flex-1" value={p.name} onChange={(e) => updProject(p.id, { name: e.target.value })} />
+                    {/* The name stays editable, so the link lives beside it -- one tap
+                        reopens every page this project needs to pick back up. */}
+                    <button className="mc-status mc-resume" onClick={() => resumeProject(p)}
+                      disabled={!linksOf(p).some((l) => (l.url || "").trim())}
+                      title={linksOf(p).filter((l) => l.url).map((l) => l.label || l.url).join(" · ") || "add pages below"}>
+                      ↗ resume{linksOf(p).filter((l) => (l.url || "").trim()).length > 1 ? ` (${linksOf(p).filter((l) => (l.url || "").trim()).length})` : ""}
+                    </button>
+                    <button className={`mc-status ${statusClass(p.status)}`} onClick={() => cycleStatus(p.id)} title="cycle status">{p.status}</button>
+                    <button className={`mc-status ${p.revenue ? "mc-tag-rev" : "mc-tag-norev"}`} onClick={() => updProject(p.id, { revenue: !p.revenue })} title="revenue impact">
+                      {p.revenue ? "$ revenue" : "no revenue"}
+                    </button>
+                    <button className="mc-x" onClick={() => delProject(p.id)} title="remove">×</button>
+                  </div>
+                  <div className="mc-fuse-wrap mt-2">
+                    <div className="mc-fuse-burnt" style={{ width: `${pct}%` }} />
+                    <div className="mc-fuse-live" style={{ left: `${pct}%`, width: `${100 - pct}%` }} />
+                    {pct > 0 && pct < 100 && <div className="mc-fuse-spark" style={{ left: `${pct}%` }} />}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                    <label className="flex items-center gap-1">%<input type="number" className="mc-input mc-num" style={{ width: 54 }} value={p.pct} onChange={(e) => updProject(p.id, { pct: e.target.value })} /></label>
+                    <label className="flex items-center gap-1">sessions<input type="number" className="mc-input mc-num" style={{ width: 48 }} value={p.sessions} onChange={(e) => updProject(p.id, { sessions: e.target.value })} /></label>
+                    <label className="flex items-center gap-1">hours<input type="number" className="mc-input mc-num" style={{ width: 48 }} value={p.hours} onChange={(e) => updProject(p.id, { hours: e.target.value })} /></label>
+                    <button className="mc-mini ml-auto" onClick={() => setOpenRows((o) => ({ ...o, [p.id]: !o[p.id] }))}>
+                      {openRows[p.id] ? "hide tasks" : `tasks (${p.tasks.length})`}
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <span className="fieldlabel" style={{ whiteSpace: "nowrap" }}>Next</span>
+                    <input className="mc-input flex-1" placeholder="next action" value={p.next} onChange={(e) => updProject(p.id, { next: e.target.value })} />
+                  </div>
+                  {/* Individual pages: click a chip for just that one, or edit them. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {linksOf(p).map((l) => (
+                      <span key={l.id} className="mc-linkchip">
+                        {(l.url || "").trim() ? (
+                          <a href={/^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : "https://" + l.url.trim()}
+                            target="_blank" rel="noopener noreferrer" title={l.url}>
+                            {l.label || l.url}
+                          </a>
+                        ) : (
+                          <span style={{ color: "var(--ink-faint)" }}>{l.label || "untitled"}</span>
+                        )}
+                        <input className="mc-input mc-linkin" placeholder="label" value={l.label}
+                          onChange={(e) => updLink(p.id, l.id, { label: e.target.value })} />
+                        <input className="mc-input mc-linkin mc-linkurl" placeholder="paste the tab URL" value={l.url}
+                          onChange={(e) => updLink(p.id, l.id, { url: e.target.value })} />
+                        <button className="mc-x" onClick={() => delLink(p.id, l.id)} title="remove page">×</button>
+                      </span>
+                    ))}
+                    <button className="mc-mini" onClick={() => addLink(p.id)}>+ page</button>
+                  </div>
+                  {openRows[p.id] && (
+                    <div className="mt-2 rounded-lg p-2" style={{ background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" }}>
+                      {p.tasks.map((t) => (
+                        <div key={t.id} className={`mc-check ${t.done ? "done" : ""}`}>
+                          <input type="checkbox" checked={t.done} onChange={(e) => updTask(p.id, t.id, { done: e.target.checked })} />
+                          <input className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={t.text} onChange={(e) => updTask(p.id, t.id, { text: e.target.value })} />
+                          <button className="mc-x" onClick={() => delTask(p.id, t.id)}>×</button>
+                        </div>
+                      ))}
+                      <button className="mc-mini mt-1" onClick={() => addTask(p.id)}>+ task</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button className="mc-mini" style={{ alignSelf: "flex-start" }} onClick={addProject}>+ project</button>
+          </div>
+        </Panel>
+      </div>
+
+      {/* RIGHT — rollups + decisions */}
+      <div className="mc-stack" style={{ minHeight: 0 }}>
+        <Panel notch="warm" title="Rollups" count="LIVE" countColor="var(--ember-orange)" delay="0.08s" scroll={false}>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="mc-metric"><span className="k">Total hours left</span><span className="v">{totalHours}</span></div>
+            <div className="mc-metric"><span className="k">Total sessions</span><span className="v">{totalSessions}</span></div>
+            <div className="mc-metric"><span className="k">Avg complete</span><span className="v">{avgPct}%</span></div>
+            <div className="mc-metric"><span className="k">Effort on revenue</span><span className={`v ${revEffortPct < 50 ? "warn" : "ok"}`}>{revEffortPct}%</span></div>
+          </div>
+          <div className="mt-2 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+            {revEffortPct < 50
+              ? "Under half of remaining effort is on revenue projects — worth a rebalance."
+              : "Most remaining effort is pointed at revenue. Good."}
+          </div>
+        </Panel>
+
+        <Panel notch="cool" title="Decision Queue" count={`${decisions.filter((d) => !d.done).length} OPEN`} countColor="var(--brass)" delay="0.16s" grow>
+          <div className="flex flex-col gap-1">
+            {decisions.map((d) => (
+              <div key={d.id} className={`mc-check ${d.done ? "done" : ""}`}>
+                <input type="checkbox" checked={d.done} onChange={(e) => updDecision(d.id, { done: e.target.checked })} />
+                <input className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={d.text} onChange={(e) => updDecision(d.id, { text: e.target.value })} />
+                <button className="mc-x" onClick={() => delDecision(d.id)}>×</button>
+              </div>
+            ))}
+            <button className="mc-mini mt-1" style={{ alignSelf: "flex-start" }} onClick={addDecision}>+ decision</button>
+          </div>
+        </Panel>
+      </div>
+    </div>
   );
 }
