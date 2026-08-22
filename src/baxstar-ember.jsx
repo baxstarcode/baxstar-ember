@@ -233,7 +233,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 85, platform: "Claude",
         links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "MCP OAuth for hosted connectors (voice merge shipped 8/14)", sessions: "~2" },
+        outstanding: "MCP OAuth for hosted connectors (Mission Control merged from Codex fork 8/22)", sessions: "~1" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
