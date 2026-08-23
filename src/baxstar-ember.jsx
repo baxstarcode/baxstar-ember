@@ -2985,16 +2985,31 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-core { order:-1; }
           /* the QUO/GMAIL/CALENDAR dots are demo-state, not tappable — dead weight on a phone */
           .conn-dots { display:none; }
-          /* Header on a phone: one tight band, not a tall stack. Brand shrinks,
-             controls pack close and wrap horizontally — Brady's 8/15 note was
-             that the words must spread OUT so the header stops eating the
-             screen before the skull even appears. */
-          .ember-header { row-gap:3px; }
-          .ember-header h1.brand-title { font-size:17px !important; }
-          .ember-header > div:first-child { gap:8px !important; }
-          .ember-header > div:first-child > div:first-child { height:26px !important; width:26px !important; font-size:12px !important; border-radius:8px !important; }
-          .ember-header > div:last-child { column-gap:9px !important; row-gap:3px !important; font-size:9px !important; }
-          .ember-header .header-control { padding:2px 7px !important; font-size:9px !important; }
+          /* Header on a phone: ONE row, period — Brady's 8/23 note. Everything
+             that can't earn its width goes: the OPS tag (the dock already shows
+             the active view), the DEMO·clock strip, and the toggle's long
+             wording (.tgl-long). Brand stays nowrap so the two words never
+             stack. What remains packs horizontally on a single band. */
+          .ember-header { row-gap:0; min-height:0; padding:5px 9px; flex-wrap:nowrap; }
+          .ember-header h1.brand-title { font-size:14px !important; letter-spacing:.09em !important; }
+          .ember-header > div:first-child { gap:6px !important; flex:0 1 auto; min-width:0; }
+          /* the B monogram square goes — the brand text already says it, and its
+             28px is exactly the slack that kept EMBER from colliding with BG */
+          .ember-header > div:first-child > div:first-child { display:none; }
+          .ember-header > div:first-child > span { display:none; }
+          .ember-header > div:last-child { column-gap:5px !important; row-gap:2px !important; font-size:9px !important; flex-wrap:nowrap !important; }
+          .hdr-clock { display:none; }
+          .tgl-long { display:none; }
+          .ember-header .header-control { padding:2px 6px !important; font-size:9px !important; min-height:24px; }
+          .ember-header .tgl-track { width:22px; height:11px; }
+          /* greeting: one compact line over the skull crown, not a two-row block.
+             !important throughout — the base .greet-row rule sits LATER in this
+             sheet, so without it these lose the cascade and the row wraps. */
+          .greet-row { padding:2px 8px !important; column-gap:8px !important; row-gap:2px !important; }
+          .greet-hi { font-size:13px !important; }
+          .greet-row .chip { padding:3px 9px !important; font-size:10px !important; white-space:nowrap; }
+          .greet-long { display:none; }
+          .greet-short { display:inline !important; }
           .home-thread { max-height:min(46vh,420px); }
           .rail-list { flex-direction:row; flex-wrap:wrap; }
         }
@@ -3095,6 +3110,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            against the art instead of fighting it */
         .greet-row { padding:4px 12px; border-radius:12px; background:rgba(7,6,4,.55);
           backdrop-filter:blur(2px); text-shadow:0 1px 2px rgba(0,0,0,.8); }
+        /* "vm" is the phone abbreviation; desktop spells voicemails out */
+        .greet-short { display:none; }
 
         /* the home chat thread — scrolls inside the chamber, newest pinned by autoscroll */
         .home-thread { display:flex; flex-direction:column; gap:10px; overflow-y:auto;
@@ -3559,7 +3576,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               style={{ background: "linear-gradient(135deg,var(--ember-red),var(--ember-dark))", boxShadow: "0 0 24px rgba(255,77,61,.5)" }}>
               B
             </div>
-            <h1 className="brand-title font-display font-extrabold leading-none tracking-[0.13em]">
+            <h1 className="brand-title font-display font-extrabold leading-none tracking-[0.13em] whitespace-nowrap">
               BAXSTAR{" "}
               <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: "drop-shadow(0 0 12px rgba(255,90,50,.35))" }}>
                 EMBER
@@ -3577,7 +3594,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 {s}
               </span>
             ))}
-            <span style={{ color: "var(--ink-faint)" }}>{live ? "LIVE" : "DEMO"} · {clock}</span>
+            <span className="hdr-clock" style={{ color: "var(--ink-faint)" }}>{live ? "LIVE" : "DEMO"} · {clock}</span>
 
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
               className="header-control rounded-md border px-2 py-1 transition-colors"
@@ -3598,7 +3615,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <circle cx="30" cy="26" r="5" className="tgl-knob-i" />
                 </g>
               </svg>
-              {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
+              {/* Full wording on desktop; the .tgl-long spans drop on a phone so the
+                  toggle stays one short word and the header holds a single row. */}
+              {voiceOn ? <>VOICE<span className="tgl-long"> ON</span></> : <><span className="tgl-long">TAP FOR </span>VOICE<span className="tgl-long"> MODE</span></>}
             </button>
             <button onClick={syncLive} disabled={syncing}
               className="header-control sync-control flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
@@ -3779,14 +3798,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <ContextLever side="right" label="Create Task" state={leverState("task")} onPull={leverCreateTask} />
 
               <div className="greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center" style={{ animationDelay: "0.1s" }}>
-                <span className="text-[15px] font-bold tracking-tight">
+                <span className="greet-hi text-[15px] font-bold tracking-tight">
                   {dayPart},{" "}
                   <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
                     Brady.
                   </span>
                 </span>
                 <button className="chip ghost" onClick={() => callsColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                  {data.voicemails.length} voicemails ↓
+                  {data.voicemails.length} <span className="greet-long">voicemails</span><span className="greet-short">vm</span> ↓
                 </button>
                 <button className="chip ghost" onClick={() => inboxColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                   {data.emails.length} unread ↓

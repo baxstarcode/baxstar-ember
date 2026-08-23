@@ -116,35 +116,31 @@ artifact. Hosted, you'll get a clear error naming this file rather than a silent
 
 ---
 
-## 4. Connectors: what the proxy does NOT solve
+## 4. Connectors: LIVE since 2026-08-22 (Gmail, Calendar, Drive)
 
-The proxy gives hosted Ember a working brain. It does **not** by itself give it
-Quo, Gmail, Calendar, or Drive.
+Hosted Ember has working connectors. The Worker holds Google OAuth **refresh
+tokens** as secrets (`MCP_REFRESH_GMAIL`, `MCP_REFRESH_CALENDAR`,
+`MCP_REFRESH_GDRIVE` — same token, all three) and mints access tokens per
+request for the **Google Workspace MCP** endpoints
+(`calendarmcp` / `gmailmcp` / `drivemcp.googleapis.com`). Those endpoints are a
+Developer Preview and require project enrollment — Google Cloud project
+**ember-504105** was approved 2026-08-22. Verified live the same day: real
+calendar events, real unread Gmail, real Drive files through hosted chat.
 
-Those are MCP connectors. Each needs an OAuth `authorization_token` for Brady's
-account, and inside a Claude artifact the platform supplies them. Hosted, nothing
-supplies them — so `mcp_servers` calls will fail even though chat works.
+To re-run the OAuth flow (e.g. after token revocation): visit the Worker's
+`/oauth/start?p=google`, click Allow, paste the shown refresh token into all
+three `MCP_REFRESH_*` secrets, redeploy. `OAUTH_STATE_SECRET` and
+`OAUTH_REDIRECT_URI` must be set in Worker variables first.
 
-The proxy is ready for the tokens once you have them. Set any you have as secrets and
-it attaches them per server:
+**Quo is permanently descoped** (2026-08-19) — their MCP server only accepts
+OAuth clients on Quo's own allowlist and refuses API keys as bearers. Full
+post-mortem in `docs/KNOWN-ISSUES.md` §11. The Worker's `MCP_TOKEN_QUO` support
+is dormant and harmless; do not re-add Quo to `MCP_SERVERS` without a
+Quo-issued client id.
 
-```bash
-npx wrangler secret put MCP_TOKEN_QUO
-npx wrangler secret put MCP_TOKEN_GMAIL
-npx wrangler secret put MCP_TOKEN_CALENDAR
-npx wrangler secret put MCP_TOKEN_GDRIVE
-```
-
-Getting those tokens means running each connector's OAuth flow yourself and storing
-the result — that work is not done yet. Until it is, expect this from a hosted Ember:
-
-- **Works:** Claude Chat, Caption Studio, HTML Viewer, Image Filters, Snippets,
-  AI Handoff, GitHub (its own token), and every "Brief my day"-style prompt that
-  doesn't need a connector.
-- **Fails:** "What'd I miss", Triage inbox, Schedule, Drive Librarian, and anything
-  else that reaches Quo / Gmail / Calendar / Drive.
-
-Deploy knowing that. Don't promise the connectors until the OAuth work is done.
+If a connector call fails, the Worker retries without connectors and flags the
+response with the `x-ember-connectors: degraded` header, which the app surfaces —
+so a dead connector degrades to plain chat instead of a dead brain.
 
 ---
 

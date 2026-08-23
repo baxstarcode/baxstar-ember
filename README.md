@@ -48,12 +48,12 @@ horizontal bar under Revenue Generating / Supporting, with outstanding work, ses
 estimates, and the Zapier task strip). Projects data is the session-maintained
 `PROJECTS` constant in `src/baxstar-ember.jsx` — update it when work ships.
 
-**Connected services (MCP):** Quo (phones), Gmail, Google Calendar, Google Drive.
+**Connected services (MCP):** Gmail, Google Calendar, Google Drive — live on the hosted app since 2026-08-22. Quo is permanently descoped (their OAuth allowlist; `docs/KNOWN-ISSUES.md` §11).
 
 **Studio tools (8):**
 Claude Chat · AI Handoff · Caption Studio · Google Drive Librarian · HTML Viewer · Image Filters · GitHub · Snippets
 
-**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
+**Built in:** model selector (Haiku 4.5 / Sonnet 4.6 / Opus 4.8 / Opus 5 / Fable 5 — defaults to **Opus 5 on High effort**, Sonnet 4.6 is the error fallback), effort level (Low / Std / High), Baxstar system contexts, canned policy snippets, sponsor handles, background presets, demo data with live SYNC.
 
 #### Caption Studio
 
