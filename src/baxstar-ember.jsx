@@ -202,6 +202,37 @@ const HANDOFF = {
    in a chat the way the first version of this dashboard did.
    zapierTasks.used is Brady-reported (the client can't query Zapier live); null renders
    as "not recorded" rather than pretending. Allowance per Rule 14: 1,500/mo. */
+// Ember's own voice: Microsoft neural voices, synthesized by the Worker's /tts
+// route (free, no key). These are the product — the device voices in the picker
+// are the fallback ladder for when the Worker is unreachable.
+const NEURAL_VOICES = [
+  { id: "en-US-JennyNeural", label: "Jenny — natural, warm" },
+  { id: "en-US-AriaNeural", label: "Aria — natural, bright" },
+  { id: "en-US-MichelleNeural", label: "Michelle — natural, even" },
+  { id: "en-US-GuyNeural", label: "Guy — natural, radio" },
+  { id: "en-US-ChristopherNeural", label: "Christopher — natural, deep" },
+];
+
+// A beat of silence as a data URI — a WAV built by hand, no asset, no fetch.
+// Played once inside the first tap to "bless" a reusable <audio> element:
+// iOS only lets an element that has already played under a user gesture start
+// audio later on its own, and Ember's replies arrive long after the tap.
+const SILENT_WAV = (() => {
+  try {
+    const n = 400; // 50ms at 8kHz
+    const b = new Uint8Array(44 + n * 2);
+    const dv = new DataView(b.buffer);
+    const tag = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+    tag(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); tag(8, "WAVEfmt ");
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 8000, true); dv.setUint32(28, 16000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    tag(36, "data"); dv.setUint32(40, n * 2, true);
+    let s = "";
+    for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    return "data:audio/wav;base64," + btoa(s);
+  } catch (e) { return ""; }
+})();
+
 const PROJECTS_META = {
   updated: "2026-08-01",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
@@ -231,9 +262,9 @@ const PROJECTS = [
   {
     cat: "Supporting",
     items: [
-      { name: "Ember / Mission Control", pct: 85, platform: "Claude",
+      { name: "Ember / Mission Control", pct: 90, platform: "Claude",
         links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "MCP OAuth for hosted connectors (voice merge shipped 8/14)", sessions: "~2" },
+        outstanding: "Natural voice built 8/22 — needs the 2-min Worker paste to go live. Then MCP OAuth", sessions: "~1" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -691,7 +722,7 @@ function buildBridgeHtml() {
     + 'if(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\n'
     + 'requestAnimationFrame(loop);}loop();startSR();\n'
     + '}).catch(function(){setSt("MIC PERMISSION DENIED");});\n'
-    + 'function pickV(){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium|enhanced|natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
+    + 'function pickV(want){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];if(want){for(var i=0;i<vs.length;i++){if(vs[i].name===want)return vs[i];}}var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium/i.test(v.name))s+=60;else if(/enhanced/i.test(v.name))s+=45;else if(/natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen|ava|zoe|evan|nathan|allison|serena/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;if(/compact/i.test(v.name))s-=40;if(/eloquence|bad news|good news|bells|boing|bubbles|cellos|deranged|hysterical|jester|junior|organ|pipe|princess|ralph|superstar|trinoids|whisper|wobble|zarvox|albert|fred|kathy|bahh|grandma|grandpa|rocko|shelley|sandy|flo|eddy|reed/i.test(v.name))s-=100;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
     + 'if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\n'
     // A superseded utterance never posts 'speaking on' (a late start would otherwise
     // latch the gate shut, since its end is suppressed) and never calls cancel() --
@@ -702,9 +733,9 @@ function buildBridgeHtml() {
     // onvoiceschanged could both fire, and the second go()'s cancel() ran the
     // first one's fin(), reopening the mic mid-sentence.
     + 'var sayGen=0;\n'
-    + 'function say(text){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
+    + 'function say(text,want){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
     + 'function go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
-    + 'var u=new SpeechSynthesisUtterance(text);var v=pickV();if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
+    + 'var u=new SpeechSynthesisUtterance(text);var v=pickV(want);if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
     + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
     // If the swallow-watchdog already gave up on this utterance, a late start is
     // the engine talking over whatever replaced it — and its onend would be
@@ -720,7 +751,7 @@ function buildBridgeHtml() {
     + 'setTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\n'
     + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
     + 'function killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="micOff"){if(active){stopSR();}}if(m.t==="say"&&m.text){say(m.text);}if(m.t==="stopSay"){killSay();}\n'
+    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="micOff"){if(active){stopSR();}}if(m.t==="say"&&m.text){say(m.text,m.voice||"");}if(m.t==="stopSay"){killSay();}\n'
     + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
     + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
     + 'if(m.t==="close"){window.close();}});\n'
@@ -973,8 +1004,11 @@ export default function BaxstarEmber() {
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
-  const ttsPathRef = useRef(null);      // "local" | "bridge" | "mp3" once proven
-  const audioElRef = useRef(null);      // mp3 fallback element
+  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" | "mp3" once proven
+  const audioElRef = useRef(null);      // whichever <audio> is speaking right now
+  const neuralElRef = useRef(null);     // gesture-blessed <audio> the neural path reuses (iOS)
+  const neuralDownUntilRef = useRef(0); // /tts failed — skip its latency until this passes
+  const neuralVoiceRef = useRef(null);  // which natural voice actually spoke (diag line)
   const bridgeAckRef = useRef(null);    // resolves when bridge confirms speaking
   const busyRef = useRef(false);        // a command is in flight — state lags, this doesn't
   const pendingRef = useRef(null);      // what he said while she was still answering
@@ -1337,6 +1371,14 @@ export default function BaxstarEmber() {
     try {
       const C = window.AudioContext || window.webkitAudioContext;
       const ctx = new C(); ctx.resume?.(); setTimeout(() => ctx.close?.(), 300);
+    } catch (e) {}
+    try {
+      // Bless the neural path's reusable element while still inside the tap.
+      if (!neuralElRef.current && SILENT_WAV) {
+        const a = new Audio(SILENT_WAV);
+        a.play().then(() => { try { a.pause(); } catch (e) {} }).catch(() => {});
+        neuralElRef.current = a;
+      }
     } catch (e) {}
     if (ttsPathRef.current === "mp3") ttsPathRef.current = null; // proven against a mute engine — void it
     if (!voiceChoiceRef.current) voiceRef.current = null;
@@ -1902,6 +1944,105 @@ export default function BaxstarEmber() {
     }));
   }
 
+  // Path 0 — Ember's own voice: the Worker's /tts route synthesizes a neural
+  // MP3 and an <audio> element plays it. This is the modern voice; the paths
+  // below are the fallback ladder, not the product. Any failure marks the path
+  // down for a while so replies never pay a dead fetch's latency twice — the
+  // picker and HEAR IT clear the mark, so recovery is one tap, not a reload.
+  function neuralPick() {
+    const c = voiceChoiceRef.current || "";
+    if (c.startsWith("ember:")) return c.slice(6);
+    if (!c) return NEURAL_VOICES[0].id; // Automatic prefers the natural voice
+    return null; // an explicit device-voice pick is honored, not overridden
+  }
+
+  async function sayNeural(short, slot) {
+    const base = (typeof window !== "undefined" && window.EMBER_API_PROXY) || "";
+    const voice = neuralPick();
+    if (!base || !voice || Date.now() < neuralDownUntilRef.current) return false;
+    let blobUrl = "";
+    let synthMs = 0;
+    try {
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const t0 = performance.now();
+      // Past 4s the device voice is the better answer — and without the abort,
+      // a dead Worker would stall every reply by the browser's fetch timeout.
+      const kill = ctrl ? setTimeout(() => ctrl.abort(), 4000) : null;
+      let r;
+      try {
+        r = await fetch(base.replace(/\/$/, "") + "/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: short, voice }),
+          signal: ctrl ? ctrl.signal : undefined,
+        });
+      } finally { if (kill) clearTimeout(kill); }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = await r.blob();
+      if (!blob || blob.size < 200) throw new Error("empty audio");
+      blobUrl = URL.createObjectURL(blob);
+      synthMs = Math.round(performance.now() - t0);
+    } catch (e) {
+      if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch (e2) {} }
+      neuralDownUntilRef.current = Date.now() + 5 * 60 * 1000;
+      traceAdd("✕ natural voice offline (" + String((e && e.message) || e).slice(0, 40) + ") — device voice takes over");
+      return false;
+    }
+    return new Promise((res) => {
+      const prev = audioElRef.current;
+      if (prev) { try { prev.pause(); } catch (e) {} }
+      const epoch = beginSpeech();
+      const token = armSpeechEnd();
+      // Reuse the tap-blessed element when there is one: iOS refuses play() on
+      // a fresh element outside a gesture, and replies arrive long after the tap.
+      const a = neuralElRef.current || new Audio();
+      try { a.pause(); } catch (e) {}
+      a.src = blobUrl;
+      audioElRef.current = a;
+      let ok = false;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
+        endSpeech(epoch);
+        releaseSpeechEnd(token);
+        try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+      };
+      if (slot) { slot.token = token; slot.finish = finish; }
+      // Playback failing after a good synth usually means the element was
+      // never blessed — back off for a minute, not five, so the next tap
+      // (which re-blesses) restores the natural voice without a reload.
+      const bail = (why) => {
+        if (!settled && !ok) {
+          neuralDownUntilRef.current = Date.now() + 60 * 1000;
+          traceAdd("✕ natural playback " + why + " — device voice takes over");
+        }
+        finish();
+        if (!ok) res(false);
+      };
+      a.onplaying = () => {
+        const name = voice.replace(/^en-US-/, "").replace(/Neural$/, "");
+        traceAdd("▶ speaking: " + name + " (natural) · synth " + synthMs + "ms");
+        ok = true;
+        neuralVoiceRef.current = name;
+        if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
+        res(true);
+      };
+      a.onended = finish;
+      a.onerror = () => bail("media error");
+      a.play().catch(() => bail("blocked"));
+      // A stalled element fires neither event — don't let it wedge the reply.
+      setTimeout(() => {
+        if (!ok) {
+          try { a.pause(); } catch (e) {}
+          if (audioElRef.current === a) audioElRef.current = null;
+          bail("silent 2.5s");
+        }
+      }, 2500);
+    });
+  }
+
   // Path 2 — Mic Bridge popup does the speaking (top-level engine)
   function sayViaBridge(short, slot) {
     return new Promise((res) => {
@@ -1920,7 +2061,9 @@ export default function BaxstarEmber() {
         };
       }
       bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
-      w.postMessage({ ch: "EMBERMIC", t: "say", text: short }, "*");
+      // An "ember:" pick is a Worker voice the bridge's engine can't find by
+      // name — send the auto-pick instead of a name that matches nothing.
+      w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: (voiceChoiceRef.current && !voiceChoiceRef.current.startsWith("ember:") ? voiceChoiceRef.current : (voiceRef.current && voiceRef.current.name) || "") }, "*");
       setTimeout(() => {
         if (settled) return;
         settled = true;
@@ -1979,6 +2122,7 @@ export default function BaxstarEmber() {
   }
 
   async function speakCascade(short, slot) {
+    if (await sayNeural(short, slot)) { ttsPathRef.current = "neural"; return true; }
     if (await sayLocal(short, slot)) { ttsPathRef.current = "local"; return true; }
     if (await sayViaBridge(short, slot)) { ttsPathRef.current = "bridge"; return true; }
     if (await playMp3(short, slot)) { ttsPathRef.current = "mp3"; return true; }
@@ -2014,7 +2158,8 @@ export default function BaxstarEmber() {
     // ceiling could end a long answer that started after it.
     const slot = { token: undefined, finish: null };
     let started = false;
-    if (p === "local") started = await sayLocal(short, slot);
+    if (p === "neural") started = await sayNeural(short, slot);
+    else if (p === "local") started = await sayLocal(short, slot);
     else if (p === "bridge") started = await sayViaBridge(short, slot);
     else if (p === "mp3") started = await playMp3(short, slot);
     if (!started) {
@@ -2065,6 +2210,7 @@ export default function BaxstarEmber() {
     stopSpeaking();
     try { chime(); } catch (e) {}
     ttsPathRef.current = null;
+    neuralDownUntilRef.current = 0; // HEAR IT doubles as the natural voice's retry button
     const ok = await speakCascade("Ember online. Brady, can you hear me?");
     const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     const locals = vs.filter((v) => v.localService);
@@ -2075,7 +2221,7 @@ export default function BaxstarEmber() {
     // fact every reply was landing silent. Say that plainly instead.
     setVoiceDiag(ok
       ? (voiceOnRef.current
-          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (voiceRef.current ? voiceRef.current.name : "?") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
+          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
           : "ENGINE WORKS — BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON.")
       : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
   }
@@ -2112,9 +2258,13 @@ export default function BaxstarEmber() {
       const score = (v) => {
         let s = 0;
         if (v.localService) s += 100;
-        if (/premium|enhanced|natural|neural/i.test(v.name)) s += 40;
-        if (/samantha|alex|aria|zira|david|daniel|karen|moira/i.test(v.name)) s += 25;
+        if (/premium/i.test(v.name)) s += 60;
+        else if (/enhanced/i.test(v.name)) s += 45;
+        else if (/natural|neural/i.test(v.name)) s += 40;
+        if (/samantha|alex|aria|zira|david|daniel|karen|moira|ava|zoe|evan|nathan|allison|serena/i.test(v.name)) s += 25;
         if (v.lang === "en-US") s += 10;
+        if (/compact/i.test(v.name)) s -= 40;
+        if (NOVELTY_VOICE.test(v.name)) s -= 100;
         return s;
       };
       voiceRef.current = en.slice().sort((a, b) => score(b) - score(a))[0] || null;
@@ -3381,6 +3531,71 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px;
           max-width:1180px; margin:0 auto;
         }
+        /* ---------- MISSION CONTROL (iron/bronze) ---------- */
+        .mc-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; min-height:0; }
+        @media (max-width:1020px){ .mc-grid { grid-template-columns:1fr; } }
+        .mc-stack { display:flex; flex-direction:column; gap:12px; min-height:0; }
+        .mc-input { border:1px solid var(--line); background:#0f0d0b; color:var(--candle);
+          border-radius:7px; padding:5px 8px; font-size:12px; caret-color:var(--brass); }
+        .mc-input:focus { outline:none; border-color:var(--brass); box-shadow:0 0 0 3px rgba(176,141,87,.14); }
+        .mc-num { width:74px; text-align:right; font-variant-numeric:tabular-nums; }
+        .mc-metric { display:flex; flex-direction:column; gap:2px; padding:8px 10px; border-radius:9px;
+          border:1px solid var(--ember-panel-line); background:linear-gradient(180deg,#131110,#0c0b0a); }
+        .mc-metric .k { font-size:8.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-faint); }
+        .mc-metric .v { font-size:19px; font-weight:800; color:var(--candle); font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+        .mc-metric .v.warn { color:var(--ember-red); }
+        .mc-metric .v.ok { color:#54e08a; }
+        /* Zapier task meter bar */
+        .mc-meter { height:12px; border-radius:7px; overflow:hidden; border:1px solid var(--ember-brass-dark);
+          background:repeating-linear-gradient(45deg,#0e0d0b,#0e0d0b 6px,#121110 6px,#121110 12px); position:relative; }
+        .mc-meter-fill { height:100%; transition:width .4s var(--ember-ease-sweep);
+          background:linear-gradient(90deg,var(--brass),var(--ember-amber)); }
+        .mc-meter-fill.warn { background:linear-gradient(90deg,var(--copper),var(--ember-red)); }
+        .mc-meter-mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--candle); opacity:.55; }
+        /* project fuse row */
+        .mc-fuse-wrap { position:relative; height:14px; border-radius:8px;
+          background:linear-gradient(180deg,#0c0b0a,#100e0c); border:1px solid var(--ember-panel-line); overflow:hidden; }
+        .mc-fuse-burnt { position:absolute; left:0; top:0; bottom:0;
+          background:repeating-linear-gradient(90deg,#241a12,#241a12 3px,#1c140d 3px,#1c140d 6px); opacity:.9; }
+        .mc-fuse-live { position:absolute; top:0; bottom:0;
+          background:linear-gradient(90deg,rgba(176,141,87,.25),var(--brass) 60%,var(--ember-amber)); }
+        .mc-fuse-spark { position:absolute; top:50%; width:9px; height:9px; margin-top:-4.5px; margin-left:-4.5px;
+          border-radius:50%; background:radial-gradient(circle,#fff,var(--ember-orange) 45%,transparent 70%);
+          box-shadow:0 0 9px 2px rgba(255,120,60,.75); animation:mcSpark 1.5s ease-in-out infinite; }
+        @keyframes mcSpark { 0%,100%{ transform:scale(1); opacity:.9; } 50%{ transform:scale(1.35); opacity:1; } }
+        .mc-row { border:1px solid var(--ember-panel-line); border-radius:11px; padding:10px 12px;
+          background:linear-gradient(180deg,var(--ember-panel-alt),var(--ember-panel)); }
+        .mc-row.blocked { border-color:rgba(217,60,43,.5); }
+        .mc-row.frozen { opacity:.72; }
+        .mc-row.kill { border-color:var(--ember-red); box-shadow:0 0 0 1px rgba(255,77,50,.25), 0 0 18px rgba(255,50,30,.12); }
+        .mc-status { font-size:8.5px; font-weight:800; letter-spacing:.16em; text-transform:uppercase;
+          padding:2px 8px; border-radius:20px; border:1px solid; cursor:pointer; background:transparent; }
+        .mc-st-active { color:#54e08a; border-color:rgba(84,224,138,.5); }
+        .mc-st-blocked { color:var(--ember-red); border-color:rgba(217,60,43,.55); }
+        .mc-st-parked { color:var(--ember-amber); border-color:rgba(255,177,59,.5); }
+        .mc-st-frozen { color:var(--gunmetal); border-color:rgba(120,120,132,.6); }
+        .mc-tag-rev { color:#54e08a; border-color:rgba(84,224,138,.5); }
+        .mc-tag-norev { color:var(--ink-faint); border-color:var(--line); }
+        .mc-chip { font-size:8.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+          padding:2px 8px; border-radius:20px; border:1px solid var(--line); color:var(--ink-dim); }
+        .mc-check { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px; color:var(--ink-dim); }
+        .mc-check input { accent-color:var(--brass); width:14px; height:14px; }
+        .mc-check.done span { text-decoration:line-through; opacity:.55; }
+        .mc-mini { font-size:9px; letter-spacing:.05em; color:var(--brass); background:transparent; border:1px solid var(--ember-brass-dark);
+          border-radius:6px; padding:3px 8px; cursor:pointer; }
+        .mc-mini:hover { color:var(--candle); border-color:var(--brass); }
+        .mc-resume { color:var(--ember-amber); border-color:rgba(255,158,61,.5); background:rgba(255,158,61,.10); white-space:nowrap; }
+        .mc-resume:hover:not(:disabled) { background:rgba(255,158,61,.20); border-color:rgba(255,158,61,.85); }
+        .mc-resume:disabled { opacity:.35; cursor:default; }
+        .mc-linkchip { display:inline-flex; align-items:center; gap:4px; padding:2px 5px; border-radius:6px;
+          border:1px solid var(--ember-panel-line); background:#0e0c0b; font-size:10px; }
+        .mc-linkchip a { color:var(--ember-amber); text-decoration:underline; text-underline-offset:2px; white-space:nowrap; }
+        .mc-linkchip a:hover { color:var(--candle); }
+        .mc-linkin { width:74px; font-size:9px; padding:1px 4px; }
+        .mc-linkurl { width:150px; }
+        .mc-x { color:var(--ink-faint); background:transparent; border:none; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
+        .mc-x:hover { color:var(--ember-red); }
+
         .dock-control {
           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
           min-width:0; min-height:54px; padding:6px 2px; cursor:pointer;
@@ -3583,7 +3798,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               </span>
             </h1>
             <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ink-faint)" }}>
-              {view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : "BAXSTAR STUDIO"}
+              {view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : view === "mission" ? "MISSION CONTROL" : "BAXSTAR STUDIO"}
             </span>
           </div>
 
@@ -3695,19 +3910,26 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             MIC RELEASED — YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP
           </div>
         )}
-        {voiceList.length > 0 && (
-          <div className="flex items-center justify-center gap-2">
-            <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
-            <select className="voice-pick font-mono-x" value={voiceChoice}
-              onChange={(e) => { unlockSpeech(); setVoiceChoice(e.target.value); }}>
-              <option value="">Automatic</option>
-              {voiceList.map((v) => (
-                <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " (network)"}</option>
+        <div className="flex items-center justify-center gap-2">
+          <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
+          <select className="voice-pick font-mono-x" value={voiceChoice}
+            onChange={(e) => { unlockSpeech(); neuralDownUntilRef.current = 0; setVoiceChoice(e.target.value); }}>
+            <option value="">Automatic — natural first</option>
+            <optgroup label="EMBER — NATURAL">
+              {NEURAL_VOICES.map((v) => (
+                <option key={v.id} value={"ember:" + v.id}>{v.label}</option>
               ))}
-            </select>
-            <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
-          </div>
-        )}
+            </optgroup>
+            {voiceList.length > 0 && (
+              <optgroup label="THIS DEVICE">
+                {voiceList.map((v) => (
+                  <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " (network)"}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
+        </div>
         {inlineMic && voiceTrace.length > 0 && (
           <div className="font-mono-x rounded-lg border px-3 py-1.5 text-[8px] leading-relaxed"
             style={{ borderColor: "var(--ember-panel-line)", background: "#0c0a09", color: "var(--ink-faint)" }}>
@@ -4656,6 +4878,18 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         {/* The dashboard Brady asked for in the pinned DASHBOARD REQUIREMENTS: every open
             project as a horizontal bar under its category, with outstanding work and an
             honest session estimate. Data is the session-maintained PROJECTS constant. */}
+        {/* ================= PROJECT BOARDS ================= */}
+        {/* One dock tile (Projects — the dock stays at its lawful six), two boards
+            behind it: the glanceable session-maintained bars, and Mission Control,
+            Brady's editable command board ported from the Codex line's fork. */}
+        {(view === "projects" || view === "mission") && (
+          <div className="flex justify-center gap-2">
+            <button className={`seg sm ${view === "projects" ? "on" : ""}`} onClick={() => setView("projects")}>QUICK BARS</button>
+            <button className={`seg sm ${view === "mission" ? "on" : ""}`} onClick={() => setView("mission")}>MISSION CONTROL</button>
+          </div>
+        )}
+        {view === "mission" && <MissionControl />}
+
         {view === "projects" && (
         <div className="flex min-h-0 flex-1 flex-col">
           <Panel notch="hot" title="Project Status" count={`UPDATED ${PROJECTS_META.updated}`} countColor="var(--brass)" delay="0.1s" grow>
@@ -4818,5 +5052,244 @@ function Badge({ label }) {
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--ember-amber)", boxShadow: "0 0 8px var(--ember-amber)" }} />
       {label}
     </span>
+  );
+}
+
+/* ================= MISSION CONTROL (ported from mission-control-draft) =================
+   The terminal/Codex line built this view on a fork; the voice commits riding with it
+   were superseded by the ear machine, but the view itself is the product Brady uses.
+   Ported onto main so both AI lines finally build one codebase. */
+const MC_KEY = "ember-mc";
+const MC_STATUSES = ["active", "blocked", "parked", "frozen"];
+const mcUid = () => Math.random().toString(36).slice(2, 9);
+const mcToday = () => { try { return new Date().toISOString().slice(0, 10); } catch (e) { return ""; } };
+const mcNum = (x) => { const n = Number(x); return isFinite(n) ? n : 0; };
+
+function mcDefaults() {
+  const d = mcToday();
+  const dom = (() => { try { return new Date().getDate(); } catch (e) { return 15; } })();
+  return {
+    zap: { used: 340, allowance: 750, dayOfCycle: dom, daysInCycle: 30 },
+    projects: [
+      { id: mcUid(), name: "Baxstar Ember", pct: 60, status: "active", revenue: false, sessions: 3, hours: 6, next: "Mission Control + caption polish", updated: d,
+        links: [
+          { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+          { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
+          { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" },
+        ],
+        tasks: [{ id: mcUid(), text: "Caption HEIC + Drive outbox", done: true }, { id: mcUid(), text: "Mission Control view", done: false }] },
+      { id: mcUid(), name: "Pontoon check-in", pct: 85, status: "active", revenue: true, sessions: 1, hours: 2, next: "Close multi-tab queue TOCTOU", updated: d,
+        links: [], tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }] },
+      { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d,
+        links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }], tasks: [] },
+      { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d,
+        links: [{ id: mcUid(), label: "wix editor", url: "https://manage.wix.com/" }], tasks: [] },
+    ],
+    decisions: [
+      { id: mcUid(), text: "Turn the Caption → IG Zap ON (throwaway test first)", done: false },
+      { id: mcUid(), text: "Deploy the Drive-outbox Apps Script", done: false },
+      { id: mcUid(), text: "Merge the voice rig into the app (one brain)", done: false },
+    ],
+  };
+}
+
+function MissionControl() {
+  const init = (typeof window !== "undefined" && lsGet(MC_KEY, null)) || mcDefaults();
+  const [zap, setZap] = useState(init.zap || mcDefaults().zap);
+  const [projects, setProjects] = useState(init.projects || []);
+  const [decisions, setDecisions] = useState(init.decisions || []);
+  const [openRows, setOpenRows] = useState({});
+  useEffect(() => { lsSet(MC_KEY, { zap, projects, decisions }); }, [zap, projects, decisions]);
+
+  // --- Zapier meter math ---
+  const used = mcNum(zap.used), allowance = mcNum(zap.allowance);
+  const dayOfCycle = mcNum(zap.dayOfCycle), daysInCycle = mcNum(zap.daysInCycle);
+  const pctUsed = allowance > 0 ? (used / allowance) * 100 : 0;
+  const callsLeft = Math.max(0, Math.floor((allowance - used) / 2));
+  const dailyBurn = dayOfCycle > 0 ? used / dayOfCycle : 0;
+  const projection = Math.round(dailyBurn * daysInCycle);
+  const pacingOver = allowance > 0 && projection > allowance;
+  const projMark = allowance > 0 ? Math.max(0, Math.min(100, (projection / allowance) * 100)) : 0;
+
+  // --- rollups ---
+  const totalHours = projects.reduce((s, p) => s + mcNum(p.hours), 0);
+  const totalSessions = projects.reduce((s, p) => s + mcNum(p.sessions), 0);
+  const avgPct = projects.length ? Math.round(projects.reduce((s, p) => s + mcNum(p.pct), 0) / projects.length) : 0;
+  const revHours = projects.filter((p) => p.revenue).reduce((s, p) => s + mcNum(p.hours), 0);
+  const revEffortPct = totalHours > 0 ? Math.round((revHours / totalHours) * 100) : 0;
+
+  // --- mutators ---
+  const setZapField = (k, v) => setZap((z) => ({ ...z, [k]: v }));
+  const updProject = (id, patch) => setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch, updated: mcToday() } : p)));
+  const cycleStatus = (id) => setProjects((ps) => ps.map((p) => (p.id === id ? { ...p, status: MC_STATUSES[(MC_STATUSES.indexOf(p.status) + 1) % MC_STATUSES.length], updated: mcToday() } : p)));
+  // Older saved data predates links, so always read through a default.
+  const linksOf = (p) => (Array.isArray(p.links) ? p.links : []);
+  const addLink = (pid) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: [...linksOf(p), { id: mcUid(), label: "", url: "" }] } : p)));
+  const updLink = (pid, lid, patch) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: linksOf(p).map((l) => (l.id === lid ? { ...l, ...patch } : l)) } : p)));
+  const delLink = (pid, lid) =>
+    setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, links: linksOf(p).filter((l) => l.id !== lid) } : p)));
+
+  // Reopen every tab a project needs. The first window.open rides the click's
+  // user gesture; the rest are staggered because browsers block a burst of them
+  // from a single gesture and would silently drop all but the first.
+  const resumeProject = (p) => {
+    const urls = linksOf(p).map((l) => (l.url || "").trim()).filter(Boolean);
+    if (!urls.length) return;
+    urls.forEach((u, i) => {
+      const href = /^https?:\/\//i.test(u) ? u : "https://" + u;
+      if (i === 0) window.open(href, "_blank", "noopener");
+      else setTimeout(() => window.open(href, "_blank", "noopener"), i * 250);
+    });
+  };
+
+  const addProject = () => setProjects((ps) => [...ps, { id: mcUid(), name: "New project", pct: 0, status: "active", revenue: false, sessions: 1, hours: 1, next: "", updated: mcToday(), links: [], tasks: [] }]);
+  const delProject = (id) => setProjects((ps) => ps.filter((p) => p.id !== id));
+  const addTask = (pid) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: [...p.tasks, { id: mcUid(), text: "New task", done: false }] } : p)));
+  const updTask = (pid, tid, patch) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.map((t) => (t.id === tid ? { ...t, ...patch } : t)) } : p)));
+  const delTask = (pid, tid) => setProjects((ps) => ps.map((p) => (p.id === pid ? { ...p, tasks: p.tasks.filter((t) => t.id !== tid) } : p)));
+  const addDecision = () => setDecisions((d) => [...d, { id: mcUid(), text: "New decision", done: false }]);
+  const updDecision = (id, patch) => setDecisions((d) => d.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const delDecision = (id) => setDecisions((d) => d.filter((x) => x.id !== id));
+
+  const statusClass = (s) => ({ active: "mc-st-active", blocked: "mc-st-blocked", parked: "mc-st-parked", frozen: "mc-st-frozen" }[s] || "mc-st-active");
+
+  return (
+    <div className="mc-grid flex-1" style={{ minHeight: 0 }}>
+      {/* LEFT — meter + projects */}
+      <div className="mc-stack" style={{ minHeight: 0 }}>
+        <Panel notch="cool" title="Zapier Task Meter" count={pacingOver ? "PACING OVER" : "ON PACE"}
+          countColor={pacingOver ? "var(--ember-red)" : "#54e08a"} delay="0.05s" scroll={false}>
+          <div className="grid grid-cols-4 gap-2">
+            {[["used", "Used"], ["allowance", "Allowance"], ["dayOfCycle", "Day of cycle"], ["daysInCycle", "Days in cycle"]].map(([k, label]) => (
+              <label key={k} className="flex flex-col gap-1">
+                <span className="fieldlabel">{label}</span>
+                <input type="number" className="mc-input mc-num" style={{ width: "100%", textAlign: "left" }}
+                  value={zap[k]} onChange={(e) => setZapField(k, e.target.value)} />
+              </label>
+            ))}
+          </div>
+          <div className="mc-meter mt-3">
+            <div className={`mc-meter-fill ${pacingOver ? "warn" : ""}`} style={{ width: `${Math.max(0, Math.min(100, pctUsed))}%` }} />
+            <div className="mc-meter-mark" title="projected cycle end" style={{ left: `${projMark}%` }} />
+          </div>
+          <div className="grid grid-cols-4 gap-2 mt-3">
+            <div className="mc-metric"><span className="k">% Used</span><span className={`v ${pctUsed >= 100 ? "warn" : ""}`}>{Math.round(pctUsed)}%</span></div>
+            <div className="mc-metric"><span className="k">Calls left ÷2</span><span className="v">{callsLeft}</span></div>
+            <div className="mc-metric"><span className="k">Daily burn</span><span className="v">{dailyBurn.toFixed(1)}</span></div>
+            <div className="mc-metric"><span className="k">Proj. end</span><span className={`v ${pacingOver ? "warn" : "ok"}`}>{projection}</span></div>
+          </div>
+        </Panel>
+
+        <Panel notch="hot" title="Projects" count={`${projects.length} TRACKED`} countColor="var(--brass)" delay="0.12s" grow>
+          <div className="flex flex-col gap-2.5">
+            {projects.map((p) => {
+              const pct = Math.max(0, Math.min(100, mcNum(p.pct)));
+              return (
+                <div key={p.id} className={`mc-row ${p.status}`}>
+                  <div className="flex items-center gap-2">
+                    <input className="mc-input flex-1" value={p.name} onChange={(e) => updProject(p.id, { name: e.target.value })} />
+                    {/* The name stays editable, so the link lives beside it -- one tap
+                        reopens every page this project needs to pick back up. */}
+                    <button className="mc-status mc-resume" onClick={() => resumeProject(p)}
+                      disabled={!linksOf(p).some((l) => (l.url || "").trim())}
+                      title={linksOf(p).filter((l) => l.url).map((l) => l.label || l.url).join(" · ") || "add pages below"}>
+                      ↗ resume{linksOf(p).filter((l) => (l.url || "").trim()).length > 1 ? ` (${linksOf(p).filter((l) => (l.url || "").trim()).length})` : ""}
+                    </button>
+                    <button className={`mc-status ${statusClass(p.status)}`} onClick={() => cycleStatus(p.id)} title="cycle status">{p.status}</button>
+                    <button className={`mc-status ${p.revenue ? "mc-tag-rev" : "mc-tag-norev"}`} onClick={() => updProject(p.id, { revenue: !p.revenue })} title="revenue impact">
+                      {p.revenue ? "$ revenue" : "no revenue"}
+                    </button>
+                    <button className="mc-x" onClick={() => delProject(p.id)} title="remove">×</button>
+                  </div>
+                  <div className="mc-fuse-wrap mt-2">
+                    <div className="mc-fuse-burnt" style={{ width: `${pct}%` }} />
+                    <div className="mc-fuse-live" style={{ left: `${pct}%`, width: `${100 - pct}%` }} />
+                    {pct > 0 && pct < 100 && <div className="mc-fuse-spark" style={{ left: `${pct}%` }} />}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                    <label className="flex items-center gap-1">%<input type="number" className="mc-input mc-num" style={{ width: 54 }} value={p.pct} onChange={(e) => updProject(p.id, { pct: e.target.value })} /></label>
+                    <label className="flex items-center gap-1">sessions<input type="number" className="mc-input mc-num" style={{ width: 48 }} value={p.sessions} onChange={(e) => updProject(p.id, { sessions: e.target.value })} /></label>
+                    <label className="flex items-center gap-1">hours<input type="number" className="mc-input mc-num" style={{ width: 48 }} value={p.hours} onChange={(e) => updProject(p.id, { hours: e.target.value })} /></label>
+                    <button className="mc-mini ml-auto" onClick={() => setOpenRows((o) => ({ ...o, [p.id]: !o[p.id] }))}>
+                      {openRows[p.id] ? "hide tasks" : `tasks (${p.tasks.length})`}
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <span className="fieldlabel" style={{ whiteSpace: "nowrap" }}>Next</span>
+                    <input className="mc-input flex-1" placeholder="next action" value={p.next} onChange={(e) => updProject(p.id, { next: e.target.value })} />
+                  </div>
+                  {/* Individual pages: click a chip for just that one, or edit them. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {linksOf(p).map((l) => (
+                      <span key={l.id} className="mc-linkchip">
+                        {(l.url || "").trim() ? (
+                          <a href={/^https?:\/\//i.test(l.url.trim()) ? l.url.trim() : "https://" + l.url.trim()}
+                            target="_blank" rel="noopener noreferrer" title={l.url}>
+                            {l.label || l.url}
+                          </a>
+                        ) : (
+                          <span style={{ color: "var(--ink-faint)" }}>{l.label || "untitled"}</span>
+                        )}
+                        <input className="mc-input mc-linkin" placeholder="label" value={l.label}
+                          onChange={(e) => updLink(p.id, l.id, { label: e.target.value })} />
+                        <input className="mc-input mc-linkin mc-linkurl" placeholder="paste the tab URL" value={l.url}
+                          onChange={(e) => updLink(p.id, l.id, { url: e.target.value })} />
+                        <button className="mc-x" onClick={() => delLink(p.id, l.id)} title="remove page">×</button>
+                      </span>
+                    ))}
+                    <button className="mc-mini" onClick={() => addLink(p.id)}>+ page</button>
+                  </div>
+                  {openRows[p.id] && (
+                    <div className="mt-2 rounded-lg p-2" style={{ background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" }}>
+                      {p.tasks.map((t) => (
+                        <div key={t.id} className={`mc-check ${t.done ? "done" : ""}`}>
+                          <input type="checkbox" checked={t.done} onChange={(e) => updTask(p.id, t.id, { done: e.target.checked })} />
+                          <input className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={t.text} onChange={(e) => updTask(p.id, t.id, { text: e.target.value })} />
+                          <button className="mc-x" onClick={() => delTask(p.id, t.id)}>×</button>
+                        </div>
+                      ))}
+                      <button className="mc-mini mt-1" onClick={() => addTask(p.id)}>+ task</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button className="mc-mini" style={{ alignSelf: "flex-start" }} onClick={addProject}>+ project</button>
+          </div>
+        </Panel>
+      </div>
+
+      {/* RIGHT — rollups + decisions */}
+      <div className="mc-stack" style={{ minHeight: 0 }}>
+        <Panel notch="warm" title="Rollups" count="LIVE" countColor="var(--ember-orange)" delay="0.08s" scroll={false}>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="mc-metric"><span className="k">Total hours left</span><span className="v">{totalHours}</span></div>
+            <div className="mc-metric"><span className="k">Total sessions</span><span className="v">{totalSessions}</span></div>
+            <div className="mc-metric"><span className="k">Avg complete</span><span className="v">{avgPct}%</span></div>
+            <div className="mc-metric"><span className="k">Effort on revenue</span><span className={`v ${revEffortPct < 50 ? "warn" : "ok"}`}>{revEffortPct}%</span></div>
+          </div>
+          <div className="mt-2 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+            {revEffortPct < 50
+              ? "Under half of remaining effort is on revenue projects — worth a rebalance."
+              : "Most remaining effort is pointed at revenue. Good."}
+          </div>
+        </Panel>
+
+        <Panel notch="cool" title="Decision Queue" count={`${decisions.filter((d) => !d.done).length} OPEN`} countColor="var(--brass)" delay="0.16s" grow>
+          <div className="flex flex-col gap-1">
+            {decisions.map((d) => (
+              <div key={d.id} className={`mc-check ${d.done ? "done" : ""}`}>
+                <input type="checkbox" checked={d.done} onChange={(e) => updDecision(d.id, { done: e.target.checked })} />
+                <input className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={d.text} onChange={(e) => updDecision(d.id, { text: e.target.value })} />
+                <button className="mc-x" onClick={() => delDecision(d.id)}>×</button>
+              </div>
+            ))}
+            <button className="mc-mini mt-1" style={{ alignSelf: "flex-start" }} onClick={addDecision}>+ decision</button>
+          </div>
+        </Panel>
+      </div>
+    </div>
   );
 }

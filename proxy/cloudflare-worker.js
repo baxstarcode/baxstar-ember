@@ -33,6 +33,11 @@
  *                                            be replayed against us
  *   QUO_CLIENT_ID (optional)                 set after the first Quo run to skip
  *                                            re-registering the client
+ *
+ * POST /tts — Ember's natural voice. Relays Microsoft Edge's free neural TTS
+ * (the Read Aloud voices) over an outbound WebSocket and returns raw MP3.
+ * No key, no secret, no per-use cost. The same origin allowlist gates it, so
+ * a leaked Worker URL cannot be farmed as an open TTS service.
  */
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -441,6 +446,144 @@ async function injectMcpTokens(servers, env, fetchImpl, now) {
   return out;
 }
 
+// --- /tts: Ember's natural voice ------------------------------------------
+//
+// Edge's Read Aloud service speaks over a WebSocket: one config frame, one SSML
+// frame, then binary frames whose payload (after a 2-byte-length-prefixed
+// header) is MP3, until a "turn.end" text frame. It gates on looking like the
+// Edge browser — the exact header set below was found by live probe on
+// 2026-08-22 (Chromium-141-shaped requests get an empty-body 403) — plus a
+// clock-derived Sec-MS-GEC stamp. None of that is secret; there is no key.
+
+const EDGE_TTS_HOST = "speech.platform.bing.com";
+const EDGE_TTS_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"; // public, ships in every Edge install
+const EDGE_TTS_VERSION = "1-140.0.3485.14";
+const EDGE_TTS_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.3485.14",
+  "Origin": "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
+  "sec-ch-ua": '"Chromium";v="140", "Microsoft Edge";v="140", "Not:A-Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "Accept-Language": "en-US,en;q=0.9",
+  "Pragma": "no-cache",
+  "Cache-Control": "no-cache",
+};
+
+// What the app's picker offers, nothing more — an open voice field would let a
+// caller probe Microsoft's whole catalog through us.
+const TTS_VOICES = new Set([
+  "en-US-JennyNeural",
+  "en-US-AriaNeural",
+  "en-US-MichelleNeural",
+  "en-US-GuyNeural",
+  "en-US-ChristopherNeural",
+]);
+const TTS_DEFAULT_VOICE = "en-US-JennyNeural";
+// Ember speaks at most ~380 chars per reply; anything past this is not Ember.
+const TTS_MAX_CHARS = 1000;
+
+// Sec-MS-GEC: uppercase SHA-256 of (Windows-epoch ticks floored to 5 minutes,
+// concatenated with the client token). Derived from the clock, so it cannot be
+// hardcoded — but it CAN be pinned in a test with a fixed clock.
+async function edgeGec(now) {
+  const WIN_EPOCH = 11644473600n;
+  const s = BigInt(Math.floor(now / 1000)) + WIN_EPOCH;
+  const ticks = (s - (s % 300n)) * 10000000n;
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${ticks}${EDGE_TTS_TOKEN}`));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+// The reply text rides inside SSML — escape it or a spoken "<" ends the voice
+// element and arbitrary markup reaches the synthesizer.
+function xmlEscape(s) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/'/g, "&apos;")
+    .replace(/"/g, "&quot;");
+}
+
+async function handleTts(request, cors, fetchImpl, now) {
+  let body;
+  try {
+    body = JSON.parse(await request.text());
+  } catch {
+    return json({ error: "Invalid JSON." }, 400, cors);
+  }
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) return json({ error: "No text to speak." }, 400, cors);
+  if (text.length > TTS_MAX_CHARS) return json({ error: "Text too long." }, 400, cors);
+  const voice = TTS_VOICES.has(body.voice) ? body.voice : TTS_DEFAULT_VOICE;
+
+  const connId = crypto.randomUUID().replace(/-/g, "");
+  const wsUrl =
+    `https://${EDGE_TTS_HOST}/consumer/speech/synthesize/readaloud/edge/v1` +
+    `?TrustedClientToken=${EDGE_TTS_TOKEN}&Sec-MS-GEC=${await edgeGec(now)}` +
+    `&Sec-MS-GEC-Version=${EDGE_TTS_VERSION}&ConnectionId=${connId}`;
+
+  let sock;
+  try {
+    const up = await fetchImpl(wsUrl, { headers: { Upgrade: "websocket", ...EDGE_TTS_HEADERS } });
+    sock = up.webSocket;
+    if (!sock) return json({ error: `Voice engine refused the connection (${up.status}).` }, 502, cors);
+  } catch {
+    return json({ error: "Voice engine unreachable." }, 502, cors);
+  }
+
+  const parts = await new Promise((resolve) => {
+    const audio = [];
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(guard);
+      try { sock.close(); } catch {}
+      resolve(v);
+    };
+    // A wedged socket must fail the request, not hang the Worker until the
+    // platform kills it — the app treats any /tts failure as "use device voice".
+    const guard = setTimeout(() => finish(audio.length ? audio : null), 12000);
+    sock.accept();
+    sock.addEventListener("message", (e) => {
+      if (typeof e.data === "string") {
+        if (e.data.includes("Path:turn.end")) finish(audio);
+        return;
+      }
+      const buf = new Uint8Array(e.data);
+      if (buf.length < 2) return;
+      const headerLen = (buf[0] << 8) | buf[1];
+      const header = new TextDecoder().decode(buf.subarray(2, 2 + headerLen));
+      // Exact path only: "Path:audio.metadata" frames carry JSON, and a
+      // substring match would splice it into the MP3 as a burst of noise.
+      if (/(^|\r\n)Path:audio(\r\n|$)/.test(header)) audio.push(buf.subarray(2 + headerLen));
+    });
+    sock.addEventListener("error", () => finish(null));
+    sock.addEventListener("close", () => finish(audio.length ? audio : null));
+    const ts = new Date(now).toISOString();
+    sock.send(
+      `X-Timestamp:${ts}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
+        JSON.stringify({ context: { synthesis: { audio: { metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: false }, outputFormat: "audio-24khz-48kbitrate-mono-mp3" } } } })
+    );
+    sock.send(
+      `X-RequestId:${connId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}\r\nPath:ssml\r\n\r\n` +
+        `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
+        `<voice name='${voice}'><prosody pitch='+0Hz' rate='+4%' volume='+0%'>${xmlEscape(text)}</prosody></voice></speak>`
+    );
+  });
+
+  if (!parts || !parts.length) return json({ error: "Voice engine produced no audio." }, 502, cors);
+  let total = 0;
+  for (const p of parts) total += p.length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return new Response(out, {
+    status: 200,
+    headers: { ...cors, "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
+  });
+}
+
 export default {
   async fetch(request, env, ctx, deps = {}) {
     // deps lets the tests drive this with a stubbed fetch/clock; production
@@ -478,6 +621,11 @@ export default {
     if (!originOk) {
       // Blocked here as well as by CORS, so a non-browser client can't bypass it.
       return json({ error: "Origin not allowed." }, 403, cors);
+    }
+    // The natural voice needs no Anthropic key — routed after the origin gate
+    // but before the key check, so a voice-only misconfiguration still speaks.
+    if (url.pathname === "/tts") {
+      return handleTts(request, cors, fetchImpl, now);
     }
     if (!env.ANTHROPIC_API_KEY) {
       return json(

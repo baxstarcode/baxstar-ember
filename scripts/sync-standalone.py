@@ -66,7 +66,9 @@ HEAD = """<!doctype html>
      Feature-detected — a no-op where service workers are unavailable. */
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js").catch(function () {});
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+        .then(function (registration) { return registration.update(); })
+        .catch(function () {});
     });
   }
   </script>
