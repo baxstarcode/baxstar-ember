@@ -576,7 +576,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { id: "claude-opus-5", label: "Opus 5" },
     { id: "claude-fable-5", label: "Fable 5" }
   ];
-  const DEFAULT_MODEL = "claude-sonnet-4-6";
+  const DEFAULT_MODEL = "claude-opus-5";
+  const FALLBACK_MODEL = "claude-sonnet-4-6";
+  const DEFAULT_EFFORT = "high";
+  const PREFS_V = 2;
   const EFFORT = {
     low: { label: "Low", note: "\nEffort: LOW \u2014 shortest useful answer. No elaboration." },
     standard: { label: "Std", note: "" },
@@ -620,7 +623,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-19 20:03Z".startsWith("__") ? "dev" : "2026-08-19 20:03Z";
+  const BUILD_STAMP = "2026-08-23 19:15Z".startsWith("__") ? "dev" : "2026-08-23 19:15Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -995,7 +998,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [leanCaption, setLeanCaption] = useState(false);
     const [chatMsgs, setChatMsgs] = useState([]);
     const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
-    const [chatEffort, setChatEffort] = useState("standard");
+    const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
     const [revToday, setRevToday] = useState(null);
     const localDay = () => (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA");
     const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n));
@@ -1148,8 +1151,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
           if (typeof prefs.voiceChoice === "string") setVoiceChoice(prefs.voiceChoice);
           if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
-          if (prefs.chatModel) setChatModel(prefs.chatModel);
-          if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+          if (prefs.v >= PREFS_V) {
+            if (prefs.chatModel) setChatModel(prefs.chatModel);
+            if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+          }
           if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
           if (prefs.lake) setLake(prefs.lake);
           if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
@@ -1224,7 +1229,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24));
     }, [driveMsgs]);
     useEffect(() => {
-      if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
+      if (hydrated.current) persist("ember-prefs", { v: PREFS_V, voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
     }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
     async function saveBg(next) {
       setBg(next);
@@ -2142,8 +2147,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         try {
           resp = await callClaude(messages, { useTools: true, model: chatModel, maxTokens: cap });
         } catch (err) {
-          if (chatModel !== DEFAULT_MODEL) {
-            resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL, maxTokens: cap });
+          if (chatModel !== FALLBACK_MODEL) {
+            resp = await callClaude(messages, { useTools: true, model: FALLBACK_MODEL, maxTokens: cap });
             fellBack = true;
           } else {
             throw err;
@@ -3249,10 +3254,10 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         .codex { position:relative; display:inline-flex; flex-wrap:wrap; justify-content:center; max-width:100%; border:9px solid transparent;
           border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
           background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
-        @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
-        @keyframes codexDrumNeighbor { from { transform:translateY(-8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
-        .seg.on { animation:codexDrum 320ms var(--ember-ease-mechanical); }
-        .seg:not(.on) { animation:codexDrumNeighbor 320ms var(--ember-ease-mechanical); }
+        /* No transform animation on the segs. The old codexDrum translateY promoted
+           every button to a rasterized GPU layer on iOS Safari; with any page zoom the
+           layer re-rendered at the wrong scale and the labels stayed blurry after each
+           pick. The .seg background/shadow transition carries the click feel instead. */
 
         .tgl { display:inline-flex; align-items:center; gap:7px; font-weight:700; letter-spacing:inherit;
           color:var(--ink-faint); background:transparent; border:none; padding:2px 0; cursor:pointer; font-size:inherit; }
@@ -3600,7 +3605,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
         style: { background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", opacity: command ? 1 : 0.35 }
       },
       "RUN"
-    )), queued && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x w-full max-w-sm text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "QUEUED \u2014 RUNS WHEN SHE FINISHES: ", queued.length > 54 ? queued.slice(0, 54) + "\u2026" : queued), /* @__PURE__ */ React.createElement("div", { className: "reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2", style: { animationDelay: "0.6s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Model"), /* @__PURE__ */ React.createElement("div", { className: "codex", key: chatModel }, MODELS.map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, className: `seg sm ${chatModel === m.id ? "on" : ""}`, onClick: () => setChatModel(m.id) }, m.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Effort"), /* @__PURE__ */ React.createElement("div", { className: "codex", key: chatEffort }, Object.entries(EFFORT).map(([k, e]) => /* @__PURE__ */ React.createElement("button", { key: k, className: `seg sm ${chatEffort === k ? "on" : ""}`, onClick: () => setChatEffort(k) }, e.label)))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
+    )), queued && /* @__PURE__ */ React.createElement("div", { className: "font-mono-x w-full max-w-sm text-[9px] tracking-[0.2em]", style: { color: "var(--ink-faint)" } }, "QUEUED \u2014 RUNS WHEN SHE FINISHES: ", queued.length > 54 ? queued.slice(0, 54) + "\u2026" : queued), /* @__PURE__ */ React.createElement("div", { className: "reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2", style: { animationDelay: "0.6s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Model"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, MODELS.map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, className: `seg sm ${chatModel === m.id ? "on" : ""}`, onClick: () => setChatModel(m.id) }, m.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Effort"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, Object.entries(EFFORT).map(([k, e]) => /* @__PURE__ */ React.createElement("button", { key: k, className: `seg sm ${chatEffort === k ? "on" : ""}`, onClick: () => setChatEffort(k) }, e.label)))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
       setChatMsgs([]);
       historyRef.current = [];
     } }, "Clear thread")), draftEdit !== null && /* @__PURE__ */ React.createElement(

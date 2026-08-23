@@ -283,7 +283,14 @@ const MODELS = [
   { id: "claude-opus-5",     label: "Opus 5" },
   { id: "claude-fable-5",    label: "Fable 5" },
 ];
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+// Brady's call (2026-08-23): Opus 5 on High effort is the default. Sonnet stays
+// the fallback when the gateway rejects the chosen model.
+const DEFAULT_MODEL = "claude-opus-5";
+const FALLBACK_MODEL = "claude-sonnet-4-6";
+const DEFAULT_EFFORT = "high";
+// Bump when a default above changes: stored model/effort prefs from an older
+// version are dropped once so the new default actually lands on his phone.
+const PREFS_V = 2;
 
 const EFFORT = {
   low:      { label: "Low",  note: "\nEffort: LOW — shortest useful answer. No elaboration." },
@@ -1023,7 +1030,7 @@ export default function BaxstarEmber() {
   // ---- CLAUDE CHAT state (the thread lives on the OPS home page) ----
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
-  const [chatEffort, setChatEffort] = useState("standard");
+  const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
 
   /* Today's revenue is MANUAL — Brady sets it, nothing invents it. The panel
      used to show a hardcoded demo number ("+$1,240 · 2 FareHarbor bookings")
@@ -1166,8 +1173,10 @@ export default function BaxstarEmber() {
         if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
         if (typeof prefs.voiceChoice === "string") setVoiceChoice(prefs.voiceChoice);
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
-        if (prefs.chatModel) setChatModel(prefs.chatModel);
-        if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+        if (prefs.v >= PREFS_V) {
+          if (prefs.chatModel) setChatModel(prefs.chatModel);
+          if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+        }
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
@@ -1255,7 +1264,7 @@ export default function BaxstarEmber() {
   useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
+    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
   }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
@@ -2257,8 +2266,8 @@ export default function BaxstarEmber() {
       try {
         resp = await callClaude(messages, { useTools: true, model: chatModel, maxTokens: cap });
       } catch (err) {
-        if (chatModel !== DEFAULT_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL, maxTokens: cap });
+        if (chatModel !== FALLBACK_MODEL) {
+          resp = await callClaude(messages, { useTools: true, model: FALLBACK_MODEL, maxTokens: cap });
           fellBack = true;
         } else {
           throw err;
@@ -3452,10 +3461,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .codex { position:relative; display:inline-flex; flex-wrap:wrap; justify-content:center; max-width:100%; border:9px solid transparent;
           border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
           background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
-        @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
-        @keyframes codexDrumNeighbor { from { transform:translateY(-8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
-        .seg.on { animation:codexDrum 320ms var(--ember-ease-mechanical); }
-        .seg:not(.on) { animation:codexDrumNeighbor 320ms var(--ember-ease-mechanical); }
+        /* No transform animation on the segs. The old codexDrum translateY promoted
+           every button to a rasterized GPU layer on iOS Safari; with any page zoom the
+           layer re-rendered at the wrong scale and the labels stayed blurry after each
+           pick. The .seg background/shadow transition carries the click feel instead. */
 
         .tgl { display:inline-flex; align-items:center; gap:7px; font-weight:700; letter-spacing:inherit;
           color:var(--ink-faint); background:transparent; border:none; padding:2px 0; cursor:pointer; font-size:inherit; }
@@ -3920,7 +3929,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <div className="reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
                 <div className="flex max-w-full items-center gap-2">
                   <span className="fieldlabel">Model</span>
-                  <div className="codex" key={chatModel}>
+                  <div className="codex">
                     {MODELS.map((m) => (
                       <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
                         {m.label}
@@ -3930,7 +3939,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
                 <div className="flex max-w-full items-center gap-2">
                   <span className="fieldlabel">Effort</span>
-                  <div className="codex" key={chatEffort}>
+                  <div className="codex">
                     {Object.entries(EFFORT).map(([k, e]) => (
                       <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
                         {e.label}

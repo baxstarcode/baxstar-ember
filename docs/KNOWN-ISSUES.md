@@ -435,3 +435,19 @@ and the guard's retry strips ALL connectors — so Quo's corpse was taking Gmail
 Calendar down with it. Removed from `MCP_SERVERS` and the header dots. Do not re-add
 without a Quo-issued client id (their support is the only door). The worker's
 `MCP_TOKEN_QUO` support is intact and harmless if that ever happens.
+
+## 12. Model picker went blurry on iPhone after a pick — FIXED 2026-08-23
+
+**Severity:** fixed in source; recorded for the pattern
+
+Tapping any model/effort segment made all the picker labels go blurry on iOS Safari.
+Cause: the codex remounted on every pick (`key={chatModel}`) to replay a `translateY`
+"drum" animation; iOS promotes transform-animated elements to rasterized GPU layers,
+and with any page zoom the layer re-renders at the wrong scale and stays blurry after
+the animation ends. Fix: removed the remount keys and the codexDrum keyframes — the
+`.seg` background/shadow transition carries the click feel. Pattern to remember: no
+transform animations on small text on iOS.
+
+Same commit: default model is now Opus 5 with High effort (Brady's call), Sonnet 4.6
+stays the error fallback, and `ember-prefs` gained a version stamp (`v: 2`) so
+pre-change stored model/effort prefs are dropped once and the new default lands.
