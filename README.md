@@ -53,7 +53,10 @@ horizontal bar under Revenue Generating / Supporting, with outstanding work, ses
 estimates, and the Zapier task strip). Projects data is the session-maintained
 `PROJECTS` constant in `src/baxstar-ember.jsx` — update it when work ships.
 
-**Connected services (MCP):** Gmail, Google Calendar, Google Drive — live on the hosted app since 2026-08-22. Quo is permanently descoped (their OAuth allowlist; `docs/KNOWN-ISSUES.md` §11).
+**Connected services (MCP):** Gmail, Google Calendar, and Google Drive are live
+on the hosted app. Quo now supports custom clients and is back in the app on its
+required `/mcp` endpoint; its one-time user consent and Worker secrets remain
+to be completed (`docs/DEPLOY.md` §4).
 
 **Studio tools (8):**
 Claude Chat · AI Handoff · Caption Studio · Google Drive Librarian · HTML Viewer · Image Filters · GitHub · Snippets
@@ -94,9 +97,9 @@ npm run build     # regenerates index.html from src/
 npm run serve     # http://localhost:8080
 ```
 
-Hosting needs a proxy to hold the API key, and the MCP connectors need OAuth work that
-isn't done yet. Read `docs/DEPLOY.md` before deploying — it is specific about what works
-hosted and what doesn't.
+Hosting uses the deployed Worker to hold the API key and connector refresh tokens.
+Google OAuth is live; Quo authorization is the remaining connector setup. Read
+`docs/DEPLOY.md` before deploying.
 
 > **`index.html` is generated.** Edit `src/baxstar-ember.jsx` and rebuild. Editing
 > `index.html` directly is how the deploy build once ended up a full redesign behind the
@@ -119,8 +122,13 @@ Run `npm run build` first; it tests the build, not the source.
 
 ## The voice layer — `voice/`
 
-Self-contained, no build step. Open either file directly in **Chrome** (Web Speech API
-support) and click through.
+The main app now owns the production voice experience: Worker neural TTS first,
+explicit natural/device picker, scored local fallback, mic/speaker handoff, and an
+on-screen flight recorder. The robotic Brian network fallback was removed from the
+app on 2026-08-24.
+
+`voice/` contains separate self-contained diagnostic/demo rigs. Open either file
+directly in **Chrome** (Web Speech API support) and click through.
 
 - Speech in: continuous `SpeechRecognition`
 - Speech out: `speechSynthesis` with a scored local-voice picker, plus a two-source MP3
@@ -133,8 +141,8 @@ connectors, replies written for the ear. Set `EMBER_API_PROXY` at the top of the
 turn it on. Without it, or if the call fails, it falls back to the canned demo brain, so
 the offline demo still works.
 
-Merging this voice layer into the app properly — one Ember, one brain — remains the
-biggest open opportunity.
+The rigs remain diagnostic surfaces; application voice behavior belongs in
+`src/baxstar-ember.jsx`.
 
 ---
 
@@ -142,12 +150,10 @@ biggest open opportunity.
 
 See `docs/KNOWN-ISSUES.md`. Short version:
 
-1. **MCP connectors don't work outside a Claude artifact** — they need OAuth tokens the
-   platform currently supplies. Hosted, the phone/email/calendar panels show demo data.
-   **This is the largest remaining gap.**
-2. **Voice is part-merged** — the rig's Baxstar config is now generated from the app so it
-   can't drift, but the speech engine is still its own codebase and the live mic path has
-   never been tested.
+1. **Voice repair needs the Worker deploy + real-device proof.** Source and 55 Worker
+   tests are green; production still runs the older empty-audio handshake until deployed.
+2. **Quo needs one-time consent and encrypted Worker secrets.** Gmail, Calendar, and
+   Drive are already live.
 
 Recently closed: proxy deployed and verified · hosted at `baxstar-ember.pages.dev` behind
 Cloudflare Access · glass tanks brought into the warm palette · `index.html` no longer needs

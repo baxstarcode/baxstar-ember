@@ -54,12 +54,9 @@
 var EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
 var EMBER_MODEL = "claude-opus-5";
 var MCP_SERVERS = [
-  // Quo is DESCOPED (2026-08-19, verified live): mcp.quo.com only accepts OAuth
-  // clients on Quo's own allowlist — dynamic registration rejects every redirect
-  // URI we control, and a valid API key is refused as a bearer. Worse than
-  // useless in this list: one dead connector trips the worker's degrade guard,
-  // which strips ALL connectors from the retry, taking Gmail and Calendar down
-  // with it. Do not re-add without a Quo-issued client id.
+  // Quo published custom-agent support in Aug 2026. The /mcp path matters:
+  // the bare host redirects to docs and is not an MCP endpoint.
+  { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
   { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
   { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
 ];
@@ -332,3 +329,4 @@ document.getElementById('stop').onclick = function(){
 </script>
 </body>
 </html>
+

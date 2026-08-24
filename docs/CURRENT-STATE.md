@@ -1,9 +1,8 @@
 # Ember — Current State
 
-Last verified against the repository on 2026-08-22, after Mission Control was
-ported from the `mission-control-draft` fork onto `main`. Both AI lines (the
-web session and the Codex terminal) now build from `main`; the draft branch is
-historical.
+Last verified against the repository on 2026-08-24. The voice repair, Quo
+re-entry, and cache update described below are source-complete and tested; the
+Worker change still needs deployment before production voice can use it.
 
 ## What Ember is
 
@@ -30,10 +29,15 @@ while compressed raster/SVG assets supply depth and mechanical character.
 - The three views render and switch from one canonical React source file.
 - The hosted build runs at `baxstar-ember.pages.dev` behind Cloudflare Access.
 - Claude chat works through a Cloudflare Worker that holds the API key server-side.
+- Gmail, Calendar, and Drive are authorized in the production Worker. A
+  data-free production handshake for Gmail + Calendar returned 200 on
+  2026-08-24. Quo now supports custom MCP clients and is back in the app at
+  `https://mcp.quo.com/mcp`; its user authorization/secrets are still pending.
 - OPS and Studio degrade gracefully when an optional connector is unavailable.
-- Voice replies and microphone input are integrated into the main app. Voice mode
-  is explicit and persistent; the hosted app uses its own top-level microphone,
-  while embedded artifact contexts can use the mic bridge.
+- Voice replies and microphone input are integrated into the main app. The
+  2026-08-24 repair updates Microsoft's current neural-TTS handshake, makes the
+  picker recover from stale stored voice names, retires the robotic Brian
+  fallback, and prevents the service worker from serving an old UI shell first.
 - Caption Studio can generate a reviewable caption/JPEG package and hand it to a
   private Drive outbox when the Apps Script endpoint is configured.
 - Mission Control can keep project state locally and reopen the pages needed to
@@ -62,11 +66,12 @@ future work; those passages are historical, not the current state.
 
 ## Open work, in priority order
 
-### 1. Verify the voice experience on real devices
+### 1. Deploy and verify the voice repair
 
-The latest branch improves hosted microphone lifecycle, explicit mic on/off state,
-restart behavior, and cleanup. Automated inspection cannot prove the timing behavior
-of real browser speech engines. Test on the actual Mac/iPhone experience:
+Deploy `proxy/cloudflare-worker.js`, then verify `POST /tts` returns
+`audio/mpeg` instead of the currently deployed `502 Voice engine produced no
+audio`. Automated inspection cannot prove real browser audio timing. Test on
+the actual Mac/iPhone experience:
 
 - turn the mic on and off repeatedly;
 - interrupt or speak while Ember is answering;
@@ -75,13 +80,16 @@ of real browser speech engines. Test on the actual Mac/iPhone experience:
 - leave and return to the page;
 - confirm no green/listening state is shown when recognition has actually stopped.
 
-Until those checks pass, the hosted voice path is **PROVISIONAL**.
+The offline Worker suite is 55/55 green. Until the Worker deploy and those
+device checks pass, the hosted voice path is **PROVISIONAL**.
 
-### 2. Finish connector authorization
+### 2. Finish Quo authorization
 
-Claude chat is live, but Quo, Gmail, Calendar, and Drive require valid OAuth material
-in the Worker. Missing connectors should not break plain chat, but OPS data is not fully
-live until each connector is authorized and verified.
+Google connector auth is live. Quo dynamic registration now succeeds and redirects
+to its consent screen, reversing the Aug 19 descope. Complete the browser approval,
+then store the returned `MCP_REFRESH_QUO` and `QUO_CLIENT_ID` as encrypted
+Worker secrets and redeploy. Use `POST /connectors/status` to verify credentials
+without reading calls, email, or calendar data.
 
 ### 3. Finish the review-to-publish path
 

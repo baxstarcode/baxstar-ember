@@ -318,6 +318,41 @@ async function startAndCookie(provider, env = baseEnv, f = stubFetch([])) {
   check("non-OAuth GET is still refused", res.status === 405);
 }
 
+// --- connector status: credential-only, no private-data lookup ------------
+
+{
+  const f = stubFetch([
+    ["oauth2.googleapis.com/token", () => jsonRes({ access_token: "AT-status", expires_in: 3600 })],
+  ]);
+  const env = {
+    ...baseEnv,
+    MCP_REFRESH_GMAIL: "RT-status-gmail",
+    MCP_REFRESH_CALENDAR: "RT-status-calendar",
+    MCP_TOKEN_QUO: "AT-status-quo",
+  };
+  const res = await worker.fetch(
+    new Request("https://proxy.example.workers.dev/connectors/status", {
+      method: "POST",
+      headers: { Origin: ORIGIN, "Content-Type": "application/json" },
+      body: JSON.stringify({ connectors: ["quo", "gmail", "calendar", "gdrive"] }),
+    }),
+    env, {}, { fetch: f, now: () => 1_234_567 }
+  );
+  const body = await res.json();
+  check("connector status verifies credentials without reading private data",
+    res.status === 200 &&
+    body.connectors.quo === "connected" &&
+    body.connectors.gmail === "connected" &&
+    body.connectors.calendar === "connected" &&
+    body.connectors.gdrive === "offline",
+    JSON.stringify(body));
+  check("connector status never calls Anthropic or an MCP data endpoint",
+    !f.calls.some((c) => c.url.includes("anthropic") || c.url.includes("/mcp")));
+  check("connector status is origin-gated and never cached",
+    res.headers.get("Access-Control-Allow-Origin") === ORIGIN &&
+    res.headers.get("Cache-Control") === "no-store");
+}
+
 // --- /tts: the natural voice ----------------------------------------------
 //
 // The Edge synth speaks WebSocket, so the stub fetch returns a fake upgraded
@@ -385,21 +420,34 @@ const ttsPost = (body, headers = {}) =>
   const call = f.calls[0];
   const u = new URL(call.url);
   check("tts upgrade asks for a websocket with the Edge disguise",
-    call.init.headers["Upgrade"] === "websocket" && /Edg\/140/.test(call.init.headers["User-Agent"] || "") &&
-    (call.init.headers["Origin"] || "").startsWith("chrome-extension://") && /Microsoft Edge/.test(call.init.headers["sec-ch-ua"] || ""),
-    "a Chromium-shaped request without these gets an empty-body 403 (probed live 2026-08-22)");
+    call.init.headers["Upgrade"] === "websocket" && /Edg\/143/.test(call.init.headers["User-Agent"] || "") &&
+    (call.init.headers["Origin"] || "").startsWith("chrome-extension://") &&
+    call.init.headers["Sec-WebSocket-Version"] === "13" &&
+    call.init.headers["Accept-Encoding"] === "gzip, deflate, br, zstd",
+    "the service silently changes its browser-shaped handshake");
+  check("tts upgrade includes a fresh Edge MUID cookie",
+    /^muid=[A-F0-9]{32};$/.test(call.init.headers["Cookie"] || ""),
+    "the current service accepts the socket but returns no audio without MUID");
   // Pinned from the live handshake that produced audible MP3 on 2026-08-22.
   // If the ticks math regresses (seconds vs ticks, missing 5-min floor), this
   // catches it offline instead of as a mystery 403 in production.
   check("tts Sec-MS-GEC is the pinned hash for the fixed clock",
     u.searchParams.get("Sec-MS-GEC") === "2306AEBD08A72D452BD975BCC36E7B41335FE42E975869D2C28FAD6F70998FC0" &&
-    u.searchParams.get("Sec-MS-GEC-Version") === "1-140.0.3485.14" &&
+    u.searchParams.get("Sec-MS-GEC-Version") === "1-143.0.3650.75" &&
     u.searchParams.get("TrustedClientToken") === "6A5AA1D4EAFF4E9FB37E23D68491D6F4");
 
   const ssml = sock.sent.find((s) => s.includes("Path:ssml")) || "";
   const config = sock.sent.find((s) => s.includes("Path:speech.config")) || "";
   check("tts requests mp3 output and the asked-for voice",
     /audio-24khz-48kbitrate-mono-mp3/.test(config) && /name='en-US-JennyNeural'/.test(ssml));
+  check("tts uses the Edge JavaScript timestamp wire format",
+    config.includes("X-Timestamp:Fri Aug 22 2025 05:20:00 GMT+0000 (Coordinated Universal Time)") &&
+    ssml.includes("X-Timestamp:Fri Aug 22 2025 05:20:00 GMT+0000 (Coordinated Universal Time)Z"),
+    "ISO timestamps can negotiate successfully and still produce an empty turn");
+  const connectionId = u.searchParams.get("ConnectionId") || "";
+  const requestId = (ssml.match(/X-RequestId:([a-f0-9]+)/i) || [])[1] || "";
+  check("tts uses distinct connection and request ids",
+    connectionId.length === 32 && requestId.length === 32 && requestId !== connectionId);
 }
 
 {

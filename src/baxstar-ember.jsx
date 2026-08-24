@@ -19,12 +19,9 @@ import { useState, useEffect, useRef } from "react";
 /* ---------- CONFIG ---------- */
 
 const MCP_SERVERS = [
-  // Quo is DESCOPED (2026-08-19, verified live): mcp.quo.com only accepts OAuth
-  // clients on Quo's own allowlist — dynamic registration rejects every redirect
-  // URI we control, and a valid API key is refused as a bearer. Worse than
-  // useless in this list: one dead connector trips the worker's degrade guard,
-  // which strips ALL connectors from the retry, taking Gmail and Calendar down
-  // with it. Do not re-add without a Quo-issued client id.
+  // Quo published custom-agent support in Aug 2026. The /mcp path matters:
+  // the bare host redirects to docs and is not an MCP endpoint.
+  { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
   { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
   { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
 ];
@@ -234,7 +231,7 @@ const SILENT_WAV = (() => {
 })();
 
 const PROJECTS_META = {
-  updated: "2026-08-01",
+  updated: "2026-08-24",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
 };
 
@@ -262,9 +259,9 @@ const PROJECTS = [
   {
     cat: "Supporting",
     items: [
-      { name: "Ember / Mission Control", pct: 90, platform: "Claude",
+      { name: "Ember / Mission Control", pct: 96, platform: "Claude + Codex",
         links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Natural voice built 8/22 — needs the 2-min Worker paste to go live. Then MCP OAuth", sessions: "~1" },
+        outstanding: "Voice handshake + picker/cache fix ready 8/24. Deploy Worker, finish Quo approval + encrypted refresh/client secrets, then real-device proof.", sessions: "~0.5" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -1004,7 +1001,7 @@ export default function BaxstarEmber() {
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
-  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" | "mp3" once proven
+  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" once proven
   const audioElRef = useRef(null);      // whichever <audio> is speaking right now
   const neuralElRef = useRef(null);     // gesture-blessed <audio> the neural path reuses (iOS)
   const neuralDownUntilRef = useRef(0); // /tts failed — skip its latency until this passes
@@ -1147,7 +1144,20 @@ export default function BaxstarEmber() {
     const iv = setInterval(() => {
       tries += 1;
       const n = fill();
-      if ((n && tries > 4) || tries > 20) clearInterval(iv);
+      if ((n && tries > 4) || tries > 20) {
+        const chosen = voiceChoiceRef.current;
+        if (chosen && !chosen.startsWith("ember:")) {
+          const stillExists = synth.getVoices().some((v) => v.name === chosen);
+          if (!stillExists) {
+            // A stale device voice used to leave the picker visually empty and
+            // disable natural TTS forever. Recover to Automatic instead.
+            voiceChoiceRef.current = "";
+            setVoiceChoice("");
+            ttsPathRef.current = null;
+          }
+        }
+        clearInterval(iv);
+      }
     }, 400);
     synth.addEventListener?.("voiceschanged", fill);
     return () => { clearInterval(iv); synth.removeEventListener?.("voiceschanged", fill); };
@@ -1205,7 +1215,19 @@ export default function BaxstarEmber() {
       if (b?.choice) setBg(b);
       if (prefs) {
         if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
-        if (typeof prefs.voiceChoice === "string") setVoiceChoice(prefs.voiceChoice);
+        if (typeof prefs.voiceChoice === "string") {
+          const chosen = prefs.voiceChoice;
+          const knownNatural = !chosen || (
+            chosen.startsWith("ember:") &&
+            NEURAL_VOICES.some((v) => "ember:" + v.id === chosen)
+          );
+          // Old builds persisted provider-specific voice names that no longer
+          // exist. Those values make the select look blank and, worse, suppress
+          // the natural Worker voice. Natural choices can be validated now;
+          // device choices are validated after the browser finishes loading
+          // its delayed voice list.
+          setVoiceChoice(knownNatural || !chosen.startsWith("ember:") ? chosen : "");
+        }
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
         if (prefs.v >= PREFS_V) {
           if (prefs.chatModel) setChatModel(prefs.chatModel);
@@ -1357,10 +1379,9 @@ export default function BaxstarEmber() {
 
   // iOS keeps speechSynthesis mute until a tap-context utterance unlocks it.
   // Her replies arrive after a network wait -- outside any tap -- so without
-  // this, the engine swallows them silently, the cascade falls through to the
-  // mp3 robot voice, and that gets remembered as the "proven" path. Unlock on
-  // the first genuine gesture, then void the proven path so the cascade
-  // re-auditions the real local voices it never got to try.
+  // this, the engine swallows them silently. Unlock on the first genuine
+  // gesture, then void the local choice so the cascade re-auditions voices it
+  // never got to try.
   function unlockSpeech() {
     if (speechUnlockedRef.current) return;
     speechUnlockedRef.current = true;
@@ -1380,8 +1401,22 @@ export default function BaxstarEmber() {
         neuralElRef.current = a;
       }
     } catch (e) {}
-    if (ttsPathRef.current === "mp3") ttsPathRef.current = null; // proven against a mute engine — void it
     if (!voiceChoiceRef.current) voiceRef.current = null;
+  }
+
+  function toggleVoiceMode() {
+    const next = !voiceOnRef.current;
+    if (next) unlockSpeech();
+    voiceOnRef.current = next;
+    setVoiceOn(next);
+  }
+
+  function chooseVoice(next) {
+    unlockSpeech();
+    neuralDownUntilRef.current = 0;
+    ttsPathRef.current = null;
+    voiceChoiceRef.current = next;
+    setVoiceChoice(next);
   }
 
   // iOS kills a REUSED recognition session after a few start/stop cycles, so
@@ -1953,7 +1988,10 @@ export default function BaxstarEmber() {
     const c = voiceChoiceRef.current || "";
     if (c.startsWith("ember:")) return c.slice(6);
     if (!c) return NEURAL_VOICES[0].id; // Automatic prefers the natural voice
-    return null; // an explicit device-voice pick is honored, not overridden
+    const deviceChoiceExists = (window.speechSynthesis?.getVoices() || []).some((v) => v.name === c);
+    // Honor a real device pick. A stale name from an older browser build must
+    // not suppress the natural voice while the picker sits blank.
+    return deviceChoiceExists ? null : NEURAL_VOICES[0].id;
   }
 
   async function sayNeural(short, slot) {
@@ -2079,53 +2117,10 @@ export default function BaxstarEmber() {
     });
   }
 
-  // Path 3 — MP3 TTS through an <audio> element: no speech engine involved at all
-  function playMp3(short, slot) {
-    return new Promise((res) => {
-      try {
-        // Never leave two answers playing over each other.
-        const prev = audioElRef.current;
-        if (prev) { try { prev.pause(); } catch (e) {} }
-        const epoch = beginSpeech();
-        const token = armSpeechEnd();
-        const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
-        audioElRef.current = a;
-        let ok = false;
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
-          endSpeech(epoch);
-          releaseSpeechEnd(token);
-        };
-        if (slot) { slot.token = token; slot.finish = finish; }
-        a.onplaying = () => {
-          traceAdd("▶ speaking: mp3 fallback (Brian)");
-          ok = true;
-          if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
-          res(true);
-        };
-        a.onended = finish;
-        a.onerror = () => { finish(); if (!ok) res(false); };
-        // A play() rejection fires no error event — reopen the gate here or the
-        // mic stays shut with nothing playing.
-        a.play().catch(() => { finish(); if (!ok) res(false); });
-        // Abandoning a element that never started is not enough — it can still
-        // buffer and start playing after we have moved on, talking over the
-        // path that replaced it.
-        setTimeout(() => {
-          if (!ok) { try { a.pause(); } catch (e) {} if (audioElRef.current === a) audioElRef.current = null; finish(); res(false); }
-        }, 2500);
-      } catch (e) { res(false); }
-    });
-  }
-
   async function speakCascade(short, slot) {
     if (await sayNeural(short, slot)) { ttsPathRef.current = "neural"; return true; }
     if (await sayLocal(short, slot)) { ttsPathRef.current = "local"; return true; }
     if (await sayViaBridge(short, slot)) { ttsPathRef.current = "bridge"; return true; }
-    if (await playMp3(short, slot)) { ttsPathRef.current = "mp3"; return true; }
     return false;
   }
 
@@ -2161,7 +2156,6 @@ export default function BaxstarEmber() {
     if (p === "neural") started = await sayNeural(short, slot);
     else if (p === "local") started = await sayLocal(short, slot);
     else if (p === "bridge") started = await sayViaBridge(short, slot);
-    else if (p === "mp3") started = await playMp3(short, slot);
     if (!started) {
       ttsPathRef.current = null;
       started = await speakCascade(short, slot);
@@ -2202,6 +2196,11 @@ export default function BaxstarEmber() {
   }
 
   async function testVoice() {
+    // HEAR IT is an explicit request for spoken replies, not a one-off bypass
+    // of a saved mute state. Keep voice mode on so the next real answer follows.
+    unlockSpeech();
+    voiceOnRef.current = true;
+    setVoiceOn(true);
     setVoiceDiag("TESTING — chime first, then a voice…");
     // testVoice is the one speak path not serialized by busyRef, and arming a
     // new utterance force-releases whatever is live. Without stopping her
@@ -2216,14 +2215,20 @@ export default function BaxstarEmber() {
     const locals = vs.filter((v) => v.localService);
     // Name the voice on success and the rejects on failure — "all paths failed"
     // alone doesn't say whether the picker chose badly or the engine is dead.
-    // testVoice speaks through speakCascade directly, but speak() bails when voice is
-    // toggled off — so a passing test while muted told Brady the engine was fine when in
-    // fact every reply was landing silent. Say that plainly instead.
     setVoiceDiag(ok
-      ? (voiceOnRef.current
-          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
-          : "ENGINE WORKS — BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON.")
+      ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
       : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
+  }
+
+  function speakNow(text) {
+    // The answer's speaker button is also a direct user gesture. Use it to
+    // bless iOS audio and make voice mode sticky for subsequent replies.
+    unlockSpeech();
+    if (!voiceOnRef.current) {
+      voiceOnRef.current = true;
+      setVoiceOn(true);
+    }
+    return speak(text);
   }
 
   function stopSpeaking() {
@@ -3286,8 +3291,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @keyframes chipShine { to { background-position:-220% 0; } }
         .chip.ghost { border-color:var(--line); color:var(--ink-dim); background:transparent; }
         .chip.ghost:hover { border-color:var(--line-hot); color:var(--ink); }
+        .voice-picker-row { flex-wrap:wrap; width:100%; }
         .voice-pick { background:#120c0c; color:var(--ember-amber); border:1px solid var(--ember-brass-dark);
-          border-radius:8px; font-size:10px; padding:4px 8px; max-width:220px; }
+          border-radius:8px; font-size:10px; padding:6px 8px; flex:0 1 270px; min-width:190px; max-width:270px; }
         .voice-pick:focus { outline:none; border-color:var(--brass); }
         .surface-chip:disabled { opacity:.35; cursor:default; text-decoration:line-through; }
         .chip:disabled { opacity:.35; cursor:default; }
@@ -3803,7 +3809,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
 
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
-            {["GMAIL", "CALENDAR"].map((s) => (
+            {["QUO", "GMAIL", "CALENDAR"].map((s) => (
               <span key={s} className="conn-dots flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` }} />
                 {s}
@@ -3819,7 +3825,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </button>
             {/* Brady's spec: orange while voice is on (it starts on), darker with
                 "TAP FOR VOICE MODE" when off — the state reads at a glance. */}
-            <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
+            <button onClick={toggleVoiceMode} title="Spoken replies"
               className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}
               style={voiceOn ? { color: "var(--ember-orange)" } : { color: "#8a8078", opacity: 0.85 }}>
               <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
@@ -3896,7 +3902,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />
               {earState !== "off" ? "IN CONVERSATION — TAP TO END" : "TAP TO TALK TO EMBER"}
             </button>
-            <button onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+            <button onClick={toggleVoiceMode} aria-pressed={voiceOn}
               className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
               style={voiceOn
                 ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
@@ -3910,11 +3916,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             MIC RELEASED — YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP
           </div>
         )}
-        <div className="flex items-center justify-center gap-2">
+        <div className="voice-picker-row flex items-center justify-center gap-2">
           <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
           <select className="voice-pick font-mono-x" value={voiceChoice}
-            onChange={(e) => { unlockSpeech(); neuralDownUntilRef.current = 0; setVoiceChoice(e.target.value); }}>
-            <option value="">Automatic — natural first</option>
+            aria-label="Choose Ember's voice"
+            onChange={(e) => chooseVoice(e.target.value)}>
+            <option value="">Automatic — Jenny (natural)</option>
             <optgroup label="EMBER — NATURAL">
               {NEURAL_VOICES.map((v) => (
                 <option key={v.id} value={"ember:" + v.id}>{v.label}</option>
@@ -4076,7 +4083,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                       the fold (phone), so Brady had voice off without knowing and read the
                       silence as broken audio. State + fix in one tap, next to the status. */}
                   <button className="chip"
-                    onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+                    onClick={toggleVoiceMode} aria-pressed={voiceOn}
                     style={voiceOn
                       ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
                       : { borderColor: "rgba(120,110,100,.5)", background: "rgba(60,54,48,.35)", color: "#8a8078" }}>
@@ -4109,7 +4116,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                         style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
                         <span className="mb-1 flex items-center justify-between gap-3">
                           <span className="font-mono-x text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                          <button onClick={() => speak(m.content)} title="Read aloud" style={{ color: "var(--ember-orange)" }}>
+                          <button onClick={() => speakNow(m.content)} title="Read aloud and keep voice mode on" style={{ color: "var(--ember-orange)" }}>
                             <EmberIcon name="speaker" size={12} />
                           </button>
                         </span>
