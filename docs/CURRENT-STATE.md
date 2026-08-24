@@ -80,8 +80,10 @@ the actual Mac/iPhone experience:
 - leave and return to the page;
 - confirm no green/listening state is shown when recognition has actually stopped.
 
-The offline Worker suite is 55/55 green. Until the Worker deploy and those
-device checks pass, the hosted voice path is **PROVISIONAL**.
+The offline Worker suite is 55/55 green. The desktop/iPhone-sized browser regression is
+2/2 green, including automatic typed-reply TTS and iOS-style gesture gating. Until the
+Worker deploy and real-speaker device checks pass, the hosted voice path is
+**PROVISIONAL**.
 
 ### 2. Finish Quo authorization
 

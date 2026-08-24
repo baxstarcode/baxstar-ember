@@ -656,7 +656,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-24 06:22Z".startsWith("__") ? "dev" : "2026-08-24 06:22Z";
+  const BUILD_STAMP = "2026-08-24 06:37Z".startsWith("__") ? "dev" : "2026-08-24 06:37Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -2159,19 +2159,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }, []);
     useEffect(() => {
       const prime = () => {
-        try {
-          const synth = window.speechSynthesis;
-          synth == null ? void 0 : synth.resume();
-          const local = synth == null ? void 0 : synth.getVoices().find((v) => v.localService && v.lang && v.lang.startsWith("en"));
-          if (local) {
-            const u = new SpeechSynthesisUtterance(" ");
-            u.voice = local;
-            u.lang = local.lang;
-            u.volume = 0;
-            synth.speak(u);
-          }
-        } catch (e) {
-        }
+        unlockSpeech();
         window.removeEventListener("pointerdown", prime);
       };
       window.addEventListener("pointerdown", prime);

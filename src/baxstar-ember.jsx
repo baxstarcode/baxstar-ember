@@ -2279,19 +2279,13 @@ export default function BaxstarEmber() {
     return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", pick);
   }, []);
 
-  // Chrome only allows TTS after a user gesture — prime it on the first click
+  // Prime every speech path on the first gesture anywhere in Ember. Typed SEND
+  // is just as valid a gesture as the mic/voice controls; limiting the neural
+  // audio blessing to those controls made normal typed replies stay silent on
+  // iOS even though HEAR IT worked.
   useEffect(() => {
     const prime = () => {
-      try {
-        const synth = window.speechSynthesis;
-        synth?.resume();
-        const local = synth?.getVoices().find((v) => v.localService && v.lang && v.lang.startsWith("en"));
-        if (local) {
-          const u = new SpeechSynthesisUtterance(" ");
-          u.voice = local; u.lang = local.lang; u.volume = 0;
-          synth.speak(u);
-        }
-      } catch (e) {}
+      unlockSpeech();
       window.removeEventListener("pointerdown", prime);
     };
     window.addEventListener("pointerdown", prime);

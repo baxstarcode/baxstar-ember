@@ -142,7 +142,8 @@ turn it on. Without it, or if the call fails, it falls back to the canned demo b
 the offline demo still works.
 
 The rigs remain diagnostic surfaces; application voice behavior belongs in
-`src/baxstar-ember.jsx`.
+`src/baxstar-ember.jsx`. Run `npm run test:voice` for the production desktop/mobile
+picker, automatic spoken-reply, sticky voice-mode, and iOS gesture-gating regression.
 
 ---
 

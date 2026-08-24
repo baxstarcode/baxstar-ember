@@ -205,7 +205,12 @@ Current implementation raster total is 1,249,589 bytes, below the 2 MB budget.
   timestamps, separate connection/request IDs). Worker suite: 55/55.
 - App recovery changes: stale stored voice names reset to Automatic, the selector is
   visible/wrapping on mobile, HEAR IT and per-answer playback keep voice mode on, and
-  the robotic Brian network fallback is removed.
+  the robotic Brian network fallback is removed. The first pointer gesture anywhere
+  in Ember now primes the reusable neural `<audio>` element, so a normal typed RUN is
+  allowed to speak on iOS instead of requiring HEAR IT first.
+- Browser regression: `npm run test:voice` passes desktop + iPhone-sized scenarios for
+  picker visibility, stale-choice recovery, no mobile overflow, automatic reply TTS,
+  sticky HEAR IT state, and the iOS gesture-blessing rule (2/2).
 - `sw.js` v3 serves navigations network-first so a phone does not launch the
   pre-picker cached shell after a deploy.
 - Quo's former descope is obsolete. Its new official custom-agent endpoint is

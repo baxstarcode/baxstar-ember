@@ -437,8 +437,11 @@ tests are updated (55/55).
 
 The app also resets stale stored voice names that made the picker blank and suppressed
 natural TTS, makes HEAR IT keep voice mode on, removes the robotic Brian fallback, and
-ships service-worker v3 with network-first navigation so an old UI shell is not served
-after a deploy. Deploy the Worker, rebuild Pages, then do the real iPhone/Mac audio pass.
+primes neural audio from the first pointer gesture anywhere in Ember so typed RUN replies
+are allowed to play on iOS. Service-worker v3 uses network-first navigation so an old UI
+shell is not served after a deploy. The deterministic desktop/mobile browser regression
+passes 2/2 via `npm run test:voice`; deploy the Worker, rebuild Pages, then do the real
+iPhone/Mac speaker pass.
 
 ## 12. Model picker went blurry on iPhone after a pick — FIXED 2026-08-23
 
