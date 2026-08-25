@@ -37,6 +37,24 @@ tool has to guess.
   specificity bug, and dock motion was restored as additive light rather than duplicated
   geometry. On branch `claude/baxstar-emper-repository-7rikvg`, PR #1.
 
+- **Claude Code, 2026‑08‑19 → 2026‑08‑23:** connector + product phase. Deployed and
+  verified the live connector stack (Google Workspace MCP, refresh-token minting in the
+  Worker — see `docs/DEPLOY.md` §4); descoped Quo based on its then-current OAuth
+  behavior (`docs/KNOWN-ISSUES.md` §11); fixed the mic auto-start and added the
+  30-min ear idle sleep; built the
+  **PROJECTS** status view (session-maintained `PROJECTS` constant in src); set the
+  chat default to **Opus 5 / High effort** with Sonnet 4.6 as error fallback and
+  versioned `ember-prefs` (`v:2`); fixed the iOS model-picker blur (removed transform
+  animations on the segs); compacted the mobile header + greeting to single rows.
+  PRs #22–#32 on `baxstarcode/baxstar-ember`.
+
+- **Codex, 2026‑08‑24:** picked up the live voice failure. Confirmed production
+  `/tts` returned empty audio, updated the Worker to Microsoft's current Edge 143
+  handshake, removed the app's robotic Brian fallback, repaired stale voice-choice
+  recovery/picker visibility, and made service-worker navigations network-first.
+  Re-opened Quo after its newly published custom-agent MCP support, added a
+  privacy-safe connector credential status route, and reconciled the active docs.
+
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 
@@ -48,7 +66,7 @@ tool has to guess.
 |---|---|---|
 | **The application** (logic, behavior, and all CSS) | `src/baxstar-ember.jsx` | Single-file React, ~2,240 lines. **CSS is inline** — one `<style>{`…`}</style>` literal at ~line 1301. There is **no** separate `.css` file. |
 | **Design constitution** (intent, quality bar, character) | `docs/BUILD-PROMPT.md` | The "why" behind the steampunk direction. |
-| **Known blockers** | `docs/KNOWN-ISSUES.md` | `index.html` Tailwind + API-auth blockers; voice-merge gap. |
+| **Known blockers & descopes** | `docs/KNOWN-ISSUES.md` | Living ledger. The original Tailwind/API-auth blockers are closed; §11 records Quo's provider change, §12 the iOS picker blur pattern, and §13 the 2026-08-24 voice repair. |
 | **Steampunk asset spec** (authoritative for the skin) | `assets/ember/CLAUDE-HANDOFF.md`, `manifest.json`, `control-map.json`, `motion-spec.json`, `design-tokens.css` | Manifest = asset inventory; control-map = function mapping; motion-spec = timings. Mockups in `assets/ember/mockups/` are **intent references only**, never app backgrounds. |
 | **Current state, must-not-change list, reproduce recipe** | `HANDOFF-CINEMATIC.md` | The living checkpoint doc. Start here to resume. |
 | **Provenance & this file map** | `SOURCES-OF-TRUTH.md` (this file) | — |

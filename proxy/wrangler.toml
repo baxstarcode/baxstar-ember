@@ -5,17 +5,20 @@
 
 name = "ember-claude-proxy"
 main = "cloudflare-worker.js"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-08-24"
 
 [vars]
 # Exact origins allowed to call this proxy — comma separated, no trailing slash.
-# Replace with wherever Ember is actually hosted before going live.
-ALLOWED_ORIGINS = "http://localhost:8080"
+# Production + both documented local harnesses. Keep this aligned with the
+# dashboard value before deploying through Wrangler.
+ALLOWED_ORIGINS = "http://localhost:8787,http://localhost:8080,https://baxstar-ember.pages.dev"
 
 # Secrets are NOT set here — they would end up in git.
 # Set them with: npx wrangler secret put <NAME>
 #   ANTHROPIC_API_KEY     (required)
-#   MCP_TOKEN_QUO         (optional)
+#   MCP_REFRESH_QUO       (optional, preferred)
+#   QUO_CLIENT_ID         (required with MCP_REFRESH_QUO)
+#   MCP_TOKEN_QUO         (optional static fallback)
 #   MCP_TOKEN_GMAIL       (optional)
 #   MCP_TOKEN_CALENDAR    (optional)
 #   MCP_TOKEN_GDRIVE      (optional)

@@ -194,24 +194,16 @@ A 401/403 without a proxy now returns an error that names the fix instead of fai
 **Never ship an API key in client-side code.** Anything in `index.html` is public the
 moment it's hosted.
 
-## 3. MCP connectors don't work outside a Claude artifact
+## ~~3. MCP connectors don't work outside a Claude artifact~~ — GOOGLE RESOLVED
 
-**Severity:** blocks the OPS module when hosted
-**Verified:** by inspection of the API contract
-**New this pass** — previously hidden underneath issue 2.
+Gmail, Calendar, and Drive have been live through the hosted Worker since
+2026-08-22. The Worker stores refresh tokens, mints short-lived access tokens, and
+injects them server-side. A data-free Gmail + Calendar production handshake returned
+200 on 2026-08-24.
 
-Quo, Gmail, Calendar, and Drive are MCP connectors. Each needs an OAuth
-`authorization_token` per server, which the Claude platform injects inside an artifact.
-Hosted, nothing injects them, so those calls fail even with the proxy deployed and chat
-working.
-
-The proxy will attach tokens from `MCP_TOKEN_QUO` / `_GMAIL` / `_CALENDAR` / `_GDRIVE`
-secrets once they exist. Obtaining them means running each connector's OAuth flow and
-storing the result. That work is not done.
-
-Hosted today: chat, Caption Studio, HTML Viewer, Image Filters, Snippets, AI Handoff,
-and GitHub all work. "What'd I miss", Triage inbox, Schedule, and Drive Librarian do not.
-See `docs/DEPLOY.md` §4.
+Quo is now a separate pending authorization item under §11. The Worker also exposes
+origin-gated `POST /connectors/status`, which tests credential refresh without
+reading private connector data.
 
 ## 4. Voice layer: real brain wired, shared-brain drift closed 2026-08-14
 
@@ -421,17 +413,48 @@ window and is unchanged.
 rebuilt `index.html` + `_preview.html` carry the change; headless load renders with
 zero page errors.
 
-## 11. Quo cannot be a connector — their side, not ours
+## 11. ~~Quo cannot be a connector~~ — PROVIDER CHANGED; AUTHORIZATION PENDING
 
-**Severity:** none — descoped deliberately (2026-08-19), recorded so nobody retries it
+**Severity:** setup step
 
-`mcp.quo.com` accepts only OAuth clients on Quo's own allowlist. Verified live, three
-ways: dynamic registration (`/register`) returns `invalid_redirect_uri` for every URI we
-control (workers.dev callback, the custom domain, and a throwaway); their settings UI
-offers no place to register an app or redirect URI; and a valid Quo API key pasted into
-`MCP_TOKEN_QUO` is refused as a bearer at the MCP handshake. Worse than useless in
-`MCP_SERVERS`: the dead connector tripped the worker's degrade guard on every request,
-and the guard's retry strips ALL connectors — so Quo's corpse was taking Gmail and
-Calendar down with it. Removed from `MCP_SERVERS` and the header dots. Do not re-add
-without a Quo-issued client id (their support is the only door). The worker's
-`MCP_TOKEN_QUO` support is intact and harmless if that ever happens.
+The Aug 19 finding was correct then and is historical. In Aug 2026 Quo published
+custom-agent MCP support at the required Streamable HTTP URL
+`https://mcp.quo.com/mcp`. Its OAuth discovery now advertises dynamic registration,
+and a live 2026-08-24 Ember registration accepted the Worker callback and redirected
+to Quo consent. The app now includes the corrected `/mcp` endpoint.
+
+Remaining: Brady must approve the Quo consent screen, then store the returned
+`MCP_REFRESH_QUO` and `QUO_CLIENT_ID` as encrypted Cloudflare Worker secrets and
+redeploy. Until then Quo is shown but will be dropped safely by the Worker; Gmail and
+Calendar remain available.
+
+## 13. Neural voice returned empty audio — SOURCE FIXED 2026-08-24, DEPLOY PENDING
+
+Production `POST /tts` returned 502 because Microsoft's Edge Read Aloud handshake
+changed. The working protocol now requires Edge 143 identifiers, an MUID cookie,
+JavaScript-style UTC timestamps, and distinct connection/request IDs. The Worker and
+tests are updated (55/55).
+
+The app also resets stale stored voice names that made the picker blank and suppressed
+natural TTS, makes HEAR IT keep voice mode on, removes the robotic Brian fallback, and
+primes neural audio from the first pointer gesture anywhere in Ember so typed RUN replies
+are allowed to play on iOS. Service-worker v3 uses network-first navigation so an old UI
+shell is not served after a deploy. The deterministic desktop/mobile browser regression
+passes 2/2 via `npm run test:voice`; deploy the Worker, rebuild Pages, then do the real
+iPhone/Mac speaker pass.
+
+## 12. Model picker went blurry on iPhone after a pick — FIXED 2026-08-23
+
+**Severity:** fixed in source; recorded for the pattern
+
+Tapping any model/effort segment made all the picker labels go blurry on iOS Safari.
+Cause: the codex remounted on every pick (`key={chatModel}`) to replay a `translateY`
+"drum" animation; iOS promotes transform-animated elements to rasterized GPU layers,
+and with any page zoom the layer re-renders at the wrong scale and stays blurry after
+the animation ends. Fix: removed the remount keys and the codexDrum keyframes — the
+`.seg` background/shadow transition carries the click feel. Pattern to remember: no
+transform animations on small text on iOS.
+
+Same commit: default model is now Opus 5 with High effort (Brady's call), Sonnet 4.6
+stays the error fallback, and `ember-prefs` gained a version stamp (`v: 2`) so
+pre-change stored model/effort prefs are dropped once and the new default lands.

@@ -1,5 +1,10 @@
 # Morning brief — 31 July
 
+> **Historical snapshot — do not act on the steps below.** The Worker is deployed,
+> the Google OAuth flow is done (refresh tokens live in `MCP_REFRESH_GMAIL/CALENDAR/GDRIVE`),
+> and Quo was permanently descoped on 2026-08-19 (`docs/KNOWN-ISSUES.md` §11) — its
+> OAuth step is void. Current deploy truth lives in `docs/DEPLOY.md`.
+
 Overnight work on `claude/baxstar-emper-repository-7rikvg`. Nothing was merged
 and production was not touched.
 

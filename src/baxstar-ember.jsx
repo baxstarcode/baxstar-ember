@@ -19,12 +19,9 @@ import { useState, useEffect, useRef } from "react";
 /* ---------- CONFIG ---------- */
 
 const MCP_SERVERS = [
-  // Quo is DESCOPED (2026-08-19, verified live): mcp.quo.com only accepts OAuth
-  // clients on Quo's own allowlist — dynamic registration rejects every redirect
-  // URI we control, and a valid API key is refused as a bearer. Worse than
-  // useless in this list: one dead connector trips the worker's degrade guard,
-  // which strips ALL connectors from the retry, taking Gmail and Calendar down
-  // with it. Do not re-add without a Quo-issued client id.
+  // Quo published custom-agent support in Aug 2026. The /mcp path matters:
+  // the bare host redirects to docs and is not an MCP endpoint.
+  { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
   { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
   { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
 ];
@@ -234,7 +231,7 @@ const SILENT_WAV = (() => {
 })();
 
 const PROJECTS_META = {
-  updated: "2026-08-01",
+  updated: "2026-08-24",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
 };
 
@@ -262,9 +259,9 @@ const PROJECTS = [
   {
     cat: "Supporting",
     items: [
-      { name: "Ember / Mission Control", pct: 90, platform: "Claude",
+      { name: "Ember / Mission Control", pct: 96, platform: "Claude + Codex",
         links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Natural voice built 8/22 — needs the 2-min Worker paste to go live. Then MCP OAuth", sessions: "~1" },
+        outstanding: "Voice handshake + picker/cache fix ready 8/24. Deploy Worker, finish Quo approval + encrypted refresh/client secrets, then real-device proof.", sessions: "~0.5" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -314,7 +311,14 @@ const MODELS = [
   { id: "claude-opus-5",     label: "Opus 5" },
   { id: "claude-fable-5",    label: "Fable 5" },
 ];
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+// Brady's call (2026-08-23): Opus 5 on High effort is the default. Sonnet stays
+// the fallback when the gateway rejects the chosen model.
+const DEFAULT_MODEL = "claude-opus-5";
+const FALLBACK_MODEL = "claude-sonnet-4-6";
+const DEFAULT_EFFORT = "high";
+// Bump when a default above changes: stored model/effort prefs from an older
+// version are dropped once so the new default actually lands on his phone.
+const PREFS_V = 2;
 
 const EFFORT = {
   low:      { label: "Low",  note: "\nEffort: LOW — shortest useful answer. No elaboration." },
@@ -997,7 +1001,7 @@ export default function BaxstarEmber() {
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
-  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" | "mp3" once proven
+  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" once proven
   const audioElRef = useRef(null);      // whichever <audio> is speaking right now
   const neuralElRef = useRef(null);     // gesture-blessed <audio> the neural path reuses (iOS)
   const neuralDownUntilRef = useRef(0); // /tts failed — skip its latency until this passes
@@ -1057,7 +1061,7 @@ export default function BaxstarEmber() {
   // ---- CLAUDE CHAT state (the thread lives on the OPS home page) ----
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
-  const [chatEffort, setChatEffort] = useState("standard");
+  const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
 
   /* Today's revenue is MANUAL — Brady sets it, nothing invents it. The panel
      used to show a hardcoded demo number ("+$1,240 · 2 FareHarbor bookings")
@@ -1140,7 +1144,20 @@ export default function BaxstarEmber() {
     const iv = setInterval(() => {
       tries += 1;
       const n = fill();
-      if ((n && tries > 4) || tries > 20) clearInterval(iv);
+      if ((n && tries > 4) || tries > 20) {
+        const chosen = voiceChoiceRef.current;
+        if (chosen && !chosen.startsWith("ember:")) {
+          const stillExists = synth.getVoices().some((v) => v.name === chosen);
+          if (!stillExists) {
+            // A stale device voice used to leave the picker visually empty and
+            // disable natural TTS forever. Recover to Automatic instead.
+            voiceChoiceRef.current = "";
+            setVoiceChoice("");
+            ttsPathRef.current = null;
+          }
+        }
+        clearInterval(iv);
+      }
     }, 400);
     synth.addEventListener?.("voiceschanged", fill);
     return () => { clearInterval(iv); synth.removeEventListener?.("voiceschanged", fill); };
@@ -1198,10 +1215,24 @@ export default function BaxstarEmber() {
       if (b?.choice) setBg(b);
       if (prefs) {
         if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
-        if (typeof prefs.voiceChoice === "string") setVoiceChoice(prefs.voiceChoice);
+        if (typeof prefs.voiceChoice === "string") {
+          const chosen = prefs.voiceChoice;
+          const knownNatural = !chosen || (
+            chosen.startsWith("ember:") &&
+            NEURAL_VOICES.some((v) => "ember:" + v.id === chosen)
+          );
+          // Old builds persisted provider-specific voice names that no longer
+          // exist. Those values make the select look blank and, worse, suppress
+          // the natural Worker voice. Natural choices can be validated now;
+          // device choices are validated after the browser finishes loading
+          // its delayed voice list.
+          setVoiceChoice(knownNatural || !chosen.startsWith("ember:") ? chosen : "");
+        }
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
-        if (prefs.chatModel) setChatModel(prefs.chatModel);
-        if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+        if (prefs.v >= PREFS_V) {
+          if (prefs.chatModel) setChatModel(prefs.chatModel);
+          if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+        }
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
@@ -1289,7 +1320,7 @@ export default function BaxstarEmber() {
   useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
+    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
   }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
@@ -1348,10 +1379,9 @@ export default function BaxstarEmber() {
 
   // iOS keeps speechSynthesis mute until a tap-context utterance unlocks it.
   // Her replies arrive after a network wait -- outside any tap -- so without
-  // this, the engine swallows them silently, the cascade falls through to the
-  // mp3 robot voice, and that gets remembered as the "proven" path. Unlock on
-  // the first genuine gesture, then void the proven path so the cascade
-  // re-auditions the real local voices it never got to try.
+  // this, the engine swallows them silently. Unlock on the first genuine
+  // gesture, then void the local choice so the cascade re-auditions voices it
+  // never got to try.
   function unlockSpeech() {
     if (speechUnlockedRef.current) return;
     speechUnlockedRef.current = true;
@@ -1371,8 +1401,22 @@ export default function BaxstarEmber() {
         neuralElRef.current = a;
       }
     } catch (e) {}
-    if (ttsPathRef.current === "mp3") ttsPathRef.current = null; // proven against a mute engine — void it
     if (!voiceChoiceRef.current) voiceRef.current = null;
+  }
+
+  function toggleVoiceMode() {
+    const next = !voiceOnRef.current;
+    if (next) unlockSpeech();
+    voiceOnRef.current = next;
+    setVoiceOn(next);
+  }
+
+  function chooseVoice(next) {
+    unlockSpeech();
+    neuralDownUntilRef.current = 0;
+    ttsPathRef.current = null;
+    voiceChoiceRef.current = next;
+    setVoiceChoice(next);
   }
 
   // iOS kills a REUSED recognition session after a few start/stop cycles, so
@@ -1944,7 +1988,10 @@ export default function BaxstarEmber() {
     const c = voiceChoiceRef.current || "";
     if (c.startsWith("ember:")) return c.slice(6);
     if (!c) return NEURAL_VOICES[0].id; // Automatic prefers the natural voice
-    return null; // an explicit device-voice pick is honored, not overridden
+    const deviceChoiceExists = (window.speechSynthesis?.getVoices() || []).some((v) => v.name === c);
+    // Honor a real device pick. A stale name from an older browser build must
+    // not suppress the natural voice while the picker sits blank.
+    return deviceChoiceExists ? null : NEURAL_VOICES[0].id;
   }
 
   async function sayNeural(short, slot) {
@@ -2070,53 +2117,10 @@ export default function BaxstarEmber() {
     });
   }
 
-  // Path 3 — MP3 TTS through an <audio> element: no speech engine involved at all
-  function playMp3(short, slot) {
-    return new Promise((res) => {
-      try {
-        // Never leave two answers playing over each other.
-        const prev = audioElRef.current;
-        if (prev) { try { prev.pause(); } catch (e) {} }
-        const epoch = beginSpeech();
-        const token = armSpeechEnd();
-        const a = new Audio("https://api.streamelements.com/kappa/v2/speech?voice=Brian&text=" + encodeURIComponent(short.slice(0, 290)));
-        audioElRef.current = a;
-        let ok = false;
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
-          endSpeech(epoch);
-          releaseSpeechEnd(token);
-        };
-        if (slot) { slot.token = token; slot.finish = finish; }
-        a.onplaying = () => {
-          traceAdd("▶ speaking: mp3 fallback (Brian)");
-          ok = true;
-          if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
-          res(true);
-        };
-        a.onended = finish;
-        a.onerror = () => { finish(); if (!ok) res(false); };
-        // A play() rejection fires no error event — reopen the gate here or the
-        // mic stays shut with nothing playing.
-        a.play().catch(() => { finish(); if (!ok) res(false); });
-        // Abandoning a element that never started is not enough — it can still
-        // buffer and start playing after we have moved on, talking over the
-        // path that replaced it.
-        setTimeout(() => {
-          if (!ok) { try { a.pause(); } catch (e) {} if (audioElRef.current === a) audioElRef.current = null; finish(); res(false); }
-        }, 2500);
-      } catch (e) { res(false); }
-    });
-  }
-
   async function speakCascade(short, slot) {
     if (await sayNeural(short, slot)) { ttsPathRef.current = "neural"; return true; }
     if (await sayLocal(short, slot)) { ttsPathRef.current = "local"; return true; }
     if (await sayViaBridge(short, slot)) { ttsPathRef.current = "bridge"; return true; }
-    if (await playMp3(short, slot)) { ttsPathRef.current = "mp3"; return true; }
     return false;
   }
 
@@ -2152,7 +2156,6 @@ export default function BaxstarEmber() {
     if (p === "neural") started = await sayNeural(short, slot);
     else if (p === "local") started = await sayLocal(short, slot);
     else if (p === "bridge") started = await sayViaBridge(short, slot);
-    else if (p === "mp3") started = await playMp3(short, slot);
     if (!started) {
       ttsPathRef.current = null;
       started = await speakCascade(short, slot);
@@ -2193,6 +2196,11 @@ export default function BaxstarEmber() {
   }
 
   async function testVoice() {
+    // HEAR IT is an explicit request for spoken replies, not a one-off bypass
+    // of a saved mute state. Keep voice mode on so the next real answer follows.
+    unlockSpeech();
+    voiceOnRef.current = true;
+    setVoiceOn(true);
     setVoiceDiag("TESTING — chime first, then a voice…");
     // testVoice is the one speak path not serialized by busyRef, and arming a
     // new utterance force-releases whatever is live. Without stopping her
@@ -2207,14 +2215,20 @@ export default function BaxstarEmber() {
     const locals = vs.filter((v) => v.localService);
     // Name the voice on success and the rejects on failure — "all paths failed"
     // alone doesn't say whether the picker chose badly or the engine is dead.
-    // testVoice speaks through speakCascade directly, but speak() bails when voice is
-    // toggled off — so a passing test while muted told Brady the engine was fine when in
-    // fact every reply was landing silent. Say that plainly instead.
     setVoiceDiag(ok
-      ? (voiceOnRef.current
-          ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
-          : "ENGINE WORKS — BUT VOICE IS OFF, SO REPLIES STAY SILENT. TAP VOICE OFF BELOW TO TURN IT ON.")
+      ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
       : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
+  }
+
+  function speakNow(text) {
+    // The answer's speaker button is also a direct user gesture. Use it to
+    // bless iOS audio and make voice mode sticky for subsequent replies.
+    unlockSpeech();
+    if (!voiceOnRef.current) {
+      voiceOnRef.current = true;
+      setVoiceOn(true);
+    }
+    return speak(text);
   }
 
   function stopSpeaking() {
@@ -2265,19 +2279,13 @@ export default function BaxstarEmber() {
     return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", pick);
   }, []);
 
-  // Chrome only allows TTS after a user gesture — prime it on the first click
+  // Prime every speech path on the first gesture anywhere in Ember. Typed SEND
+  // is just as valid a gesture as the mic/voice controls; limiting the neural
+  // audio blessing to those controls made normal typed replies stay silent on
+  // iOS even though HEAR IT worked.
   useEffect(() => {
     const prime = () => {
-      try {
-        const synth = window.speechSynthesis;
-        synth?.resume();
-        const local = synth?.getVoices().find((v) => v.localService && v.lang && v.lang.startsWith("en"));
-        if (local) {
-          const u = new SpeechSynthesisUtterance(" ");
-          u.voice = local; u.lang = local.lang; u.volume = 0;
-          synth.speak(u);
-        }
-      } catch (e) {}
+      unlockSpeech();
       window.removeEventListener("pointerdown", prime);
     };
     window.addEventListener("pointerdown", prime);
@@ -2407,8 +2415,8 @@ export default function BaxstarEmber() {
       try {
         resp = await callClaude(messages, { useTools: true, model: chatModel, maxTokens: cap });
       } catch (err) {
-        if (chatModel !== DEFAULT_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: DEFAULT_MODEL, maxTokens: cap });
+        if (chatModel !== FALLBACK_MODEL) {
+          resp = await callClaude(messages, { useTools: true, model: FALLBACK_MODEL, maxTokens: cap });
           fellBack = true;
         } else {
           throw err;
@@ -3126,16 +3134,31 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-core { order:-1; }
           /* the QUO/GMAIL/CALENDAR dots are demo-state, not tappable — dead weight on a phone */
           .conn-dots { display:none; }
-          /* Header on a phone: one tight band, not a tall stack. Brand shrinks,
-             controls pack close and wrap horizontally — Brady's 8/15 note was
-             that the words must spread OUT so the header stops eating the
-             screen before the skull even appears. */
-          .ember-header { row-gap:3px; }
-          .ember-header h1.brand-title { font-size:17px !important; }
-          .ember-header > div:first-child { gap:8px !important; }
-          .ember-header > div:first-child > div:first-child { height:26px !important; width:26px !important; font-size:12px !important; border-radius:8px !important; }
-          .ember-header > div:last-child { column-gap:9px !important; row-gap:3px !important; font-size:9px !important; }
-          .ember-header .header-control { padding:2px 7px !important; font-size:9px !important; }
+          /* Header on a phone: ONE row, period — Brady's 8/23 note. Everything
+             that can't earn its width goes: the OPS tag (the dock already shows
+             the active view), the DEMO·clock strip, and the toggle's long
+             wording (.tgl-long). Brand stays nowrap so the two words never
+             stack. What remains packs horizontally on a single band. */
+          .ember-header { row-gap:0; min-height:0; padding:5px 9px; flex-wrap:nowrap; }
+          .ember-header h1.brand-title { font-size:14px !important; letter-spacing:.09em !important; }
+          .ember-header > div:first-child { gap:6px !important; flex:0 1 auto; min-width:0; }
+          /* the B monogram square goes — the brand text already says it, and its
+             28px is exactly the slack that kept EMBER from colliding with BG */
+          .ember-header > div:first-child > div:first-child { display:none; }
+          .ember-header > div:first-child > span { display:none; }
+          .ember-header > div:last-child { column-gap:5px !important; row-gap:2px !important; font-size:9px !important; flex-wrap:nowrap !important; }
+          .hdr-clock { display:none; }
+          .tgl-long { display:none; }
+          .ember-header .header-control { padding:2px 6px !important; font-size:9px !important; min-height:24px; }
+          .ember-header .tgl-track { width:22px; height:11px; }
+          /* greeting: one compact line over the skull crown, not a two-row block.
+             !important throughout — the base .greet-row rule sits LATER in this
+             sheet, so without it these lose the cascade and the row wraps. */
+          .greet-row { padding:2px 8px !important; column-gap:8px !important; row-gap:2px !important; }
+          .greet-hi { font-size:13px !important; }
+          .greet-row .chip { padding:3px 9px !important; font-size:10px !important; white-space:nowrap; }
+          .greet-long { display:none; }
+          .greet-short { display:inline !important; }
           .home-thread { max-height:min(46vh,420px); }
           .rail-list { flex-direction:row; flex-wrap:wrap; }
         }
@@ -3236,6 +3259,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            against the art instead of fighting it */
         .greet-row { padding:4px 12px; border-radius:12px; background:rgba(7,6,4,.55);
           backdrop-filter:blur(2px); text-shadow:0 1px 2px rgba(0,0,0,.8); }
+        /* "vm" is the phone abbreviation; desktop spells voicemails out */
+        .greet-short { display:none; }
 
         /* the home chat thread — scrolls inside the chamber, newest pinned by autoscroll */
         .home-thread { display:flex; flex-direction:column; gap:10px; overflow-y:auto;
@@ -3260,8 +3285,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @keyframes chipShine { to { background-position:-220% 0; } }
         .chip.ghost { border-color:var(--line); color:var(--ink-dim); background:transparent; }
         .chip.ghost:hover { border-color:var(--line-hot); color:var(--ink); }
+        .voice-picker-row { flex-wrap:wrap; width:100%; }
         .voice-pick { background:#120c0c; color:var(--ember-amber); border:1px solid var(--ember-brass-dark);
-          border-radius:8px; font-size:10px; padding:4px 8px; max-width:220px; }
+          border-radius:8px; font-size:10px; padding:6px 8px; flex:0 1 270px; min-width:190px; max-width:270px; }
         .voice-pick:focus { outline:none; border-color:var(--brass); }
         .surface-chip:disabled { opacity:.35; cursor:default; text-decoration:line-through; }
         .chip:disabled { opacity:.35; cursor:default; }
@@ -3667,10 +3693,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .codex { position:relative; display:inline-flex; flex-wrap:wrap; justify-content:center; max-width:100%; border:9px solid transparent;
           border-image:url("${ASSETS}/svg/controls/codex-lock-shell.svg") 20 / 9px stretch;
           background:#0A0907; background-clip:padding-box; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; }
-        @keyframes codexDrum { from { transform:translateY(8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
-        @keyframes codexDrumNeighbor { from { transform:translateY(-8px); opacity:.6; } to { transform:translateY(0); opacity:1; } }
-        .seg.on { animation:codexDrum 320ms var(--ember-ease-mechanical); }
-        .seg:not(.on) { animation:codexDrumNeighbor 320ms var(--ember-ease-mechanical); }
+        /* No transform animation on the segs. The old codexDrum translateY promoted
+           every button to a rasterized GPU layer on iOS Safari; with any page zoom the
+           layer re-rendered at the wrong scale and the labels stayed blurry after each
+           pick. The .seg background/shadow transition carries the click feel instead. */
 
         .tgl { display:inline-flex; align-items:center; gap:7px; font-weight:700; letter-spacing:inherit;
           color:var(--ink-faint); background:transparent; border:none; padding:2px 0; cursor:pointer; font-size:inherit; }
@@ -3765,7 +3791,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               style={{ background: "linear-gradient(135deg,var(--ember-red),var(--ember-dark))", boxShadow: "0 0 24px rgba(255,77,61,.5)" }}>
               B
             </div>
-            <h1 className="brand-title font-display font-extrabold leading-none tracking-[0.13em]">
+            <h1 className="brand-title font-display font-extrabold leading-none tracking-[0.13em] whitespace-nowrap">
               BAXSTAR{" "}
               <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: "drop-shadow(0 0 12px rgba(255,90,50,.35))" }}>
                 EMBER
@@ -3777,13 +3803,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
 
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
-            {["GMAIL", "CALENDAR"].map((s) => (
+            {["QUO", "GMAIL", "CALENDAR"].map((s) => (
               <span key={s} className="conn-dots flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` }} />
                 {s}
               </span>
             ))}
-            <span style={{ color: "var(--ink-faint)" }}>{live ? "LIVE" : "DEMO"} · {clock}</span>
+            <span className="hdr-clock" style={{ color: "var(--ink-faint)" }}>{live ? "LIVE" : "DEMO"} · {clock}</span>
 
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
               className="header-control rounded-md border px-2 py-1 transition-colors"
@@ -3793,7 +3819,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </button>
             {/* Brady's spec: orange while voice is on (it starts on), darker with
                 "TAP FOR VOICE MODE" when off — the state reads at a glance. */}
-            <button onClick={() => setVoiceOn(!voiceOn)} title="Spoken replies"
+            <button onClick={toggleVoiceMode} title="Spoken replies"
               className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}
               style={voiceOn ? { color: "var(--ember-orange)" } : { color: "#8a8078", opacity: 0.85 }}>
               <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
@@ -3804,7 +3830,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <circle cx="30" cy="26" r="5" className="tgl-knob-i" />
                 </g>
               </svg>
-              {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
+              {/* Full wording on desktop; the .tgl-long spans drop on a phone so the
+                  toggle stays one short word and the header holds a single row. */}
+              {voiceOn ? <>VOICE<span className="tgl-long"> ON</span></> : <><span className="tgl-long">TAP FOR </span>VOICE<span className="tgl-long"> MODE</span></>}
             </button>
             <button onClick={syncLive} disabled={syncing}
               className="header-control sync-control flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
@@ -3868,7 +3896,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />
               {earState !== "off" ? "IN CONVERSATION — TAP TO END" : "TAP TO TALK TO EMBER"}
             </button>
-            <button onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+            <button onClick={toggleVoiceMode} aria-pressed={voiceOn}
               className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
               style={voiceOn
                 ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
@@ -3882,11 +3910,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             MIC RELEASED — YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP
           </div>
         )}
-        <div className="flex items-center justify-center gap-2">
+        <div className="voice-picker-row flex items-center justify-center gap-2">
           <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
           <select className="voice-pick font-mono-x" value={voiceChoice}
-            onChange={(e) => { unlockSpeech(); neuralDownUntilRef.current = 0; setVoiceChoice(e.target.value); }}>
-            <option value="">Automatic — natural first</option>
+            aria-label="Choose Ember's voice"
+            onChange={(e) => chooseVoice(e.target.value)}>
+            <option value="">Automatic — Jenny (natural)</option>
             <optgroup label="EMBER — NATURAL">
               {NEURAL_VOICES.map((v) => (
                 <option key={v.id} value={"ember:" + v.id}>{v.label}</option>
@@ -3992,14 +4021,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <ContextLever side="right" label="Create Task" state={leverState("task")} onPull={leverCreateTask} />
 
               <div className="greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center" style={{ animationDelay: "0.1s" }}>
-                <span className="text-[15px] font-bold tracking-tight">
+                <span className="greet-hi text-[15px] font-bold tracking-tight">
                   {dayPart},{" "}
                   <span style={{ background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
                     Brady.
                   </span>
                 </span>
                 <button className="chip ghost" onClick={() => callsColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                  {data.voicemails.length} voicemails ↓
+                  {data.voicemails.length} <span className="greet-long">voicemails</span><span className="greet-short">vm</span> ↓
                 </button>
                 <button className="chip ghost" onClick={() => inboxColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                   {data.emails.length} unread ↓
@@ -4048,7 +4077,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                       the fold (phone), so Brady had voice off without knowing and read the
                       silence as broken audio. State + fix in one tap, next to the status. */}
                   <button className="chip"
-                    onClick={() => { unlockSpeech(); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}
+                    onClick={toggleVoiceMode} aria-pressed={voiceOn}
                     style={voiceOn
                       ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
                       : { borderColor: "rgba(120,110,100,.5)", background: "rgba(60,54,48,.35)", color: "#8a8078" }}>
@@ -4081,7 +4110,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                         style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
                         <span className="mb-1 flex items-center justify-between gap-3">
                           <span className="font-mono-x text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                          <button onClick={() => speak(m.content)} title="Read aloud" style={{ color: "var(--ember-orange)" }}>
+                          <button onClick={() => speakNow(m.content)} title="Read aloud and keep voice mode on" style={{ color: "var(--ember-orange)" }}>
                             <EmberIcon name="speaker" size={12} />
                           </button>
                         </span>
@@ -4142,7 +4171,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <div className="reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
                 <div className="flex max-w-full items-center gap-2">
                   <span className="fieldlabel">Model</span>
-                  <div className="codex" key={chatModel}>
+                  <div className="codex">
                     {MODELS.map((m) => (
                       <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
                         {m.label}
@@ -4152,7 +4181,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
                 <div className="flex max-w-full items-center gap-2">
                   <span className="fieldlabel">Effort</span>
-                  <div className="codex" key={chatEffort}>
+                  <div className="codex">
                     {Object.entries(EFFORT).map(([k, e]) => (
                       <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
                         {e.label}

@@ -113,3 +113,22 @@ session-maintained, and a stale bar misleads Brady the same way a stale log does
 Routine `add`/`commit`/`push` on this repo is pre-approved (Rule 12). Always ask first for
 force push, branch deletes, `reset --hard`, or anything that might commit a secret.
 Work that is committed but not **pushed** does not survive — verify the push.
+
+## Merge law (Brady, 2026-08-23)
+
+**Merge by default.** When work on this repo is verified green, do not stop at a draft
+PR and wait — open the PR, merge it, and report what shipped. Brady's words: "Merge and
+always do this by default in the future." Asking permission to merge verified work is
+now the exception, not the rule (destructive or scope-changing work still asks).
+
+**De-drift before every merge — this is the other half of the same order.** Multiple AI
+lines (Claude, ChatGPT/Codex) touch this project, so before opening or merging any PR:
+
+1. `git fetch origin main` and merge main into the branch — a branch even a few days
+   old can be many commits behind.
+2. Rebuild the generated files from merged src (`npm run build`) — never resolve an
+   `index.html` conflict by hand.
+3. Re-run every suite on the merged tree, not just the pre-merge one.
+4. Sweep the sources of truth for staleness the work exposed (`SOURCES-OF-TRUTH.md`,
+   `README.md`, `docs/DEPLOY.md`, `docs/KNOWN-ISSUES.md`) and log the work in
+   `Baxstar_Ember_Handoff_Log` per Rule 15.

@@ -446,27 +446,54 @@ async function injectMcpTokens(servers, env, fetchImpl, now) {
   return out;
 }
 
+// Privacy-safe connector check: refreshes credentials but never calls an MCP
+// tool or reads mailbox, calendar, Drive, call, or message data. This exists so
+// production auth can be verified without asking a model to inspect private
+// records merely to prove the connection works.
+async function connectorStatus(request, env, cors, fetchImpl, now) {
+  let requested = ["quo", "gmail", "calendar", "gdrive"];
+  try {
+    const body = JSON.parse(await request.text() || "{}");
+    if (Array.isArray(body.connectors)) requested = body.connectors;
+  } catch {
+    return json({ error: "Invalid JSON." }, 400, cors);
+  }
+  const allowed = new Set(["quo", "gmail", "calendar", "gdrive"]);
+  const names = [...new Set(requested.filter((name) => allowed.has(name)))];
+  const staticTokens = {
+    quo: env.MCP_TOKEN_QUO,
+    gmail: env.MCP_TOKEN_GMAIL,
+    calendar: env.MCP_TOKEN_CALENDAR,
+    gdrive: env.MCP_TOKEN_GDRIVE,
+  };
+  const connectors = {};
+  for (const name of names) {
+    const token = (await accessTokenFor(name, env, fetchImpl, now)) || staticTokens[name];
+    connectors[name] = token ? "connected" : "offline";
+  }
+  return json({ connectors }, 200, { ...cors, "Cache-Control": "no-store" });
+}
+
 // --- /tts: Ember's natural voice ------------------------------------------
 //
 // Edge's Read Aloud service speaks over a WebSocket: one config frame, one SSML
 // frame, then binary frames whose payload (after a 2-byte-length-prefixed
 // header) is MP3, until a "turn.end" text frame. It gates on looking like the
-// Edge browser — the exact header set below was found by live probe on
-// 2026-08-22 (Chromium-141-shaped requests get an empty-body 403) — plus a
-// clock-derived Sec-MS-GEC stamp. None of that is secret; there is no key.
+// Edge browser. Microsoft changes that handshake without notice, so this exact
+// set is kept in sync with the working edge-tts client and pinned in tests.
+// None of it is secret; there is no key.
 
 const EDGE_TTS_HOST = "speech.platform.bing.com";
 const EDGE_TTS_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"; // public, ships in every Edge install
-const EDGE_TTS_VERSION = "1-140.0.3485.14";
+const EDGE_TTS_VERSION = "1-143.0.3650.75";
 const EDGE_TTS_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.3485.14",
-  "Origin": "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
-  "sec-ch-ua": '"Chromium";v="140", "Microsoft Edge";v="140", "Not:A-Brand";v="24"',
-  "sec-ch-ua-mobile": "?0",
-  "sec-ch-ua-platform": '"Windows"',
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+  "Accept-Encoding": "gzip, deflate, br, zstd",
   "Accept-Language": "en-US,en;q=0.9",
   "Pragma": "no-cache",
   "Cache-Control": "no-cache",
+  "Origin": "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold",
+  "Sec-WebSocket-Version": "13",
 };
 
 // What the app's picker offers, nothing more — an open voice field would let a
@@ -493,6 +520,19 @@ async function edgeGec(now) {
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
+// The service expects the JavaScript Date.toString() shape in UTC — ISO dates
+// negotiate a socket but can yield a turn with no audio. Build it explicitly so
+// the Worker does not depend on an isolate's locale or timezone.
+function edgeTimestamp(now) {
+  const d = new Date(now);
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n) => String(n).padStart(2, "0");
+  return days[d.getUTCDay()] + " " + months[d.getUTCMonth()] + " " + pad(d.getUTCDate()) + " " +
+    d.getUTCFullYear() + " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" +
+    pad(d.getUTCSeconds()) + " GMT+0000 (Coordinated Universal Time)";
+}
+
 // The reply text rides inside SSML — escape it or a spoken "<" ends the voice
 // element and arbitrary markup reaches the synthesizer.
 function xmlEscape(s) {
@@ -517,6 +557,8 @@ async function handleTts(request, cors, fetchImpl, now) {
   const voice = TTS_VOICES.has(body.voice) ? body.voice : TTS_DEFAULT_VOICE;
 
   const connId = crypto.randomUUID().replace(/-/g, "");
+  const requestId = crypto.randomUUID().replace(/-/g, "");
+  const muid = crypto.randomUUID().replace(/-/g, "").toUpperCase();
   const wsUrl =
     `https://${EDGE_TTS_HOST}/consumer/speech/synthesize/readaloud/edge/v1` +
     `?TrustedClientToken=${EDGE_TTS_TOKEN}&Sec-MS-GEC=${await edgeGec(now)}` +
@@ -524,7 +566,9 @@ async function handleTts(request, cors, fetchImpl, now) {
 
   let sock;
   try {
-    const up = await fetchImpl(wsUrl, { headers: { Upgrade: "websocket", ...EDGE_TTS_HEADERS } });
+    const up = await fetchImpl(wsUrl, {
+      headers: { Upgrade: "websocket", ...EDGE_TTS_HEADERS, Cookie: `muid=${muid};` },
+    });
     sock = up.webSocket;
     if (!sock) return json({ error: `Voice engine refused the connection (${up.status}).` }, 502, cors);
   } catch {
@@ -574,13 +618,13 @@ async function handleTts(request, cors, fetchImpl, now) {
     });
     sock.addEventListener("error", () => finish(null));
     sock.addEventListener("close", () => finish(audio.length ? audio : null));
-    const ts = new Date(now).toISOString();
+    const ts = edgeTimestamp(now);
     sock.send(
       `X-Timestamp:${ts}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
-        JSON.stringify({ context: { synthesis: { audio: { metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: false }, outputFormat: "audio-24khz-48kbitrate-mono-mp3" } } } })
+        JSON.stringify({ context: { synthesis: { audio: { metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: false }, outputFormat: "audio-24khz-48kbitrate-mono-mp3" } } } }) + "\r\n"
     );
     sock.send(
-      `X-RequestId:${crypto.randomUUID().replace(/-/g, "")}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}\r\nPath:ssml\r\n\r\n` +
+      `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}Z\r\nPath:ssml\r\n\r\n` +
         `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
         `<voice name='${voice}'><prosody pitch='+0Hz' rate='+4%' volume='+0%'>${xmlEscape(text)}</prosody></voice></speak>`
     );
@@ -642,6 +686,9 @@ export default {
     // but before the key check, so a voice-only misconfiguration still speaks.
     if (url.pathname === "/tts") {
       return handleTts(request, cors, fetchImpl, now);
+    }
+    if (url.pathname === "/connectors/status") {
+      return connectorStatus(request, env, cors, fetchImpl, now);
     }
     if (!env.ANTHROPIC_API_KEY) {
       return json(

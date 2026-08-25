@@ -103,7 +103,10 @@ function compileTailwind(contentForScan) {
   fs.writeFileSync(input, "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n");
 
   try {
-    execFileSync("npx", ["--no-install", "tailwindcss", "-c", cfg, "-i", input, "-o", output, "--minify"],
+    // Call the repo-pinned binary directly. npx may still contact the registry
+    // even with --no-install, making an otherwise offline deterministic build
+    // fail behind restricted networks.
+    execFileSync(path.join(ROOT, "node_modules", ".bin", "tailwindcss"), ["-c", cfg, "-i", input, "-o", output, "--minify"],
       { stdio: ["ignore", "ignore", "pipe"] });
   } catch (e) {
     die("could not run tailwindcss.\n  Run `npm install` in this repo first.\n" +

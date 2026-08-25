@@ -116,35 +116,50 @@ artifact. Hosted, you'll get a clear error naming this file rather than a silent
 
 ---
 
-## 4. Connectors: what the proxy does NOT solve
+## 4. Connectors: Google live; Quo authorization pending
 
-The proxy gives hosted Ember a working brain. It does **not** by itself give it
-Quo, Gmail, Calendar, or Drive.
+Hosted Ember has working connectors. The Worker holds Google OAuth **refresh
+tokens** as secrets (`MCP_REFRESH_GMAIL`, `MCP_REFRESH_CALENDAR`,
+`MCP_REFRESH_GDRIVE` — same token, all three) and mints access tokens per
+request for the **Google Workspace MCP** endpoints
+(`calendarmcp` / `gmailmcp` / `drivemcp.googleapis.com`). Those endpoints are a
+Developer Preview and require project enrollment — Google Cloud project
+**ember-504105** was approved 2026-08-22. Verified live the same day: real
+calendar events, real unread Gmail, real Drive files through hosted chat.
 
-Those are MCP connectors. Each needs an OAuth `authorization_token` for Brady's
-account, and inside a Claude artifact the platform supplies them. Hosted, nothing
-supplies them — so `mcp_servers` calls will fail even though chat works.
+To re-run the OAuth flow (e.g. after token revocation): visit the Worker's
+`/oauth/start?p=google`, click Allow, paste the shown refresh token into all
+three `MCP_REFRESH_*` secrets, redeploy. `OAUTH_STATE_SECRET` and
+`OAUTH_REDIRECT_URI` must be set in Worker variables first.
 
-The proxy is ready for the tokens once you have them. Set any you have as secrets and
-it attaches them per server:
+**Quo changed its MCP setup in Aug 2026.** Custom clients now use
+`https://mcp.quo.com/mcp` with OAuth 2.1. The old descope is historical
+(`docs/KNOWN-ISSUES.md` §11).
+
+To connect Quo:
+
+1. Visit the Worker's `/oauth/start?p=quo` URL and approve Ember in Quo.
+2. On the callback page, copy the returned refresh token and generated client ID.
+3. In Cloudflare Worker variables, add both as encrypted secrets:
+   `MCP_REFRESH_QUO` and `QUO_CLIENT_ID`.
+4. Redeploy the Worker.
+
+Do not use a Quo API key as `MCP_TOKEN_QUO`; Quo's MCP server expects an OAuth
+access token.
+
+After deploying the current Worker, credential health can be checked without
+reading any calls, messages, email, calendar, or Drive data:
 
 ```bash
-npx wrangler secret put MCP_TOKEN_QUO
-npx wrangler secret put MCP_TOKEN_GMAIL
-npx wrangler secret put MCP_TOKEN_CALENDAR
-npx wrangler secret put MCP_TOKEN_GDRIVE
+curl -sS https://ember-claude-proxy.brady-9d1.workers.dev/connectors/status \
+  -H 'Origin: https://baxstar-ember.pages.dev' \
+  -H 'Content-Type: application/json' \
+  --data '{"connectors":["quo","gmail","calendar","gdrive"]}'
 ```
 
-Getting those tokens means running each connector's OAuth flow yourself and storing
-the result — that work is not done yet. Until it is, expect this from a hosted Ember:
-
-- **Works:** Claude Chat, Caption Studio, HTML Viewer, Image Filters, Snippets,
-  AI Handoff, GitHub (its own token), and every "Brief my day"-style prompt that
-  doesn't need a connector.
-- **Fails:** "What'd I miss", Triage inbox, Schedule, Drive Librarian, and anything
-  else that reaches Quo / Gmail / Calendar / Drive.
-
-Deploy knowing that. Don't promise the connectors until the OAuth work is done.
+If a connector call fails, the Worker retries without connectors and flags the
+response with the `x-ember-connectors: degraded` header, which the app surfaces —
+so a dead connector degrades to plain chat instead of a dead brain.
 
 ---
 
@@ -165,5 +180,6 @@ Deploy knowing that. Don't promise the connectors until the OAuth work is done.
 - [ ] `ALLOWED_ORIGINS` set to the real origin, redeployed
 - [x] `window.EMBER_API_PROXY` pointed at the proxy (in `scripts/sync-standalone.py`)
 - [x] Chat tested end to end through the proxy (7 probes, incl. a live reply)
-- [ ] You know the connectors won't work yet (§4) and you're fine with that
+- [x] Gmail, Calendar, and Drive OAuth installed and live (§4)
+- [ ] Quo consent complete; `MCP_REFRESH_QUO` + `QUO_CLIENT_ID` stored and Worker redeployed
 - [ ] No API key anywhere in git — `git log -p | grep -i "sk-ant"` comes back empty

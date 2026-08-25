@@ -15,11 +15,10 @@
  * This file is served same-origin; there is no CDN dependency. It is a no-op in any
  * context without service-worker support (e.g. the Claude artifact sandbox).
  */
-// v2 bump 2026-08-15: Brady's phone was serving a stale cached shell — old
-// enough to predate the mic-never-self-starts fix and the orb tap-to-talk —
-// which read as bugs that were already fixed. Bumping the name evicts every
-// old copy on next open.
-const CACHE = "ember-shell-v2";
+// v3: navigations are network-first. Cache-first shell delivery kept showing
+// an older build (including the pre-picker voice UI) for one more launch after
+// every deploy, which made fixed voice bugs appear to return.
+const CACHE = "ember-shell-v3";
 
 self.addEventListener("install", (event) => {
   // Take over as soon as possible; the app is single-page and safe to update eagerly.
@@ -51,16 +50,31 @@ self.addEventListener("fetch", (event) => {
       const cached = await cache.match(req);
 
       const network = fetch(req)
-        .then((res) => {
+        .then(async (res) => {
           // Only cache complete, OK, basic responses.
-          if (res && res.ok && res.type === "basic") cache.put(req, res.clone());
+          if (res && res.ok && res.type === "basic") await cache.put(req, res.clone());
           return res;
         })
         .catch(() => null);
 
-      // Cache-first for instant paint; revalidate in the background.
+      // The document controls which features exist, so it must prefer the
+      // current deployment. Give weak lake signal 3.5s, then use the offline
+      // shell while the update finishes and is saved for the next open.
+      if (isNavigation) {
+        const fresh = await Promise.race([
+          network,
+          new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+        ]);
+        if (fresh) return fresh;
+        if (cached) {
+          event.waitUntil(network.then(() => undefined));
+          return cached;
+        }
+      }
+
+      // Assets stay cache-first for instant paint, with a tracked revalidation.
       if (cached) {
-        network; // fire-and-forget refresh
+        event.waitUntil(network.then(() => undefined));
         return cached;
       }
 
