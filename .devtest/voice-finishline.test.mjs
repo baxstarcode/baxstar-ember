@@ -86,7 +86,13 @@ async function pageErrors(page) {
 }
 
 try {
-  browser = await chromium.launch({ headless: true, args: ["--autoplay-policy=no-user-gesture-required"] });
+  const PREINSTALLED = "/opt/pw-browsers/chromium";
+  browser = await chromium.launch({
+    headless: true,
+    args: ["--autoplay-policy=no-user-gesture-required"],
+    // Sandboxed runners ship a system chromium instead of Playwright's download.
+    ...((await import("fs")).existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {}),
+  });
 
   // Desktop: the natural picker is present, an obsolete provider choice recovers
   // to Automatic, and a normal typed RUN speaks without needing the test button.
