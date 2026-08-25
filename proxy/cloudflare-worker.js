@@ -531,6 +531,14 @@ async function handleTts(request, cors, fetchImpl, now) {
     return json({ error: "Voice engine unreachable." }, 502, cors);
   }
 
+  // Live failure, 2026-08-22: the runtime delivered binary frames as Blobs
+  // (browser default binaryType), not the ArrayBuffers the offline tests feed.
+  // new Uint8Array(blob) is an empty array, so every audio frame was silently
+  // skipped while text frames parsed fine — a fast turn.end with zero audio.
+  // Force arraybuffer delivery, and keep a diag trail in the failure body so
+  // the next silent mismatch names itself instead of reading as "no audio".
+  try { sock.binaryType = "arraybuffer"; } catch {}
+  const diag = { text: 0, bin: 0, odd: 0, header: "" };
   const parts = await new Promise((resolve) => {
     const audio = [];
     let done = false;
@@ -547,16 +555,22 @@ async function handleTts(request, cors, fetchImpl, now) {
     sock.accept();
     sock.addEventListener("message", (e) => {
       if (typeof e.data === "string") {
+        diag.text++;
         if (e.data.includes("Path:turn.end")) finish(audio);
         return;
       }
-      const buf = new Uint8Array(e.data);
+      let buf;
+      if (e.data instanceof ArrayBuffer) buf = new Uint8Array(e.data);
+      else if (ArrayBuffer.isView(e.data)) buf = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
+      else { diag.odd++; return; } // Blob or unknown — counted, never silently zero
+      diag.bin++;
       if (buf.length < 2) return;
       const headerLen = (buf[0] << 8) | buf[1];
       const header = new TextDecoder().decode(buf.subarray(2, 2 + headerLen));
-      // Exact path only: "Path:audio.metadata" frames carry JSON, and a
-      // substring match would splice it into the MP3 as a burst of noise.
-      if (/(^|\r\n)Path:audio(\r\n|$)/.test(header)) audio.push(buf.subarray(2 + headerLen));
+      if (!diag.header) diag.header = header.slice(0, 80);
+      // "Path:audio.metadata" frames carry JSON — excluded, or they'd splice
+      // into the MP3 as a burst of noise.
+      if (header.includes("Path:audio") && !header.includes("Path:audio.metadata")) audio.push(buf.subarray(2 + headerLen));
     });
     sock.addEventListener("error", () => finish(null));
     sock.addEventListener("close", () => finish(audio.length ? audio : null));
@@ -566,13 +580,15 @@ async function handleTts(request, cors, fetchImpl, now) {
         JSON.stringify({ context: { synthesis: { audio: { metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: false }, outputFormat: "audio-24khz-48kbitrate-mono-mp3" } } } })
     );
     sock.send(
-      `X-RequestId:${connId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}\r\nPath:ssml\r\n\r\n` +
+      `X-RequestId:${crypto.randomUUID().replace(/-/g, "")}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}\r\nPath:ssml\r\n\r\n` +
         `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
         `<voice name='${voice}'><prosody pitch='+0Hz' rate='+4%' volume='+0%'>${xmlEscape(text)}</prosody></voice></speak>`
     );
   });
 
-  if (!parts || !parts.length) return json({ error: "Voice engine produced no audio." }, 502, cors);
+  if (!parts || !parts.length) {
+    return json({ error: "Voice engine produced no audio.", diag }, 502, cors);
+  }
   let total = 0;
   for (const p of parts) total += p.length;
   const out = new Uint8Array(total);
