@@ -259,9 +259,9 @@ const PROJECTS = [
   {
     cat: "Supporting",
     items: [
-      { name: "Ember / Mission Control", pct: 96, platform: "Claude + Codex",
-        links: [["app", "https://baxstar-ember.pages.dev"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Voice handshake + picker/cache fix ready 8/24. Deploy Worker, finish Quo approval + encrypted refresh/client secrets, then real-device proof.", sessions: "~0.5" },
+      { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
+        links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
+        outstanding: "LIVE 8/24: natural voice in production + ember.baxstarfishing.com (Access-gated, allowlisted). Left: Quo approval + refresh secrets, real-device proof.", sessions: "~0.5" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
