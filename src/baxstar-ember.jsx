@@ -261,7 +261,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
         links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "LIVE 8/24: natural voice in production + ember.baxstarfishing.com (Access-gated, allowlisted). Left: Quo approval + refresh secrets, real-device proof.", sessions: "~0.5" },
+        outstanding: "8/26: all 4 connectors verified live end-to-end; voice token-budget + talk-window fixes shipped. Left: real-device proof.", sessions: "~0.5" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -376,7 +376,12 @@ const NO_PROXY_HINT =
   "Ember has no brain here. Hosted builds need a key-holding proxy — set window.EMBER_API_PROXY (docs/DEPLOY.md).";
 
 async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens } = {}) {
-  const body = { model, max_tokens: maxTokens || 1000, messages };
+  // Thinking-capable models (Opus 5) bill their reasoning AND tool round-trips
+  // against max_tokens. 1000 ran out before the first word of a tool-using
+  // answer was written — reproduced live 2026-08-26: stop_reason max_tokens,
+  // four successful tool calls, zero text. 3000 leaves room under the Worker's
+  // 4096 cap.
+  const body = { model, max_tokens: maxTokens || 3000, messages };
   if (useTools) body.mcp_servers = servers || MCP_SERVERS;
   let res;
   try {
@@ -1633,6 +1638,13 @@ export default function BaxstarEmber() {
       followTimerRef.current = null;
       if (earModeRef.current !== "live") return;
       if (speakingRef.current || busyRef.current) {
+        // Her turn counts as activity. Without this restamp, a long think +
+        // answer (Opus 5 can take 30s with tools) burned the whole idle
+        // allowance measured from Brady's LAST words — the first check after
+        // she finished saw idle >= 15s and released the mic ~2s after her
+        // answer, leaving him no window to reply. The 15s of TRUE silence now
+        // starts when the exchange ends, which is what the punch list meant.
+        earLastActiveRef.current = Date.now();
         followTimerRef.current = setTimeout(check, 2000);
         return;
       }
@@ -2411,7 +2423,12 @@ export default function BaxstarEmber() {
       // With voice on, the reply is spoken and speech truncates at 380 chars --
       // every token past that is silent latency. Capping generation is the
       // single biggest "she answers faster" lever without touching the model.
-      const cap = voiceOnRef.current ? 400 : undefined;
+      // 400 was right when the cap only bought reply text. On thinking models
+      // the same budget pays for reasoning and tool calls FIRST — at 400 she
+      // ran dry before speaking a word of any tool-backed answer. Speech still
+      // truncates at 380 chars, so the extra ceiling costs latency only on
+      // answers that genuinely need the room.
+      const cap = voiceOnRef.current ? 1600 : undefined;
       try {
         resp = await callClaude(messages, { useTools: true, model: chatModel, maxTokens: cap });
       } catch (err) {
@@ -2515,7 +2532,10 @@ Fetch, using your tools:
 
 Then respond with ONLY valid JSON — no markdown, no commentary:
 {"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}],"emails":[{"from":"","time":"","subject":""}],"events":[{"time":"","title":"","detail":""}]}`;
-      const resp = await callClaude([{ role: "user", content: prompt }], { useTools: true });
+      // Three connector fetches + thinking + a full JSON payload: the default
+      // budget starved this exact call into "Sync failed" every time on Opus 5
+      // (reproduced live, then proven fixed at 4000 — 2026-08-26).
+      const resp = await callClaude([{ role: "user", content: prompt }], { useTools: true, maxTokens: 4000 });
       const parsed = extractJSON(extractText(resp));
       setData({
         voicemails: parsed.voicemails?.length ? parsed.voicemails : [{ from: "—", line: "", time: "", note: "No missed calls in the last 48h.", vm: "" }],
