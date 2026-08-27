@@ -64,49 +64,58 @@ with the label as natively-centered HTML text below. The bar itself stays CSS-bu
 `position:fixed`. Never render the raster as one stretched strip, and never put label text
 on the painted nameplates — those are the two failures that got it benched the first time.
 
-## Commercialization-first (Baxstar_AI_Context Rule 17, 2026-08-22)
+## Source-of-truth preflight
 
-Every build here is constructed as if a paying client will one day receive a copy — Brady's
-hard rule, and the drivers are security, commercial-grade strength, and flexibility:
+For work that changes Ember code/config/live behavior, depends on a prior Ember decision,
+or states Ember's current status:
 
-- Secrets server-side only (the Worker pattern — already law above). Server-side
-  authorization on every endpoint. Key-rotation path documented.
-- Brady-specifics — names, IDs, URLs, sponsor lists, prices, endpoints — live in declared
-  config blocks (`SPONSORS`, `PROJECTS`, `EMBER_API_PROXY`...), never scattered through
-  logic. A second client means new config, not a rewrite.
-- Tests and a deploy doc a stranger could follow are part of "done", not extras.
-- Zero-marginal-cost infra by default (Workers/Pages/Apps Script); a metered dependency
-  needs a stated reason and a monthly-cost line.
-- No assets or licenses that would block resale.
-- Existing code is brought up to this standard when touched — never a big-bang rewrite.
+1. Read `SOURCES-OF-TRUTH.md`, `HANDOFF-CINEMATIC.md`, and relevant sections of
+   `docs/KNOWN-ISSUES.md` before editing.
+2. A Drive-capable chat agent also follows the current preflight/write-back protocol in
+   **Baxstar Source of Truth Router**
+   (`1AgIxAj0YM8XNTTMHVcJInNAquLKnon-WB4i2DMzTzRQ`) and checks
+   **Baxstar_Ember_Handoff_Log**
+   (`1WVjv426vSaxp6BbQPRXOfifD2UQUJcweT3RB6xp5znE`) for recent state/open items.
+3. Build-only agents that cannot read Drive work repo-first from these synced constraints
+   and must not claim Drive was updated.
 
-The full rule and the C-suite review hats ([CEO] scope / [CFO] cost+pricing / [IT]
-security red-team, findings tagged in logs and the Agent Relay) live in Baxstar_AI_Context.
+The Router, Ember Handoff Log, repo source-of-truth files, and live production have distinct
+jobs and are all preserved. Do not create a replacement Ember context document unless Brady
+explicitly decides to.
 
-## Doc discipline (Baxstar_AI_Context Rule 15, 2026-08-01)
+## Commercialization-aware, Gremlin-safe build rule
 
-**After finishing any piece of work here, update Brady's docs before the turn ends.** Not a
-draft for him to paste — write it.
+The canonical build doctrine is **Baxstar_Build_Standards**
+(`1VfETYcTNktp-6cZLVAHbAUDBmR1NqlwMGCgl2Xo5DY0`). Apply it proportionally:
 
-- Ember / Mission Control / this repo → `Baxstar_Ember_Handoff_Log`
-  (`1WVjv426vSaxp6BbQPRXOfifD2UQUJcweT3RB6xp5znE`). Everything else → `Baxstar_Handoff_Log`.
-  Unsure goes to master, never both.
-- Any durable rule or decision must ALSO land in its owning domain doc per the router
-  (`Baxstar Source of Truth`), not only in a log.
-- **Unless it's already there.** Read first — reads are free. A duplicate entry is worse
-  than none: it pushes real content toward the trim threshold and creates two versions of
-  one fact that can later disagree. If existing text is wrong or incomplete, correct it in
-  place rather than appending a second copy.
-- Verify by re-reading the live doc. A write tool's success response is not proof
-  (Rule 6 — this rule exists because prior tooling falsely reported successful writes).
+- Security remains hard law: secrets server-side only, appropriate endpoint authorization,
+  least privilege, and no credentials in repo/generated/client-visible files.
+- Keep replaceable Brady/client-specific values centralized when the task benefits from it.
+- Prefer reliable zero-marginal-cost infrastructure and clean/licensed IP.
+- Testing, documentation, cost review, tenant-readiness, live probing, and device checks
+  scale to the scope and risk. Targeted edits get targeted verification; releases and
+  merges get the broader proof they need.
+- **No retrofit-on-touch.** Do not broaden a requested change into a commercial rewrite.
+- CEO/CFO/IT are optional decision lenses, not a mandatory all-hats ceremony. Use only a
+  lens capable of changing the current decision or release.
 
-What counts as finishing: shipped code, a pushed branch or PR, an adopted decision, a
-discovered bug, a corrected earlier claim. Exploration that reached no conclusion still
-gets one line.
+## Doc discipline
 
-Shipping work on any Baxstar project also means bumping the `PROJECTS` constant in
-`src/baxstar-ember.jsx` (pct / outstanding / sessions) — the Projects dashboard is
-session-maintained, and a stale bar misleads Brady the same way a stale log does.
+After durable Ember state changes, update the appropriate existing records before the turn
+ends when write access exists:
+
+- Repo implementation/provenance belongs in the relevant repo docs.
+- Ember recent changes and open items belong in `Baxstar_Ember_Handoff_Log` under its
+  established discipline; it remains an active operational record.
+- Durable cross-project rules/decisions also go to the Router-designated owning Drive source.
+- `Baxstar_Agent_Relay` is used when another AI has a concrete next action, unresolved
+  dependency, or important current-state handoff.
+- Read first and correct existing text in place rather than creating duplicate versions.
+- Verify any Drive write by re-reading it. A tool success response is not proof.
+- Exploration that reached no adopted outcome does not require a ceremonial log/Relay write.
+
+Update the `PROJECTS` constant only when the task materially changes a tracked project's
+status. Do not bump it merely because an unrelated edit shipped.
 
 ## Git
 
@@ -130,5 +139,5 @@ lines (Claude, ChatGPT/Codex) touch this project, so before opening or merging a
    `index.html` conflict by hand.
 3. Re-run every suite on the merged tree, not just the pre-merge one.
 4. Sweep the sources of truth for staleness the work exposed (`SOURCES-OF-TRUTH.md`,
-   `README.md`, `docs/DEPLOY.md`, `docs/KNOWN-ISSUES.md`) and log the work in
-   `Baxstar_Ember_Handoff_Log` per Rule 15.
+   `README.md`, `docs/DEPLOY.md`, `docs/KNOWN-ISSUES.md`) and update
+   `Baxstar_Ember_Handoff_Log` under the discipline above.
