@@ -657,7 +657,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-28 03:04Z".startsWith("__") ? "dev" : "2026-08-28 03:04Z";
+  const BUILD_STAMP = "2026-08-28 03:16Z".startsWith("__") ? "dev" : "2026-08-28 03:16Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -1013,6 +1013,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [voiceChoice, setVoiceChoice] = useState("");
     const [voiceTrace, setVoiceTrace] = useState([]);
     const voiceTraceRef = useRef([]);
+    const [pendingSay, setPendingSay] = useState(false);
+    const pendingSayRef = useRef(null);
     const voiceChoiceRef = useRef("");
     const [voiceList, setVoiceList] = useState([]);
     const [speaking, setSpeaking] = useState(false);
@@ -1921,7 +1923,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     async function sayNeural(short, slot) {
       const base = typeof window !== "undefined" && window.EMBER_API_PROXY || "";
       const voice = neuralPick();
-      if (!base || !voice || Date.now() < neuralDownUntilRef.current) return false;
+      if (!base || !voice) return false;
+      if (Date.now() < neuralDownUntilRef.current) {
+        traceAdd("\xB7 natural on cooldown " + Math.ceil((neuralDownUntilRef.current - Date.now()) / 1e3) + "s \u2014 trying device voice");
+        return false;
+      }
       let blobUrl = "";
       let synthMs = 0;
       try {
@@ -2013,7 +2019,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         };
         a.onended = finish;
         a.onerror = () => bail("media error");
-        a.play().catch(() => bail("blocked"));
+        a.play().catch(() => {
+          if (a === neuralElRef.current) {
+            traceAdd("\xB7 natural retry on a fresh audio element");
+            const a2 = new Audio(blobUrl);
+            a2.onplaying = a.onplaying;
+            a2.onended = a.onended;
+            a2.onerror = a.onerror;
+            audioElRef.current = a2;
+            neuralElRef.current = a2;
+            a2.play().catch(() => bail("blocked twice"));
+          } else bail("blocked");
+        });
         setTimeout(() => {
           if (!ok) {
             try {
@@ -2100,9 +2117,15 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         started = await speakCascade(short, slot);
       }
       if (!started) {
-        traceAdd("\u2715 every path silent \u2014 gave up");
-        setError("No speech path worked \u2014 hit VOICE TEST under the core and read me the amber line.");
+        traceAdd("\u2715 every path silent \u2014 answer parked for TAP TO HEAR");
+        pendingSayRef.current = short;
+        setPendingSay(true);
+        setError("Audio was blocked \u2014 her answer is on screen. TAP TO HEAR replays it out loud.");
         return;
+      }
+      if (pendingSayRef.current) {
+        pendingSayRef.current = null;
+        setPendingSay(false);
       }
       if (speechEndRef.current) {
         const ceiling = Math.min(6e4, 8e3 + short.length * 140);
@@ -2147,6 +2170,19 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         setVoiceOn(true);
       }
       return speak(text);
+    }
+    function replayPendingSay() {
+      const text = pendingSayRef.current;
+      pendingSayRef.current = null;
+      setPendingSay(false);
+      if (!text) return;
+      speechUnlockedRef.current = false;
+      neuralElRef.current = null;
+      unlockSpeech();
+      neuralDownUntilRef.current = 0;
+      ttsPathRef.current = null;
+      traceAdd("\u25B6 TAP TO HEAR \u2014 rebuilding audio channel");
+      speak(text);
     }
     function stopSpeaking() {
       var _a2;
@@ -3740,7 +3776,15 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
       /* @__PURE__ */ React.createElement("option", { value: "" }, "Automatic \u2014 Jenny (natural)"),
       /* @__PURE__ */ React.createElement("optgroup", { label: "EMBER \u2014 NATURAL" }, NEURAL_VOICES.map((v) => /* @__PURE__ */ React.createElement("option", { key: v.id, value: "ember:" + v.id }, v.label))),
       voiceList.length > 0 && /* @__PURE__ */ React.createElement("optgroup", { label: "THIS DEVICE" }, voiceList.map((v) => /* @__PURE__ */ React.createElement("option", { key: v.name, value: v.name }, v.name, v.localService ? "" : " (network)")))
-    ), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: testVoice, style: { fontSize: "9px", padding: "3px 8px" } }, "HEAR IT")), inlineMic && voiceTrace.length > 0 && /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: testVoice, style: { fontSize: "9px", padding: "3px 8px" } }, "HEAR IT")), pendingSay && /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        onClick: replayPendingSay,
+        className: "font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em] w-full",
+        style: { cursor: "pointer", borderColor: "rgba(255,158,61,.8)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
+      },
+      "\u{1F507} AUDIO BLOCKED \u2014 TAP TO HEAR HER ANSWER"
+    ), inlineMic && voiceTrace.length > 0 && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "font-mono-x rounded-lg border px-3 py-1.5 text-[8px] leading-relaxed",
