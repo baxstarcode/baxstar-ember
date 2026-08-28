@@ -356,6 +356,20 @@ Style: BLUF \u2014 bottom line first. Concise. No hedging. Numerals without comm
 Customer-facing drafts: premium-but-warm, sign "Brady @ Baxstar". Fishing number in fishing comms, pontoon number in rental comms. Never mention Scheels rods. Never say "one group per day" \u2014 use "private trip(s)".
 Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.
 HARD RULE \u2014 schedule and messages: if a tool is unavailable or returns nothing, say exactly that ("I can't see your calendar right now") and STOP. Never state that a trip, booking, or message does or doesn't exist unless a tool actually returned that data. A guessed "you're free tomorrow" can cost Brady a paid charter.`;
+  function bradyContext() {
+    const stamp = (/* @__PURE__ */ new Date()).toLocaleString("en-US", {
+      timeZone: "America/Chicago",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short"
+    });
+    return `${BRADY_CONTEXT}
+Current date/time: ${stamp}. Compute "today", "tomorrow", and any look-back window from this timestamp \u2014 never guess a date.`;
+  }
   const VOICE_OFF_CONTEXT = `
 Spoken output is currently OFF in the app, so this reply will be read on screen, not heard. If asked to speak: say voice is switched off and it turns back on with the VOICE button \u2014 never claim you are unable to produce audio or that speech is something the user must add on their end. The app speaks your replies whenever voice is on.`;
   const VOICE_CONTEXT = `
@@ -657,7 +671,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-28 03:16Z".startsWith("__") ? "dev" : "2026-08-28 03:16Z";
+  const BUILD_STAMP = "2026-08-28 18:08Z".startsWith("__") ? "dev" : "2026-08-28 18:08Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -2342,7 +2356,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const userMsg = { role: "user", content: q };
         setChatMsgs((m) => [...m, userMsg]);
         const messages = [
-          { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : VOICE_OFF_CONTEXT) + "\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : VOICE_OFF_CONTEXT) + "\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...historyRef.current.slice(-8),
           userMsg
@@ -2453,12 +2467,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       setSyncing(true);
       setError("");
       try {
-        const prompt = `${BRADY_CONTEXT}
+        const now2 = /* @__PURE__ */ new Date();
+        const since48 = new Date(now2.getTime() - 48 * 3600 * 1e3).toISOString();
+        const dayStart = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate()).toISOString();
+        const dayEnd = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate() + 2).toISOString();
+        const prompt = `${bradyContext()}
 
 Fetch, using your tools:
-1. Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846), last 48 hours. Include voicemail transcripts when present.
+1. Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) \u2014 pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.
 2. Up to 5 unread Gmail messages from the last 24 hours.
-3. Calendar events for today and tomorrow.
+3. Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow) \u2014 pass these exact timestamps to the tool.
+
+Use the ISO timestamps above verbatim \u2014 never compute or guess your own dates.
 
 Then respond with ONLY valid JSON \u2014 no markdown, no commentary:
 {"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}],"emails":[{"from":"","time":"","subject":""}],"events":[{"time":"","title":"","detail":""}]}`;
@@ -2887,7 +2907,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         const src = commLabel();
         const resp = await callClaude([{
           role: "user",
-          content: `${BRADY_CONTEXT}
+          content: `${bradyContext()}
 From this item: ${src}${selectedComm.type === "vm" && commItem.vm ? ` Voicemail: "${commItem.vm}"` : ""}
 Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentary: {"title":"","due":"suggested due date in plain words","details":"one or two sentences"}`
         }], { useTools: false });
