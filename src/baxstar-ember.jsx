@@ -36,6 +36,21 @@ Customer-facing drafts: premium-but-warm, sign "Brady @ Baxstar". Fishing number
 Use your tools (Quo, Gmail, Calendar) whenever the request involves calls, voicemails, texts, email, or schedule.
 HARD RULE — schedule and messages: if a tool is unavailable or returns nothing, say exactly that ("I can't see your calendar right now") and STOP. Never state that a trip, booking, or message does or doesn't exist unless a tool actually returned that data. A guessed "you're free tomorrow" can cost Brady a paid charter.`;
 
+// Every model call goes through this, never the bare const: the model has no
+// clock, and left to guess it once decided "today" was mid-May — it pulled 170
+// missed calls spanning 3 months (41KB of transcripts, a 61-second round trip
+// that iOS Safari killed at 60s as "Sync failed") and reported May voicemails
+// as recent. Reproduced live 2026-08-28. sync-standalone.py still copies the
+// bare const by regex, which is why the date rides in a wrapper.
+function bradyContext() {
+  const stamp = new Date().toLocaleString("en-US", {
+    timeZone: "America/Chicago", weekday: "long", year: "numeric",
+    month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  });
+  return `${BRADY_CONTEXT}
+Current date/time: ${stamp}. Compute "today", "tomorrow", and any look-back window from this timestamp — never guess a date.`;
+}
+
 // Appended to the system turn only while the voice toggle is on. Without this
 // she answers from self-knowledge — "I'm text-based" — because nothing told
 // her the reply is read aloud.
@@ -2494,7 +2509,7 @@ export default function BaxstarEmber() {
       // immediately so it's visible while she thinks, like any messenger.
       setChatMsgs((m) => [...m, userMsg]);
       const messages = [
-        { role: "user", content: BRADY_CONTEXT + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : VOICE_OFF_CONTEXT) + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : VOICE_OFF_CONTEXT) + "\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...historyRef.current.slice(-8),
         userMsg,
@@ -2632,12 +2647,20 @@ export default function BaxstarEmber() {
     setSyncing(true);
     setError("");
     try {
-      const prompt = `${BRADY_CONTEXT}
+      // Computed here and passed verbatim: when the model picked its own dates
+      // it guessed the wrong month and dragged in a quarter of call history.
+      const now = new Date();
+      const since48 = new Date(now.getTime() - 48 * 3600 * 1000).toISOString();
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+      const prompt = `${bradyContext()}
 
 Fetch, using your tools:
-1. Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846), last 48 hours. Include voicemail transcripts when present.
+1. Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) — pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.
 2. Up to 5 unread Gmail messages from the last 24 hours.
-3. Calendar events for today and tomorrow.
+3. Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow) — pass these exact timestamps to the tool.
+
+Use the ISO timestamps above verbatim — never compute or guess your own dates.
 
 Then respond with ONLY valid JSON — no markdown, no commentary:
 {"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}],"emails":[{"from":"","time":"","subject":""}],"events":[{"time":"","title":"","detail":""}]}`;
@@ -3136,7 +3159,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       const src = commLabel();
       const resp = await callClaude([{
         role: "user",
-        content: `${BRADY_CONTEXT}\nFrom this item: ${src}${selectedComm.type === "vm" && commItem.vm ? ` Voicemail: "${commItem.vm}"` : ""}\nPropose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentary: {"title":"","due":"suggested due date in plain words","details":"one or two sentences"}`,
+        content: `${bradyContext()}\nFrom this item: ${src}${selectedComm.type === "vm" && commItem.vm ? ` Voicemail: "${commItem.vm}"` : ""}\nPropose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentary: {"title":"","due":"suggested due date in plain words","details":"one or two sentences"}`,
       }], { useTools: false });
       const parsed = extractJSON(extractText(resp));
       setTaskProposal({
