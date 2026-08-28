@@ -1033,6 +1033,8 @@ export default function BaxstarEmber() {
   const [voiceChoice, setVoiceChoice] = useState("");   // "" = automatic
   const [voiceTrace, setVoiceTrace] = useState([]);      // last few speech events, on screen
   const voiceTraceRef = useRef([]);
+  const [pendingSay, setPendingSay] = useState(false); // audio failed; answer parked for a tap
+  const pendingSayRef = useRef(null);
   const voiceChoiceRef = useRef("");
   const [voiceList, setVoiceList] = useState([]);       // device voices, for the picker // popup blocked at load; first click opens it
   const [speaking, setSpeaking] = useState(false);
@@ -2050,7 +2052,11 @@ export default function BaxstarEmber() {
   async function sayNeural(short, slot) {
     const base = (typeof window !== "undefined" && window.EMBER_API_PROXY) || "";
     const voice = neuralPick();
-    if (!base || !voice || Date.now() < neuralDownUntilRef.current) return false;
+    if (!base || !voice) return false;
+    if (Date.now() < neuralDownUntilRef.current) {
+      traceAdd("· natural on cooldown " + Math.ceil((neuralDownUntilRef.current - Date.now()) / 1000) + "s — trying device voice");
+      return false;
+    }
     let blobUrl = "";
     let synthMs = 0;
     try {
@@ -2122,7 +2128,20 @@ export default function BaxstarEmber() {
       };
       a.onended = finish;
       a.onerror = () => bail("media error");
-      a.play().catch(() => bail("blocked"));
+      a.play().catch(() => {
+        // A wedged reused element is not the same failure as a hard autoplay
+        // block: a factory-fresh element often plays where the old one is
+        // stuck (iOS re-referees the audio channel between mic and speaker).
+        // One retry on fresh hardware, then bail with the reason on the trace.
+        if (a === neuralElRef.current) {
+          traceAdd("· natural retry on a fresh audio element");
+          const a2 = new Audio(blobUrl);
+          a2.onplaying = a.onplaying; a2.onended = a.onended; a2.onerror = a.onerror;
+          audioElRef.current = a2;
+          neuralElRef.current = a2;
+          a2.play().catch(() => bail("blocked twice"));
+        } else bail("blocked");
+      });
       // A stalled element fires neither event — don't let it wedge the reply.
       setTimeout(() => {
         if (!ok) {
@@ -2214,10 +2233,16 @@ export default function BaxstarEmber() {
       started = await speakCascade(short, slot);
     }
     if (!started) {
-      traceAdd("✕ every path silent — gave up");
-      setError("No speech path worked — hit VOICE TEST under the core and read me the amber line.");
+      // NEVER a silent dead end: park the answer and offer a tap. The tap is a
+      // genuine user gesture, which is the one currency iOS accepts for
+      // re-opening the audio channel.
+      traceAdd("✕ every path silent — answer parked for TAP TO HEAR");
+      pendingSayRef.current = short;
+      setPendingSay(true);
+      setError("Audio was blocked — her answer is on screen. TAP TO HEAR replays it out loud.");
       return;
     }
+    if (pendingSayRef.current) { pendingSayRef.current = null; setPendingSay(false); }
     // Never await this bare. Every permanent lockup in this feature has been
     // some path forgetting to resolve; a caller that cannot hang turns the
     // whole class of bug into "the mic reopens a bit early" instead of "the app
@@ -2282,6 +2307,23 @@ export default function BaxstarEmber() {
       setVoiceOn(true);
     }
     return speak(text);
+  }
+
+  // TAP TO HEAR: a real gesture rebuilds the whole audio channel from scratch
+  // — fresh unlock, fresh blessed element, cooldowns cleared — then replays the
+  // parked answer through the full cascade.
+  function replayPendingSay() {
+    const text = pendingSayRef.current;
+    pendingSayRef.current = null;
+    setPendingSay(false);
+    if (!text) return;
+    speechUnlockedRef.current = false;
+    neuralElRef.current = null;
+    unlockSpeech();
+    neuralDownUntilRef.current = 0;
+    ttsPathRef.current = null;
+    traceAdd("▶ TAP TO HEAR — rebuilding audio channel");
+    speak(text);
   }
 
   function stopSpeaking() {
@@ -4034,6 +4076,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </select>
           <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
         </div>
+        {pendingSay && (
+          <button onClick={replayPendingSay} className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em] w-full"
+            style={{ cursor: "pointer", borderColor: "rgba(255,158,61,.8)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
+            🔇 AUDIO BLOCKED — TAP TO HEAR HER ANSWER
+          </button>
+        )}
         {inlineMic && voiceTrace.length > 0 && (
           <div className="font-mono-x rounded-lg border px-3 py-1.5 text-[8px] leading-relaxed"
             style={{ borderColor: "var(--ember-panel-line)", background: "#0c0a09", color: "var(--ink-faint)" }}>
