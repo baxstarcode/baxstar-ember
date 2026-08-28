@@ -330,10 +330,12 @@ const MODELS = [
 // the fallback when the gateway rejects the chosen model.
 const DEFAULT_MODEL = "claude-opus-5";
 const FALLBACK_MODEL = "claude-sonnet-4-6";
-const DEFAULT_EFFORT = "high";
+// Low, since 2026-08-28: effort genuinely rides the API now, and Brady's verdict
+// on High-by-default was "slow as hell". High stays one tap away for hard asks.
+const DEFAULT_EFFORT = "low";
 // Bump when a default above changes: stored model/effort prefs from an older
 // version are dropped once so the new default actually lands on his phone.
-const PREFS_V = 2;
+const PREFS_V = 3;
 
 // `api` is the real output_config.effort level sent to thinking models — the
 // switch was prompt-flavor only until 2026-08-27, which meant Opus 5 ran at its
@@ -1134,10 +1136,13 @@ export default function BaxstarEmber() {
   const [revToday, setRevToday] = useState(null); // { n: 450, d: "2026-08-15" }
   const localDay = () => new Date().toLocaleDateString("en-CA");
   const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n));
-  function editRevenue() {
-    const cur = revSet ? String(revToday.n) : "";
-    const raw = window.prompt("Today's revenue, in dollars (numbers only — leave empty to clear):", cur);
-    if (raw === null) return;
+  // In-page editor, not window.prompt: iOS suppresses native dialogs in
+  // standalone (home-screen) mode, so the Set button silently did nothing on
+  // Brady's phone — reported 2026-08-28 as "the revenue section doesn't work".
+  const [revEdit, setRevEdit] = useState(null); // draft string while editing, else null
+  function editRevenue() { setRevEdit(revSet ? String(revToday.n) : ""); }
+  function commitRevenue(raw) {
+    setRevEdit(null);
     const n = parseInt(String(raw).replace(/[^0-9]/g, ""), 10);
     if (!String(raw).trim() || isNaN(n)) { setRevToday(null); return; }
     setRevToday({ n, d: localDay() });
@@ -3357,7 +3362,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .notch.warm { background:linear-gradient(90deg,var(--ember-orange),#ffcf5d);         box-shadow:0 0 12px var(--ember-orange); }
         .notch.cool { background:linear-gradient(90deg,var(--brass),#e8d3a0);            box-shadow:0 0 12px rgba(201,168,106,.55); }
 
-        @keyframes riseIn { from{opacity:0; transform:translateY(14px); filter:blur(8px);} to{opacity:1; transform:translateY(0); filter:blur(0);} }
+        /* Opacity ONLY. The old translateY+blur entrance promoted every .reveal row
+           to a rasterized GPU layer on iOS Safari; with any page zoom the layer
+           re-rendered at the wrong scale and small text (Model/Effort segs, thread
+           bubbles) stayed permanently fuzzy — KNOWN-ISSUES §12, same disease as the
+           codexDrum. No transform, no filter, on anything carrying small text. */
+        @keyframes riseIn { from{opacity:0;} to{opacity:1;} }
         .reveal { opacity:0; animation:riseIn .7s cubic-bezier(.25,.46,.45,.94) forwards; }
 
         @keyframes badgePulse { 0%,100%{box-shadow:0 0 0 rgba(255,191,94,0);} 50%{box-shadow:0 0 16px rgba(255,191,94,.45);} }
@@ -3439,6 +3449,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            Expressed against the chamber width so it holds at any window size. */
         @media (min-width:980px){
           .home-thread { max-width:min(520px, calc(100% - 210px)); }
+        }
+        /* Phones have no lever overlay to dodge — give the conversation the room
+           Brady asked for (2026-08-28: "the chat window is small"). */
+        @media (max-width:979px){
+          .home-thread { max-height:min(54vh, 500px); }
         }
         .cmd-input { border:1px solid var(--line); transition:border-color .25s, box-shadow .25s; caret-color:var(--ember-orange); }
         .cmd-input:focus { outline:none; border-color:var(--ember-orange);
@@ -4175,7 +4190,26 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <Odometer value={revSet ? odoFmt(revToday.n) : "$--,---"} />
               <Row who={revSet ? "Set by you today" : "Not logged yet"}>
                 <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>
-                  <button className="chip ghost" onClick={editRevenue}>{revSet ? "Update" : "Set today's number"}</button>
+                  {revEdit === null ? (
+                    <button className="chip ghost" onClick={editRevenue}>{revSet ? "Update" : "Set today's number"}</button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        autoFocus
+                        inputMode="numeric"
+                        placeholder="dollars"
+                        value={revEdit}
+                        onChange={(e) => setRevEdit(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") commitRevenue(revEdit); if (e.key === "Escape") setRevEdit(null); }}
+                        className="cmd-input w-24 rounded-lg px-2 py-1 text-[12px]"
+                        style={{ background: "#120c0c", color: "var(--ink)" }}
+                        aria-label="Today's revenue in dollars"
+                      />
+                      <button className="chip solid" onClick={() => commitRevenue(revEdit)}>Save</button>
+                      <button className="chip ghost" onClick={() => setRevEdit(null)}>Cancel</button>
+                    </div>
+                  )}
+                  {revEdit !== null && <div className="mt-1 text-[10px]" style={{ color: "var(--ink-faint)" }}>Numbers only — save empty to clear.</div>}
                 </div>
               </Row>
             </Panel>
