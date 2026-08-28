@@ -1633,12 +1633,15 @@ export default function BaxstarEmber() {
         if (tail) { clearEarTimers(); sendRef.current(tail); return; }
         setEar("armed");
         if (armTimerRef.current) clearTimeout(armTimerRef.current);
-        // His spec: about two seconds for the prompt to start. The session is
-        // already open, so this is a countdown back to passive, not a gate.
+        // 12s, not the old "about two seconds": recognition latency on the wake
+        // phrase itself ate most of a 2.6s window, so Brady had to blurt the
+        // command instantly or get dropped (his 2026-08-28 complaint). The AWAKE
+        // pill shows the whole time, and it still falls back to passive so the
+        // ear never hot-mics indefinitely off one stray wake.
         armTimerRef.current = setTimeout(() => {
           armTimerRef.current = null;
           if (earModeRef.current === "armed") setEar("passive");
-        }, 2600);
+        }, 12000);
         return;
       }
       // armed or live: this IS the command
