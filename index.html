@@ -671,7 +671,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-08-28 18:30Z".startsWith("__") ? "dev" : "2026-08-28 18:30Z";
+  const BUILD_STAMP = "2026-08-28 18:49Z".startsWith("__") ? "dev" : "2026-08-28 18:49Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -1556,7 +1556,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           armTimerRef.current = setTimeout(() => {
             armTimerRef.current = null;
             if (earModeRef.current === "armed") setEar("passive");
-          }, 2600);
+          }, 12e3);
           return;
         }
         earLastActiveRef.current = Date.now();
