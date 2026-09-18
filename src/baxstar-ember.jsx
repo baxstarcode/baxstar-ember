@@ -51,23 +51,6 @@ function bradyContext() {
 Current date/time: ${stamp}. Compute "today", "tomorrow", and any look-back window from this timestamp — never guess a date.`;
 }
 
-// Appended to the system turn only while the voice toggle is on. Without this
-// she answers from self-knowledge — "I'm text-based" — because nothing told
-// her the reply is read aloud.
-/* Sent when spoken output is OFF. Without it the model had no idea the app can speak at
-   all, and invented a limitation — it told Brady "I'm not able to push audio to your
-   device from my end… you'd need text-to-speech enabled on your side", which is both
-   wrong and unfixable-sounding. The app speaks every reply whenever voice is on. */
-const VOICE_OFF_CONTEXT = `
-Spoken output is currently OFF in the app, so this reply will be read on screen, not heard. If asked to speak: say voice is switched off and it turns back on with the VOICE button — never claim you are unable to produce audio or that speech is something the user must add on their end. The app speaks your replies whenever voice is on.`;
-
-/* The ONE spoken ruleset. The voice rig (voice/ember-demo.html) speaks with these same
-   rules — scripts/sync-standalone.py copies this constant into its generated config, the
-   same way it copies BRADY_CONTEXT. It used to keep its own hand-written version, which
-   drifted from this one — same failure as the old config drift, just with prose. */
-const VOICE_CONTEXT = `
-Voice: your reply is spoken aloud through Ember's voice AND shown on screen. You are not text-only — never claim to be. Write for the ear: answer first in one or two short sentences, then detail only if asked. No bullet lists, no markdown, no headings. Never say a URL or an email address unless asked for it directly. Numbers and times said the way a person says them: 'two eighteen, three two five, six eight five seven', 'a hundred forty nine a month', 'eighty two percent'.`;
-
 const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
 Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns) — the canonical source of truth.
 The Agent OS lives in the "Baxstar Data Engine" folder: 01 Identity, 02 Context Library, 03 Skills, 04 Memory + Logs, 05 Verification, 06 Agents, 07 Automations, 08 Archive, 09 Handoff (Shared).
@@ -214,36 +197,29 @@ const HANDOFF = {
    in a chat the way the first version of this dashboard did.
    zapierTasks.used is Brady-reported (the client can't query Zapier live); null renders
    as "not recorded" rather than pretending. Allowance per Rule 14: 1,500/mo. */
-// Ember's own voice: Microsoft neural voices, synthesized by the Worker's /tts
-// route (free, no key). These are the product — the device voices in the picker
-// are the fallback ladder for when the Worker is unreachable.
-const NEURAL_VOICES = [
-  { id: "en-US-JennyNeural", label: "Jenny — natural, warm" },
-  { id: "en-US-AriaNeural", label: "Aria — natural, bright" },
-  { id: "en-US-MichelleNeural", label: "Michelle — natural, even" },
-  { id: "en-US-GuyNeural", label: "Guy — natural, radio" },
-  { id: "en-US-ChristopherNeural", label: "Christopher — natural, deep" },
+/* ---------- YOUR TOOLS ----------
+   The strip along the bottom of the dashboard. Edit this list and nothing else —
+   it is the one place the links live. `note` is the small line under the name.
+   Verified against the SITE HOSTING MAP (06_Baxstar_Tech_Stack_Context). */
+const TOOL_LINKS = [
+  { group: "Sites", items: [
+    { label: "Baxstar Fishing", url: "https://baxstarfishing.com", note: "main site" },
+    { label: "The Boat", url: "https://boat.baxstarfishing.com", note: "Vexus DVX 20S" },
+    { label: "Lakes Golf Sim", url: "https://lakesgolfsim.com", note: "golf sim" },
+    { label: "AI, For Real.", url: "https://ai.lakesgolfsim.com", note: "course signup" },
+  ]},
+  { group: "Tools", items: [
+    { label: "Caption Studio", url: "https://baxstarcode.github.io/caption-studio/", note: "standalone" },
+    { label: "Pontoon Check-In", url: "https://baxstarcode.github.io/baxstar-pontoon/", note: "rentals" },
+    { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" },
+  ]},
+  { group: "Back office", items: [
+    { label: "FareHarbor", url: "https://fareharbor.com/dashboard/", note: "bookings" },
+    { label: "Quo", url: "https://app.quo.com", note: "phone + texts" },
+    { label: "Wix Editor", url: "https://manage.wix.com/", note: "edit the site" },
+    { label: "Drive", url: "https://drive.google.com/", note: "Data Engine" },
+  ]},
 ];
-
-// A beat of silence as a data URI — a WAV built by hand, no asset, no fetch.
-// Played once inside the first tap to "bless" a reusable <audio> element:
-// iOS only lets an element that has already played under a user gesture start
-// audio later on its own, and Ember's replies arrive long after the tap.
-const SILENT_WAV = (() => {
-  try {
-    const n = 400; // 50ms at 8kHz
-    const b = new Uint8Array(44 + n * 2);
-    const dv = new DataView(b.buffer);
-    const tag = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
-    tag(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); tag(8, "WAVEfmt ");
-    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-    dv.setUint32(24, 8000, true); dv.setUint32(28, 16000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
-    tag(36, "data"); dv.setUint32(40, n * 2, true);
-    let s = "";
-    for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
-    return "data:audio/wav;base64," + btoa(s);
-  } catch (e) { return ""; }
-})();
 
 const PROJECTS_META = {
   updated: "2026-08-24",
@@ -276,7 +252,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
         links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "8/26: all 4 connectors verified live end-to-end; voice token-budget + talk-window fixes shipped. Left: real-device proof.", sessions: "~0.5" },
+        outstanding: "9/18: voice retired — Ember is a dashboard now (panels, typed ask, Caption Studio, Projects, tools rail). Left: nothing blocking.", sessions: "~0.5" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -741,84 +717,6 @@ const CAPTION_DRAFT_KEY = "ember-caption-draft";
 
 /* ---------- GOOGLE DRIVE ICON ---------- */
 
-// The artifact iframe can't prompt for mic permission — a top-level popup can.
-// This builds a tiny Ember-styled bridge window that owns the microphone and
-// posts transcripts + live levels back to the app.
-function buildBridgeHtml() {
-  return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>EMBER MIC</title><style>'
-    + 'body{margin:0;background:#0d0807;color:#f5ece8;font-family:-apple-system,Helvetica,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}'
-    + 'h1{font-size:12px;letter-spacing:.3em;color:#ff9e3d;margin:0}'
-    + '#st{font-size:11px;letter-spacing:.2em;color:#a08a82}'
-    + '#bar{width:240px;height:10px;border:1px solid rgba(255,120,60,.4);border-radius:6px;overflow:hidden}'
-    + '#fill{height:100%;width:0%;background:linear-gradient(90deg,#ff4d3d,#ff9e3d)}'
-    + 'button{background:linear-gradient(90deg,#ff4d3d,#ff6a4d);color:#fff;border:none;border-radius:10px;padding:12px 22px;font-weight:800;letter-spacing:.06em;cursor:pointer;font-size:13px}'
-    + '.note{font-size:10px;color:#5a4a44;max-width:280px;text-align:center;line-height:1.5}'
-    + '</style></head><body>'
-    + '<h1>EMBER MIC BRIDGE</h1><div id="st">STARTING…</div>'
-    + '<div id="bar"><div id="fill"></div></div>'
-    + '<button id="btn">Stop Listening</button>'
-    + '<div class="note">Keep this little window open — it feeds your voice to Ember. Close it to end voice input.</div>'
-    + '<scr' + 'ipt>\n'
-    + 'var P=window.opener;var active=false;var rec=null;var an=null;var data=null;var frame=0;var sayBusy=false;var extBusy=false;\n'
-    + 'function post(m){try{P&&P.postMessage(Object.assign({ch:"EMBERMIC"},m),"*");}catch(e){}}\n'
-    + 'function setSt(s){document.getElementById("st").textContent=s;}\n'
-    + 'function canHear(){return active&&!sayBusy&&!extBusy;}\n'
-    // start() throws if recognition is already running (harmless) or if the mic
-    // is genuinely unavailable (not harmless). Swallowing both and claiming
-    // LISTENING regardless meant a dead mic looked identical to a live one.
-    + 'function regain(){if(canHear()){if(!rec){setSt("NO SPEECH SUPPORT - USE CHROME");return;}try{rec.start();setSt("LISTENING");}catch(e){setSt(/already/i.test(String(e&&e.message))?"LISTENING":"MIC UNAVAILABLE - TAP START");}}else if(extBusy||sayBusy){setSt("MUTED - EMBER SPEAKING");}else{setSt("PAUSED");}}\n'
-    + 'function startSR(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setSt("NO SPEECH SUPPORT - USE CHROME");return;}\n'
-    + 'rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=false;\n'
-    + 'rec.onresult=function(e){for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){post({t:"transcript",text:e.results[i][0].transcript.trim()});}}};\n'
-    + 'rec.onend=function(){if(canHear()){try{rec.start();}catch(e){}}};\n'
-    + 'rec.onerror=function(ev){if(ev.error==="not-allowed"){active=false;setSt("MIC BLOCKED - ALLOW AND RETRY");post({t:"listening",on:false});}};\n'
-    + 'active=true;post({t:"listening",on:true});document.getElementById("btn").textContent="Stop Listening";regain();}\n'
-    + 'function stopSR(){active=false;try{rec&&rec.stop();}catch(e){}setSt("PAUSED");post({t:"listening",on:false});document.getElementById("btn").textContent="Start Listening";}\n'
-    + 'document.getElementById("btn").onclick=function(){active?stopSR():startSR();};\n'
-    + 'navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){\n'
-    + 'var C=window.AudioContext||window.webkitAudioContext;var ctx=new C();an=ctx.createAnalyser();an.fftSize=256;ctx.createMediaStreamSource(s).connect(an);data=new Uint8Array(an.fftSize);\n'
-    + 'function loop(){if(an){an.getByteTimeDomainData(data);var sum=0;for(var i=0;i<data.length;i++){var d=(data[i]-128)/128;sum+=d*d;}var v=Math.min(1,Math.sqrt(sum/data.length)*4);\n'
-    + 'document.getElementById("fill").style.width=(v*100)+"%";\n'
-    + 'if(frame++%2===0){var w=[];for(var k=0;k<64;k++){w.push(data[Math.floor(k*data.length/64)]);}post({t:"lvl",v:v,w:w});}}\n'
-    + 'requestAnimationFrame(loop);}loop();startSR();\n'
-    + '}).catch(function(){setSt("MIC PERMISSION DENIED");});\n'
-    + 'function pickV(want){var vs=window.speechSynthesis?window.speechSynthesis.getVoices():[];if(want){for(var i=0;i<vs.length;i++){if(vs[i].name===want)return vs[i];}}var en=vs.filter(function(v){return v.lang&&v.lang.indexOf("en")===0;});function sc(v){var s=0;if(v.localService)s+=100;if(/premium/i.test(v.name))s+=60;else if(/enhanced/i.test(v.name))s+=45;else if(/natural|neural/i.test(v.name))s+=40;if(/samantha|alex|aria|zira|david|daniel|karen|ava|zoe|evan|nathan|allison|serena/i.test(v.name))s+=25;if(v.lang==="en-US")s+=10;if(/compact/i.test(v.name))s-=40;if(/eloquence|bad news|good news|bells|boing|bubbles|cellos|deranged|hysterical|jester|junior|organ|pipe|princess|ralph|superstar|trinoids|whisper|wobble|zarvox|albert|fred|kathy|bahh|grandma|grandpa|rocko|shelley|sandy|flo|eddy|reed/i.test(v.name))s-=100;return s;}en.sort(function(a,b){return sc(b)-sc(a);});return en[0]||null;}\n'
-    + 'if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=function(){};window.speechSynthesis.getVoices();}\n'
-    // A superseded utterance never posts 'speaking on' (a late start would otherwise
-    // latch the gate shut, since its end is suppressed) and never calls cancel() --
-    // cancel() is queue-wide, so it would silence the utterance that replaced it.
-    // sayGen retires a scheduled utterance: stopSay used to cancel the engine
-    // but not the pending 700ms go(), so she would start reading an answer that
-    // had already been stopped. It also makes go() one-shot — the timer and
-    // onvoiceschanged could both fire, and the second go()'s cancel() ran the
-    // first one's fin(), reopening the mic mid-sentence.
-    + 'var sayGen=0;\n'
-    + 'function say(text,want){if(!window.speechSynthesis)return;var synth=window.speechSynthesis;var gen=++sayGen;var ran=false;\n'
-    + 'function go(){if(ran||gen!==sayGen)return;ran=true;synth.cancel();synth.resume();sayBusy=true;try{rec&&rec.abort();}catch(e){}\n'
-    + 'var u=new SpeechSynthesisUtterance(text);var v=pickV(want);if(v){u.voice=v;u.lang=v.lang;}u.rate=1.03;\n'
-    + 'var done=false;function fin(){if(done)return;done=true;if(gen===sayGen)sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    // If the swallow-watchdog already gave up on this utterance, a late start is
-    // the engine talking over whatever replaced it — and its onend would be
-    // suppressed by done, so the main window would never hear "speaking off"
-    // and would drop every spoken command from then on. Kill it instead.
-    + 'u.onstart=function(){if(done||gen!==sayGen)return;started=true;post({t:"speaking",on:true});setSt("SPEAKING");};\n'
-    + 'u.onend=fin;u.onerror=fin;\n'
-    // Chrome silently swallows an utterance queued in the same tick as cancel().
-    // The main window already defers for this reason; the bridge did not, and a
-    // swallowed utterance fires no event at all, so sayBusy stuck true and
-    // canHear() could never be satisfied again — mic dead, UI still LISTENING.
-    + 'var started=false;setTimeout(function(){if(gen!==sayGen)return;try{synth.speak(u);}catch(e){fin();return;}\n'
-    + 'setTimeout(function(){if(!started&&!done&&gen===sayGen)fin();},2500);},80);}\n'
-    + 'if(synth.getVoices().length){go();}else{var tv=setTimeout(go,700);synth.onvoiceschanged=function(){clearTimeout(tv);synth.onvoiceschanged=null;go();};}}\n'
-    + 'function killSay(){sayGen++;try{window.speechSynthesis.cancel();}catch(e){}sayBusy=false;post({t:"speaking",on:false,src:"bridge"});regain();}\n'
-    + 'window.addEventListener("message",function(e){var m=e.data||{};if(m.ch!=="EMBERMIC")return;if(m.t==="toggle"){active?stopSR():startSR();}if(m.t==="micOff"){if(active){stopSR();}}if(m.t==="say"&&m.text){say(m.text,m.voice||"");}if(m.t==="stopSay"){killSay();}\n'
-    + 'if(m.t==="micPause"){extBusy=true;try{rec&&rec.abort();}catch(e){}regain();}\n'
-    + 'if(m.t==="micResume"){extBusy=false;regain();}\n'
-    + 'if(m.t==="close"){window.close();}});\n'
-    + 'window.onbeforeunload=function(){post({t:"closed"});post({t:"listening",on:false});};\n'
-    + '</scr' + 'ipt></body></html>';
-}
-
 /* Engraved-line icon set — one style across every tool: thin brass linework,
    stroke-only, currentColor so each icon takes its housing's metal tint. */
 const ICON_GLYPHS = {
@@ -1026,64 +924,24 @@ export default function BaxstarEmber() {
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState("");
   const historyRef = useRef([]);
-  const [listening, setListening] = useState(false);
-  const [voiceOn, setVoiceOn] = useState(true);
 
-  // core visualizer + voice engine
+  // core visualizer
   const [coreMode, setCoreMode] = useState("enigma"); // "enigma" | "scope"
-  const speechUnlockedRef = useRef(false);
-  // The ear is a state machine, not a flag. 'off': mic fully released — this is
-  // what gives Brady his CarPlay back, because iOS silences all other audio
-  // while ANY page holds the mic. 'passive': listening but discarding everything
-  // except the wake phrase (desktop). 'armed': wake heard, waiting briefly for
-  // the command. 'live': capturing commands directly (phone tap-to-talk window).
-  const earModeRef = useRef("off");
-  const earLastActiveRef = useRef(0);    // last wake/command; the ear sleeps when this goes stale
-  const followTimerRef = useRef(null);   // phone: release deadline after an exchange
-  const armTimerRef = useRef(null);      // wake heard, command window countdown
-  const inlineGenRef = useRef(0);      // stale-session events must not touch live state
-  const inlineBornRef = useRef(0);     // for the rapid-death guard
-  const inlineFailsRef = useRef(0);
-  const inlineRecRef = useRef(null);   // in-page recognition (phones)
-  const [micArm, setMicArm] = useState(false);
-  const [earState, setEarState] = useState("off"); // UI mirror of earModeRef
-  const [voiceChoice, setVoiceChoice] = useState("");   // "" = automatic
-  const [voiceTrace, setVoiceTrace] = useState([]);      // last few speech events, on screen
-  const voiceTraceRef = useRef([]);
-  const [pendingSay, setPendingSay] = useState(false); // audio failed; answer parked for a tap
-  const pendingSayRef = useRef(null);
-  const voiceChoiceRef = useRef("");
-  const [voiceList, setVoiceList] = useState([]);       // device voices, for the picker // popup blocked at load; first click opens it
-  const [speaking, setSpeaking] = useState(false);
-  const speakingRef = useRef(false);
-  const voiceRef = useRef(null);        // best TTS voice on this device
   const levelRef = useRef(0);           // 0..1 smoothed level
-  const bridgeLevelRef = useRef({ v: 0, wave: null, ts: 0 });
-  const popupRef = useRef(null);        // the mic bridge window
   const gasRef = useRef(null);
   const ventRef = useRef(null);
   const scopeRef = useRef(null);
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
   const sendRef = useRef(() => {});
-  const ttsPathRef = useRef(null);      // "neural" | "local" | "bridge" once proven
-  const audioElRef = useRef(null);      // whichever <audio> is speaking right now
-  const neuralElRef = useRef(null);     // gesture-blessed <audio> the neural path reuses (iOS)
-  const neuralDownUntilRef = useRef(0); // /tts failed — skip its latency until this passes
-  const neuralVoiceRef = useRef(null);  // which natural voice actually spoke (diag line)
-  const bridgeAckRef = useRef(null);    // resolves when bridge confirms speaking
   const busyRef = useRef(false);        // a command is in flight — state lags, this doesn't
-  const pendingRef = useRef(null);      // what he said while she was still answering
-  const speechEpochRef = useRef(0);     // only the newest utterance may reopen the mic
-  const speechEndRef = useRef(null);    // resolves when she actually stops talking
-  const speechEndResolveRef = useRef(null); // the ONE resolver for the above
-  const speechTokenRef = useRef(0);     // ...tagged, so only its owner may end it
-  const bridgeEndRef = useRef(null);    // ditto, for speech the bridge produced
-  const lastSpokenRef = useRef("");     // normalised, to recognise her own voice coming back
-  const lastSpokenAtRef = useRef(0);    // ...and when, so the match expires
-  const voiceOnRef = useRef(true);      // read inside async speech, where state is stale
-  const [voiceDiag, setVoiceDiag] = useState("");
+  const pendingRef = useRef(null);      // what he asked while she was still answering
+  // The instrument reads these every animation frame, where state would be stale.
+  const thinkingRef = useRef(false);
+  const syncingRef = useRef(false);
   const [queued, setQueued] = useState("");
+  useEffect(() => { thinkingRef.current = thinking; }, [thinking]);
+  useEffect(() => { syncingRef.current = syncing; }, [syncing]);
 
   // ---- CAPTION STUDIO state ----
   // Up to MAX_PHOTOS slides; one caption covers the set. photos[0] drives the preview.
@@ -1153,83 +1011,11 @@ export default function BaxstarEmber() {
     return "$" + s.slice(0, -3) + "," + s.slice(-3);
   };
 
-  /* Talk-to-type for the command box: one-shot dictation that fills the input
-     and stops. Deliberately separate from the ear/talk-window machinery — this
-     must never send on its own, and it must not fight the conversation mic. */
-  const [dictating, setDictating] = useState(false);
-  const dictRecRef = useRef(null);
-  function toggleDictation() {
-    if (dictRecRef.current) {
-      try { dictRecRef.current.abort(); } catch (e) {}
-      dictRecRef.current = null;
-      setDictating(false);
-      return;
-    }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setError("This browser has no speech recognition. Safari or Chrome."); return; }
-    stopAllMics(); // dictation and the conversation mic must not share the channel
-    let rec;
-    try { rec = new SR(); } catch (e) { return; }
-    rec.lang = "en-US";
-    rec.continuous = false;
-    rec.interimResults = true; // words appear in the box as he says them
-    rec.onresult = (ev) => {
-      let text = "";
-      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
-      setCommand(text);
-    };
-    rec.onend = () => { dictRecRef.current = null; setDictating(false); };
-    rec.onerror = () => {};
-    dictRecRef.current = rec;
-    try { rec.start(); setDictating(true); } catch (e) { dictRecRef.current = null; }
-  }
   const chatEndRef = useRef(null);
+  const cmdInputRef = useRef(null);
   // greeting-count buttons jump to these two panel columns
   const callsColRef = useRef(null);
   const inboxColRef = useRef(null);
-  useEffect(() => { voiceOnRef.current = voiceOn; }, [voiceOn]);
-  useEffect(() => {
-    voiceChoiceRef.current = voiceChoice;
-    // A newly chosen voice must actually be used: forget the remembered one and
-    // let the next utterance audition the choice first.
-    if (voiceChoice) voiceRef.current = null;
-  }, [voiceChoice]);
-  // The picker needs the device's voices. iOS delivers them LATE — often only
-  // after the first utterance, sometimes without ever firing voiceschanged
-  // (Chrome iOS in particular). One mount-time read left the picker invisible
-  // on Brady's phone, which read as "the voices you wired up aren't there".
-  // Poll for ~8s and keep the event listener as a bonus.
-  useEffect(() => {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    let tries = 0;
-    const fill = () => {
-      const vs = synth.getVoices().filter((v) => v.lang && v.lang.startsWith("en"));
-      if (vs.length) setVoiceList((old) => (vs.length >= old.length ? vs : old));
-      return vs.length;
-    };
-    fill();
-    const iv = setInterval(() => {
-      tries += 1;
-      const n = fill();
-      if ((n && tries > 4) || tries > 20) {
-        const chosen = voiceChoiceRef.current;
-        if (chosen && !chosen.startsWith("ember:")) {
-          const stillExists = synth.getVoices().some((v) => v.name === chosen);
-          if (!stillExists) {
-            // A stale device voice used to leave the picker visually empty and
-            // disable natural TTS forever. Recover to Automatic instead.
-            voiceChoiceRef.current = "";
-            setVoiceChoice("");
-            ttsPathRef.current = null;
-          }
-        }
-        clearInterval(iv);
-      }
-    }, 400);
-    synth.addEventListener?.("voiceschanged", fill);
-    return () => { clearInterval(iv); synth.removeEventListener?.("voiceschanged", fill); };
-  }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [chatMsgs, thinking]);
 
   // ---- GOOGLE DRIVE state ----
@@ -1282,20 +1068,6 @@ export default function BaxstarEmber() {
       ]);
       if (b?.choice) setBg(b);
       if (prefs) {
-        if (typeof prefs.voiceOn === "boolean") setVoiceOn(prefs.voiceOn);
-        if (typeof prefs.voiceChoice === "string") {
-          const chosen = prefs.voiceChoice;
-          const knownNatural = !chosen || (
-            chosen.startsWith("ember:") &&
-            NEURAL_VOICES.some((v) => "ember:" + v.id === chosen)
-          );
-          // Old builds persisted provider-specific voice names that no longer
-          // exist. Those values make the select look blank and, worse, suppress
-          // the natural Worker voice. Natural choices can be validated now;
-          // device choices are validated after the browser finishes loading
-          // its delayed voice list.
-          setVoiceChoice(knownNatural || !chosen.startsWith("ember:") ? chosen : "");
-        }
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
         if (prefs.v >= PREFS_V) {
           if (prefs.chatModel) setChatModel(prefs.chatModel);
@@ -1388,8 +1160,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
-  }, [voiceOn, voiceChoice, surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
+    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
+  }, [surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -1426,1000 +1198,18 @@ export default function BaxstarEmber() {
   const hour = now.getHours();
   const dayPart = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
 
-  /* ---------- VOICE (Web Speech) ---------- */
-
-  // iOS Safari refuses getUserMedia and SpeechRecognition to a blob: popup --
-  // that window has an opaque origin, and no amount of granting mic permission
-  // in Settings changes it. On a phone we skip the bridge entirely and listen in
-  // this page, which has a real origin and the tap that started it.
-  const isPhone =
-    typeof navigator !== "undefined" &&
-    (/iP(hone|ad|od)/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
-      !window.open);
-  // Inline recognition runs wherever the API exists — desktop included. The
-  // popup bridge was born when Ember lived inside claude.ai's artifact iframe,
-  // which could not prompt for the mic; hosted on its own origin, the main
-  // window can. The popup remains only as a fallback for browsers with no
-  // SpeechRecognition at all.
-  const hasSR = typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const inlineMic = isPhone; // phone rail + gesture-unlock JSX keys off this
-
-  // iOS keeps speechSynthesis mute until a tap-context utterance unlocks it.
-  // Her replies arrive after a network wait -- outside any tap -- so without
-  // this, the engine swallows them silently. Unlock on the first genuine
-  // gesture, then void the local choice so the cascade re-auditions voices it
-  // never got to try.
-  function unlockSpeech() {
-    if (speechUnlockedRef.current) return;
-    speechUnlockedRef.current = true;
-    try {
-      const synth = window.speechSynthesis;
-      if (synth) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; u.rate = 2; synth.speak(u); }
-    } catch (e) {}
-    try {
-      const C = window.AudioContext || window.webkitAudioContext;
-      const ctx = new C(); ctx.resume?.(); setTimeout(() => ctx.close?.(), 300);
-    } catch (e) {}
-    try {
-      // Bless the neural path's reusable element while still inside the tap.
-      if (!neuralElRef.current && SILENT_WAV) {
-        const a = new Audio(SILENT_WAV);
-        a.play().then(() => { try { a.pause(); } catch (e) {} }).catch(() => {});
-        neuralElRef.current = a;
-      }
-    } catch (e) {}
-    if (!voiceChoiceRef.current) voiceRef.current = null;
-  }
-
-  function toggleVoiceMode() {
-    const next = !voiceOnRef.current;
-    if (next) unlockSpeech();
-    voiceOnRef.current = next;
-    setVoiceOn(next);
-  }
-
-  function chooseVoice(next) {
-    unlockSpeech();
-    neuralDownUntilRef.current = 0;
-    ttsPathRef.current = null;
-    voiceChoiceRef.current = next;
-    setVoiceChoice(next);
-  }
-
-  // iOS kills a REUSED recognition session after a few start/stop cycles, so
-  // every session is a fresh instance, and a generation counter keeps a stale
-  // instance's late events away from live state.
-
-  // Flight recorder for the speech path. Brady can screenshot this instead of
-  // describing silence from a truck; the entries name the exact step that died.
-  function traceAdd(line) {
-    const stamp = new Date().toTimeString().slice(0, 8);
-    const arr = [...voiceTraceRef.current.slice(-5), stamp + " " + line];
-    voiceTraceRef.current = arr;
-    setVoiceTrace(arr);
-  }
-
-  function setEar(mode) {
-    earModeRef.current = mode;
-    setEarState(mode);
-  }
-
-  function clearEarTimers() {
-    if (followTimerRef.current) { clearTimeout(followTimerRef.current); followTimerRef.current = null; }
-    if (armTimerRef.current) { clearTimeout(armTimerRef.current); armTimerRef.current = null; }
-  }
-
-  // Recognizers routinely hear "Ember" as "Amber" (Brady does too), so both
-  // count. Tail text after the phrase is the command itself: "Ember awake
-  // what's my day" answers immediately, no second breath needed.
-  const WAKE_RE = /\b(?:ember|amber|embers)[\s,!.]*(?:a?wake|awaken|wake\s*up)\b/i;
-
-  // How long the desktop ear stays open with no wake phrase before it releases
-  // the mic. Long enough to cover a boat ride between spots; short enough that
-  // a tab left open overnight isn't a live microphone.
-  const EAR_IDLE_MS = 30 * 60 * 1000;
-  // Phone talk window: how much TRUE silence ends the conversation. Generous on
-  // purpose — Brady thinks between sentences on the water; interim speech
-  // refreshes this clock so it never counts against a sentence in progress.
-  const LIVE_IDLE_MS = 15000;
-
-  // Soft ping: "I heard my name." Distinct from the boot chime — shorter,
-  // higher, quieter.
-  function wakePing() {
-    try {
-      const C = window.AudioContext || window.webkitAudioContext;
-      const ctx = new C();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = 1318; // E6
-      g.gain.setValueAtTime(0.07, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + 0.18);
-      setTimeout(() => ctx.close?.(), 400);
-    } catch (e) {}
-  }
-
-  function makeInlineRec() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return null;
-    let rec;
-    try { rec = new SR(); } catch (e) { return null; }
-    const gen = ++inlineGenRef.current;
-    // Single-shot on purpose: iOS ends continuous sessions on its own schedule
-    // anyway, and one-phrase sessions deliver finals faster.
-    rec.continuous = false;
-    // Phone talk windows get interim results — not for their text, but as a
-    // "he's still talking" heartbeat so the follow window can't cut a sentence
-    // in half. The desktop ear stays finals-only: interims from room noise
-    // would keep bumping the activity clock and defeat the 30-minute sleep.
-    rec.interimResults = isPhone;
-    rec.lang = "en-US";
-    rec.onstart = () => {
-      if (gen !== inlineGenRef.current) return;
-      setListening(true); setMicArm(false); setError("");
-    };
-    rec.onerror = (e) => {
-      if (gen !== inlineGenRef.current) return;
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        clearEarTimers();
-        setEar("off");
-        inlineRecRef.current = null;
-        setListening(false);
-        setError(isPhone
-          ? "Mic blocked — tap aA in the address bar, Website Settings, Microphone, Allow."
-          : "Mic blocked — click the lock icon by the address bar and allow the microphone.");
-      }
-      // no-speech / aborted / network: onend fires next and handles it
-    };
-    rec.onend = () => {
-      const resolve = rec.__release;
-      rec.__release = null;
-      if (resolve) resolve(); // someone is waiting for the mic to actually let go
-      if (gen !== inlineGenRef.current) return;
-      inlineRecRef.current = null;
-      // 'off' means OFF: no restart, channel surrendered, CarPlay comes back.
-      if (earModeRef.current === "off" || speakingRef.current) { setListening(false); return; }
-      const now = Date.now();
-      if (now - inlineBornRef.current < 700) {
-        inlineFailsRef.current += 1;
-        if (inlineFailsRef.current >= 6) {
-          clearEarTimers();
-          setEar("off");
-          setListening(false);
-          setError("The mic keeps dying — tap the mic to restart it.");
-          return;
-        }
-      } else {
-        inlineFailsRef.current = 0;
-      }
-      // The ear is allowed to be always-on, not on forever: with no wake phrase
-      // for EAR_IDLE_MS it goes back to sleep instead of holding an open mic
-      // over an empty room. Waking it is one tap.
-      if (earModeRef.current === "passive" &&
-          Date.now() - earLastActiveRef.current > EAR_IDLE_MS) {
-        clearEarTimers();
-        setEar("off");
-        setListening(false);
-        setError("Quiet for a while, so the mic went to sleep — tap it to wake her.");
-        return;
-      }
-      setTimeout(() => {
-        if (earModeRef.current !== "off" && !speakingRef.current && !inlineRecRef.current) startInlineSession();
-      }, 180);
-    };
-    rec.onresult = (ev) => {
-      if (gen !== inlineGenRef.current) return;
-      let text = "";
-      let sawInterim = false;
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        if (ev.results[i].isFinal) text += ev.results[i][0].transcript;
-        else sawInterim = true;
-      }
-      // Mid-sentence speech refreshes the talk window's idle clock, so a long
-      // slow question can't get the mic yanked out from under it.
-      if (sawInterim && earModeRef.current === "live") earLastActiveRef.current = Date.now();
-      text = text.trim();
-      if (!text) return;
-      if (speakingRef.current || isEcho(text)) return; // never act on her own voice
-      const mode = earModeRef.current;
-      if (mode === "passive") {
-        const m = text.match(WAKE_RE);
-        if (!m) return; // not for her — discarded, never sent anywhere
-        earLastActiveRef.current = Date.now();
-        wakePing();
-        const tail = text.slice(m.index + m[0].length).replace(/^[\s,!.—-]+/, "").trim();
-        if (tail) { clearEarTimers(); sendRef.current(tail); return; }
-        setEar("armed");
-        if (armTimerRef.current) clearTimeout(armTimerRef.current);
-        // 12s, not the old "about two seconds": recognition latency on the wake
-        // phrase itself ate most of a 2.6s window, so Brady had to blurt the
-        // command instantly or get dropped (his 2026-08-28 complaint). The AWAKE
-        // pill shows the whole time, and it still falls back to passive so the
-        // ear never hot-mics indefinitely off one stray wake.
-        armTimerRef.current = setTimeout(() => {
-          armTimerRef.current = null;
-          if (earModeRef.current === "armed") setEar("passive");
-        }, 12000);
-        return;
-      }
-      // armed or live: this IS the command
-      earLastActiveRef.current = Date.now();
-      clearEarTimers();
-      if (mode === "armed") setEar("passive"); // desktop returns to wake-listening
-      sendRef.current(text);
-    };
-    return rec;
-  }
-
-  function startInlineSession() {
-    const rec = makeInlineRec();
-    if (!rec) return false;
-    inlineRecRef.current = rec;
-    inlineBornRef.current = Date.now();
-    try { rec.start(); } catch (e) { inlineRecRef.current = null; return false; }
-    return true;
-  }
-
-  // Phone: fully surrender the mic. This is the CarPlay fix — while any page
-  // holds a recognition session, iOS mutes every other audio app. Nothing may
-  // restart the session once mode is 'off'.
-  function releaseMic() {
-    clearEarTimers();
-    setEar("off");
-    inlineGenRef.current += 1; // orphan anything in flight
-    const rec = inlineRecRef.current;
-    inlineRecRef.current = null;
-    if (rec) { try { rec.abort(); } catch (e) {} }
-    setListening(false);
-  }
-
-  // Phone tap-to-talk: open a conversation window. Every exchange extends it;
-  // silence closes it and gives the audio channel back.
-  function openTalkWindow() {
-    unlockSpeech();
-    if (!hasSR) { setError("This browser has no speech recognition. Safari or Chrome."); return false; }
-    clearEarTimers();
-    setEar("live");
-    earLastActiveRef.current = Date.now();
-    inlineFailsRef.current = 0;
-    if (!inlineRecRef.current && !startInlineSession()) {
-      setEar("off");
-      setError("Could not start the mic.");
-      return false;
-    }
-    armFollowTimer();
-    return true;
-  }
-
-  /* The talk window used to be a hard fuse — 9 seconds to speak, 8 between
-     exchanges — and it fired even mid-sentence, which is how Brady kept getting
-     cut off. Now it's an idle check: the mic releases only after LIVE_IDLE_MS
-     of true silence, with interim speech results refreshing the clock, and it
-     re-checks instead of guillotining. Busy/speaking defers the check. */
-  function armFollowTimer() {
-    if (followTimerRef.current) clearTimeout(followTimerRef.current);
-    const check = () => {
-      followTimerRef.current = null;
-      if (earModeRef.current !== "live") return;
-      if (speakingRef.current || busyRef.current) {
-        // Her turn counts as activity. Without this restamp, a long think +
-        // answer (Opus 5 can take 30s with tools) burned the whole idle
-        // allowance measured from Brady's LAST words — the first check after
-        // she finished saw idle >= 15s and released the mic ~2s after her
-        // answer, leaving him no window to reply. The 15s of TRUE silence now
-        // starts when the exchange ends, which is what the punch list meant.
-        earLastActiveRef.current = Date.now();
-        followTimerRef.current = setTimeout(check, 2000);
-        return;
-      }
-      const idle = Date.now() - earLastActiveRef.current;
-      if (idle >= LIVE_IDLE_MS) releaseMic();
-      else followTimerRef.current = setTimeout(check, LIVE_IDLE_MS - idle + 250);
-    };
-    followTimerRef.current = setTimeout(check, LIVE_IDLE_MS);
-  }
-
-  // Desktop: the ear. Always listening while on, but passive — everything that
-  // is not the wake phrase is discarded on the spot.
-  function startEar() {
-    unlockSpeech();
-    if (!hasSR) return false;
-    clearEarTimers();
-    setEar("passive");
-    earLastActiveRef.current = Date.now();
-    inlineFailsRef.current = 0;
-    if (!inlineRecRef.current && !startInlineSession()) { setEar("off"); return false; }
-    return true;
-  }
-
-  function stopInlineMic() { releaseMic(); }
-
-  /* Whole-utterance sleep phrases: "should we stop at the landing" stays a
-     normal question. Consumed by sendCommand, which confirms and releases. */
-  const SLEEP_RE = /^\s*(?:ok(?:ay)?\s+)?(?:ember[,\s]+)?(?:please\s+)?(go to sleep|goodbye|good bye|bye|stop listening|stop talking|stop|quiet|be quiet|shut up|mute|sleep|that'?s all|that is all|never ?mind|we'?re done|i'?m done|thanks that'?s all)\s*[.!]?\s*$/i;
-
-  function stopAllMics() {
-    releaseMic();
-    const w = popupRef.current;
-    if (w && !w.closed) { try { w.postMessage({ ch: "EMBERMIC", t: "micOff" }, "*"); } catch (e) {} }
-    setListening(false);
-  }
-
-  function toggleMic() {
-    if (hasSR) {
-      if (isPhone) {
-        if (earModeRef.current !== "off") releaseMic();
-        else openTalkWindow();
-      } else {
-        if (earModeRef.current !== "off") releaseMic();
-        else startEar();
-      }
-      return;
-    }
-    const w = popupRef.current;
-    if (w && !w.closed) {
-      w.postMessage({ ch: "EMBERMIC", t: "toggle" }, "*");
-      w.focus();
-      return;
-    }
-    openMicBridge();
-  }
-
-  function openMicBridge(silent = false) {
-    stopSpeaking();
-    const url = URL.createObjectURL(new Blob([buildBridgeHtml()], { type: "text/html" }));
-    const w = window.open(url, "emberMic", "width=400,height=300");
-    if (!w) {
-      if (!silent) setError("Popup blocked — allow popups for claude.ai so the Mic Bridge can open.");
-      return false;
-    }
-    popupRef.current = w;
-    setMicArm(false);
-    setTimeout(() => URL.revokeObjectURL(url), 20000);
-    return true;
-  }
-
-  // Load behavior. Phone: mic OFF until Brady taps — a page that grabs the mic
-  // at load is what silenced his truck. Desktop: the ear starts inline (no
-  // popup) and listens for "Ember, awake". The popup bridge opens only for
-  // browsers with no SpeechRecognition at all.
-  useEffect(() => {
-    if (isPhone) {
-      setMicArm(true);
-      const un = () => { window.removeEventListener("pointerdown", un); unlockSpeech(); };
-      window.addEventListener("pointerdown", un);
-      // Every later tap nudges the engine too: iOS sometimes leaves synthesis
-      // paused after mic use, and a queued reply sits silent until resumed.
-      const pump = () => {
-        try {
-          const synth = window.speechSynthesis;
-          if (!synth) return;
-          synth.resume();
-          if (speechEndResolveRef.current && !synth.speaking) traceAdd("tap-pump: reply pending but engine idle");
-        } catch (e) {}
-      };
-      window.addEventListener("pointerdown", pump);
-      return () => { window.removeEventListener("pointerdown", un); window.removeEventListener("pointerdown", pump); };
-    }
-    // The mic NEVER self-starts. It used to: the ear opened 600ms after load
-    // (and the no-SR path auto-opened the bridge popup), so any tab that merely
-    // rendered Ember — a shared laptop, an automated test — was streaming room
-    // audio to the browser's recognition service with no tap ever given. During
-    // one automated run it transcribed a stretch of ambient house conversation
-    // straight into the thread. Listening is consent: it starts at the mic
-    // control or not at all.
-    if (!hasSR) setMicArm(true); // show the bridge button; opening it is a click
-  }, []);
-
-  /* ---------- OPS: SPEECH — three-path cascade with diagnostics ---------- */
-
-  // Pure oscillator chime — cannot fail the way TTS does. If the chime plays,
-  // the audio output path is proven good and any silence is TTS-specific.
-  function chime() {
-    const C = window.AudioContext || window.webkitAudioContext;
-    const ctx = new C();
-    const play = () => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = 880;
-      g.gain.setValueAtTime(0.12, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + 0.5);
-      setTimeout(() => ctx.close?.(), 900);
-    };
-    const p = ctx.resume?.();
-    if (p && p.then) p.then(play).catch(play); else play();
-  }
-
-  // Path 1 — in-frame synthesis, forced LOCAL voice only
-  function whenVoicesReady(cb) {
-    const synth = window.speechSynthesis;
-    if (!synth || synth.getVoices().length) return cb();
-    let done = false;
-    const fire = () => { if (!done) { done = true; cb(); } };
-    synth.addEventListener?.("voiceschanged", fire, { once: true });
-    setTimeout(fire, 700);
-  }
-  // macOS reports well over a hundred local voices. Most are novelty voices, and
-  // some are listed but silent. Taking locals[0] gave one arbitrary voice a single
-  // attempt, so an unlucky pick failed this path deterministically every time.
-  const NOVELTY_VOICE = /eloquence|bad news|good news|bells|boing|bubbles|cellos|deranged|hysterical|jester|junior|organ|pipe|princess|ralph|superstar|trinoids|whisper|wobble|zarvox|albert|fred|kathy|bahh|grandma|grandpa|rocko|shelley|sandy|flo|eddy|reed/i;
-
-  function scoreVoice(v) {
-    let s = 0;
-    if (/premium/i.test(v.name)) s += 60;
-    else if (/enhanced/i.test(v.name)) s += 45;
-    if (/\b(ava|zoe|evan|nathan|allison|samantha|serena)\b/i.test(v.name)) s += 20;
-    if (v.lang === "en-US") s += 30;
-    else if (v.lang && v.lang.startsWith("en")) s += 12;
-    if (v.default) s += 5;
-    if (/compact/i.test(v.name)) s -= 40; // iOS ships these tinny defaults
-    if (NOVELTY_VOICE.test(v.name)) s -= 100;
-    return s;
-  }
-
-  function rankedLocals() {
-    const synth = window.speechSynthesis;
-    if (!synth) return [];
-    return synth.getVoices()
-      .filter((v) => v.localService && v.lang && v.lang.startsWith("en"))
-      .sort((a, b) => scoreVoice(b) - scoreVoice(a));
-  }
-
-  // The bridge holds the microphone in a separate window. Continuous recognition
-  // competes with the speech engine and, worse, hears Ember's own reply and sends
-  // it straight back as a new command. The bridge already closes the mic around
-  // speech it produces itself; this extends that to speech from this window.
-  //
-  // The gate is epoch-owned, not a boolean. Cancelling an utterance makes its
-  // onend/onerror fire as a LATER task — after its replacement has already asked
-  // for the mic to close. An unowned reopen from that stale handler would leave
-  // the mic live for the whole next utterance, which is exactly the self-hearing
-  // the gate exists to prevent.
-  // Recognition returns bare words — strip everything punctuation and case so a
-  // heard phrase can be compared against what she just said.
-  function normalizeHeard(s) {
-    return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
-  }
-  // Echo suppression has to expire. lastSpokenRef was never cleared, so a phrase
-  // that appeared anywhere in an answer stayed un-sayable for the life of the
-  // page — and repeating her own words back is a normal way to talk to her
-  // ("call the marina" right after she says she will call the marina). Speakers
-  // only feed the mic while she is actually talking, so a short window after
-  // speech ends is all this needs to cover.
-  const ECHO_WINDOW_MS = 2500;
-  function isEcho(text) {
-    const said = lastSpokenRef.current;
-    if (!said) return false;
-    const age = performance.now() - (lastSpokenAtRef.current || 0);
-    if (age > ECHO_WINDOW_MS && !speakingRef.current) return false;
-    const heard = normalizeHeard(text);
-    if (heard.length < 9) return false;
-    return said.includes(heard) || heard.includes(said.slice(0, 60));
-  }
-
-  // One owner for the "she stopped talking" signal. Each speech path used to
-  // create its own promise and resolve it from its own event handlers, which
-  // meant every path that ended some other way — pause(), a closed popup, an
-  // engine that simply never fires anything — left speak() awaiting a promise
-  // nobody could resolve. sendCommand()'s finally never ran, busyRef stayed
-  // true, and every later command was queued forever behind an answer that had
-  // already finished. Reload was the only way out. Now: one resolver, released
-  // from anywhere, idempotent, and never awaited without a timeout.
-  // Release is ownership-checked, not "resolve whatever is current". A handler
-  // from an utterance we already abandoned still fires — late onend, a cancel()
-  // that flushes the old queue, a bridge reply that outlived its timeout — and
-  // an identity-blind release let that stale handler resolve the LIVE
-  // utterance's promise. speak() would return mid-answer, the queue would drain
-  // on top of her, and she would cut herself off mid-sentence. Callers pass the
-  // token they armed with; only a bare call (the STOP button) force-releases.
-  function armSpeechEnd() {
-    releaseSpeechEnd();
-    const token = ++speechTokenRef.current;
-    speechEndRef.current = new Promise((r) => { speechEndResolveRef.current = { token, r }; });
-    return token;
-  }
-  function releaseSpeechEnd(token) {
-    const cur = speechEndResolveRef.current;
-    if (!cur) return;
-    if (token !== undefined && cur.token !== token) return; // not ours to end
-    speechEndResolveRef.current = null;
-    cur.r();
-  }
-
-  // iOS shares one audio session between the mic and the speaker. Starting TTS
-  // while the mic still holds it produces a "spoken" utterance with no sound --
-  // onstart and onend fire, the app believes she answered, Brady hears nothing.
-  // So the handoff is awaited: abort the session and resolve only when its
-  // onend confirms the channel is free (400ms cap so a wedged session cannot
-  // hold speech hostage).
-  function pauseInlineMic() {
-    const rec = inlineRecRef.current;
-    if (!rec) return Promise.resolve();
-    return new Promise((resolve) => {
-      let done = false;
-      const settle = () => { if (!done) { done = true; resolve(); } };
-      rec.__release = settle;
-      setTimeout(settle, 400);
-      try { rec.abort(); } catch (e) { settle(); }
-    });
-  }
-  function resumeInlineMic() {
-    if (earModeRef.current === "off" || speakingRef.current) return;
-    if (isPhone) {
-      // The conversation continues: renew the follow-up window so he can answer
-      // back without tapping. Restamp the clock — her answer may have taken
-      // longer than the idle ceiling, and that must not count against him.
-      clearEarTimers();
-      setEar("live");
-      earLastActiveRef.current = Date.now();
-      armFollowTimer();
-    } else if (earModeRef.current === "armed") {
-      setEar("passive");
-    }
-    if (!inlineRecRef.current) startInlineSession();
-  }
-
-  function postBridge(t) {
-    const w = popupRef.current;
-    if (w && !w.closed) w.postMessage({ ch: "EMBERMIC", t }, "*");
-  }
-  function beginSpeech() {
-    const epoch = ++speechEpochRef.current;
-    postBridge("micPause");
-    pauseInlineMic();
-    return epoch;
-  }
-  function endSpeech(epoch) {
-    if (epoch !== speechEpochRef.current) return; // superseded — not ours to reopen
-    postBridge("micResume");
-    resumeInlineMic();
-  }
-
-  function tryVoice(v, short, slot) {
-    return new Promise((res) => {
-      const synth = window.speechSynthesis;
-      const epoch = beginSpeech();
-      synth.cancel();
-      synth.resume();
-      const token = armSpeechEnd();
-      const u = new SpeechSynthesisUtterance(short);
-      u.voice = v; u.lang = v.lang;
-      u.rate = 1.03;
-      let ok = false;
-      let kick;
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearInterval(kick);
-        // Only clear the speaking flag if we are still the current utterance —
-        // a superseded one must not mark the live one as finished.
-        if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
-        endSpeech(epoch);
-        releaseSpeechEnd(token);
-      };
-      // The ceiling in speak() must be able to run this. Releasing the promise
-      // alone left speakingRef true and micResume unposted, so a stalled path
-      // meant the mic never reopened -- a lockup made by the anti-lockup valve.
-      if (slot) { slot.token = token; slot.finish = finish; }
-      // Epoch-guarded like finish() is: a superseded utterance that starts late
-      // must not flip speakingRef on, because its own finish() is barred from
-      // flipping it back off — that combination latches the self-hearing guard
-      // shut and silently drops every spoken command from then on.
-      u.onstart = () => {
-        traceAdd(`▶ speaking: ${v.name}`);
-        ok = true; voiceRef.current = v;
-        if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
-        kick = setInterval(() => synth.resume(), 4000);
-        res(true);
-      };
-      u.onend = finish;
-      u.onerror = (e) => { if (!ok) traceAdd(`✕ ${v.name}: ${(e && e.error) || "error"}`); finish(); if (!ok) res(false); };
-      // Chrome wedges if speak() lands in the same tick as cancel() — the queue
-      // hasn't flushed and the new utterance silently never starts. Give it a
-      // beat, and clear any leftover speaking state before trying again.
-      setTimeout(() => {
-        // STOP retires the epoch, but cancel() can only flush what is already
-        // queued — it cannot retire a speak() we have not called yet. Without
-        // this check she reads the whole answer after he stopped her, with the
-        // mic live the entire time. The bridge already guards this with sayGen.
-        if (epoch !== speechEpochRef.current) { finish(); res(false); return; }
-        if (synth.speaking || synth.pending) synth.cancel();
-        setTimeout(() => {
-          if (epoch !== speechEpochRef.current) { finish(); res(false); return; }
-          synth.speak(u);
-        }, 60);
-      }, 120);
-      // Enhanced and Premium voices load from disk on first use. 1.1s was
-      // cancelling them mid-load and reporting it as a dead path.
-      setTimeout(() => { if (!ok) { traceAdd(`⏱ ${v.name}: silent 3s`); synth.cancel(); finish(); res(false); } }, 3000);
-    });
-  }
-
-  function sayLocal(short, slot) {
-    return new Promise((res) => whenVoicesReady(async () => {
-      if (!window.speechSynthesis) return res(false);
-      // Brady's explicit pick beats everything; then a voice that already
-      // spoke; then the scorer's ranking.
-      const vs = window.speechSynthesis.getVoices();
-      const picked = voiceChoiceRef.current ? vs.find((v) => v.name === voiceChoiceRef.current) : null;
-      if (picked && (await tryVoice(picked, short, slot))) return res(true);
-      const known = voiceRef.current;
-      if (known && known !== picked && (await tryVoice(known, short, slot))) return res(true);
-      for (const v of rankedLocals().filter((v) => v !== known && v !== picked).slice(0, 3)) {
-        if (await tryVoice(v, short, slot)) return res(true);
-      }
-      res(false); // every candidate stayed silent — fall through to another path
-    }));
-  }
-
-  // Path 0 — Ember's own voice: the Worker's /tts route synthesizes a neural
-  // MP3 and an <audio> element plays it. This is the modern voice; the paths
-  // below are the fallback ladder, not the product. Any failure marks the path
-  // down for a while so replies never pay a dead fetch's latency twice — the
-  // picker and HEAR IT clear the mark, so recovery is one tap, not a reload.
-  function neuralPick() {
-    const c = voiceChoiceRef.current || "";
-    if (c.startsWith("ember:")) return c.slice(6);
-    if (!c) return NEURAL_VOICES[0].id; // Automatic prefers the natural voice
-    const deviceChoiceExists = (window.speechSynthesis?.getVoices() || []).some((v) => v.name === c);
-    // Honor a real device pick. A stale name from an older browser build must
-    // not suppress the natural voice while the picker sits blank.
-    return deviceChoiceExists ? null : NEURAL_VOICES[0].id;
-  }
-
-  async function sayNeural(short, slot) {
-    const base = (typeof window !== "undefined" && window.EMBER_API_PROXY) || "";
-    const voice = neuralPick();
-    if (!base || !voice) return false;
-    if (Date.now() < neuralDownUntilRef.current) {
-      traceAdd("· natural on cooldown " + Math.ceil((neuralDownUntilRef.current - Date.now()) / 1000) + "s — trying device voice");
-      return false;
-    }
-    let blobUrl = "";
-    let synthMs = 0;
-    try {
-      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      const t0 = performance.now();
-      // Past 4s the device voice is the better answer — and without the abort,
-      // a dead Worker would stall every reply by the browser's fetch timeout.
-      const kill = ctrl ? setTimeout(() => ctrl.abort(), 4000) : null;
-      let r;
-      try {
-        r = await fetch(base.replace(/\/$/, "") + "/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: short, voice }),
-          signal: ctrl ? ctrl.signal : undefined,
-        });
-      } finally { if (kill) clearTimeout(kill); }
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const blob = await r.blob();
-      if (!blob || blob.size < 200) throw new Error("empty audio");
-      blobUrl = URL.createObjectURL(blob);
-      synthMs = Math.round(performance.now() - t0);
-    } catch (e) {
-      if (blobUrl) { try { URL.revokeObjectURL(blobUrl); } catch (e2) {} }
-      neuralDownUntilRef.current = Date.now() + 5 * 60 * 1000;
-      traceAdd("✕ natural voice offline (" + String((e && e.message) || e).slice(0, 40) + ") — device voice takes over");
-      return false;
-    }
-    return new Promise((res) => {
-      const prev = audioElRef.current;
-      if (prev) { try { prev.pause(); } catch (e) {} }
-      const epoch = beginSpeech();
-      const token = armSpeechEnd();
-      // Reuse the tap-blessed element when there is one: iOS refuses play() on
-      // a fresh element outside a gesture, and replies arrive long after the tap.
-      const a = neuralElRef.current || new Audio();
-      try { a.pause(); } catch (e) {}
-      a.src = blobUrl;
-      audioElRef.current = a;
-      let ok = false;
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        if (epoch === speechEpochRef.current) { speakingRef.current = false; setSpeaking(false); }
-        endSpeech(epoch);
-        releaseSpeechEnd(token);
-        try { URL.revokeObjectURL(blobUrl); } catch (e) {}
-      };
-      if (slot) { slot.token = token; slot.finish = finish; }
-      // Playback failing after a good synth usually means the element was
-      // never blessed — back off for a minute, not five, so the next tap
-      // (which re-blesses) restores the natural voice without a reload.
-      const bail = (why) => {
-        if (!settled && !ok) {
-          neuralDownUntilRef.current = Date.now() + 60 * 1000;
-          traceAdd("✕ natural playback " + why + " — device voice takes over");
-        }
-        finish();
-        if (!ok) res(false);
-      };
-      a.onplaying = () => {
-        const name = voice.replace(/^en-US-/, "").replace(/Neural$/, "");
-        traceAdd("▶ speaking: " + name + " (natural) · synth " + synthMs + "ms");
-        ok = true;
-        neuralVoiceRef.current = name;
-        if (epoch === speechEpochRef.current) { speakingRef.current = true; setSpeaking(true); }
-        res(true);
-      };
-      a.onended = finish;
-      a.onerror = () => bail("media error");
-      a.play().catch(() => {
-        // A wedged reused element is not the same failure as a hard autoplay
-        // block: a factory-fresh element often plays where the old one is
-        // stuck (iOS re-referees the audio channel between mic and speaker).
-        // One retry on fresh hardware, then bail with the reason on the trace.
-        if (a === neuralElRef.current) {
-          traceAdd("· natural retry on a fresh audio element");
-          const a2 = new Audio(blobUrl);
-          a2.onplaying = a.onplaying; a2.onended = a.onended; a2.onerror = a.onerror;
-          audioElRef.current = a2;
-          neuralElRef.current = a2;
-          a2.play().catch(() => bail("blocked twice"));
-        } else bail("blocked");
-      });
-      // A stalled element fires neither event — don't let it wedge the reply.
-      setTimeout(() => {
-        if (!ok) {
-          try { a.pause(); } catch (e) {}
-          if (audioElRef.current === a) audioElRef.current = null;
-          bail("silent 2.5s");
-        }
-      }, 2500);
-    });
-  }
-
-  // Path 2 — Mic Bridge popup does the speaking (top-level engine)
-  function sayViaBridge(short, slot) {
-    return new Promise((res) => {
-      const w = popupRef.current;
-      if (!w || w.closed) return res(false);
-      let settled = false;
-      const token = armSpeechEnd();
-      bridgeEndRef.current = () => releaseSpeechEnd(token);
-      if (slot) {
-        slot.token = token;
-        slot.finish = () => {
-          speakingRef.current = false; setSpeaking(false);
-          bridgeEndRef.current = null;
-          postBridge("stopSay"); postBridge("micResume");
-          releaseSpeechEnd(token);
-        };
-      }
-      bridgeAckRef.current = () => { if (!settled) { settled = true; res(true); } };
-      // An "ember:" pick is a Worker voice the bridge's engine can't find by
-      // name — send the auto-pick instead of a name that matches nothing.
-      w.postMessage({ ch: "EMBERMIC", t: "say", text: short, voice: (voiceChoiceRef.current && !voiceChoiceRef.current.startsWith("ember:") ? voiceChoiceRef.current : (voiceRef.current && voiceRef.current.name) || "") }, "*");
-      setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        // Giving up on the bridge is not the same as the bridge giving up. It
-        // may still be waiting on getVoices() and start talking a second later,
-        // over the top of whichever path we fall back to. Tell it to drop the
-        // utterance before we hand the answer to someone else.
-        bridgeEndRef.current = null;
-        postBridge("stopSay");
-        releaseSpeechEnd(token);
-        res(false);
-      }, 1500);
-    });
-  }
-
-  async function speakCascade(short, slot) {
-    if (await sayNeural(short, slot)) { ttsPathRef.current = "neural"; return true; }
-    if (await sayLocal(short, slot)) { ttsPathRef.current = "local"; return true; }
-    if (await sayViaBridge(short, slot)) { ttsPathRef.current = "bridge"; return true; }
-    return false;
-  }
-
-  // Resolves when she has stopped talking, not when she starts. Callers serialize
-  // on that: a queued command must not cut the current answer off mid-sentence,
-  // and two overlapping utterances would interleave their gate messages.
-  async function speak(text) {
-    // voiceOn off the ref, not the closure: speak() is awaited from sendCommand
-    // long after render, so muting while she was thinking still spoke the answer.
-    if (!voiceOnRef.current || !text) return;
-    const short = text.length > 380 ? text.slice(0, 380) + "… full answer on screen." : text;
-    lastSpokenRef.current = normalizeHeard(short);
-    lastSpokenAtRef.current = performance.now();
-    // Phones: wait for the mic to actually surrender the audio channel, or the
-    // whole utterance plays into a closed session and comes out silent. The
-    // session's onend is necessary but iOS deactivates the underlying audio
-    // session AFTER that, on its own clock — the extra settle is for the gap
-    // TEST-works-but-replies-are-silent lives in.
-    if (hasSR) {
-      const t0 = performance.now();
-      await pauseInlineMic();
-      if (isPhone) await new Promise((r) => setTimeout(r, 550));
-      traceAdd(`reply ${short.length}ch · mic freed ${Math.round(performance.now() - t0)}ms · path ${ttsPathRef.current || "audition"}`);
-    }
-    releaseSpeechEnd();
-    speechEndRef.current = null;
-    const p = ttsPathRef.current;
-    // The path writes the token it armed in here. Re-reading the shared ref at
-    // the end would sample whatever utterance armed LAST, so a short prompt's
-    // ceiling could end a long answer that started after it.
-    const slot = { token: undefined, finish: null };
-    let started = false;
-    if (p === "neural") started = await sayNeural(short, slot);
-    else if (p === "local") started = await sayLocal(short, slot);
-    else if (p === "bridge") started = await sayViaBridge(short, slot);
-    if (!started) {
-      ttsPathRef.current = null;
-      started = await speakCascade(short, slot);
-    }
-    if (!started) {
-      // NEVER a silent dead end: park the answer and offer a tap. The tap is a
-      // genuine user gesture, which is the one currency iOS accepts for
-      // re-opening the audio channel.
-      traceAdd("✕ every path silent — answer parked for TAP TO HEAR");
-      pendingSayRef.current = short;
-      setPendingSay(true);
-      setError("Audio was blocked — her answer is on screen. TAP TO HEAR replays it out loud.");
-      return;
-    }
-    if (pendingSayRef.current) { pendingSayRef.current = null; setPendingSay(false); }
-    // Never await this bare. Every permanent lockup in this feature has been
-    // some path forgetting to resolve; a caller that cannot hang turns the
-    // whole class of bug into "the mic reopens a bit early" instead of "the app
-    // is dead until reload". Ceiling is well past the longest real utterance —
-    // 380 chars at rate 1.03 is roughly 30s.
-    if (speechEndRef.current) {
-      // Sized off spoken time, not source characters: the engine expands
-      // numbers, times and prices, so "$1,250 at 5:45" is a handful of
-      // characters and several seconds of speech. Erring long is nearly free —
-      // the end signal almost always arrives first — while erring short
-      // reopens the mic while she is still talking, which is the whole bug.
-      const ceiling = Math.min(60000, 8000 + short.length * 140);
-      let bail;
-      let timedOut = false;
-      await Promise.race([
-        speechEndRef.current,
-        new Promise((r) => { bail = setTimeout(() => { timedOut = true; r(); }, ceiling); }),
-      ]);
-      clearTimeout(bail);
-      // If the ceiling won, the path never signalled an end -- a stalled audio
-      // element fires neither ended nor error. Run its finisher so the gate
-      // reopens; releasing the promise alone leaves the mic shut for good.
-      if (timedOut && slot.finish) slot.finish();
-      else if (slot.token !== undefined) releaseSpeechEnd(slot.token);
-    }
-    // Restamp on the way out: the echo window should run from when she stopped
-    // talking, not from when she started.
-    lastSpokenAtRef.current = performance.now();
-  }
-
-  async function testVoice() {
-    // HEAR IT is an explicit request for spoken replies, not a one-off bypass
-    // of a saved mute state. Keep voice mode on so the next real answer follows.
-    unlockSpeech();
-    voiceOnRef.current = true;
-    setVoiceOn(true);
-    setVoiceDiag("TESTING — chime first, then a voice…");
-    // testVoice is the one speak path not serialized by busyRef, and arming a
-    // new utterance force-releases whatever is live. Without stopping her
-    // first, the test voice talks over an answer still coming from the bridge
-    // or the mp3 element -- two engines, no gate.
-    stopSpeaking();
-    try { chime(); } catch (e) {}
-    ttsPathRef.current = null;
-    neuralDownUntilRef.current = 0; // HEAR IT doubles as the natural voice's retry button
-    const ok = await speakCascade("Ember online. Brady, can you hear me?");
-    const vs = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
-    const locals = vs.filter((v) => v.localService);
-    // Name the voice on success and the rejects on failure — "all paths failed"
-    // alone doesn't say whether the picker chose badly or the engine is dead.
-    setVoiceDiag(ok
-      ? "WORKING — PATH " + ttsPathRef.current.toUpperCase() + " · " + (ttsPathRef.current === "neural" ? (neuralVoiceRef.current || "natural") + " VIA WORKER" : (voiceRef.current ? voiceRef.current.name : "?")) + " · " + vs.length + " VOICES (" + locals.length + " LOCAL)"
-      : "ALL TTS PATHS FAILED · TRIED " + (rankedLocals().slice(0, 3).map((v) => v.name).join(", ") || "no english local voice") + " · " + vs.length + " VOICES (" + locals.length + " LOCAL) · DID THE CHIME PLAY?");
-  }
-
-  function speakNow(text) {
-    // The answer's speaker button is also a direct user gesture. Use it to
-    // bless iOS audio and make voice mode sticky for subsequent replies.
-    unlockSpeech();
-    if (!voiceOnRef.current) {
-      voiceOnRef.current = true;
-      setVoiceOn(true);
-    }
-    return speak(text);
-  }
-
-  // TAP TO HEAR: a real gesture rebuilds the whole audio channel from scratch
-  // — fresh unlock, fresh blessed element, cooldowns cleared — then replays the
-  // parked answer through the full cascade.
-  function replayPendingSay() {
-    const text = pendingSayRef.current;
-    pendingSayRef.current = null;
-    setPendingSay(false);
-    if (!text) return;
-    speechUnlockedRef.current = false;
-    neuralElRef.current = null;
-    unlockSpeech();
-    neuralDownUntilRef.current = 0;
-    ttsPathRef.current = null;
-    traceAdd("▶ TAP TO HEAR — rebuilding audio channel");
-    speak(text);
-  }
-
-  function stopSpeaking() {
-    // Retire the epoch first so no in-flight handler can reopen the mic behind
-    // us, then reopen it ourselves — pause() fires neither ended nor error, so
-    // nothing else ever would, and the mic would stay dead for good.
-    speechEpochRef.current++;
-    window.speechSynthesis?.cancel();
-    if (audioElRef.current) { try { audioElRef.current.pause(); } catch (e) {} audioElRef.current = null; }
-    speakingRef.current = false;
-    setSpeaking(false);
-    bridgeEndRef.current = null;
-    // pause() fires neither ended nor error, and both watchdogs are guarded on
-    // "never started" — so on the stop path nothing else in the app will ever
-    // resolve this. Release it here or speak() waits forever and every command
-    // after this one is queued behind an answer that already stopped.
-    releaseSpeechEnd();
-    postBridge("stopSay");
-    postBridge("micResume");
-    resumeInlineMic();
-  }
-
-  /* ---------- OPS: VOICE ENGINE + CORE VISUALIZER ---------- */
-
-  // pick the most natural TTS voice available on this device
-  useEffect(() => {
-    const pick = () => {
-      const vs = window.speechSynthesis?.getVoices() || [];
-      const en = vs.filter((v) => v.lang && v.lang.startsWith("en"));
-      // Chromium bug 374263394: network voices (Google *) silently produce no audio
-      // on Chrome 130+ — local voices are the only reliable path. Score local-first.
-      const score = (v) => {
-        let s = 0;
-        if (v.localService) s += 100;
-        if (/premium/i.test(v.name)) s += 60;
-        else if (/enhanced/i.test(v.name)) s += 45;
-        else if (/natural|neural/i.test(v.name)) s += 40;
-        if (/samantha|alex|aria|zira|david|daniel|karen|moira|ava|zoe|evan|nathan|allison|serena/i.test(v.name)) s += 25;
-        if (v.lang === "en-US") s += 10;
-        if (/compact/i.test(v.name)) s -= 40;
-        if (NOVELTY_VOICE.test(v.name)) s -= 100;
-        return s;
-      };
-      voiceRef.current = en.slice().sort((a, b) => score(b) - score(a))[0] || null;
-    };
-    pick();
-    window.speechSynthesis?.addEventListener?.("voiceschanged", pick);
-    return () => window.speechSynthesis?.removeEventListener?.("voiceschanged", pick);
-  }, []);
-
-  // Prime every speech path on the first gesture anywhere in Ember. Typed SEND
-  // is just as valid a gesture as the mic/voice controls; limiting the neural
-  // audio blessing to those controls made normal typed replies stay silent on
-  // iOS even though HEAR IT worked.
-  useEffect(() => {
-    const prime = () => {
-      unlockSpeech();
-      window.removeEventListener("pointerdown", prime);
-    };
-    window.addEventListener("pointerdown", prime);
-    return () => window.removeEventListener("pointerdown", prime);
-  }, []);
-
   // one RAF loop drives both cores through refs — zero React re-renders per frame
   useEffect(() => {
     let raf;
     const loop = (t) => {
-      const b = bridgeLevelRef.current;
-      const fresh = performance.now() - b.ts < 300;
-      let target = 0;
-      let wave = null;
-      if (fresh) { target = b.v; wave = b.wave; }
-      else if (speakingRef.current) { target = 0.28 + 0.22 * Math.abs(Math.sin(t / 130)) + 0.1 * Math.abs(Math.sin(t / 47)); }
+      // The instrument used to run on microphone level. With voice retired it
+      // runs on WORK: a slow idle breath at rest, a live swell while she is
+      // thinking or syncing. The core still means something at a glance.
+      const busy = thinkingRef.current || syncingRef.current;
+      const wave = null;
+      const target = busy
+        ? 0.30 + 0.20 * Math.abs(Math.sin(t / 130)) + 0.10 * Math.abs(Math.sin(t / 47))
+        : 0.05 + 0.03 * Math.sin(t / 900);
       levelRef.current += (target - levelRef.current) * 0.2;
       const lvl = levelRef.current;
 
@@ -2430,9 +1220,8 @@ export default function BaxstarEmber() {
         gasRef.current.style.filter = `hue-rotate(${hue}deg) brightness(${1 + lvl * 0.55}) saturate(${1 + lvl * 0.5})`;
       }
 
-      // Pressure-release glow on voice inflection (real mic input only) —
-      // a brass ring vents outward from the instrument and settles
-      if (fresh && ventRef.current) {
+      // Pressure-release glow — a brass ring vents outward as she spins up
+      if (ventRef.current) {
         if (target > 0.45 && prevLvlRef.current < 0.28 && t - lastVentRef.current > 420) {
           lastVentRef.current = t;
           const el = document.createElement("span");
@@ -2463,7 +1252,7 @@ export default function BaxstarEmber() {
             const y = mid + v * (H * 0.42);
             if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
           }
-        } else if (speakingRef.current || lvl > 0.02) {
+        } else if (lvl > 0.02) {
           for (let x = 0; x < W; x++) {
             const y = mid + Math.sin(x / 9 + t / 90) * lvl * (H * 0.4) * Math.sin(x / 60 + t / 300);
             if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
@@ -2486,28 +1275,6 @@ export default function BaxstarEmber() {
     const q = (text ?? command).trim();
     if (!q) return;
 
-    // Handled locally and never sent to the model — the whole point is that it ENDS the
-    // exchange rather than continuing it.
-    if (SLEEP_RE.test(q)) {
-      setCommand("");
-      stopSpeaking();
-      stopAllMics();
-      setChatMsgs((m) => [...m, { role: "user", content: q },
-        { role: "assistant", content: "Going quiet. Tap the mic when you need me." }]);
-      return null;
-    }
-    // A spoken command landing mid-answer used to be dropped on the floor — the
-    // guard read `thinking` and returned. Hold the latest one and run it once the
-    // current answer has been spoken, handing this caller the answer it will get
-    // so awaiting callers (draft/task flows) don't receive undefined.
-    if (busyRef.current) {
-      const prev = pendingRef.current;
-      if (prev) prev.resolve(null); // superseded — never leave a caller hanging
-      setCommand("");
-      setQueued(q);
-      return new Promise((resolve) => { pendingRef.current = { q, resolve }; });
-    }
-    busyRef.current = true;
     setThinking(true);
     setError("");
     setCommand("");
@@ -2517,7 +1284,7 @@ export default function BaxstarEmber() {
       // immediately so it's visible while she thinks, like any messenger.
       setChatMsgs((m) => [...m, userMsg]);
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceOn ? VOICE_CONTEXT : VOICE_OFF_CONTEXT) + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + "\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...historyRef.current.slice(-8),
         userMsg,
@@ -2545,20 +1312,11 @@ export default function BaxstarEmber() {
         }
       };
       const apiEffort = (EFFORT[chatEffort] && EFFORT[chatEffort].api) || undefined;
-      // With voice on, the reply is spoken and speech truncates at 380 chars --
-      // every token past that is silent latency. Capping generation is the
-      // single biggest "she answers faster" lever without touching the model.
-      // 400 was right when the cap only bought reply text. On thinking models
-      // the same budget pays for reasoning and tool calls FIRST — at 400 she
-      // ran dry before speaking a word of any tool-backed answer. Speech still
-      // truncates at 380 chars, so the extra ceiling costs latency only on
-      // answers that genuinely need the room.
-      const cap = voiceOnRef.current ? 1600 : undefined;
       try {
-        resp = await callClaude(messages, { useTools: true, model: chatModel, maxTokens: cap, effort: apiEffort, onDelta });
+        resp = await callClaude(messages, { useTools: true, model: chatModel, effort: apiEffort, onDelta });
       } catch (err) {
         if (chatModel !== FALLBACK_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: FALLBACK_MODEL, maxTokens: cap, effort: apiEffort, onDelta });
+          resp = await callClaude(messages, { useTools: true, model: FALLBACK_MODEL, effort: apiEffort, onDelta });
           fellBack = true;
         } else {
           throw err;
@@ -2576,9 +1334,6 @@ export default function BaxstarEmber() {
         return [...out, { role: "assistant", content: answer }];
       });
       setThinking(false);
-      // Awaited: busyRef must span the speaking phase too, or a queued command
-      // would cut this answer off mid-sentence and interleave its gate messages.
-      await speak(answer);
       return answer;
     } catch (e) {
       setError("Command failed — check connection and try again.");
@@ -2599,54 +1354,6 @@ export default function BaxstarEmber() {
   }
 
   sendRef.current = sendCommand;
-
-  // receive voice + levels from the Mic Bridge popup
-  useEffect(() => {
-    const onMsg = (e) => {
-      const m = e.data || {};
-      if (m.ch !== "EMBERMIC") return;
-      if (m.t === "lvl") bridgeLevelRef.current = { v: m.v, wave: m.w, ts: performance.now() };
-      if (m.t === "listening") { setListening(!!m.on); if (m.on) setMicArm(false); }
-      if (m.t === "speaking") {
-        // Only believe the bridge about speech the bridge is producing. Its own
-        // say() finishing used to clear speakingRef while THIS window was mid
-        // utterance, which unlocked the self-hearing guard at the worst moment.
-        // Symmetric on purpose. Honouring "on" unconditionally but "off" only
-        // while the proven path is still "bridge" meant a late bridge utterance
-        // — one we already timed out on and replaced — could switch speaking ON
-        // and then have its OFF discarded, latching the self-hearing guard shut
-        // so every spoken command after it was dropped in silence.
-        const oursToBelieve = ttsPathRef.current === "bridge" || !!bridgeEndRef.current;
-        if (oursToBelieve) {
-          speakingRef.current = !!m.on;
-          setSpeaking(!!m.on);
-        }
-        if (m.on) bridgeAckRef.current?.();
-        if (!m.on && bridgeEndRef.current) { bridgeEndRef.current(); bridgeEndRef.current = null; }
-      }
-      if (m.t === "closed") {
-        setListening(false); speakingRef.current = false; setSpeaking(false); popupRef.current = null;
-        // The popup's own note invites closing it, and closing it mid-answer
-        // posts "closed" but never "speaking off" — so the speech we were
-        // waiting on ends with nothing to announce it.
-        // Only end speech the BRIDGE was producing. TTS is often local or mp3
-        // while the popup is merely listening; releasing unconditionally cut
-        // her off mid-sentence the moment he closed the mic window.
-        const endBridge = bridgeEndRef.current;
-        bridgeEndRef.current = null;
-        if (endBridge) endBridge();
-      }
-      if (m.t === "transcript" && m.text) {
-        // Two layers, because the gate closes a beat after speech starts and a
-        // recognition result lands a beat after speech stops: drop anything heard
-        // while she is speaking, and drop anything that is recognisably her own
-        // last answer coming back through the speakers.
-        if (!speakingRef.current && !isEcho(m.text)) sendRef.current(m.text);
-      }
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
 
   /* ---------- OPS: SYNC LIVE DATA ---------- */
 
@@ -3404,7 +2111,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @keyframes breathe { 0%,100%{transform:scale(1);opacity:.55;} 50%{transform:scale(1.14);opacity:.85;} }
         .core-glow { animation:breathe 3.2s ease-in-out infinite; }
         .core-wrap:hover .core-glow { animation-duration:1.8s; opacity:1; }
-        .is-listening .core-glow, .is-thinking .core-glow { animation-duration:1.1s; opacity:1; }
+        .is-thinking .core-glow { animation-duration:1.1s; opacity:1; }
 
         @keyframes blink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
         .cursor-block { display:inline-block; width:7px; height:14px; margin-left:6px; vertical-align:-2px;
@@ -3679,8 +2386,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           -webkit-mask:radial-gradient(circle,transparent 0 64%,#000 65% 76%,transparent 77%);
           mask:radial-gradient(circle,transparent 0 64%,#000 65% 76%,transparent 77%);
         }
-        .is-listening .reactor-stage::before,.is-thinking .reactor-stage::before { animation-duration:3.2s; opacity:1; }
-        .is-listening .reactor-stage::after,.is-thinking .reactor-stage::after { animation-duration:2.1s; opacity:.9; }
+        .is-thinking .reactor-stage::before { animation-duration:3.2s; opacity:1; }
+        .is-thinking .reactor-stage::after { animation-duration:2.1s; opacity:.9; }
         @keyframes reactorSpin { to { transform:rotate(360deg); } }
 
         .odometer { display:flex; align-items:center; gap:4px; margin:2px 0 8px; }
@@ -3895,6 +2602,33 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .tgl.on .tgl-knob-o { fill:#B0451F; stroke:#FFB067; }
         .tgl.on .tgl-knob-i { fill:#FFD9A0; }
 
+        /* ---------- YOUR TOOLS RAIL ----------
+           Engraved brass plates screwed to the foot of the dashboard. Same
+           warmth law as the rest of the instrument: no blues, no purples. */
+        .tools-rail { width:100%; padding:14px 16px 16px; margin-top:4px; }
+        .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
+          border-bottom:1px solid var(--ember-panel-line); }
+        .tools-groups { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+        .tools-group .fieldlabel { margin-bottom:7px; }
+        /* A grid, not flex-wrap: equal tiles that line up in rows instead of
+           stretching to ragged widths as each group's count changes. */
+        .tools-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+        .tool-link { display:flex; flex-direction:column; gap:1px; min-width:0;
+          padding:8px 11px; border-radius:9px; text-decoration:none;
+          border:1px solid var(--ember-panel-line);
+          background:linear-gradient(180deg,rgba(214,179,106,.07),rgba(10,9,7,.55));
+          box-shadow:inset 0 1px 0 rgba(255,201,122,.10);
+          transition:border-color .16s, background .16s, box-shadow .16s; }
+        .tool-link:hover { border-color:var(--ember-brass-bright);
+          background:linear-gradient(180deg,rgba(255,158,61,.15),rgba(10,9,7,.5));
+          box-shadow:inset 0 1px 0 rgba(255,201,122,.2), 0 3px 16px rgba(255,120,60,.16); }
+        .tool-name { font-size:11.5px; font-weight:700; letter-spacing:.02em; color:var(--ink); overflow-wrap:anywhere; }
+        .tool-note { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+        @media (max-width:760px){
+          .tools-groups { grid-template-columns:1fr; gap:13px; }
+          .tools-rail { padding:12px 13px 14px; }
+        }
+
         .sync-gear { display:inline-block; }
         .sync-gear.spin { animation:gearSpin 900ms linear infinite; }
         .sync-gear.spin.rev { animation-direction:reverse; }
@@ -4003,23 +2737,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="14" height="14"
                 style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "4px" }} />BG
             </button>
-            {/* Brady's spec: orange while voice is on (it starts on), darker with
-                "TAP FOR VOICE MODE" when off — the state reads at a glance. */}
-            <button onClick={toggleVoiceMode} title="Spoken replies"
-              className={`header-control tgl font-mono-x ${voiceOn ? "on" : ""}`} aria-pressed={voiceOn}
-              style={voiceOn ? { color: "var(--ember-orange)" } : { color: "#8a8078", opacity: 0.85 }}>
-              <svg className="tgl-track" viewBox="0 0 112 52" width="30" height="14" aria-hidden="true">
-                <rect x="2" y="2" width="108" height="48" rx="24" fill="#0A0907" stroke="#5F4428" strokeWidth="4" />
-                <path d="M26 26h60" stroke="#3A281B" strokeWidth="10" strokeLinecap="round" />
-                <g className="tgl-knob-g">
-                  <circle cx="30" cy="26" r="17" className="tgl-knob-o" strokeWidth="3" />
-                  <circle cx="30" cy="26" r="5" className="tgl-knob-i" />
-                </g>
-              </svg>
-              {/* Full wording on desktop; the .tgl-long spans drop on a phone so the
-                  toggle stays one short word and the header holds a single row. */}
-              {voiceOn ? <>VOICE<span className="tgl-long"> ON</span></> : <><span className="tgl-long">TAP FOR </span>VOICE<span className="tgl-long"> MODE</span></>}
-            </button>
             <button onClick={syncLive} disabled={syncing}
               className="header-control sync-control flex items-center gap-2 rounded-md px-3 py-1 font-bold text-white transition-all"
               style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", boxShadow: "0 2px 14px rgba(255,77,61,.35)", opacity: syncing ? 0.6 : 1 }}>
@@ -4069,85 +2786,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </div>
           )}
         </header>
-
-        {inlineMic && (
-          // Phone controls: big targets, always visible. Left = mic, right =
-          // spoken replies. Small header chips are unusable in a truck.
-          <div className="flex gap-2">
-            <button onClick={toggleMic}
-              className="mic-rail font-mono-x flex-1 rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
-              style={listening
-                ? { borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.12)", color: "#9fe89f" }
-                : { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
-              <EmberIcon name="mic" size={13} style={{ verticalAlign: "-2px", marginRight: "6px" }} />
-              {earState !== "off" ? "IN CONVERSATION — TAP TO END" : "TAP TO TALK TO EMBER"}
-            </button>
-            <button onClick={toggleVoiceMode} aria-pressed={voiceOn}
-              className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em]"
-              style={voiceOn
-                ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
-                : { borderColor: "rgba(160,160,160,.5)", background: "rgba(160,160,160,.08)", color: "#9a9a9a" }}>
-              {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
-            </button>
-          </div>
-        )}
-        {inlineMic && earState === "off" && !micArm && (
-          <div className="font-mono-x text-center text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>
-            MIC RELEASED — YOUR TRUCK AUDIO IS UNTOUCHED UNTIL YOU TAP
-          </div>
-        )}
-        <div className="voice-picker-row flex items-center justify-center gap-2">
-          <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>HER VOICE</span>
-          <select className="voice-pick font-mono-x" value={voiceChoice}
-            aria-label="Choose Ember's voice"
-            onChange={(e) => chooseVoice(e.target.value)}>
-            <option value="">Automatic — Jenny (natural)</option>
-            <optgroup label="EMBER — NATURAL">
-              {NEURAL_VOICES.map((v) => (
-                <option key={v.id} value={"ember:" + v.id}>{v.label}</option>
-              ))}
-            </optgroup>
-            {voiceList.length > 0 && (
-              <optgroup label="THIS DEVICE">
-                {voiceList.map((v) => (
-                  <option key={v.name} value={v.name}>{v.name}{v.localService ? "" : " (network)"}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-          <button className="chip ghost" onClick={testVoice} style={{ fontSize: "9px", padding: "3px 8px" }}>HEAR IT</button>
-        </div>
-        {pendingSay && (
-          <button onClick={replayPendingSay} className="font-mono-x rounded-lg border px-4 py-3 text-center text-[11px] tracking-[0.2em] w-full"
-            style={{ cursor: "pointer", borderColor: "rgba(255,158,61,.8)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }}>
-            🔇 AUDIO BLOCKED — TAP TO HEAR HER ANSWER
-          </button>
-        )}
-        {inlineMic && voiceTrace.length > 0 && (
-          <div className="font-mono-x rounded-lg border px-3 py-1.5 text-[8px] leading-relaxed"
-            style={{ borderColor: "var(--ember-panel-line)", background: "#0c0a09", color: "var(--ink-faint)" }}>
-            {voiceTrace.slice(-3).map((l, i) => <div key={i}>{l}</div>)}
-            <div style={{ color: "var(--brass)" }}>BUILD {BUILD_STAMP} — screenshot this if she goes silent</div>
-          </div>
-        )}
-        {!inlineMic && hasSR && earState === "passive" && (
-          <div onClick={toggleMic} role="button" className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
-            style={{ cursor: "pointer", borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
-            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />EAR ON — SAY "EMBER, AWAKE" · CLICK TO TURN OFF
-          </div>
-        )}
-        {!inlineMic && hasSR && earState === "armed" && (
-          <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
-            style={{ borderColor: "rgba(120,220,120,.7)", background: "rgba(120,220,120,.10)", color: "#9fe89f" }}>
-            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />AWAKE — WHAT DO YOU NEED?
-          </div>
-        )}
-        {!inlineMic && micArm && !listening && !hasSR && (
-          <div className="mic-rail font-mono-x rounded-lg border px-4 py-2 text-center text-[10px] tracking-[0.25em]"
-            style={{ borderColor: "rgba(255,158,61,.45)", background: "rgba(255,158,61,.07)", color: "var(--ember-amber)" }}>
-            <EmberIcon name="mic" size={12} style={{ verticalAlign: "-2px", marginRight: "6px" }} />MIC ARMED — CLICK ANYWHERE TO GO LIVE
-          </div>
-        )}
 
         {error && (
           <div className="rounded-lg border px-4 py-2 text-xs font-semibold"
@@ -4222,7 +2860,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               One compact greeting line; the counts are BUTTONS that jump to their
               panels, because a number you can't act on is dead weight up here. */}
           <div className="ops-core flex min-h-0 flex-col">
-            <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${listening ? "is-listening" : ""} ${thinking ? "is-thinking" : ""}`}>
+            <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${thinking || syncing ? "is-thinking" : ""}`}>
               {/* The skeleton. Its CSS survived the v2 merge but this element didn't —
                   the class had nothing to draw until 2026-08-01. */}
               <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
@@ -4248,7 +2886,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
                 {coreMode === "enigma" ? (
-                  <div className="reactor-stage" onClick={toggleMic} role="button" aria-label="Voice input">
+                  <div className="reactor-stage" onClick={() => cmdInputRef.current?.focus()} role="button" aria-label="Focus the ask box">
                     <img src={`${ASSETS}/raster/reactor-bezel@2x.webp`} alt="" aria-hidden="true" className="reactor-bezel" />
                     <div className="reactor-core-orb">
                       <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
@@ -4259,7 +2897,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     </div>
                   </div>
                 ) : (
-                  <div className="scope-bezel mx-auto my-6" onClick={toggleMic} role="button" aria-label="Voice input">
+                  <div className="scope-bezel mx-auto my-6" onClick={() => cmdInputRef.current?.focus()} role="button" aria-label="Focus the ask box">
                     <span className="scope-screw" style={{ top: "5px", left: "6px" }} />
                     <span className="scope-screw" style={{ top: "5px", right: "6px" }} />
                     <span className="scope-screw" style={{ bottom: "5px", left: "6px" }} />
@@ -4268,41 +2906,17 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </div>
                 )}
 
-                {/* status + demoted utilities on ONE row — these were stacked four
-                    high and pushed the input off the phone screen */}
+                {/* Status + the core's face selector. The old row carried five voice
+                    controls; what is left is what a dashboard actually needs: is she
+                    working, and which instrument do you want to look at. */}
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                   <span className="font-mono-x text-[9.5px] tracking-[0.25em]"
-                    style={{ color: thinking ? "var(--ember-orange)" : listening ? "var(--ember-red)" : speaking ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-                    {thinking ? "THINKING…" : listening ? "LISTENING…" : speaking ? "SPEAKING…" : "TAP TO OPEN MIC"}
+                    style={{ color: thinking || syncing ? "var(--ember-orange)" : "var(--ink-faint)" }}>
+                    {thinking ? "THINKING…" : syncing ? "SYNCING…" : live ? "LIVE" : "READY"}
                   </span>
-                  {speaking && <button className="chip solid" onClick={stopSpeaking}>⏹ Stop</button>}
-                  {/* An off switch that is always reachable while the mic is live. It used
-                      to live only in the popup bridge window, so on the desktop the only
-                      way to stop a runaway session was to find that window. */}
-                  {listening && (
-                    <button className="chip solid" onClick={() => { stopSpeaking(); stopAllMics(); }}>
-                      ⏹ Stop listening
-                    </button>
-                  )}
-                  {/* The mute state was only legible in the header (desktop) or a bar above
-                      the fold (phone), so Brady had voice off without knowing and read the
-                      silence as broken audio. State + fix in one tap, next to the status. */}
-                  <button className="chip"
-                    onClick={toggleVoiceMode} aria-pressed={voiceOn}
-                    style={voiceOn
-                      ? { borderColor: "rgba(255,158,61,.75)", background: "rgba(255,158,61,.14)", color: "var(--ember-amber)" }
-                      : { borderColor: "rgba(120,110,100,.5)", background: "rgba(60,54,48,.35)", color: "#8a8078" }}>
-                    {voiceOn ? "VOICE ON" : "TAP FOR VOICE MODE"}
-                  </button>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
-                  <button className="chip ghost" onClick={testVoice}><EmberIcon name="speaker" size={11} style={{ verticalAlign: "-2px", marginRight: "4px" }} />TEST</button>
                 </div>
-                {voiceDiag && (
-                  <div className="font-mono-x mt-1.5 max-w-xs text-center text-[9px] leading-relaxed tracking-[0.15em]" style={{ color: "var(--ember-amber)" }}>
-                    {voiceDiag}
-                  </div>
-                )}
               </div>
 
               {/* THE THREAD — home is the real Claude chat (Brady, 2026-08-01). Full
@@ -4319,12 +2933,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     ) : (
                       <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
                         style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
-                        <span className="mb-1 flex items-center justify-between gap-3">
-                          <span className="font-mono-x text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                          <button onClick={() => speakNow(m.content)} title="Read aloud and keep voice mode on" style={{ color: "var(--ember-orange)" }}>
-                            <EmberIcon name="speaker" size={12} />
-                          </button>
-                        </span>
+                        <span className="font-mono-x mb-1 block text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
                         {m.content}
                       </div>
                     )
@@ -4342,6 +2951,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
               <div className="reveal relative w-full max-w-sm" style={{ animationDelay: "0.55s" }}>
                 <input
+                  ref={cmdInputRef}
                   type="text" value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
@@ -4354,16 +2964,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     Ask anything — "what'd I miss?"<span className="cursor-block" />
                   </span>
                 )}
-                {/* Talk-to-type: fills the box, never sends by itself. */}
-                <button onClick={toggleDictation} title="Talk to type" aria-pressed={dictating} aria-label="Dictate into the command box"
-                  className="absolute right-14 top-1/2 -translate-y-1/2 rounded-md px-1.5 py-1"
-                  style={{ color: dictating ? "var(--ember-red)" : "var(--ink-faint)", filter: dictating ? "drop-shadow(0 0 6px rgba(255,77,61,.7))" : "none" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                    <rect x="9" y="2" width="6" height="12" rx="3" />
-                    <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
-                    <path d="M12 18v4" />
-                  </svg>
-                </button>
                 <button onClick={() => sendCommand()}
                   className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2.5 py-1 text-[10px] font-bold text-white transition-opacity"
                   style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", opacity: command ? 1 : 0.35 }}>
@@ -4484,6 +3084,33 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </Panel>
           </div>
         </div>
+        )}
+
+        {/* ================= YOUR TOOLS — the brass rail along the foot of the
+            dashboard. Everything Brady actually opens in a day, one tap away,
+            so Ember is the front door and not another tab. ================= */}
+        {view === "ops" && (
+          <div className="tools-rail panel reveal" style={{ animationDelay: "0.65s" }}>
+            <div className="tools-head">
+              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="12" height="12" aria-hidden="true" />
+              <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>YOUR TOOLS</span>
+            </div>
+            <div className="tools-groups">
+              {TOOL_LINKS.map((g) => (
+                <div key={g.group} className="tools-group">
+                  <div className="fieldlabel">{g.group}</div>
+                  <div className="tools-links">
+                    {g.items.map((t) => (
+                      <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link">
+                        <span className="tool-name">{t.label}</span>
+                        <span className="tool-note">{t.note}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* ================= BAXSTAR STUDIO VIEW ================= */}
@@ -5283,7 +3910,7 @@ function mcDefaults() {
   return {
     zap: { used: 340, allowance: 750, dayOfCycle: dom, daysInCycle: 30 },
     projects: [
-      { id: mcUid(), name: "Baxstar Ember", pct: 60, status: "active", revenue: false, sessions: 3, hours: 6, next: "Mission Control + caption polish", updated: d,
+      { id: mcUid(), name: "Baxstar Ember", pct: 97, status: "active", revenue: false, sessions: 1, hours: 2, next: "Dashboard-only build shipped; voice retired", updated: d,
         links: [
           { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
           { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },

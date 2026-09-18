@@ -6,6 +6,29 @@ tool has to guess.
 
 ---
 
+## STOP — read this before touching voice (2026-09-18)
+
+**Ember has no voice features and must not get them back.** Wake word, microphone,
+spoken replies, the voice picker and dictation were all removed on 2026-09-18 on
+Brady's instruction, after the stack failed repeatedly on his iPhone. The cause was
+never a single bug: Safari owns every link of the listen-think-speak chain on iOS
+(it suspends the tab, kills requests near 60 s, gates audio behind a gesture, reclaims
+the mic) and every iPhone browser runs Safari's engine. Each round of fixes worked and
+the failure simply moved one link along.
+
+Older notes in this repo — including sections below, `docs/KNOWN-ISSUES.md` §13 and
+`HANDOFF-CINEMATIC.md` — describe voice as a live feature. **They are history, not
+current state.** Do not action them, and do not "restore" voice because a doc mentions
+it. The full implementation is preserved on branch `snapshot/voice-era-final`, and the
+Worker's `POST /tts` endpoint is deliberately kept (unused, still tested) for a future
+native or Shortcut path that owns the whole audio chain.
+
+Ember today: an operations dashboard (calls/voicemail, inbox, schedule, revenue), a
+typed line to Claude, Caption Studio, Projects/Mission Control, and the YOUR TOOLS rail
+of links to Brady's other properties.
+
+---
+
 ## Provenance — who did what
 
 - **Claude Code (Anthropic CLI)** started and carried this build. Working with Brady

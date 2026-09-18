@@ -1,5 +1,11 @@
 # Ember — Current State
 
+> **2026-09-18 — VOICE REMOVED.** Everything below that describes microphone input,
+> spoken replies, the voice picker or the voice rigs is **historical**. Ember is a
+> dashboard now: panels, a typed line to Claude, Caption Studio, Projects, and the
+> YOUR TOOLS rail. See the STOP note at the top of `SOURCES-OF-TRUTH.md`. Do not
+> restore voice from these notes.
+
 Last verified against the repository on 2026-08-24. The voice repair, Quo
 re-entry, and cache update described below are source-complete and tested; the
 Worker change still needs deployment before production voice can use it.

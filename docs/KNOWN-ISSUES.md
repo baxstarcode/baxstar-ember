@@ -1,5 +1,9 @@
 # Known Issues
 
+> **2026-09-18 — VOICE REMOVED FROM THE APP.** Every voice entry below (§13 and any
+> mic/TTS/picker item) is a closed historical record, not an open issue. Do not fix,
+> re-test or restore them. Rationale and the recovery branch: `SOURCES-OF-TRUTH.md`.
+
 Verified against the code in this repo. Fix these rather than rediscover them.
 
 Last audited at commit `d7717a1` + this pass. Each item says how it was verified.
