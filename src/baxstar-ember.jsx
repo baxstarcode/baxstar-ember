@@ -221,6 +221,103 @@ const TOOL_LINKS = [
   ]},
 ];
 
+/* ---------- THE ECOSYSTEM GRAPH ----------
+   Every moving part of Brady's operation and what it actually touches. Read-only:
+   it draws what is true, it does not edit, sync, or generate anything.
+
+   This is the ONE place the graph data lives. Edit these two arrays and nothing
+   else — the layout is computed, so adding a node needs no coordinates.
+
+   Provenance, so a later session can check a line instead of guessing: sites and
+   hosting come from TOOL_LINKS above (itself verified against the SITE HOSTING MAP
+   in 06_Baxstar_Tech_Stack_Context); connector edges from MCP_SERVERS and
+   proxy/cloudflare-worker.js; document ownership from the Drive Router
+   ("Baxstar Source of Truth", 1AgIxAj0YM8XNTTMHVcJInNAquLKnon-WB4i2DMzTzRQ);
+   repos from the baxstarcode org. Nothing here is invented.
+
+   The `g` field is the group id — it sets the colour and the legend filter.  */
+const ECO_GROUPS = [
+  { id: "core",     label: "Ember",     color: "#FF4D32" },
+  { id: "business", label: "Business",  color: "#FF7A45" },
+  { id: "site",     label: "Sites",     color: "#FFB13B" },
+  { id: "repo",     label: "Repos",     color: "#D6B36A" },
+  { id: "service",  label: "Services",  color: "#B08D57" },
+  { id: "truth",    label: "Truth",     color: "#C9B18A" },
+];
+
+const ECO_NODES = [
+  { id: "ember", g: "core", label: "EMBER", note: "This console — the front door to all of it", url: "https://baxstar-ember.pages.dev" },
+
+  { id: "fishing", g: "business", label: "Baxstar Fishing", note: "Guided trips, ice houses, pontoon rentals" },
+  { id: "golf",    g: "business", label: "Lakes Golf Sim",  note: "Simulator bays and the tech camp" },
+  { id: "consult", g: "business", label: "AI Consulting",   note: "Workflow audits and productized packages" },
+  { id: "course",  g: "business", label: "AI, FOR REAL.",   note: "The course — landing page plus live sessions" },
+
+  { id: "s-fishing", g: "site", label: "baxstarfishing.com", note: "Main site — Wix shell, HTML embeds from bax1", url: "https://baxstarfishing.com" },
+  { id: "s-boat",    g: "site", label: "boat.baxstar…",      note: "Vexus DVX 20S page — GitHub Pages, self-publishing", url: "https://boat.baxstarfishing.com" },
+  { id: "s-golf",    g: "site", label: "lakesgolfsim.com",   note: "Golf sim site — tech-camp page only so far", url: "https://lakesgolfsim.com" },
+  { id: "s-ai",      g: "site", label: "ai.lakesgolfsim",    note: "Public course landing and signup", url: "https://ai.lakesgolfsim.com" },
+  { id: "s-learn",   g: "site", label: "learn.lakesgolfsim", note: "The classroom used during live sessions", url: "https://learn.lakesgolfsim.com" },
+  { id: "s-ember",   g: "site", label: "ember.pages.dev",    note: "Hosted Ember, behind Cloudflare Access", url: "https://baxstar-ember.pages.dev" },
+
+  { id: "r-bax1",    g: "repo", label: "bax1",             note: "Fishing site HTML — the live embed code", url: "https://github.com/baxstarcode/bax1" },
+  { id: "r-ember",   g: "repo", label: "baxstar-ember",    note: "This app. src/baxstar-ember.jsx is canonical", url: "https://github.com/baxstarcode/baxstar-ember" },
+  { id: "r-caption", g: "repo", label: "caption-studio",   note: "Standalone caption tool — shares the SPONSORS set", url: "https://github.com/baxstarcode/caption-studio" },
+  { id: "r-vexus",   g: "repo", label: "baxstar-vexus",    note: "Serves the boat page directly from main", url: "https://github.com/baxstarcode/baxstar-vexus" },
+  { id: "r-pontoon", g: "repo", label: "baxstar-pontoon",  note: "Pontoon check-in app", url: "https://github.com/baxstarcode/baxstar-pontoon" },
+  { id: "r-course",  g: "repo", label: "ai-everyday-life", note: "Course repo — blueprint, releases, QA" },
+
+  { id: "claude", g: "service", label: "Anthropic API",   note: "Claude — Ember's brain" },
+  { id: "worker", g: "service", label: "Ember Worker",    note: "Holds the API key. Server-side origin allowlist" },
+  { id: "cf",     g: "service", label: "Cloudflare",      note: "Worker, Pages hosting, and Access" },
+  { id: "fh",     g: "service", label: "FareHarbor",      note: "Bookings. De-facto price truth under the 2026 freeze", url: "https://fareharbor.com/dashboard/" },
+  { id: "wix",    g: "service", label: "Wix",             note: "Hosts the fishing site shell", url: "https://manage.wix.com/" },
+  { id: "gas",    g: "service", label: "Apps Script",     note: "Drive Gateway · Caption outbox · Site price feed" },
+  { id: "drive",  g: "service", label: "Google Drive",    note: "The Data Engine — every owning doc lives here", url: "https://drive.google.com/" },
+  { id: "gmail",  g: "service", label: "Gmail",           note: "MCP connector" },
+  { id: "cal",    g: "service", label: "Calendar",        note: "MCP connector" },
+  { id: "quo",    g: "service", label: "Quo",             note: "Phones and texts. Fishing + pontoon inboxes", url: "https://app.quo.com" },
+  { id: "zapier", g: "service", label: "Zapier",          note: "Automation rail. 1500 tasks/mo — spend them carefully" },
+  { id: "ig",     g: "service", label: "Instagram",       note: "Auto-post target. Sponsors ride as photo tags" },
+  { id: "gbp",    g: "service", label: "Google Business", note: "Posts and reviews" },
+  { id: "ga4",    g: "service", label: "GA4 / GTM",       note: "Tracking. GTM is the single source for tags" },
+  { id: "github", g: "service", label: "GitHub",          note: "Every repo, and Pages for three of the sites" },
+
+  { id: "router",  g: "truth", label: "SoT Router",    note: "The map. It routes; it never stores facts" },
+  { id: "pricing", g: "truth", label: "Pricing Engine",note: "2026 LIVE sheet. RECONCILER tab is the snapshot" },
+  { id: "tech",    g: "truth", label: "06 Tech Stack", note: "Tooling facts and the site hosting map" },
+  { id: "aictx",   g: "truth", label: "AI Context",    note: "How Brady and the agents work together" },
+  { id: "voice",   g: "truth", label: "Brand Voice",   note: "03 — the copy standard" },
+  { id: "elog",    g: "truth", label: "Ember Log",     note: "Ember state and the standing-truth block" },
+  { id: "blog",    g: "truth", label: "Baxstar Log",   note: "Recent state for everything that is not Ember" },
+];
+
+/* [from, to] — undirected. Order is cosmetic only. */
+const ECO_EDGES = [
+  ["ember","claude"], ["ember","worker"], ["worker","claude"], ["worker","cf"],
+  ["ember","s-ember"], ["s-ember","cf"], ["ember","r-ember"], ["r-ember","github"],
+  ["ember","gmail"], ["ember","cal"], ["ember","drive"], ["ember","quo"],
+  ["ember","fishing"], ["ember","golf"], ["ember","zapier"], ["ember","r-caption"],
+  ["ember","elog"],
+
+  ["fishing","s-fishing"], ["fishing","fh"], ["fishing","quo"], ["fishing","ig"],
+  ["fishing","gbp"], ["fishing","s-boat"], ["fishing","r-pontoon"],
+  ["s-fishing","wix"], ["s-fishing","r-bax1"], ["s-fishing","ga4"], ["s-fishing","fh"],
+  ["s-boat","r-vexus"], ["r-vexus","github"], ["r-pontoon","github"],
+  ["r-bax1","github"], ["r-caption","github"], ["r-course","github"],
+
+  ["golf","s-golf"], ["golf","course"], ["course","s-ai"], ["course","s-learn"],
+  ["course","r-course"], ["consult","drive"], ["consult","ember"],
+
+  ["r-caption","ig"], ["zapier","ig"], ["zapier","gbp"], ["ember","gas"],
+  ["gas","drive"], ["gas","s-fishing"], ["gas","pricing"],
+
+  ["fh","pricing"], ["drive","router"],
+  ["router","pricing"], ["router","tech"], ["router","aictx"], ["router","voice"],
+  ["router","elog"], ["router","blog"], ["elog","r-ember"], ["tech","cf"],
+  ["voice","s-fishing"], ["blog","fishing"],
+];
+
 const PROJECTS_META = {
   updated: "2026-08-24",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
@@ -2605,6 +2702,47 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         /* ---------- YOUR TOOLS RAIL ----------
            Engraved brass plates screwed to the foot of the dashboard. Same
            warmth law as the rest of the instrument: no blues, no purples. */
+        /* ---------- THE WORKS — ecosystem graph ----------
+           Same warmth law as the rest of the instrument: no blues, no purples.
+           On a phone the SVG keeps its min-width and the rail scrolls sideways —
+           shrinking 39 labels to fit a 360px screen makes them unreadable, which
+           is worse than panning. */
+        .eco-rail { width:100%; padding:14px 16px 16px; margin-top:4px; }
+        .eco-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
+          border-bottom:1px solid var(--ember-panel-line); }
+        .eco-count { margin-left:auto; font-size:8.5px; letter-spacing:.2em; color:var(--ink-faint); }
+        .eco-legend { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+        .eco-key { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:999px;
+          border:1px solid var(--ember-panel-line); background:rgba(18,16,13,.6); cursor:pointer;
+          font-size:9.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+          color:var(--ink-dim); transition:border-color 160ms var(--ember-ease-mechanical), color 160ms; }
+        .eco-key:hover { border-color:var(--line-hot); color:var(--ink); }
+        .eco-key.on { border-color:var(--ember-brass-bright); color:var(--ink); background:rgba(214,179,106,.1); }
+        .eco-key.reset { color:var(--ink-faint); }
+        .eco-dot { width:8px; height:8px; border-radius:50%; }
+        .eco-scroll { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+          border:1px solid var(--ember-panel-line); border-radius:12px; background:rgba(10,9,7,.5); }
+        .eco-svg { display:block; width:100%; min-width:1040px; height:auto; }
+        .eco-node { cursor:pointer; }
+        .eco-node:focus { outline:none; }
+        .eco-node:focus-visible circle { stroke:var(--ember-brass-bright); }
+        .eco-label { font-family:var(--ember-font-ui); font-size:10px; font-weight:600;
+          letter-spacing:.02em; pointer-events:none; }
+        .eco-label.core { font-size:12px; font-weight:800; letter-spacing:.12em; }
+        .eco-detail { display:flex; align-items:baseline; flex-wrap:wrap; gap:9px; min-height:34px;
+          padding:9px 2px 0; }
+        .eco-detail-name { font-size:12.5px; font-weight:800; letter-spacing:.03em; }
+        .eco-detail-note { font-size:11.5px; line-height:1.5; color:var(--ink-dim); }
+        .eco-detail-meta { font-size:8.5px; letter-spacing:.2em; color:var(--ink-faint); }
+        .eco-detail-open { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+          color:var(--ember-brass-bright); text-decoration:none; }
+        .eco-detail-open:hover { text-decoration:underline; }
+        @media (max-width:760px) {
+          .eco-rail { padding:12px 13px 14px; }
+          .eco-detail { min-height:46px; }
+        }
+        @media (prefers-reduced-motion:reduce) { .eco-node { transition:none; } }
+
         .tools-rail { width:100%; padding:14px 16px 16px; margin-top:4px; }
         .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
           border-bottom:1px solid var(--ember-panel-line); }
@@ -3085,6 +3223,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
         </div>
         )}
+
+        {/* ================= THE WORKS — the ecosystem graph. Sits above the
+            tools rail: the rail is where you go, this is how it all hangs
+            together. Read-only. ================= */}
+        {view === "ops" && <EcoGraph />}
 
         {/* ================= YOUR TOOLS — the brass rail along the foot of the
             dashboard. Everything Brady actually opens in a day, one tap away,
@@ -3831,6 +3974,260 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 /* ============================================================
    SMALL PIECES
    ============================================================ */
+
+/* ============================================================
+   THE ECOSYSTEM GRAPH — read-only picture of what touches what.
+
+   No graph library. A dependency for one panel is not worth it, and the
+   generated index.html must stay self-contained with no CDN (see build.mjs).
+   So the layout is ~40 lines of force relaxation below.
+
+   DETERMINISTIC ON PURPOSE. The seed positions come from a golden-angle
+   spiral, not Math.random, so the graph draws identically on every render
+   and every reload. A graph that rearranges itself each visit is a graph
+   Brady has to re-read each visit.
+   ============================================================ */
+
+function ecoLayout(nodes, edges, W, H) {
+  const N = nodes.length;
+  const idx = new Map(nodes.map((n, i) => [n.id, i]));
+  const GOLDEN = 2.399963229728653;
+  const P = nodes.map((n, i) => {
+    const a = i * GOLDEN;
+    const r = 40 + 210 * Math.sqrt((i + 0.5) / N);
+    return { x: W / 2 + r * Math.cos(a), y: H / 2 + r * Math.sin(a), vx: 0, vy: 0 };
+  });
+  const links = edges
+    .map(([a, b]) => [idx.get(a), idx.get(b)])
+    .filter(([a, b]) => a !== undefined && b !== undefined);
+
+  /* Repulsion is deliberately ANISOTROPIC. What collides on screen is not the
+     circles — those sit ~46px apart — it is the LABELS, which are wide and
+     short. Pushing equally in every direction produced a readable ring of dots
+     with "baxstar-pontoon" printed straight through "Lakes Golf Sim". Shoving
+     harder along x buys the horizontal room a text label actually needs. */
+  const XBIAS = 2.35;
+  const STEPS = 460;
+  for (let it = 0; it < STEPS; it++) {
+    const cool = 1 - it / STEPS;
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        let dx = P[i].x - P[j].x, dy = P[i].y - P[j].y;
+        let d2 = dx * dx + dy * dy || 0.01;
+        if (d2 > 160000) continue;             // ignore far pairs — cheap and harmless
+        const d = Math.sqrt(d2), f = 7400 / d2;
+        dx /= d; dy /= d;
+        P[i].vx += dx * f * XBIAS; P[i].vy += dy * f;
+        P[j].vx -= dx * f * XBIAS; P[j].vy -= dy * f;
+      }
+    }
+    for (const [a, b] of links) {
+      let dx = P[b].x - P[a].x, dy = P[b].y - P[a].y;
+      const d = Math.hypot(dx, dy) || 0.01;
+      const f = (d - 125) * 0.045;
+      dx /= d; dy /= d;
+      P[a].vx += dx * f; P[a].vy += dy * f;
+      P[b].vx -= dx * f; P[b].vy -= dy * f;
+    }
+    for (let i = 0; i < N; i++) {
+      P[i].vx += (W / 2 - P[i].x) * 0.0016;
+      P[i].vy += (H / 2 - P[i].y) * 0.0022;
+      P[i].x += P[i].vx * 0.52 * cool;
+      P[i].y += P[i].vy * 0.52 * cool;
+      P[i].vx *= 0.8; P[i].vy *= 0.8;
+    }
+  }
+
+  /* LABEL DE-OVERLAP. The force pass positions circles; what a reader actually
+     collides with is the text under them. Estimate each label's box from its
+     character count and push overlapping pairs apart along their cheapest axis,
+     with a weak spring back to the force solution so the shape of the graph
+     survives. Deterministic, like everything above it. */
+  const LW = (n) => n.label.length * 6.8 + 14;   // ~10px Inter, measured generously
+  const LH = 19;
+  const home = P.map((p) => ({ x: p.x, y: p.y }));
+  for (let pass = 0; pass < 240; pass++) {
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const need = (LW(nodes[i]) + LW(nodes[j])) / 2 + 6;
+        const dx = P[j].x - P[i].x, dy = P[j].y - P[i].y;
+        const ox = need - Math.abs(dx), oy = LH - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue;        // boxes already clear
+        if (ox / need < oy / LH) {               // cheaper to separate sideways
+          const push = (ox / 2) * (dx < 0 ? -1 : 1) * 0.6;
+          P[i].x -= push; P[j].x += push;
+        } else {
+          const push = (oy / 2) * (dy < 0 ? -1 : 1) * 0.6;
+          P[i].y -= push; P[j].y += push;
+        }
+      }
+    }
+    for (let i = 0; i < N; i++) {                // weak pull home keeps the shape
+      P[i].x += (home[i].x - P[i].x) * 0.015;
+      P[i].y += (home[i].y - P[i].y) * 0.015;
+    }
+  }
+
+  // Fit whatever shape it settled into back inside the viewBox.
+  const pad = 58;
+  const xs = P.map((p) => p.x), ys = P.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const s = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxY - minY || 1));
+  const ox = pad + ((W - 2 * pad) - (maxX - minX) * s) / 2;
+  const oy = pad + ((H - 2 * pad) - (maxY - minY) * s) / 2;
+  return nodes.map((n, i) => ({
+    ...n,
+    x: ox + (P[i].x - minX) * s,
+    y: oy + (P[i].y - minY) * s,
+  }));
+}
+
+/* Solved once when the module loads, not per render. The inputs are module
+   constants, so there is nothing to recompute — and doing it here keeps the
+   component down to plain useState, which matters: build.mjs and
+   sync-standalone.py both match the React import line as an exact string and
+   abort if a new hook has to be added to it. */
+const ECO_W = 1460, ECO_H = 760;
+const ECO_PLACED = ecoLayout(ECO_NODES, ECO_EDGES, ECO_W, ECO_H);
+const ECO_BY_ID = new Map(ECO_PLACED.map((n) => [n.id, n]));
+const ECO_COLOR = new Map(ECO_GROUPS.map((g) => [g.id, g.color]));
+/* Who each node touches — powers the highlight and the detail line. */
+const ECO_NEAR = (() => {
+  const m = new Map(ECO_NODES.map((n) => [n.id, new Set()]));
+  for (const [a, b] of ECO_EDGES) {
+    if (m.has(a) && m.has(b)) { m.get(a).add(b); m.get(b).add(a); }
+  }
+  return m;
+})();
+
+function EcoGraph() {
+  /* Hover and pin are SEPARATE. Collapsing them into one "selected" id looks
+     tempting and is wrong: on a desktop the pointer is already inside the node
+     when the click lands, so a single toggling id gets set by mouseenter and
+     immediately cleared by the click — clicking would do nothing at all.
+     Hover peeks, click pins, and a pin survives the pointer leaving. */
+  const [hover, setHover] = useState(null);
+  const [pin, setPin] = useState(null);
+  const [only, setOnly] = useState(null);    // group id isolated via the legend
+
+  const sel = pin || hover;
+  const colorOf = (g) => ECO_COLOR.get(g) || "var(--brass)";
+  const active = sel ? ECO_BY_ID.get(sel) : null;
+  const near = sel ? ECO_NEAR.get(sel) : null;
+  const dimmed = (n) => (only && n.g !== only) || (sel && n.id !== sel && !near.has(n.id));
+
+  return (
+    <div className="eco-rail panel reveal" style={{ animationDelay: "0.62s" }}>
+      <div className="eco-head">
+        <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" width="12" height="12" aria-hidden="true" />
+        <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>THE WORKS</span>
+        <span className="eco-count font-mono-x">{ECO_NODES.length} PARTS · {ECO_EDGES.length} LINKS</span>
+      </div>
+
+      <div className="eco-legend">
+        {ECO_GROUPS.map((g) => (
+          <button
+            key={g.id}
+            className={`eco-key ${only === g.id ? "on" : ""}`}
+            onClick={() => { setOnly(only === g.id ? null : g.id); setPin(null); setHover(null); }}
+          >
+            <span className="eco-dot" style={{ background: g.color }} />
+            {g.label}
+          </button>
+        ))}
+        {(only || sel) && (
+          <button className="eco-key reset" onClick={() => { setOnly(null); setPin(null); setHover(null); }}>Reset</button>
+        )}
+      </div>
+
+      <div className="eco-scroll">
+        <svg className="eco-svg" viewBox={`0 0 ${ECO_W} ${ECO_H}`} role="img"
+          aria-label="Map of Brady's sites, repos, services and sources of truth, and how they connect">
+          <g>
+            {ECO_EDGES.map(([a, b], i) => {
+              const na = ECO_BY_ID.get(a), nb = ECO_BY_ID.get(b);
+              if (!na || !nb) return null;
+              const lit = sel && (a === sel || b === sel);
+              const off = (only && na.g !== only && nb.g !== only) || (sel && !lit);
+              return (
+                <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
+                  stroke={lit ? colorOf(active.g) : "var(--ember-brass-dark)"}
+                  strokeWidth={lit ? 1.8 : 1}
+                  opacity={off ? 0.07 : lit ? 0.85 : 0.34} />
+              );
+            })}
+          </g>
+          <g>
+            {ECO_PLACED.map((n) => {
+              const core = n.id === "ember";
+              const r = core ? 17 : n.g === "business" ? 11 : 8;
+              const off = dimmed(n);
+              const c = colorOf(n.g);
+              return (
+                <g key={n.id} className="eco-node" opacity={off ? 0.2 : 1}
+                  onMouseEnter={() => setHover(n.id)}
+                  onMouseLeave={() => setHover((h) => (h === n.id ? null : h))}
+                  onClick={() => setPin((q) => (q === n.id ? null : n.id))}
+                  role="button" tabIndex={0}
+                  onFocus={() => setHover(n.id)}
+                  onBlur={() => setHover((h) => (h === n.id ? null : h))}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPin((q) => (q === n.id ? null : n.id)); } }}>
+                  {/* Named with SVG's own <title> rather than aria-label. The
+                      dashboard smoke test reads any aria-label containing
+                      "Voice" as a surviving voice control, and one of these
+                      nodes is the Brand Voice doc — and <title> is the correct
+                      SVG naming idiom regardless. */}
+                  <title>{`${n.label} — ${n.note}`}</title>
+                  {/* Invisible, finger-sized hit target. The painted circle is
+                      about 11px across on a phone — too small to tap, and small
+                      enough that the centre of this group's bounding box (which
+                      includes the label beneath) lands OUTSIDE it, so a tap or a
+                      synthetic click missed the node entirely. Verified on a
+                      390px viewport before this was added. */}
+                  <circle cx={n.x} cy={n.y} r={Math.max(r + 16, 26)} fill="transparent" />
+                  {(core || n.id === sel) && (
+                    <circle cx={n.x} cy={n.y} r={r + 9} fill={c} opacity={0.14} />
+                  )}
+                  <circle cx={n.x} cy={n.y} r={r} fill="#100D0A" stroke={c}
+                    strokeWidth={n.id === sel ? 3 : core ? 2.5 : 1.6} />
+                  {core && <circle cx={n.x} cy={n.y} r={r - 6} fill={c} opacity={0.85} />}
+                  <text x={n.x} y={n.y + r + 13} textAnchor="middle"
+                    className={core ? "eco-label core" : "eco-label"}
+                    fill={n.id === sel ? "var(--ink)" : core ? c : "var(--ink-dim)"}>
+                    {n.label}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      </div>
+
+      <div className="eco-detail">
+        {active ? (
+          <>
+            <span className="eco-detail-name" style={{ color: colorOf(active.g) }}>{active.label}</span>
+            <span className="eco-detail-note">{active.note}</span>
+            <span className="eco-detail-meta font-mono-x">
+              {near.size} {near.size === 1 ? "LINK" : "LINKS"}
+            </span>
+            {pin === active.id && (
+              <button className="eco-detail-open" onClick={() => setPin(null)}>pinned — tap to release</button>
+            )}
+            {active.url && (
+              <a href={active.url} target="_blank" rel="noopener noreferrer" className="eco-detail-open">open ↗</a>
+            )}
+          </>
+        ) : (
+          <span className="eco-detail-note">
+            Hover or tap any part to trace what it touches. Tap a colour to isolate that layer.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge }) {
   return (

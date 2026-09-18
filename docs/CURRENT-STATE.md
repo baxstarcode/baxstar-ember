@@ -18,8 +18,9 @@ project control, content work, and voice interaction—not a generic chatbot.
 
 The product currently has three primary views:
 
-1. **OPS** — calls and voicemail, email, calendar, revenue, quick actions, and a
-   Claude command surface grounded in Baxstar business context.
+1. **OPS** — calls and voicemail, email, calendar, revenue, quick actions, a
+   Claude command surface grounded in Baxstar business context, and **THE WORKS**
+   (see below).
 2. **MISSION CONTROL** — editable project tracking, completion fuses, next actions,
    resumable project links, task lists, Zapier usage and pacing, effort rollups, and
    a decision queue. This view persists in browser `localStorage`.
@@ -40,6 +41,16 @@ while compressed raster/SVG assets supply depth and mechanical character.
   2026-08-24. Quo now supports custom MCP clients and is back in the app at
   `https://mcp.quo.com/mcp`; its user authorization/secrets are still pending.
 - OPS and Studio degrade gracefully when an optional connector is unavailable.
+- **THE WORKS** (2026-09-18) — a read-only map on the OPS homepage of all 39
+  moving parts of the operation and the 60 links between them: businesses,
+  sites, repos, services, and the Router-designated owning docs. Hover or tap
+  any part to trace what it touches; tap a legend colour to isolate that layer.
+  It draws only; it does not edit, sync, or generate anything. Data lives in
+  `ECO_NODES` / `ECO_EDGES` in `src/baxstar-ember.jsx` — edit those two arrays
+  and the layout re-solves itself, no coordinates to maintain. No graph library
+  was added: the layout is ~60 lines of deterministic force relaxation plus a
+  label de-overlap pass, so `index.html` stays self-contained with no CDN.
+  Covered by `.devtest/eco-graph-check.mjs`.
 - Voice replies and microphone input are integrated into the main app. The
   2026-08-24 repair updates Microsoft's current neural-TTS handshake, makes the
   picker recover from stale stored voice names, retires the robotic Brian
