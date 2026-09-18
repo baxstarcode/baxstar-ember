@@ -136,6 +136,7 @@ const html = `<!DOCTYPE html>
      Source: src/baxstar-ember.jsx · Rebuild: npm run build
      Self-contained: React and the compiled app are inlined, so this file loads with
      no CDN. The only network Ember needs is its API proxy. -->
+<link rel="icon" href="assets/ember/icon.svg" type="image/svg+xml"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="assets/ember/icon.svg"/>
 <style id="ember-tailwind-compiled">${tailwindCss}</style>
@@ -186,7 +187,7 @@ fs.writeFileSync(OUT, html);
 // fail over the preview harness.
 try {
   execFileSync("python3", [path.join(ROOT, "scripts", "sync-standalone.py")], { stdio: ["ignore", "ignore", "pipe"] });
-  console.log("build: ran scripts/sync-standalone.py — voice config + _preview.html refreshed");
+  console.log("build: ran scripts/sync-standalone.py — _preview.html refreshed");
 } catch (e) {
   console.warn("build: WARNING — could not run scripts/sync-standalone.py (" + (e.message || e).split("\n")[0] + ")");
   console.warn("       voice/ember-demo.html's generated config may now lag src — run ./start-ember.sh once to refresh it.");

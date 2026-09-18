@@ -2,7 +2,7 @@
 
 Brady Baxter's personal AI command center for Baxstar Fishing and Lakes Golf Simulator.
 
-Ember is the front door to both businesses — chat, phones, email, calendar, and Drive in one interface, with a voice layer on top.
+Ember is the front door to both businesses — a dashboard over phones, email, calendar and Drive, with a typed line to Claude and a rail of links to every other Baxstar tool.
 
 ---
 
@@ -30,8 +30,6 @@ Ember is the front door to both businesses — chat, phones, email, calendar, an
 | `start-ember.sh` | Regenerates the preview, then serves it on :8787. | Working |
 | `proxy/cloudflare-worker.js` | Key-holding API proxy. | **Deployed & verified** |
 | `proxy/vercel/api/claude.js` | Same proxy for Vercel / Netlify. | Written, unused (Cloudflare is live) |
-| `voice/ember-voice-deck.html` | Voice test rig — mic in, speech out, audio meter. | Working |
-| `voice/ember-demo.html` | Voice rig + Claude brain, canned demo as fallback. Config generated from `src/`. | Working |
 | `docs/BUILD-PROMPT.md` | Master brief for any AI session that continues this build. | Current |
 | `docs/DEPLOY.md` | How to build, deploy the proxy, and go live. | Current |
 | `docs/HANDOFF-CINEMATIC.md` | Checkpoint notes for the cinematic v2 build. | Current |
@@ -120,41 +118,34 @@ Run `npm run build` first; it tests the build, not the source.
 
 ---
 
-## The voice layer — `voice/`
+## Voice — retired 2026-09-18
 
-The main app now owns the production voice experience: Worker neural TTS first,
-explicit natural/device picker, scored local fallback, mic/speaker handoff, and an
-on-screen flight recorder. The robotic Brian network fallback was removed from the
-app on 2026-08-24.
+Ember had a full voice stack: wake word, mic handoff, neural TTS through the Worker,
+a device-voice picker, a never-silent fallback ladder. **It is gone from the app**, by
+Brady's decision, after it failed on his phone across three rounds of fixes.
 
-`voice/` contains separate self-contained diagnostic/demo rigs. Open either file
-directly in **Chrome** (Web Speech API support) and click through.
+It was not one bug. Talking to a web page is a five-link chain — mic capture, speech
+recognition, the network round trip, audio playback, and the browser handing the mic
+back — and on iOS every link is owned by Safari, which suspends the tab, kills requests
+at about 60 seconds, gates audio behind a gesture and takes the mic back at will. Every
+iPhone browser, Chrome included, runs Safari's engine, so there is no way around it from
+a web page. Each fix worked and the failure moved to the next link. The result was an
+assistant that worked *sometimes*, which is worse than one that never did.
 
-- Speech in: continuous `SpeechRecognition`
-- Speech out: `speechSynthesis` with a scored local-voice picker, plus a two-source MP3
-  fallback chain and a 1.4s watchdog
-- Live mic-level meter driving an animated orb
-- Full diagnostic log panel
+**Do not re-add voice to this app.** If voice comes back it belongs somewhere that owns
+the whole chain — a native app, an iOS Shortcut calling the Worker, or a WebRTC agent
+platform. Two things are deliberately kept for that day:
 
-`ember-demo.html` routes spoken questions through Claude — real Baxstar context, real
-connectors, replies written for the ear. Set `EMBER_API_PROXY` at the top of the file to
-turn it on. Without it, or if the call fails, it falls back to the canned demo brain, so
-the offline demo still works.
-
-The rigs remain diagnostic surfaces; application voice behavior belongs in
-`src/baxstar-ember.jsx`. Run `npm run test:voice` for the production desktop/mobile
-picker, automatic spoken-reply, sticky voice-mode, and iOS gesture-gating regression.
-
----
+- `POST /tts` in `proxy/cloudflare-worker.js` — the neural voice Brady liked. Unused by
+  the app now, still tested (55/55), zero cost while idle.
+- Branch `snapshot/voice-era-final` — the complete voice implementation, recoverable.
 
 ## Known issues
 
 See `docs/KNOWN-ISSUES.md`. Short version:
 
-1. **Voice repair needs the Worker deploy + real-device proof.** Source and 55 Worker
-   tests are green; production still runs the older empty-audio handshake until deployed.
-2. **Quo needs one-time consent and encrypted Worker secrets.** Gmail, Calendar, and
-   Drive are already live.
+1. **Revenue is entered by hand.** Nothing invents the number — there is no booking-system
+   connection to pull it from, and FareHarbor has no public API.
 
 Recently closed: proxy deployed and verified · hosted at `baxstar-ember.pages.dev` behind
 Cloudflare Access · glass tanks brought into the warm palette · `index.html` no longer needs
