@@ -18,6 +18,11 @@ optional explicit Play. Production integration remains blocked until Brady compl
 five real desktop-Chrome turns and confirms microphone release, recognition, text,
 audible neural playback, cancellation, and recovery.
 
+The deployed isolated lab has completed signed-in streamed text and a neural-audio
+browser `playing`/`ended` cycle through the released same-origin boundary. That is
+production-path evidence, not proof of physical audibility, voice quality, microphone
+capture/release, or repeated-device reliability.
+
 The iPhone path requires its own opt-in reliability experiment: repeated turns,
 interruptions, permission recovery, playback, and microphone handback on the actual
 phone. Browser capabilities and platform limits must be verified, not inferred from
@@ -93,6 +98,15 @@ of links to Brady's other properties.
   voice feasibility probe. Automated voice checks do not supersede Brady's physical
   Mac gate.
 
+- **Codex release, 2026‑09‑20:** PR #43 merged to `main` at
+  `add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit
+  `063237de6bfc45eb562eb9dbd82a9eb8b651a6f8` shipped through Pages deployment
+  `1f56234b-f359-43f2-ba38-c839d2e6b415` and Worker version
+  `ac3b4578-5a04-4abf-9286-8e95663517d5`. Access, the binding, public-host gate,
+  OAuth start, signed-in streamed text, ordinary chat, live OPS sync, and browser TTS
+  events were verified. Data-free connector status, a controlled outbox write, and
+  physical voice behavior remain open.
+
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 
@@ -108,7 +122,7 @@ of links to Brady's other properties.
 | **Steampunk asset spec** (authoritative for the skin) | `assets/ember/CLAUDE-HANDOFF.md`, `manifest.json`, `control-map.json`, `motion-spec.json`, `design-tokens.css` | Manifest = asset inventory; control-map = function mapping; motion-spec = timings. Mockups in `assets/ember/mockups/` are **intent references only**, never app backgrounds. |
 | **Current state, must-not-change list, reproduce recipe** | `HANDOFF-CINEMATIC.md` | The living checkpoint doc. Start here to resume. |
 | **Provenance & this file map** | `SOURCES-OF-TRUTH.md` (this file) | — |
-| **Deployed/repo truth** | GitHub `baxstarcode/baxstar-ember` @ `main` | Private. Checkpoint SHA `1ac6be7`. |
+| **Deployed/repo truth** | GitHub `baxstarcode/baxstar-ember` @ `main` | Private. Revival merge `add4a8c2`; release commit `063237d`. Historical checkpoint `1ac6be7`. |
 | **Local run** | `_preview.html` via `./start-ember.sh` | Generated + gitignored. `start-ember.sh` regenerates it before serving, so it cannot go stale. Ephemeral; not a source of truth, a way to view one. |
 | **Deploy build** | `index.html` via `npm run build` (`build.mjs`) | Generated. Compiled inline Tailwind, production React. **Exactly one generator writes it** — that rule is what stopped it drifting a whole redesign behind `src/`. |
 | **Cinematic visual target** | Brady's ChatGPT reference mockup (`~/Downloads/ChatGPT Image Jul 27…png`) | The look to match; a flat painting, **not** a UI to embed. |
@@ -117,8 +131,8 @@ of links to Brady's other properties.
 
 - `index.html` — **generated** from `src/baxstar-ember.jsx` by `build.mjs`. Never edit it
   by hand and never build from it; it is an output. It is no longer stale (the generator
-  guarantees that) and the Tailwind blocker is fixed, but hosting it still needs the API
-  proxy deployed.
+  guarantees that) and the Tailwind blocker is fixed. Production serves it through the
+  deployed Access-protected Pages gateway and Worker boundary in `docs/DEPLOY.md`.
 - `_preview.html` — **generated** by `scripts/sync-standalone.py`, and gitignored. The
   copy that was briefly committed on `main` was already stale.
 - Historical `voice/*.html` rigs and voice-era branches — diagnostic history, not the

@@ -2,11 +2,16 @@
 
 Last verified against the working repository on **2026-09-20**.
 
-**Status:** the desktop revival is source-complete and the local/simulated suites are
-green. The new Cloudflare Pages build, same-origin API gateway, and Worker host gate
-still need their staged production rollout and signed-in verification. Desktop voice is
-an isolated experiment until Brady passes the physical five-run Mac Chrome gate.
-Reliable iPhone voice is an approved experiment with a separate physical-device gate.
+**Status:** the desktop revival is deployed. PR #43 merged to `main` at
+`add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit
+`063237de6bfc45eb562eb9dbd82a9eb8b651a6f8` is live through Pages deployment
+`1f56234b-f359-43f2-ba38-c839d2e6b415`. The same-origin gateway, Worker host gate,
+ordinary signed-in chat, live OPS sync, and the isolated lab's streamed text/TTS browser
+path have production evidence. Data-free connector status, one controlled Drive-outbox
+write, real microphone behavior, and physical speaker audibility remain pending.
+Desktop voice is still an isolated experiment until Brady passes the physical five-run
+Mac Chrome gate. Reliable iPhone voice is an approved experiment with a separate
+physical-device gate.
 
 ## What Ember is now
 
@@ -72,13 +77,19 @@ Authenticated browser
 - Ordinary chat can read the approved Quo, Gmail, and Calendar tools. The separate
   Drive librarian can search and read approved Drive data. Neither can send messages,
   create external tasks, alter mail/calendar data, or write Drive files.
-- After the pending host-gate deploy, the public `workers.dev` hostname will accept
-  only the manual OAuth start/callback GET routes; every API request there returns 404.
-  `Origin` is CORS policy, not authentication.
+- The deployed public `workers.dev` hostname accepts only the manual OAuth
+  start/callback GET routes. Forged-Origin POSTs to all four `/api/*` routes returned
+  404 on both ordinary and trailing-dot host forms; Google OAuth start still redirected
+  to `accounts.google.com`. `Origin` is CORS policy, not authentication.
 
 Quo, Gmail, Calendar, and Drive credentials were all reported connected by the live
-credential-status route on 2026-09-20. The new gateway/host-gate release still needs
-production verification before that state is attributed to the revived build.
+credential-status route earlier on 2026-09-20. The revived release has not yet repeated
+that data-free status call. It did complete a signed-in live OPS auto-sync without
+model-generated fallback: the panels reported 0 calls, 5 unread messages, and 0 calendar
+events; no private item content was recorded in this repository. Main chat completed,
+surfaced one transient connector-degraded response honestly, and completed the focused
+follow-up without the degraded banner. That recovery is evidence of the released path,
+not a blanket guarantee that every connector is continuously available.
 
 ## Verified in this revival
 
@@ -99,23 +110,34 @@ The latest recorded local release matrix is green: **562/562 checks**.
 - posting-time tests: 24/24.
 
 Browser checks cover desktop, laptop, and phone widths with intercepted external calls.
-They do not replace signed-in production, provider, microphone, speaker, OAuth, or
-device verification.
+Production verification also established:
 
-## Remaining gates, in order
+- the merged Pages build rendered successfully on the custom hostname;
+- unauthenticated requests to the custom host, its `/api/messages` path, the exact production
+  Pages alias, and the current deployment alias all redirected to Cloudflare Access;
+- before the Worker update, a signed-in connector-free `stream:false` lab request
+  completed through the Pages binding in 1.3 seconds;
+- Worker version `ac3b4578-5a04-4abf-9286-8e95663517d5` deployed with existing secrets
+  preserved and the server-only `OUTBOX_URL` configured;
+- after the Worker update, a signed-in streamed lab reply completed in 1.4 seconds;
+- explicit lab playback received neural audio, entered the browser's `playing` state,
+  reached `ended`, and left the UI at `Playback ended` with the mic off;
+- ordinary main chat and a count-only connector follow-up completed, live OPS sync
+  populated verified panels, a Drive librarian title search found the Ember Handoff Log
+  without reading its contents, and all 11 sponsor handles matched their owner source.
 
-1. Publish the `npm run build:pages` output through the `main` Pages deployment and
-   confirm the custom hostname, exact production `pages.dev` alias, and preview wildcard
-   all challenge unauthenticated visitors through Cloudflare Access.
-2. In an authenticated production session, disable the lab's **Stream reply** option
-   and use a typed-only, connector-free message to prove the Pages service binding
-   against the existing Worker (which incorrectly labels SSE as JSON).
-3. Deploy the updated Worker promptly as the second half of the release. Confirm
-   direct API POSTs on `workers.dev` return 404 while OAuth GET and the binding work.
-4. Verify signed-in chat, data-free connector status, TTS, one controlled outbox draft,
-   and verified OPS sync. The historical Worker cannot provide the new status/TTS/
-   outbox paths before this update; see the staged sequence in `docs/DEPLOY.md`.
-5. Have Brady complete the five-run physical Mac Chrome voice gate. Test the opt-in
+These checks still do not prove a real microphone, physical speaker audibility or audio
+quality, continuous connector availability, or a successful Drive-outbox write.
+
+## Remaining gates
+
+1. Run the data-free signed-in `/api/connectors/status` call through the Pages binding.
+   Treat the earlier all-connected report, the verified live OPS sync, and the observed
+   chat recovery as separate evidence rather than substitutes for this route check.
+2. Publish one controlled Caption Studio draft and confirm `/api/outbox` reports success
+   only after the private Drive file exists. The Worker secret is configured; the write
+   itself is not yet verified for this release.
+3. Have Brady complete the five-run physical Mac Chrome voice gate. Test the opt-in
    iPhone lab separately for repeated turns, interruptions, and microphone handback.
    Integrate only the interaction and platform that passes its physical gate.
 

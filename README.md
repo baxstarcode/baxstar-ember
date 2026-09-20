@@ -7,6 +7,13 @@ Baxstar system in one cinematic steampunk dashboard.
 
 Production: `https://ember.baxstarfishing.com` behind Cloudflare Access.
 
+The desktop revival shipped through PR #43 on 2026-09-20. Pages deployment
+`1f56234b-f359-43f2-ba38-c839d2e6b415` and Worker version
+`ac3b4578-5a04-4abf-9286-8e95663517d5` passed the staged binding, Access, public-host
+gate, OAuth-start, signed-in streaming-lab, ordinary-chat, live-OPS, and browser TTS
+checks. A data-free connector-status call, one controlled Drive-outbox write, and all
+physical voice tests remain pending; see `docs/CURRENT-STATE.md`.
+
 ## Current product
 
 - **OPS:** calls/voicemail, unread mail, calendar, manual revenue, quick actions,
@@ -18,9 +25,11 @@ Production: `https://ember.baxstarfishing.com` behind Cloudflare Access.
 - **Studio:** Caption Studio, Drive librarian, AI handoff, HTML viewer, image filters,
   GitHub browser, and reusable snippets.
 - **Connectors:** Quo, Gmail, Calendar, and Drive are supported through server-held
-  OAuth. Their credentials were previously reported connected, but the revived release
-  still requires signed-in production verification. Ordinary chat receives only a
-  reviewed read-tool allowlist.
+  OAuth. The revived release completed a signed-in live OPS sync, found the Ember
+  Handoff Log by title through the Drive librarian without reading its contents, and
+  observed chat recovery after one honestly surfaced connector-degraded response. The
+  dedicated data-free status call is still pending, so this is not a blanket
+  all-connected claim. Ordinary chat receives only a reviewed read-tool allowlist.
 
 Live sync is deliberately honest: a degraded connector response cannot replace the
 panels or mark demo/model-generated data as live. Revenue stays manual until a real
@@ -41,9 +50,11 @@ isolated page under `work/desktop-voice-probe/` provides one explicit turn:
 3. click **Send transcript**;
 4. optionally click **Play response**.
 
-Automated checks pass, but real microphone release, recognition accuracy, and audible
-speaker output remain **PROVISIONAL** until Brady completes the five-run Mac Chrome gate
-in that folder's README. An opt-in iPhone experiment must independently prove repeated
+Automated checks pass, and the deployed lab completed signed-in streaming text plus a
+neural-audio browser `playing`/`ended` cycle. Real microphone release, recognition
+accuracy, physical speaker audibility, and voice quality remain **PROVISIONAL** until
+Brady completes the five-run Mac Chrome gate in that folder's README. An opt-in iPhone
+experiment must independently prove repeated
 turns, interruption recovery, and microphone handback on the actual phone before phone
 integration. Desktop success does not prove phone reliability. Neither experiment
 automatically restores wake words, background capture, or automatic listening restart.
