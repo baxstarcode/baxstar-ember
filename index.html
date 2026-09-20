@@ -653,7 +653,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-09-18 15:14Z".startsWith("__") ? "dev" : "2026-09-18 15:14Z";
+  const BUILD_STAMP = "2026-09-20 15:00Z".startsWith("__") ? "dev" : "2026-09-20 15:00Z";
   const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || ANTHROPIC_DIRECT;
   const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
@@ -3534,7 +3534,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           next: "Dashboard-only build shipped; voice retired",
           updated: d,
           links: [
-            { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+            { id: mcUid(), label: "app", url: "https://ember.baxstarfishing.com" },
             { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
             { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" }
           ],
@@ -3563,7 +3563,7 @@ Propose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentar
           hours: 4,
           next: "Deploy outbox Apps Script",
           updated: d,
-          links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }],
+          links: [{ id: mcUid(), label: "studio", url: "https://ember.baxstarfishing.com" }],
           tasks: []
         },
         {
