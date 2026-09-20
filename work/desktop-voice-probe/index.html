@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Ember · Voice reliability lab</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./probe.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">EMBER / ISOLATED EXPERIMENT</p>
+      <h1>Voice reliability lab</h1>
+      <p>Desktop Chrome first; iPhone Safari is an optional experiment. Physical microphone and speaker behavior is <strong>PROVISIONAL</strong> until you test it.</p>
+    </header>
+    <section class="capabilities" aria-label="Capabilities">
+      <p id="capability">Checking browser…</p>
+      <p id="permission">Microphone permission: not requested.</p>
+      <p id="connection"></p>
+      <div id="mobile-experiment" hidden>
+        <label class="check"><input id="mobile-opt-in" type="checkbox"> Enable this phone/tablet experiment for this visit</label>
+        <p class="hint">Keep this page visible. Safari speech recognition may require Siri to be enabled. This is a test, not a promise of supported phone voice; no setting is saved.</p>
+      </div>
+    </section>
+    <section aria-label="Microphone">
+      <div class="controls">
+        <button id="talk" class="primary" disabled>Talk</button>
+        <button id="cancel" disabled>Cancel / stop all</button>
+        <span id="mic-state" class="state" role="status">Mic off</span>
+      </div>
+      <button id="confirm-release" hidden>I checked: the device’s mic indicator is off</button>
+      <p class="hint">The mic opens only when you tap Talk. The browser may send speech to its recognition provider. No wake word or automatic restart. Use a harmless test sentence.</p>
+      <p class="interim"><span>Interim transcript</span><output id="interim" aria-live="polite">—</output></p>
+      <label for="transcript">Final transcript / editable test message</label>
+      <textarea id="transcript" rows="3" maxlength="1000" placeholder="Say: Give me one sentence of encouragement. Or type here to test the proxy without a mic."></textarea>
+      <label class="check"><input id="stream-reply" type="checkbox" checked> Stream reply</label>
+      <div class="controls">
+        <button id="send" disabled>Send transcript</button>
+        <span id="request-state" class="state" role="status">Not sent</span>
+      </div>
+      <p class="hint">Send makes one short AI request. This probe has no business connectors or external action tools.</p>
+    </section>
+    <section aria-label="Response">
+      <h2>Response</h2>
+      <div id="reply" class="reply" aria-live="polite">Your response will appear here.</div>
+      <div class="controls">
+        <button id="play" disabled>Play response</button>
+        <span id="audio-state" class="state" role="status">Audio off</span>
+      </div>
+      <audio id="audio" controls preload="none" hidden aria-label="Neural response audio"></audio>
+      <p class="hint">Optional: uses Ember’s existing neural TTS endpoint. If playback is blocked, tap the audio player’s Play control. The mic stays off. Tapping Talk stops and clears the old audio before requesting the mic.</p>
+    </section>
+    <p id="message" role="status" aria-live="polite">Ready. Nothing is recording or being sent.</p>
+    <section aria-label="Physical test and results">
+      <h2>Five-turn physical check</h2>
+      <ol class="test-steps">
+        <li>Talk → review the final words → Send transcript → Play response. Check the actual mic indicator turns off and the reply is audible. Record the result below.</li>
+        <li>Complete five full turns total. Start at least one new turn immediately after playback ends. Record any extra native-player tap or reload as Limited.</li>
+        <li>Then test Cancel during listening, a text request, and playback. Start Talk during playback once; the old audio must stop before listening.</li>
+        <li>While listening, switch apps or tabs briefly and return. On iPhone, also try locking/unlocking once. Listening and playback must not restart on their own. Finish with another explicit full turn.</li>
+        <li>Test microphone denial and recovery once. If anything sticks, record Failed and the visible error; do not repeatedly retry a broken chain.</li>
+      </ol>
+      <p id="turn-number" class="state">No turn yet · physical result not recorded</p>
+      <div class="result-fields">
+        <label for="result">This turn</label>
+        <select id="result">
+          <option value="">Choose a result…</option>
+          <option value="pass">Pass — complete and smooth</option>
+          <option value="limited">Limited — partial test or recovery needed</option>
+          <option value="failed">Failed — unusable or stuck</option>
+        </select>
+        <label class="check"><input id="released" type="checkbox"> I saw the device’s mic indicator turn off</label>
+        <label class="check"><input id="heard" type="checkbox"> I heard the response through the real speaker</label>
+        <button id="record-result" disabled>Record this result</button>
+      </div>
+      <label for="device-notes">Device / browser version / microphone / speaker / interruptions</label>
+      <textarea id="device-notes" rows="3" maxlength="500" placeholder="Example: iPhone, iOS and Safari versions, built-in mic/speaker. Turn 3 needed a second Play tap. After app switch, Talk worked again."></textarea>
+      <button id="prepare-report">Prepare test report</button>
+      <div id="report-panel" hidden>
+        <label for="report">Review and copy the report</label>
+        <textarea id="report" rows="9" readonly spellcheck="false"></textarea>
+        <button id="copy-report">Copy report</button>
+      </div>
+      <p class="hint">Timing, browser events, and your observations stay in memory until you copy them. The report excludes transcript and reply text. Nothing is uploaded automatically; a reload clears it.</p>
+    </section>
+    <details>
+      <summary>Event log</summary>
+      <pre id="events"></pre>
+    </details>
+    <footer>Isolated experiment · not integrated into the dashboard · no saved transcript · browser events do not prove audibility or physical mic release</footer>
+  </main>
+</body>
+</html>

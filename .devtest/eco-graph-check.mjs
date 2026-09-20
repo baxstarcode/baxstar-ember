@@ -2,8 +2,46 @@
 // Proves the deterministic layout converged, every node and edge drew, the
 // highlight and legend filter work, and the panel scrolls inside itself
 // instead of pushing the page sideways on a phone.
-import { chromium } from 'playwright';
 import fs from 'fs';
+import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+async function loadPlaywright() {
+  try { return await import('playwright'); }
+  catch (error) {
+    const bundled = path.join(path.dirname(path.dirname(process.execPath)), 'node_modules', 'playwright', 'index.mjs');
+    if (!fs.existsSync(bundled)) throw error;
+    return import(pathToFileURL(bundled).href);
+  }
+}
+
+const server = http.createServer((request, response) => {
+  const pathname = decodeURIComponent(new URL(request.url || '/', 'http://ember.test').pathname);
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+  const file = path.resolve(ROOT, relative);
+  const prefix = `${path.resolve(ROOT)}${path.sep}`;
+  if ((!file.startsWith(prefix) && file !== path.resolve(ROOT, 'index.html')) ||
+      !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    response.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
+    return;
+  }
+  const type = {
+    '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
+    '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml',
+    '.png': 'image/png', '.webp': 'image/webp',
+  }[path.extname(file)] || 'application/octet-stream';
+  response.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(fs.readFileSync(file));
+});
+await new Promise((resolve, reject) => {
+  server.once('error', reject);
+  server.listen(0, '127.0.0.1', resolve);
+});
+const ORIGIN = `http://127.0.0.1:${server.address().port}`;
+
+const { chromium } = await loadPlaywright();
 const PRE='/opt/pw-browsers/chromium';
 const b = await chromium.launch(fs.existsSync(PRE)?{executablePath:PRE}:{});
 const OUT = process.env.ECO_SHOT_DIR ? process.env.ECO_SHOT_DIR : '/tmp/';
@@ -19,7 +57,7 @@ for (const [name,vp] of [['DESKTOP',{width:1440,height:1000}],['PHONE',{width:39
   // environment, not the app, so it is not a failure of this test.
   const external = t => /ERR_CERT|Failed to load resource|fonts\.googleapis|fonts\.gstatic/i.test(t);
   p.on('console',m=>{if(m.type()==='error'&&!external(m.text()))errs.push(m.text());});
-  await p.goto('http://localhost:8099/index.html',{waitUntil:'networkidle'});
+  await p.goto(`${ORIGIN}/index.html`,{waitUntil:'networkidle'});
   await p.waitForTimeout(700);
 
   console.log(`\n===== ${name} =====`);
@@ -27,6 +65,11 @@ for (const [name,vp] of [['DESKTOP',{width:1440,height:1000}],['PHONE',{width:39
 
   const rail = p.locator('.eco-rail');
   ok(`${name} graph panel present`, await rail.count()===1);
+  // THE WORKS is intentionally compact on first load. Open it before testing
+  // the graph itself so this suite exercises the interactive surface rather
+  // than treating the collapsed product default as missing content.
+  await rail.locator(':scope > summary').click();
+  await p.waitForTimeout(250);
 
   const nodes = await p.locator('.eco-node').count();
   const lines = await p.locator('.eco-svg line').count();
@@ -134,5 +177,6 @@ for (const [name,vp] of [['DESKTOP',{width:1440,height:1000}],['PHONE',{width:39
   await p.close();
 }
 await b.close();
+await new Promise((resolve) => server.close(resolve));
 console.log(fails.length?`\nECO FAIL: ${fails.join(' | ')}`:'\nECO PASS');
 process.exit(fails.length?1:0);

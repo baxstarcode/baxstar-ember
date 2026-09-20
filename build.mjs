@@ -143,11 +143,11 @@ const html = `<!DOCTYPE html>
 <style>html,body,#root{margin:0;height:100%;background:#000;}</style>
 <script>
 /* EMBER DEPLOY CONFIG
-   Points Ember at the key-holding proxy. The proxy enforces an origin allowlist
-   server-side, so this URL is useless from anywhere but ALLOWED_ORIGINS.
-   Change ALLOWED_ORIGINS on the Worker before hosting at a new domain, or every
-   request from it will 403. See docs/DEPLOY.md. Never put an API key in this file. */
-window.EMBER_API_PROXY = "https://ember-claude-proxy.brady-9d1.workers.dev";
+   Production uses an Access-protected same-origin Pages Function. That Function
+   reaches the key-holding Worker through an internal service binding; no Worker
+   URL or credential is exposed to the browser. Local preview keeps its separate
+   development configuration in scripts/sync-standalone.py. */
+window.EMBER_API_PROXY = "/api/messages";
 
 /* Where the steampunk asset pack lives, if you host it somewhere else. */
 // window.EMBER_ASSET_ROOT = "assets/ember";

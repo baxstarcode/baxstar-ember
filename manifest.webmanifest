@@ -1,7 +1,7 @@
 {
   "name": "Baxstar Ember",
   "short_name": "Ember",
-  "description": "Brady Baxter's AI command center for Baxstar Fishing — captions, ops, and voice.",
+  "description": "Brady Baxter's AI command center for Baxstar Fishing — operations, chat, projects, and captions.",
   "start_url": "?tool=captions&lean=1",
   "scope": "./",
   "display": "standalone",

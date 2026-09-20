@@ -5,8 +5,8 @@
  * from cache immediately and refreshes in the background.
  *
  * Deliberately conservative:
- *   · Only same-origin GET requests are cached. The Claude API proxy (cross-origin) and
- *     every non-GET are passed straight through to the network — Ember's brain is never
+ *   · Only same-origin GET requests are cached. Every non-GET, including the
+ *     same-origin API gateway, passes straight through — Ember's brain is never
  *     served stale, and nothing here can cache an API response.
  *   · Navigation requests fall back to the last cached shell when offline, so opening the
  *     app with no signal still shows the UI (an in-progress caption is restored from
@@ -18,7 +18,7 @@
 // v3: navigations are network-first. Cache-first shell delivery kept showing
 // an older build (including the pre-picker voice UI) for one more launch after
 // every deploy, which made fixed voice bugs appear to return.
-const CACHE = "ember-shell-v3";
+const CACHE = "ember-shell-v4";
 
 self.addEventListener("install", (event) => {
   // Take over as soon as possible; the app is single-page and safe to update eagerly.

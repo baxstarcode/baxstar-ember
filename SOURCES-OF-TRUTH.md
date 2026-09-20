@@ -6,22 +6,27 @@ tool has to guess.
 
 ---
 
-## STOP — read this before touching voice (2026-09-18)
+## STOP — read this before touching voice (updated 2026-09-20)
 
-**Ember has no voice features and must not get them back.** Wake word, microphone,
-spoken replies, the voice picker and dictation were all removed on 2026-09-18 on
-Brady's instruction, after the stack failed repeatedly on his iPhone. The cause was
-never a single bug: Safari owns every link of the listen-think-speak chain on iOS
-(it suspends the tab, kills requests near 60 s, gates audio behind a gesture, reclaims
-the mic) and every iPhone browser runs Safari's engine. Each round of fixes worked and
-the failure simply moved one link along.
+**Current voice policy: excellent desktop voice/chat are goals; reliable iPhone voice
+is preferred if feasible.** Brady's direction in the 2026-09-20 Ember Rebuild 2026
+coordination update supersedes the blanket no-voice ban. This existing Codex task owns
+the complete rebuild; that chat coordinates and is not a second code/config writer.
+Do not blindly restore the former stack. The next step is the isolated page at
+`work/desktop-voice-probe/`: explicit Talk, editable transcript, explicit Send, and
+optional explicit Play. Production integration remains blocked until Brady completes
+five real desktop-Chrome turns and confirms microphone release, recognition, text,
+audible neural playback, cancellation, and recovery.
 
-Older notes in this repo — including sections below, `docs/KNOWN-ISSUES.md` §13 and
-`HANDOFF-CINEMATIC.md` — describe voice as a live feature. **They are history, not
-current state.** Do not action them, and do not "restore" voice because a doc mentions
-it. The full implementation is preserved on branch `snapshot/voice-era-final`, and the
-Worker's `POST /tts` endpoint is deliberately kept (unused, still tested) for a future
-native or Shortcut path that owns the whole audio chain.
+The iPhone path requires its own opt-in reliability experiment: repeated turns,
+interruptions, permission recovery, playback, and microphone handback on the actual
+phone. Browser capabilities and platform limits must be verified, not inferred from
+the prior implementation's failures. No phone integration is proven by desktop or mock
+results. Wake words, background capture, and automatic restart are outside this lab.
+
+The full historical implementation remains on `snapshot/voice-era-final`. The Worker
+keeps its tested TTS implementation because the isolated lab uses it. Older voice-repair
+notes are historical evidence, not permission to bypass the relevant physical gate.
 
 Ember today: an operations dashboard (calls/voicemail, inbox, schedule, revenue), a
 typed line to Claude, Caption Studio, Projects/Mission Control, and the YOUR TOOLS rail
@@ -78,6 +83,16 @@ of links to Brady's other properties.
   Re-opened Quo after its newly published custom-agent MCP support, added a
   privacy-safe connector credential status route, and reconciled the active docs.
 
+- **Codex, 2026‑09‑20:** rebuilt Ember as a desktop-first daily dashboard. Restored
+  readable, persisted streaming chat with stop/retry/copy/clear and honest connector
+  failures; made communication-to-task actions reviewable local Mission Control drafts;
+  repaired the desktop/laptop/phone layout and truth states; hardened the Worker to
+  server-owned read-only toolsets and least-privilege future consent; added an
+  Access-protected same-origin Pages gateway; moved the Drive-outbox capability out of
+  the browser and behind its validated server relay; and built the isolated desktop
+  voice feasibility probe. Automated voice checks do not supersede Brady's physical
+  Mac gate.
+
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 
@@ -87,9 +102,9 @@ of links to Brady's other properties.
 
 | Concern | Source of truth | Notes |
 |---|---|---|
-| **The application** (logic, behavior, and all CSS) | `src/baxstar-ember.jsx` | Single-file React, ~2,240 lines. **CSS is inline** — one `<style>{`…`}</style>` literal at ~line 1301. There is **no** separate `.css` file. |
+| **The application** (logic, behavior, and all CSS) | `src/baxstar-ember.jsx` | Single-file React. **CSS is inline** in the component; there is no separate application stylesheet. |
 | **Design constitution** (intent, quality bar, character) | `docs/BUILD-PROMPT.md` | The "why" behind the steampunk direction. |
-| **Known blockers & descopes** | `docs/KNOWN-ISSUES.md` | Living ledger. The original Tailwind/API-auth blockers are closed; §11 records Quo's provider change, §12 the iOS picker blur pattern, and §13 the 2026-08-24 voice repair. |
+| **Known blockers & descopes** | `docs/KNOWN-ISSUES.md` | Living current ledger. Git history preserves the older issue chronology. |
 | **Steampunk asset spec** (authoritative for the skin) | `assets/ember/CLAUDE-HANDOFF.md`, `manifest.json`, `control-map.json`, `motion-spec.json`, `design-tokens.css` | Manifest = asset inventory; control-map = function mapping; motion-spec = timings. Mockups in `assets/ember/mockups/` are **intent references only**, never app backgrounds. |
 | **Current state, must-not-change list, reproduce recipe** | `HANDOFF-CINEMATIC.md` | The living checkpoint doc. Start here to resume. |
 | **Provenance & this file map** | `SOURCES-OF-TRUTH.md` (this file) | — |
@@ -106,8 +121,8 @@ of links to Brady's other properties.
   proxy deployed.
 - `_preview.html` — **generated** by `scripts/sync-standalone.py`, and gitignored. The
   copy that was briefly committed on `main` was already stale.
-- `voice/*.html` — separate voice rig. Its brain is no longer hardcoded: spoken questions
-  route through Claude via the same proxy, falling back to the canned demo answers when no
-  proxy is configured or the call fails.
+- Historical `voice/*.html` rigs and voice-era branches — diagnostic history, not the
+  current production surface. The active feasibility artifact is
+  `work/desktop-voice-probe/`.
 - Any `baxstar-ember-repo*.zip` in `~/Downloads` — pre-retheme snapshots.
 - The tmp preview-harness scratch files — regenerated, never canonical.

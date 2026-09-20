@@ -1,185 +1,348 @@
 # Deploying Ember
 
-Ember runs in two places. Know which one you're doing.
+Last reconciled with source on **2026-09-20**.
 
-| | Where the key comes from | What works |
-|---|---|---|
-| **Claude artifact** (today) | Injected by the Claude platform | Everything |
-| **Hosted at a URL** | A proxy you deploy | Chat + Studio. Connectors need extra work — see §4 |
+**Release status:** source and local tests are ready; the revived Pages build,
+same-origin gateway, and Worker host gate have not yet completed the staged production
+verification below. Do not call the new boundary live until every release-gate check is
+observed in the named environment.
 
----
+## Production topology
 
-## 1. Build
+```text
+Brady's authenticated browser
+  -> Cloudflare Access
+  -> https://ember.baxstarfishing.com
+  -> Cloudflare Pages (static dist/)
+  -> Pages Function for exact /api/* routes
+  -> EMBER_API service binding
+  -> ember-claude-proxy Worker
+  -> Anthropic / neural TTS / read-only MCP providers / private Drive outbox
+```
 
-`index.html` is generated. Never edit it by hand — that is how the deploy build
-drifted an entire redesign behind `src/baxstar-ember.jsx` once already.
+The browser never receives a provider URL, API key, OAuth token, or Worker credential.
+It calls only:
+
+- `POST /api/messages`
+- `POST /api/tts`
+- `POST /api/connectors/status`
+- `POST /api/outbox`
+
+`functions/api/[[path]].js` accepts only those paths, POST/OPTIONS, and the exact
+hostname `ember.baxstarfishing.com`. Preview and lookalike hosts return 404. It forwards
+the original request/stream through the internal `EMBER_API` service binding.
+
+The Worker owns request validation, the model allowlist, body/token caps, provider
+destinations, OAuth credentials, connector degradation, TTS, the private Drive-outbox
+destination, and server-controlled MCP permissions. Ordinary chat has a reviewed
+read-only tool allowlist; all new provider tools default off. Caption Studio can write
+only a validated review draft through `/api/outbox`; the browser cannot choose the
+destination or supply its token.
+
+After the pending host-gate deploy, the Worker's public `workers.dev` hostname accepts
+only manual OAuth GET start/callback routes. Every non-OAuth request there returns 404.
+`Origin` is retained for browser CORS, not treated as authentication.
+
+## Canonical deployment files
+
+| File | Responsibility |
+| --- | --- |
+| `src/baxstar-ember.jsx` | Application source |
+| `build.mjs` | Generates self-contained `index.html` |
+| `scripts/stage-pages.mjs` | Recreates the exact public `dist/` payload |
+| `_routes.json` | Runs Pages Functions only for `/api/*` |
+| `functions/api/[[path]].js` | Exact-host same-origin service-binding relay |
+| `proxy/cloudflare-worker.js` | Key-holding API/connector/OAuth/TTS Worker |
+| `proxy/wrangler.toml` | Worker deployment configuration |
+
+`index.html`, `_preview.html`, and `dist/` are generated outputs. Never edit them by
+hand. The historical Vercel adapter is not a supported deployment path.
+
+## Cloudflare configuration
+
+Verify these settings before each release; do not infer them from repository files.
+
+### Pages project
+
+- Project: `baxstar-ember`
+- Production branch: `main`
+- Build command: `npm run build:pages`
+- Build output directory: `dist`
+- Root directory: blank/default repository root
+- Custom domain: `ember.baxstarfishing.com`
+- Cloudflare Access: whole custom hostname, including `/api/*`
+- Cloudflare Access: exact production `pages.dev` hostname and wildcard preview
+  hostnames; do not leave a static alias outside Access
+- Service binding in Production and Preview:
+  - variable: `EMBER_API`
+  - service: `ember-claude-proxy`
+
+Preview builds are useful for static layout checks only. Their API requests are
+intentionally denied by the Function's exact-host rule even though the binding exists.
+
+### Worker
+
+- Worker: `ember-claude-proxy`
+- `workers_dev = true` only because the currently registered OAuth callback uses that
+  hostname
+- `preview_urls = false`
+- Production API traffic arrives through the Pages service binding
+- `ALLOWED_ORIGINS` remains an exact comma-separated CORS list; it is not an identity
+  control
+
+Required/used secrets and variables stay in Cloudflare, never Git:
+
+- `ANTHROPIC_API_KEY`
+- `MCP_REFRESH_QUO`, `QUO_CLIENT_ID`
+- `MCP_REFRESH_GMAIL`, `MCP_REFRESH_CALENDAR`, `MCP_REFRESH_GDRIVE`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- `OAUTH_REDIRECT_URI`, `OAUTH_STATE_SECRET`
+- `OUTBOX_URL` (server-only Apps Script capability URL)
+- `OUTBOX_TOKEN` (optional; must match the Apps Script shared token when enabled)
+
+Static `MCP_TOKEN_*` values remain compatibility fallbacks in source but short-lived
+refresh-token minting is the intended production path.
+
+## Build and local verification
+
+Install dependencies once, then build both the canonical HTML and exact Pages payload:
 
 ```bash
-npm install     # once
-npm run build   # regenerates index.html from src/baxstar-ember.jsx
+npm install
+npm run build
+npm run build:pages
 ```
 
-The build inlines only the Tailwind utilities the source actually uses (~11KB), so
-there is no CSS CDN at runtime and no flash of unstyled content.
+`npm run build` compiles JSX with esbuild and inlines production React, ReactDOM, the
+app, and used Tailwind utilities. There is no runtime React/Babel/Tailwind CDN.
+`npm run build:pages` then deletes and recreates `dist/` from the explicit public-file
+allowlist. Source, tests, repository metadata, and local settings are not uploaded as
+static files.
 
-Preview locally:
+Run the complete local release contract before deployment:
 
 ```bash
-npm run serve   # http://localhost:8080
+npm run test:release
 ```
 
-React, ReactDOM, and Babel still load from unpkg at runtime. That means Ember needs
-network access to unpkg on first paint, and Babel compiles ~200KB in the browser on
-every load. Fine for personal use; see §5 if you want it faster.
+This rebuilds and stages the exact Pages payload, then runs all current Worker, Pages,
+Apps Script, posting-time, chat, dashboard, layout, streaming, Caption Studio, and
+voice-probe contracts. Do not convert an obsolete expectation into product behavior;
+update the harness when a deliberate contract change is verified.
 
----
+`./start-ember.sh` remains the fast Python UI preview. It uses same-origin API paths;
+the static Python server cannot relay those requests. Use intercepted local tests
+and the authenticated production hostname for live API checks.
 
-## 2. Stand up the proxy
+## Staged release procedure
 
-`index.html` ships to every visitor, so it can never hold an API key. The proxy holds
-the key server-side and is the only thing the browser talks to.
+The order matters. Pages must prove the internal path before the public direct Worker
+API is closed.
 
-### Cloudflare Worker, browser only (recommended — no Node required)
+### 1. Review the release candidate
 
-`wrangler` needs Node, and **there is no Node on Brady's Mac**. This route installs
-nothing. Everything happens at dash.cloudflare.com.
+1. Confirm `git status` contains only intended files.
+2. Run the build and relevant tests above.
+3. Inspect `dist/`; it should contain only the explicit runtime payload assembled by
+   `scripts/stage-pages.mjs`.
+4. Review staged changes and scan for keys, tokens, refresh tokens, cookies, or other
+   secrets before committing.
 
-1. Get an API key at console.anthropic.com → API keys. Copy it once; you cannot see it again.
-2. dash.cloudflare.com → **Workers & Pages** → **Create** → **Create Worker**.
-   Name it `ember-claude-proxy`. Deploy the placeholder it offers.
-3. **Edit code**. Select all, delete, and paste the whole of
-   `proxy/cloudflare-worker.js` from this repo. **Deploy**.
-4. **Settings → Variables and Secrets**:
-   - Add a **Secret** — name `ANTHROPIC_API_KEY`, value your key.
-     Secret, not plaintext: plaintext vars are readable from the dashboard afterwards.
-   - Add a **Variable** — name `ALLOWED_ORIGINS`, value the exact origin Ember runs on.
-     For local testing that is `http://localhost:8787`. No trailing slash.
-5. **Deploy** again so the variables take effect.
+### 2. Publish Pages first
 
-Your endpoint is `https://ember-claude-proxy.<your-subdomain>.workers.dev`.
+1. Push the candidate branch if a preview is useful. Expect the static UI to render and
+   `/api/*` to return 404 on the preview hostname.
+2. Fast-forward or merge the reviewed commit to `main`; do not force-push.
+3. Wait for the `baxstar-ember` production deployment to succeed.
+4. Confirm the custom domain serves the new build, not merely the `pages.dev` hostname.
+5. From signed-out requests, confirm Cloudflare Access challenges or denies the custom
+   hostname, the exact production `pages.dev` alias, and a current preview alias before
+   any application HTML or API response is reached.
 
-**Try it locally before hosting anything.** Set `ALLOWED_ORIGINS` to
-`http://localhost:8787` — `window.EMBER_API_PROXY` in `scripts/sync-standalone.py`
-is already pointed at the live Worker — then `./start-ember.sh`. That gives you a
-live Ember with a working brain on your own machine — no hosting, no domain.
+### 3. Prove the service binding before the Worker host gate
 
-### Cloudflare Worker via CLI (needs Node)
+Open the isolated voice lab in a signed-in production tab. Turn **Stream reply** off,
+use its typed-only path to send one harmless, connector-free prompt, and confirm a
+complete JSON reply through `POST /api/messages`. This proves the Access-protected Pages Function can
+reach the existing Worker through `EMBER_API` without exposing credentials.
 
-```bash
-cd proxy
-npx wrangler secret put ANTHROPIC_API_KEY     # paste the key when prompted
-npx wrangler deploy
-```
+The historical Worker labels even SSE responses as JSON, so this first binding check
+must use `stream:false`. It routes `/tts` and `/connectors/status` separately and has no
+outbox relay. It does not yet recognize their new `/api/*` paths, so do not require
+the new status, TTS, or outbox checks before deploying the updated Worker. Ordinary
+chat/OPS also needs the new Worker's server-owned connector mapping. Treat the Pages
+and Worker changes as one release: continue the paired rollout promptly after the
+connector-free binding check passes; if it fails, repair or roll back Pages first.
 
-Then edit `proxy/wrangler.toml` and set `ALLOWED_ORIGINS` to wherever Ember is hosted:
-
-```toml
-[vars]
-ALLOWED_ORIGINS = "https://ember.baxstarfishing.com"
-```
-
-Redeploy after changing it. **Do not leave this permissive.** An open proxy lets
-anyone on the internet spend your Anthropic balance.
-
-### Vercel (alternative)
-
-Copy `proxy/vercel/` into a Vercel project. The endpoint lands at `/api/claude`.
-Set `ANTHROPIC_API_KEY` and `ALLOWED_ORIGINS` in the dashboard under
-Settings → Environment Variables. A Netlify Function is the same file with the
-handler signature swapped.
-
-### What the proxy does for you
-
-- Holds the key. Nothing sensitive reaches the browser.
-- Adds `anthropic-version` and, for MCP requests, the `anthropic-beta:
-  mcp-client-2025-04-04` header the `mcp_servers` field requires.
-- Refuses any model outside Ember's five, so a leaked URL can't be repurposed
-  into a general-purpose model proxy.
-- Caps `max_tokens` and request size.
-- Enforces the origin allowlist server-side as well as via CORS, so a non-browser
-  client can't just skip the CORS check.
-
----
-
-## 3. Point Ember at it
-
-In `index.html`, uncomment the config line near the top and set your proxy URL:
+After the Worker deploy, verify the data-free credential check in an authenticated
+session:
 
 ```js
-window.EMBER_API_PROXY = "https://ember-claude-proxy.YOUR-SUBDOMAIN.workers.dev";
+await fetch("/api/connectors/status", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ connectors: ["quo", "gmail", "calendar", "gdrive"] }),
+}).then((response) => response.json());
 ```
 
-Better: set it in `build.mjs`'s config block so it survives the next rebuild.
+This confirms credentials are available without reading calls, email, calendar, or
+Drive content. Complete these checks after the Worker update:
 
-Left unset, Ember calls `api.anthropic.com` directly. That only works inside a Claude
-artifact. Hosted, you'll get a clear error naming this file rather than a silent dead brain.
+1. enable **Stream reply** again, send one harmless chat prompt, and confirm text streams
+   to completion;
+2. confirm errors and connector-degraded replies remain readable;
+3. open the desktop voice probe and confirm one TTS request returns playable audio;
+4. publish one controlled Caption Studio draft and confirm `/api/outbox` returns a
+   readable success only after the private Drive file exists;
+5. verify the browser network panel shows only same-origin `/api/*` application calls.
 
----
+If the pre-deploy connector-free message fails, fix the Pages Function, Access policy,
+or service binding before touching the Worker host gate. Any failed post-deploy route
+keeps the release provisional and requires diagnosis or paired rollback.
 
-## 4. Connectors: Google live; Quo authorization pending
+### 4. Deploy the Worker host gate
 
-Hosted Ember has working connectors. The Worker holds Google OAuth **refresh
-tokens** as secrets (`MCP_REFRESH_GMAIL`, `MCP_REFRESH_CALENDAR`,
-`MCP_REFRESH_GDRIVE` — same token, all three) and mints access tokens per
-request for the **Google Workspace MCP** endpoints
-(`calendarmcp` / `gmailmcp` / `drivemcp.googleapis.com`). Those endpoints are a
-Developer Preview and require project enrollment — Google Cloud project
-**ember-504105** was approved 2026-08-22. Verified live the same day: real
-calendar events, real unread Gmail, real Drive files through hosted chat.
-
-To re-run the OAuth flow (e.g. after token revocation): visit the Worker's
-`/oauth/start?p=google`, click Allow, paste the shown refresh token into all
-three `MCP_REFRESH_*` secrets, redeploy. `OAUTH_STATE_SECRET` and
-`OAUTH_REDIRECT_URI` must be set in Worker variables first.
-
-**Quo changed its MCP setup in Aug 2026.** Custom clients now use
-`https://mcp.quo.com/mcp` with OAuth 2.1. The old descope is historical
-(`docs/KNOWN-ISSUES.md` §11).
-
-To connect Quo:
-
-1. Visit the Worker's `/oauth/start?p=quo` URL and approve Ember in Quo.
-2. On the callback page, copy the returned refresh token and generated client ID.
-3. In Cloudflare Worker variables, add both as encrypted secrets:
-   `MCP_REFRESH_QUO` and `QUO_CLIENT_ID`.
-4. Redeploy the Worker.
-
-Do not use a Quo API key as `MCP_TOKEN_QUO`; Quo's MCP server expects an OAuth
-access token.
-
-After deploying the current Worker, credential health can be checked without
-reading any calls, messages, email, calendar, or Drive data:
+Use a logged-in Wrangler environment. Store the outbox capability interactively before
+the first relay deploy; never put its value in source, `wrangler.toml`, command history,
+or a browser-visible setting:
 
 ```bash
-curl -sS https://ember-claude-proxy.brady-9d1.workers.dev/connectors/status \
-  -H 'Origin: https://baxstar-ember.pages.dev' \
-  -H 'Content-Type: application/json' \
-  --data '{"connectors":["quo","gmail","calendar","gdrive"]}'
+npx wrangler@4.135.0 secret put OUTBOX_URL --config proxy/wrangler.toml
+# If the Apps Script deployment has a shared token:
+npx wrangler@4.135.0 secret put OUTBOX_TOKEN --config proxy/wrangler.toml
 ```
 
-If a connector call fails, the Worker retries without connectors and flags the
-response with the `x-ember-connectors: degraded` header, which the app surfaces —
-so a dead connector degrades to plain chat instead of a dead brain.
+A dry run is safe before the live deploy:
 
----
+```bash
+npx wrangler@4.135.0 deploy --dry-run --config proxy/wrangler.toml
+npx wrangler@4.135.0 deploy --config proxy/wrangler.toml
+```
 
-## 5. Optional hardening
+Cloudflare secrets are retained across ordinary source deploys. Never put them in
+`wrangler.toml` or command history.
 
-- **Vendor React and Babel.** Drops the unpkg runtime dependency and the in-browser
-  compile. Precompiling the JSX at build time would cut first paint substantially.
-- **Put Ember behind auth.** It's a personal command center. Cloudflare Access or
-  Zero Trust in front of the whole page costs nothing on the free tier.
-- **Rotate the key** if it was ever pasted into a chat, a file, or a screenshot.
+### 5. Verify both sides after the Worker deploy
 
----
+Direct API traffic on `workers.dev` must fail before any upstream work, even when a
+caller forges the production Origin:
 
-## Checklist before going live
+```bash
+curl -i -X POST \
+  'https://ember-claude-proxy.brady-9d1.workers.dev/api/connectors/status' \
+  -H 'Origin: https://ember.baxstarfishing.com' \
+  -H 'Content-Type: application/json' \
+  --data '{"connectors":["quo"]}'
+```
 
-- [ ] `npm run build` run, `index.html` regenerated
-- [x] Proxy deployed, `ANTHROPIC_API_KEY` set as a secret (not in any file)
-- [ ] `ALLOWED_ORIGINS` set to the real origin, redeployed
-- [x] `window.EMBER_API_PROXY` pointed at the proxy (in `scripts/sync-standalone.py`)
-- [x] Chat tested end to end through the proxy (7 probes, incl. a live reply)
-- [x] Gmail, Calendar, and Drive OAuth installed and live (§4)
-- [ ] Quo consent complete; `MCP_REFRESH_QUO` + `QUO_CLIENT_ID` stored and Worker redeployed
-- [ ] No API key anywhere in git — `git log -p | grep -i "sk-ant"` comes back empty
+Expected: HTTP 404. Do not accept 200, credential data, an Anthropic response, or a
+CORS-only rejection as equivalent.
+
+The registered OAuth GET path must still start without completing consent:
+
+```bash
+curl -sS -o /dev/null -D - \
+  'https://ember-claude-proxy.brady-9d1.workers.dev/oauth/start?p=google'
+```
+
+Expected: a redirect into the Google authorization flow. Do not paste, print, or log
+any returned authorization code or token.
+
+Finally repeat the signed-in same-origin credential check, harmless streaming chat,
+one controlled OPS sync, TTS probe, and a controlled outbox draft. The release is not
+complete if the direct host is closed but the bound production path is broken.
+
+## Connector and OAuth maintenance
+
+The canonical Worker destinations are:
+
+| Name | Endpoint |
+| --- | --- |
+| Quo | `https://mcp.quo.com/mcp` |
+| Gmail | `https://gmailmcp.googleapis.com/mcp/v1` |
+| Calendar | `https://calendarmcp.googleapis.com/mcp/v1` |
+| Drive | `https://drivemcp.googleapis.com/mcp/v1` |
+
+### Google
+
+One Google consent can supply the three Google refresh secrets. Start it at the
+Worker's registered `/oauth/start?p=google` route, complete the signed PKCE flow, and
+store the refresh token as each of:
+
+- `MCP_REFRESH_GMAIL`
+- `MCP_REFRESH_CALENDAR`
+- `MCP_REFRESH_GDRIVE`
+
+Future consent asks for Gmail read, Calendar list/event/free-busy read, and Drive read.
+Existing refresh grants created with the former broad scopes are not retroactively
+narrowed. Revoke and re-consent before describing the token itself as least-privilege.
+Until then, the Worker's read-only tool allowlist is the active write barrier.
+
+### Quo
+
+Start `/oauth/start?p=quo`, approve Ember, and store the returned values as encrypted
+`MCP_REFRESH_QUO` and `QUO_CLIENT_ID`. Quo consent requests only
+`read:conversations read:account`. Contact reads are omitted because Quo currently
+bundles them with a write-capable contact scope.
+
+Never use a Quo API key as an OAuth refresh token. Never put OAuth values in source,
+screenshots, logs, chat, or the browser bundle.
+
+### Ordinary chat permissions
+
+The Worker uses `mcp-client-2025-11-20`, creates one top-level `mcp_toolset` per
+credentialed server, sets the default to disabled, and enables only reviewed read
+tools. It strips browser-supplied server URLs, tokens, toolsets, tool choice, and extra
+capability fields.
+
+General chat cannot send messages, create external tasks, modify mail/calendar data,
+or write Drive files. Confirmed external actions require a separate API with narrow
+permissions, validated arguments, and explicit human review. No such general action
+path exists in this release.
+
+## Desktop and iPhone voice release gates
+
+Production hosts the isolated test at:
+
+`https://ember.baxstarfishing.com/work/desktop-voice-probe/`
+
+Its automated suite uses mocked speech, model, TTS, and audio events. Brady must still
+complete the README's five-run desktop Chrome checklist with the real microphone and
+speakers. Do not merge voice controls into the main app based on HTTP 200, MP3 bytes,
+headless playback events, or one successful turn.
+
+Reliable iPhone voice is also an approved goal if feasible. The same isolated lab has
+an opt-in phone experiment; its repeated-turn, interruption, permission-recovery, and
+microphone-handback results must be recorded on the actual phone before integration.
+Desktop results do not satisfy this separate gate.
+
+## Rollback
+
+- If the static app or Pages Function fails, roll Pages back to the last known-good
+  production deployment.
+- If the Worker host gate breaks the service binding or OAuth, use Cloudflare Worker
+  version rollback, then diagnose the mismatch before redeploying.
+- Do not restore public direct API access as a permanent workaround. Roll back the
+  paired release or fix the internal binding.
+- Do not disable `workers.dev` while it remains the registered OAuth callback. Migrate
+  `OAUTH_REDIRECT_URI`, Google authorized redirects, and Quo registration together
+  before disabling it.
+- Rollback does not authorize changing or exposing secrets.
+
+## Production checklist
+
+- [ ] `npm run build:pages` succeeds and recreates the expected `dist/`
+- [ ] Worker, Pages, chat, layout, dashboard, and voice-probe suites pass
+- [ ] Staged diff contains no secrets and only intended files
+- [ ] Pages production deployment from `main` succeeds
+- [ ] Custom hostname serves the new build behind Cloudflare Access
+- [ ] Unauthenticated custom-host request is challenged/denied
+- [ ] Signed-in `/api/connectors/status` works through the Pages binding
+- [ ] Signed-in chat streams and degraded/error states remain honest
+- [ ] One signed-in TTS request returns playable audio
+- [ ] Worker host gate deploy succeeds
+- [ ] Direct `workers.dev` API request returns 404 with a forged allowed Origin
+- [ ] OAuth start GET still redirects and the Pages API still works
+- [ ] Controlled OPS sync returns verified provider data
+- [ ] Brady completes the five-run physical Mac voice gate before voice integration
+- [ ] iPhone integration, if attempted, follows a separate passing physical lab result

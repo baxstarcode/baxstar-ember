@@ -4,8 +4,8 @@
  * Drives the REAL generated index.html in headless Chromium. Everything the page would
  * reach out to is intercepted: the Claude proxy returns canned vision/caption responses,
  * and the Drive outbox records the payload it was handed. So no API key, no Anthropic
- * spend, no Drive write, no deploy — but the canvas resize, the React state, the CORS-
- * simple fetch shape and the published payload are all the genuine article.
+ * spend, no Drive write, no deploy — but the canvas resize, the React state, the
+ * same-origin gateway request and the published payload are all the genuine article.
  *
  * The parts worth testing here are precisely the ones a unit test can't reach: the
  * <=1440 publish render only exists inside a browser canvas, and the "did the right bytes
@@ -19,16 +19,25 @@
  *
  * Run `npm run build` first: this drives index.html, not the source.
  */
-import { chromium } from "playwright";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const results = [];
 const check = (name, ok, detail) => results.push([name, !!ok, detail || ""]);
+
+async function loadPlaywright() {
+  try {
+    return await import("playwright");
+  } catch (error) {
+    const bundled = path.join(path.dirname(path.dirname(process.execPath)), "node_modules", "playwright", "index.mjs");
+    if (!fs.existsSync(bundled)) throw error;
+    return import(pathToFileURL(bundled).href);
+  }
+}
 
 /* The generated index.html sets EMBER_API_PROXY in its own config block, which runs after
    any addInitScript — so the stub has to intercept the URL the page is actually built
@@ -36,7 +45,10 @@ const check = (name, ok, detail) => results.push([name, !!ok, detail || ""]);
 const PROXY = (fs.readFileSync(path.join(ROOT, "index.html"), "utf8")
   .match(/EMBER_API_PROXY *= *"([^"]+)"/) || [])[1];
 if (!PROXY) throw new Error("no EMBER_API_PROXY in index.html — run `npm run build` first");
-const OUTBOX = "https://script.google.com/macros/s/TEST/exec";
+if (PROXY !== "/api/messages") {
+  throw new Error(`generated build must use the same-origin /api/messages route, found ${PROXY}`);
+}
+const OUTBOX = "/api/outbox";
 
 /* --- serve the built app on a real origin (file:// breaks canvas + storage) --- */
 const server = http.createServer((req, res) => {
@@ -88,6 +100,7 @@ const reply = (text) => ({
 // Chromium at a fixed path instead of Playwright's per-version cache. Use it
 // when it exists so the test runs without a 100MB browser download.
 const PREINSTALLED = "/opt/pw-browsers/chromium";
+const { chromium } = await loadPlaywright();
 const browser = await chromium.launch(
   (await import("fs")).existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {}
 );
@@ -95,12 +108,22 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } }
 const page = await ctx.newPage();
 
 const proxyCalls = [];
-let published = null;
-let publishRequestHeaders = null;
-let preflights = 0;
+const proxyRequestMethods = [];
+const outboxRequests = [];
+let outboxShouldSucceed = false;
 
-await page.route(`${PROXY}**`, async (route) => {
-  const body = JSON.parse(route.request().postData() || "{}");
+await page.route(`${ORIGIN}${PROXY}`, async (route) => {
+  const request = route.request();
+  proxyRequestMethods.push(request.method());
+  if (request.method() !== "POST") {
+    await route.fulfill({
+      status: 405,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "POST required" }),
+    });
+    return;
+  }
+  const body = JSON.parse(request.postData() || "{}");
   proxyCalls.push(body);
   const asText = JSON.stringify(body);
   // The vision scan asks for JSON; the caption call asks for prose.
@@ -113,31 +136,44 @@ await page.route(`${PROXY}**`, async (route) => {
   });
 });
 
-await page.route(`${OUTBOX}**`, async (route) => {
+await page.route(`${ORIGIN}${OUTBOX}`, async (route) => {
   const req = route.request();
-  if (req.method() === "OPTIONS") { preflights++; }
-  publishRequestHeaders = await req.allHeaders();
-  published = JSON.parse(req.postData() || "{}");
+  const record = {
+    url: req.url(),
+    method: req.method(),
+    headers: await req.allHeaders(),
+    body: JSON.parse(req.postData() || "{}"),
+  };
+  outboxRequests.push(record);
   await route.fulfill({
-    status: 200,
-    headers: { "Access-Control-Allow-Origin": "*" },
+    status: outboxShouldSucceed ? 200 : 503,
     contentType: "application/json",
-    body: JSON.stringify({ ok: true, slideCount: (published.images || []).length }),
+    body: JSON.stringify(outboxShouldSucceed
+      ? { ok: true }
+      : { ok: false, error: "Drive outbox unavailable" }),
   });
 });
 
 const consoleErrors = [];
 page.on("pageerror", (e) => consoleErrors.push(String(e)));
 
-/* Point the app at the stub proxy and pre-seed the outbox URL before any script runs. */
-await page.addInitScript((outbox) => {
-  window.localStorage.setItem("ember-outbox-url", JSON.stringify(outbox));
-}, OUTBOX);
+/* Seed the legacy browser destination. Hydration must delete it and the request must still
+   go only to Ember's fixed same-origin gateway. */
+await page.addInitScript(() => {
+  window.localStorage.setItem("ember-outbox-url", JSON.stringify("https://legacy.invalid/private-write-endpoint"));
+});
 
 await page.goto(`${ORIGIN}/index.html?tool=captions`, { waitUntil: "load" });
 await page.waitForSelector(".upzone", { timeout: 15000 });
 
 check("deep-link ?tool=captions opens Caption Studio", await page.locator(".upzone").isVisible());
+check("legacy browser outbox destination is deleted during hydration",
+  await page.evaluate(() => window.localStorage.getItem("ember-outbox-url") === null));
+const outboxEditorCount = await page.locator('input[aria-label="Drive outbox URL"]').count();
+const protectedOutboxCopy = (await page.getByText("Protected Drive outbox", { exact: true }).count()) === 1;
+check("outbox destination cannot be edited in the browser",
+  outboxEditorCount === 0 && protectedOutboxCopy,
+  `editors=${outboxEditorCount} protectedCopy=${protectedOutboxCopy}`);
 
 /* --- upload two photos of different sizes -------------------------------- */
 
@@ -206,6 +242,8 @@ try {
 
 check("caption call sent both slides", proxyCalls.length === 2 &&
   proxyCalls[1].messages[0].content.filter((c) => c.type === "image").length === 2);
+check("model calls use exact same-origin /api/messages POSTs",
+  proxyCalls.length === 2 && proxyRequestMethods.length === 2 && proxyRequestMethods.every((method) => method === "POST"));
 
 const tagPill = await page.locator('text=/\\d\\/5 TAGS/').first().innerText();
 check("hashtag cap enforced and the trim is reported", /5\/5 TAGS · 2 TRIMMED/.test(tagPill), tagPill);
@@ -233,7 +271,7 @@ await page.locator('button.surface-chip:has-text("IG STORY")').click();
    otherwise crop or reject the photo hours later with nobody watching the Zap. */
 await page.locator('button:has-text("Publish to Drive Outbox")').click();
 await page.waitForFunction(() => /taller than Instagram/.test(document.body.innerText), null, { timeout: 10000 });
-check("tall slide trips the feed-aspect gate before anything is sent", !published);
+check("tall slide trips the feed-aspect gate before anything is sent", outboxRequests.length === 0);
 check("the gate names the offending slide", /Slide 2 is/.test(await page.locator("body").innerText()));
 
 // FIT 4:5 crops the feed render (the story render keeps the full frame) and the
@@ -241,20 +279,34 @@ check("the gate names the offending slide", /Slide 2 is/.test(await page.locator
 await page.locator('button[aria-label="Fit slide 2 to 4:5"]').click();
 await page.waitForFunction(() => !document.querySelector('button[aria-label="Fit slide 2 to 4:5"]'), null, { timeout: 10000 });
 
+// A readable server failure must remain a failure: no false "Sent", and the draft stays.
 await page.locator('button:has-text("Publish to Drive Outbox")').click();
-// Wait for the CAPTURE, not for page text — "outbox" appears in the button
-// label itself, so the old innerText wait resolved instantly and only won the
-// race because publish used to be synchronous-fast. Story rendering isn't.
-{
-  const t0 = Date.now();
-  while (!published && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100));
-}
+await page.waitForFunction(() => /Couldn't confirm the Drive outbox handoff/.test(document.body.innerText), null, { timeout: 20000 });
+check("gateway failure is shown honestly, never as Sent",
+  /Couldn't confirm the Drive outbox handoff/.test(await bodyText()) && !/✓ Sent to the Drive outbox/.test(await bodyText()));
+check("failed gateway handoff keeps the caption draft",
+  await page.evaluate(() => window.localStorage.getItem("ember-caption-draft") !== null));
 
-check("publish reached the outbox", !!published);
+// Retry against a confirmed `{ ok: true }` response. Only this response may clear the draft.
+outboxShouldSucceed = true;
+await page.locator('button:has-text("Publish to Drive Outbox")').click();
+await page.waitForFunction(() => /✓ Sent to the Drive outbox/.test(document.body.innerText), null, { timeout: 20000 });
+
+const request = outboxRequests.at(-1);
+const published = request?.body || {};
+check("publish reached the fixed same-origin outbox route", request?.url === `${ORIGIN}${OUTBOX}`);
+check("publish uses a JSON POST through the gateway",
+  request?.method === "POST" && /^application\/json\b/.test(request?.headers["content-type"] || ""),
+  `${request?.method} ${request?.headers["content-type"]}`);
+check("retry required a second confirmed gateway request", outboxRequests.length === 2, String(outboxRequests.length));
+check("browser payload contains no destination or credential fields",
+  !("url" in published) && !("outboxUrl" in published) && !("token" in published));
+check("browser sends only the canonical image array",
+  !("imageBase64" in published));
 check("publish sent BOTH slides", (published.images || []).length === 2, String((published.images || []).length));
-check("publish is a CORS-simple text/plain POST (no preflight)",
-  /text\/plain/.test(publishRequestHeaders["content-type"] || "") && preflights === 0,
-  `${publishRequestHeaders["content-type"]} preflights=${preflights}`);
+check("publish images are explicit JPEG data URLs",
+  (published.images || []).every((image) => /^data:image\/jpeg;base64,/.test(image)),
+  (published.images || []).map((image) => String(image).slice(0, 28)).join(" | "));
 check("auto-post caption excludes @handles", !/@/.test(published.caption || ""), published.caption);
 check("captionWithHandles keeps them", /@therealvexusboats/.test(published.captionWithHandles || ""));
 check("published caption is capped at 5 hashtags",
@@ -271,9 +323,6 @@ check("lake is a plain name, not an ID",
 check("postAt is an ISO instant a Delay-Until step can consume",
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(published.postAt || "") &&
   new Date(published.postAt) > new Date(), String(published.postAt));
-check("imageBase64 still carries slide one for older deploys",
-  published.imageBase64 === published.images[0]);
-
 /* v2 destination contract — the Zap branches on these. */
 check("payloadVersion is 2", published.payloadVersion === 2);
 check("two slides declare a carousel", published.format === "carousel", String(published.format));
@@ -284,10 +333,12 @@ check("video-only surfaces cannot leak into the payload",
   !(published.surfaces || []).some((x) => x === "ig_reel" || x === "tiktok"));
 check("story renders exist, one per slide", (published.storyImages || []).length === (published.images || []).length,
   String((published.storyImages || []).length));
+check("story renders are explicit JPEG data URLs",
+  (published.storyImages || []).every((image) => /^data:image\/jpeg;base64,/.test(image)));
 check("story render is a decodable 1080x1920 JPEG", await (async () => {
   const dim = await page.evaluate(async (b64) => {
     const i = new Image();
-    await new Promise((res, rej) => { i.onload = res; i.onerror = rej; i.src = "data:image/jpeg;base64," + b64; });
+    await new Promise((res, rej) => { i.onload = res; i.onerror = rej; i.src = b64; });
     return [i.width, i.height];
   }, published.storyImages[0]);
   return dim[0] === 1080 && dim[1] === 1920;
@@ -295,11 +346,11 @@ check("story render is a decodable 1080x1920 JPEG", await (async () => {
 
 /* The renders: vision small, publish large, and both actually decodable JPEGs. */
 const dims = await page.evaluate(async (imgs) => {
-  const read = (b64) => new Promise((res) => {
+  const read = (src) => new Promise((res) => {
     const i = new Image();
     i.onload = () => res([i.width, i.height]);
     i.onerror = () => res(null);
-    i.src = "data:image/jpeg;base64," + b64;
+    i.src = src;
   });
   return { publish: await Promise.all(imgs.map(read)) };
 }, published.images);

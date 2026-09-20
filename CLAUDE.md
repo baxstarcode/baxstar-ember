@@ -19,18 +19,19 @@ The python path is preserved deliberately: there is no Node on Brady's Mac, and
 
 No API key ever lands in this repo or in any generated file. `index.html` is public the
 moment it's hosted. The key lives in the Cloudflare Worker (`proxy/cloudflare-worker.js`)
-as a secret; the Worker's URL is safe in git only because it enforces an origin allowlist
-**server-side**, so a leaked URL used from curl still gets a 403. Never widen
-`ALLOWED_ORIGINS` to `*`.
+as a secret. Production calls the Worker only through the Access-protected same-origin
+Pages Function and its `EMBER_API` service binding. `ALLOWED_ORIGINS` is browser CORS,
+not authentication; never describe a forged-Origin 403 as an authorization boundary and
+never widen the allowlist to `*`.
 
 ## Tests
 
 ```bash
-npm test              # proxy worker + Drive outbox — no network, no deps, no browser
-npm run test:caption  # Caption Studio end-to-end in headless Chromium (needs playwright)
+npm run test:release  # rebuild/stage, then run every release contract
 ```
 
-`npm run test:caption` drives the **generated** `index.html`, so run `npm run build` first.
+The browser suites drive the **generated** `index.html`; `test:release` rebuilds it before
+running them. Use an individual `test:*` script only for focused iteration.
 
 ## Caption Studio
 

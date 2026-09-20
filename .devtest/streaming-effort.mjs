@@ -1,101 +1,157 @@
-// Streaming + real-effort + auto-sync regression harness (added 2026-08-27).
-// Runs the GENERATED index.html. Locks in the speed contract:
-//   1. Chat requests carry stream:true and the picked effort level, and the
-//      reply text lands in the thread progressively (SSE), not all at once.
-//   2. A plain-JSON response still works (fallback for stubs/old proxies).
-//   3. OPS auto-syncs once on load (opt-in here via __EMBER_AUTOSYNC_TEST),
-//      on the fast model, and real data replaces the demo panels.
-import { chromium } from 'playwright';
-import fs from 'fs';
-const PREINSTALLED = '/opt/pw-browsers/chromium';
-const b = await chromium.launch(fs.existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {});
+// Streaming, effort, plain-JSON fallback, and auto-sync regression harness.
+// Runs the generated app against exact same-origin API routes on an ephemeral server.
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const stub = () => {
-  window.__EMBER_AUTOSYNC_TEST = true;
-  window.__reqs = [];
-  const sse = (chunks) => {
-    const enc = new TextEncoder();
-    const frames = [];
-    frames.push('event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n');
-    for (const c of chunks) frames.push('event: content_block_delta\ndata: ' + JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: c } }) + '\n\n');
-    frames.push('event: message_stop\ndata: {"type":"message_stop"}\n\n');
-    let i = 0;
-    const stream = new ReadableStream({
-      pull(ctrl) {
-        if (i >= frames.length) { ctrl.close(); return; }
-        const frame = frames[i++];
-        return new Promise((r) => setTimeout(() => { ctrl.enqueue(enc.encode(frame)); r(); }, 120));
-      },
-    });
-    return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
-  };
-  const of_ = window.fetch;
-  window.fetch = (...a) => {
-    const url = String(a[0]);
-    if (/\/tts$/.test(url)) return Promise.resolve(new Response(JSON.stringify({ error: 'off' }), { status: 502 }));
-    if (/workers|anthropic|proxy/i.test(url) && a[1] && a[1].method === 'POST') {
-      const body = JSON.parse(a[1].body);
-      window.__reqs.push({ model: body.model, stream: !!body.stream, effort: body.output_config && body.output_config.effort, sync: /ONLY valid JSON/.test(a[1].body) });
-      if (/ONLY valid JSON/.test(a[1].body)) {
-        // sync goes out as plain JSON — proves the non-stream path still works
-        return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text: '{"voicemails":[{"from":"(218) 555-TEST","line":"Fishing","time":"1:00 PM","note":"live sync landed","vm":""}],"emails":[{"from":"LiveSyncProof","time":"1:01 PM","subject":"real data"}],"events":[{"time":"3:00 PM","title":"LiveSyncEvent","detail":""}]}' }] }), { headers: { 'Content-Type': 'application/json' } }));
-      }
-      return Promise.resolve(sse(['Two ', 'bookings ', 'today, ', 'Brady.']));
-    }
-    return of_(...a);
-  };
-  window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; this.volume = 1; this.rate = 1; } };
-  const proto = window.SpeechSynthesis && window.SpeechSynthesis.prototype;
-  if (proto) {
-    proto.getVoices = () => [{ name: 'Samantha', lang: 'en-US', localService: true, default: true }];
-    proto.speak = function (u) { if (u.volume === 0) return; setTimeout(() => u.onstart && u.onstart(), 10); setTimeout(() => u.onend && u.onend(), 60); };
-    proto.cancel = function () {};
-    Object.defineProperty(proto, 'speaking', { get: () => false, configurable: true });
-    Object.defineProperty(proto, 'pending', { get: () => false, configurable: true });
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+function verifiedSyncContent(text) {
+  const content = [];
+  for (const [server, tool] of [["quo", "fetch-missed-calls"], ["gmail", "search_threads"], ["calendar", "list_events"]]) {
+    const id = `mcp_${server}`;
+    content.push({ type: "mcp_tool_use", id, name: tool, server_name: server, input: {} });
+    content.push({ type: "mcp_tool_result", tool_use_id: id, is_error: false, content: [] });
   }
-};
+  content.push({ type: "text", text });
+  return content;
+}
 
-const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
-const p = await ctx.newPage();
-const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.addInitScript(stub);
-await p.goto('http://localhost:8099/index.html', { waitUntil: 'networkidle' });
-await p.waitForTimeout(800);
+async function loadPlaywright() {
+  try {
+    return await import("playwright");
+  } catch (error) {
+    const bundled = path.join(path.dirname(path.dirname(process.execPath)), "node_modules", "playwright", "index.mjs");
+    if (!fs.existsSync(bundled)) throw error;
+    return import(pathToFileURL(bundled).href);
+  }
+}
 
-// Pick Low effort so the request must carry effort:"low"
-await p.getByRole('button', { name: 'Low' }).first().click();
-await p.waitForTimeout(200);
+function startStaticServer(requests) {
+  const rootPrefix = `${path.resolve(ROOT)}${path.sep}`;
+  const server = http.createServer(async (req, res) => {
+    const pathname = decodeURIComponent(new URL(req.url || "/", "http://ember.test").pathname);
+    if (pathname === "/api/messages") {
+      if (req.method !== "POST") {
+        res.writeHead(405, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "POST required" }));
+        return;
+      }
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      const body = JSON.parse(raw || "{}");
+      const isSync = /ONLY valid JSON/.test(raw);
+      requests.push({
+        method: req.method,
+        pathname,
+        model: body.model,
+        stream: body.stream === true,
+        effort: body.output_config?.effort,
+        sync: isSync,
+      });
+      if (isSync) {
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        const text = JSON.stringify({
+          voicemails: [{ from: "(218) 555-TEST", line: "Fishing", time: "1:00 PM", note: "live sync landed", vm: "" }],
+          emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data" }],
+          events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "" }],
+        });
+        res.end(JSON.stringify({ content: verifiedSyncContent(text) }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
+      const frames = [
+        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+        ...["Two ", "bookings ", "today, ", "Brady."].map((text) =>
+          `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } })}\n\n`),
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+      ];
+      for (const frame of frames) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        res.write(frame);
+      }
+      res.end();
+      return;
+    }
+    const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const file = path.resolve(ROOT, relative);
+    if ((!file.startsWith(rootPrefix) && file !== path.resolve(ROOT, "index.html")) ||
+        !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+      return;
+    }
+    const type = {
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".webmanifest": "application/manifest+json",
+      ".svg": "image/svg+xml",
+      ".png": "image/png",
+      ".webp": "image/webp",
+    }[path.extname(file)] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" }).end(fs.readFileSync(file));
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
 
-// Typed command → streamed reply
-await p.evaluate(() => {
-  const input = document.querySelector('.cmd-input');
-  const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-  set.call(input, 'how does today look'); input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-});
-await p.waitForTimeout(300); // two SSE frames in — partial text should be visible
-const partial = await p.getByText(/Two bookings today, Brady\./).count() === 0 &&
-                await p.getByText(/Two /).count() > 0;
-await p.waitForTimeout(1200);
-const full = await p.getByText(/Two bookings today, Brady\./).count() > 0;
+const { chromium } = await loadPlaywright();
+const requests = [];
+const server = await startStaticServer(requests);
+const ORIGIN = `http://127.0.0.1:${server.address().port}`;
+const browser = await chromium.launch();
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+const page = await context.newPage();
+const pageErrors = [];
+const checks = [];
+const check = (name, condition, detail = "") => checks.push([name, !!condition, detail]);
 
-// Auto-sync fires once on load (opt-in flag), on Haiku, and populates panels
-await p.waitForTimeout(1800);
-const syncReq = await p.evaluate(() => window.__reqs.find(r => r.sync));
-const chatReq = await p.evaluate(() => window.__reqs.find(r => !r.sync));
-const liveVm = await p.getByText(/live sync landed/).count();
-const liveMail = await p.getByText(/LiveSyncProof/).count();
+page.on("pageerror", (error) => pageErrors.push(error.message));
+await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
 
-console.log('STREAM — chat request carries stream:true:', !!(chatReq && chatReq.stream));
-console.log('STREAM — chat request carries effort low:', !!(chatReq && chatReq.effort === 'low'));
-console.log('STREAM — partial text visible mid-stream:', partial);
-console.log('STREAM — full text lands:', full);
-console.log('SYNC — auto-sync fired without a button press:', !!syncReq);
-console.log('SYNC — sync rides the fast model:', !!(syncReq && /haiku/.test(syncReq.model)));
-console.log('SYNC — real data replaced demo panels:', liveVm > 0 && liveMail > 0);
-console.log('page errors:', errs.length ? errs : 'none');
-const pass = chatReq && chatReq.stream && chatReq.effort === 'low' && partial && full &&
-             syncReq && /haiku/.test(syncReq.model) && liveVm > 0 && liveMail > 0 && errs.length === 0;
-console.log(pass ? 'STREAMING-EFFORT PASS' : 'STREAMING-EFFORT FAIL');
-await ctx.close();
-await b.close();
+try {
+  await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+  await page.waitForSelector('.chat-controls button[aria-pressed="true"]', { timeout: 15000 });
+
+  await page.locator(".chat-controls button", { hasText: /^Low$/ }).click();
+  const composer = page.getByRole("textbox", { name: "Ask Ember" });
+  await composer.fill("how does today look");
+  await composer.press("Enter");
+
+  const partial = await page.waitForFunction(() => {
+    const bubble = document.querySelector('[data-role="assistant"]');
+    const text = bubble?.textContent || "";
+    return text.includes("Two ") && !text.includes("Two bookings today, Brady.");
+  }, null, { timeout: 5000 }).then(() => true, () => false);
+  await page.getByText("Two bookings today, Brady.", { exact: true }).waitFor({ timeout: 10000 });
+
+  await page.waitForFunction(() => /live sync landed/i.test(document.body.innerText), null, { timeout: 10000 });
+  const syncRequest = requests.find((request) => request.sync);
+  const chatRequest = requests.find((request) => !request.sync);
+  const liveVoicemail = await page.getByText(/live sync landed/i).count();
+  const liveMail = await page.getByText(/LiveSyncProof/).count();
+
+  check("chat request uses exact same-origin POST route",
+    chatRequest?.method === "POST" && chatRequest?.pathname === "/api/messages");
+  check("chat request carries stream:true", chatRequest?.stream === true);
+  check("chat request carries effort low", chatRequest?.effort === "low");
+  check("partial text is visible mid-stream", partial);
+  check("full text lands", await page.getByText("Two bookings today, Brady.", { exact: true }).count() > 0);
+  check("auto-sync fires without a button press", !!syncRequest);
+  check("auto-sync uses the fast model", /haiku/.test(syncRequest?.model || ""));
+  check("plain-JSON sync replaces demo panels", liveVoicemail > 0 && liveMail > 0);
+  check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | "));
+} finally {
+  await context.close();
+  await browser.close();
+  await new Promise((resolve) => server.close(resolve));
+}
+
+let failed = 0;
+for (const [name, passed, detail] of checks) {
+  if (!passed) failed += 1;
+  console.log(`${passed ? "PASS" : "FAIL"} — ${name}${!passed && detail ? ` :: ${detail}` : ""}`);
+}
+console.log(`\n${checks.length - failed}/${checks.length} passed`);
+console.log(failed ? "STREAMING-EFFORT FAIL" : "STREAMING-EFFORT PASS");
+process.exit(failed ? 1 : 0);
