@@ -143,6 +143,10 @@ Ember is also hosted at `https://baxstar-ember.pages.dev` (Cloudflare Pages, dep
 `baxterbrady@gmail.com` via one-time PIN. Both the preflight and a real `POST` were
 re-verified from that origin after the change.
 
+> **Current (2026-09-20):** production is `https://ember.baxstarfishing.com` and it is the
+> only origin in `ALLOWED_ORIGINS` — the `pages.dev` origin above now 403s by design. Connector
+> state and the Google re-key procedure live in `docs/DEPLOY.md` §4.
+
 **Verified against the deployment, not just the code:**
 
 | Probe | Result |

@@ -147,8 +147,9 @@ See `docs/KNOWN-ISSUES.md`. Short version:
 1. **Revenue is entered by hand.** Nothing invents the number — there is no booking-system
    connection to pull it from, and FareHarbor has no public API.
 
-Recently closed: proxy deployed and verified · hosted at `baxstar-ember.pages.dev` behind
-Cloudflare Access · glass tanks brought into the warm palette · `index.html` no longer needs
+Recently closed: proxy deployed and verified · hosted at `ember.baxstarfishing.com` behind
+Cloudflare Access (the old `baxstar-ember.pages.dev` origin is no longer allowlisted) · glass
+tanks brought into the warm palette · `index.html` no longer needs
 unpkg or in-browser Babel · unauthorized connectors no longer take chat down with them.
 
 ---

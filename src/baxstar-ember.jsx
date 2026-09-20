@@ -3912,7 +3912,7 @@ function mcDefaults() {
     projects: [
       { id: mcUid(), name: "Baxstar Ember", pct: 97, status: "active", revenue: false, sessions: 1, hours: 2, next: "Dashboard-only build shipped; voice retired", updated: d,
         links: [
-          { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+          { id: mcUid(), label: "app", url: "https://ember.baxstarfishing.com" },
           { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
           { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" },
         ],
@@ -3920,7 +3920,7 @@ function mcDefaults() {
       { id: mcUid(), name: "Pontoon check-in", pct: 85, status: "active", revenue: true, sessions: 1, hours: 2, next: "Close multi-tab queue TOCTOU", updated: d,
         links: [], tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }] },
       { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d,
-        links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }], tasks: [] },
+        links: [{ id: mcUid(), label: "studio", url: "https://ember.baxstarfishing.com" }], tasks: [] },
       { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d,
         links: [{ id: mcUid(), label: "wix editor", url: "https://manage.wix.com/" }], tasks: [] },
     ],

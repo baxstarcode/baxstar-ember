@@ -116,21 +116,31 @@ artifact. Hosted, you'll get a clear error naming this file rather than a silent
 
 ---
 
-## 4. Connectors: Google live; Quo authorization pending
+## 4. Connectors: Quo live; Google revoked 2026-09-06, re-key to restore
 
-Hosted Ember has working connectors. The Worker holds Google OAuth **refresh
-tokens** as secrets (`MCP_REFRESH_GMAIL`, `MCP_REFRESH_CALENDAR`,
-`MCP_REFRESH_GDRIVE` — same token, all three) and mints access tokens per
-request for the **Google Workspace MCP** endpoints
+**Current state (verified 2026-09-20 via `/connectors/status`):** `quo` connected;
+`gmail`, `calendar`, `gdrive` offline. Google is offline because the 2026-09-06 Ember
+park deliberately revoked the Worker's Google grant (the `brady-9d1.workers.dev` client),
+which invalidated the `MCP_REFRESH_*` tokens. Nothing else changed — the re-key flow
+below is the whole fix. (An Apps Script "Ember Google Connector" was built 08-15 while
+the MCP endpoints were blocked on preview enrollment; enrollment was approved 08-22, the
+MCP path went live, and the Apps Script connector was never wired in and is archived.
+It is not the plan of record.)
+
+The Worker holds Google OAuth **refresh tokens** as secrets (`MCP_REFRESH_GMAIL`,
+`MCP_REFRESH_CALENDAR`, `MCP_REFRESH_GDRIVE` — same token, all three) and mints access
+tokens per request for the **Google Workspace MCP** endpoints
 (`calendarmcp` / `gmailmcp` / `drivemcp.googleapis.com`). Those endpoints are a
 Developer Preview and require project enrollment — Google Cloud project
 **ember-504105** was approved 2026-08-22. Verified live the same day: real
 calendar events, real unread Gmail, real Drive files through hosted chat.
 
-To re-run the OAuth flow (e.g. after token revocation): visit the Worker's
-`/oauth/start?p=google`, click Allow, paste the shown refresh token into all
-three `MCP_REFRESH_*` secrets, redeploy. `OAUTH_STATE_SECRET` and
-`OAUTH_REDIRECT_URI` must be set in Worker variables first.
+To (re-)run the OAuth flow, e.g. after token revocation: visit the Worker's
+`/oauth/start?p=google` as brady@baxstarfishing.com, click Allow, paste the shown
+refresh token into all three `MCP_REFRESH_*` secrets on the Worker's Variables and
+Secrets page and use that page's own Deploy button — no code paste is needed.
+`OAUTH_STATE_SECRET` and `OAUTH_REDIRECT_URI` must be set in Worker variables first.
+Brady pastes the token himself; no agent reads or repeats it.
 
 **Quo changed its MCP setup in Aug 2026.** Custom clients now use
 `https://mcp.quo.com/mcp` with OAuth 2.1. The old descope is historical
@@ -152,7 +162,7 @@ reading any calls, messages, email, calendar, or Drive data:
 
 ```bash
 curl -sS https://ember-claude-proxy.brady-9d1.workers.dev/connectors/status \
-  -H 'Origin: https://baxstar-ember.pages.dev' \
+  -H 'Origin: https://ember.baxstarfishing.com' \
   -H 'Content-Type: application/json' \
   --data '{"connectors":["quo","gmail","calendar","gdrive"]}'
 ```
