@@ -114,6 +114,13 @@ configured, and the public Worker host is closed. This revival has not yet re-ve
 one controlled production Drive write or any downstream posting automation. Ember does
 not publish directly to social media.
 
+The controlled release test stopped at the browser automation file picker: selection
+did not return, and no Generate, review, or Publish action occurred. A metadata check
+of the existing outbox found no new files. This is a verification-tool limitation,
+not evidence that the application upload or relay failed. A future signed-in manual
+test can use the disposable `EMBER RELEASE TEST — DO NOT POST` image; inspect the
+review-outbox JPEG and text sidecar before calling this route verified.
+
 Keep the private-outbox review step. Test any downstream automation with a disposable
 item before enabling it.
 
