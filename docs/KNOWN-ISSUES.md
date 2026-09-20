@@ -4,29 +4,32 @@ Last reconciled with the working repository on **2026-09-20**. This is the activ
 ledger, not the historical chronology; Git history and the Ember Handoff Log preserve
 the closed issue record.
 
-## 1. New production topology is not live-verified
+## 1. Final connector-status and Drive-outbox checks remain
 
-**Status: OPEN — release gate**
+**Status: OPEN — post-release verification**
 
-The source now contains an exact static Pages build, an Access-gated same-origin
-`/api/*` Pages Function, an internal `EMBER_API` Worker binding, and a Worker host gate
-that refuses direct API traffic on `workers.dev`. Local tests cover the contracts, but
-the combined release has not yet been verified in production.
+The revived Pages build and Worker boundary are live. PR #43 merged at
+`add4a8c28c17f70b3463d5ad786833f5e5a7880a`; Pages deployment
+`1f56234b-f359-43f2-ba38-c839d2e6b415` served the merged UI; Worker version
+`ac3b4578-5a04-4abf-9286-8e95663517d5` deployed with its secrets preserved. Cloudflare
+Access challenged the custom host, custom `/api/messages`, exact Pages alias, and the
+current deployment alias before application/API access.
 
-Required evidence:
+The paired boundary checks passed: a pre-Worker non-streaming `/api/messages` request
+proved the binding, a post-Worker streamed lab reply completed, all eight forged-Origin
+public-host POST probes returned 404, and Google OAuth start still redirected to the
+provider. Main chat and a count-only connector follow-up completed; live OPS sync
+populated provider-derived panels. One transient connector-degraded chat response was
+shown honestly and the focused follow-up completed without that banner.
 
-1. the `main` Pages deployment builds with `npm run build:pages` and publishes `dist`;
-2. an unauthenticated request to `ember.baxstarfishing.com` is challenged or denied by
-   Cloudflare Access before the application/API is reached;
-3. a signed-in session can stream chat, read data-free connector status, and receive
-   TTS audio and relay one controlled Drive-outbox draft through the four same-origin
-   routes;
-4. after the Worker deploy, direct non-OAuth requests to its `workers.dev` hostname
-   return 404 even with a forged allowed `Origin`;
-5. the registered OAuth GET flow and the Pages service binding still work after that
-   host gate lands.
+Still required:
 
-Deploy Pages and prove the internal route before deploying the Worker host gate. See
+1. call signed-in `/api/connectors/status` through the Pages binding and record only the
+   data-free state;
+2. publish one controlled Caption Studio draft and verify the private Drive file exists
+   before accepting `/api/outbox` success.
+
+The staged order remains the required procedure for future releases; see
 `docs/DEPLOY.md`.
 
 ## 2. Desktop and iPhone microphone/speaker reliability is unproven
@@ -37,6 +40,12 @@ The isolated page at `work/desktop-voice-probe/` has automated simulation covera
 mocks cannot prove the actual Mac microphone, Chrome speech service, recognition
 accuracy, microphone release, MP3 decoding, speaker audibility, permission recovery,
 or five repeated listen/request/play cycles.
+
+The deployed lab has now returned a complete signed-in streamed reply and neural audio.
+The browser reported `playing`, then `ended`, and the UI returned to `Playback ended`
+with the mic off. That proves the released text/TTS browser path, not that Brady heard
+the audio, that its quality is acceptable, or that any physical microphone behavior
+works.
 
 Brady must run the production probe in desktop Chrome five times and record the gate
 in its README. Any failed row blocks integration into Ember. A pass applies only to an
@@ -95,29 +104,43 @@ that manual revenue is synced.
 
 ## 7. Caption publishing still has an external review boundary
 
-**Status: PROVISIONAL outside local tests**
+**Status: PROVISIONAL pending one controlled production write**
 
 Caption Studio prepares images and text and sends them through Access-protected,
 same-origin `/api/outbox`. The Worker owns the Apps Script destination and optional
 shared token; neither is present in the browser bundle or storage. Local relay and
-Apps Script tests are green, but this revival has not yet re-verified one controlled
-production Drive write or any downstream posting automation. Ember does not publish
-directly to social media.
+Apps Script tests are green, the deployed Worker has its server-only `OUTBOX_URL`
+configured, and the public Worker host is closed. This revival has not yet re-verified
+one controlled production Drive write or any downstream posting automation. Ember does
+not publish directly to social media.
+
+The controlled release test stopped at the browser automation file picker: selection
+did not return, and no Generate, review, or Publish action occurred. A metadata check
+of the existing outbox found no new files. This is a verification-tool limitation,
+not evidence that the application upload or relay failed. A future signed-in manual
+test can use the disposable `EMBER RELEASE TEST — DO NOT POST` image; inspect the
+review-outbox JPEG and text sidecar before calling this route verified.
 
 Keep the private-outbox review step. Test any downstream automation with a disposable
 item before enabling it.
 
 ## 8. Provider and live-feed claims require a signed-in check
 
-**Status: PROVISIONAL for the revived release**
+**Status: PARTIALLY VERIFIED in the revived release**
 
 Quo, Gmail, Calendar, and Drive credentials were all reported connected by the live
-status route on 2026-09-20. The new Worker source also degrades ordinary chat safely
-when a connector fails and makes OPS sync refuse connector-free fallback data.
+status route earlier on 2026-09-20. The revived release has not yet repeated the
+data-free status call, so do not turn that earlier report into a fresh all-connected
+claim.
 
-After deployment, verify actual signed-in status and one controlled OPS sync before
-calling the revived dashboard live. Do not infer provider availability from local
-mocks, secret names, or an HTTP 200 from a different route.
+A signed-in OPS auto-sync did complete as LIVE and populated provider-derived panels
+with counts only: 0 calls, 5 unread messages, and 0 calendar events. Main chat completed;
+one response exposed the connector-degraded banner and the focused count-only follow-up
+completed without it. The Drive librarian also found the Ember Handoff Log by title;
+no file contents were read. This verifies honest failure/recovery behavior and bounded
+live provider reads, not uninterrupted availability of all four providers. Run the dedicated
+`/api/connectors/status` check before recording current per-provider state. Do not infer
+provider availability from local mocks, secret names, or an HTTP 200 from another route.
 
 ## Expected behavior that is not a bug
 

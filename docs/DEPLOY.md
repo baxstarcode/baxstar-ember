@@ -2,10 +2,15 @@
 
 Last reconciled with source on **2026-09-20**.
 
-**Release status:** source and local tests are ready; the revived Pages build,
-same-origin gateway, and Worker host gate have not yet completed the staged production
-verification below. Do not call the new boundary live until every release-gate check is
-observed in the named environment.
+**Release status:** the revived boundary is live. PR #43 merged to `main` at
+`add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit
+`063237de6bfc45eb562eb9dbd82a9eb8b651a6f8` shipped through Pages deployment
+`1f56234b-f359-43f2-ba38-c839d2e6b415` and Worker version
+`ac3b4578-5a04-4abf-9286-8e95663517d5`. Access, the Pages binding, the public Worker
+host gate, OAuth start, signed-in streamed text, ordinary main chat, live OPS sync, and
+the isolated lab's browser TTS cycle have production evidence. The dedicated
+connector-status call, one controlled Drive-outbox write, and physical voice gates
+remain open.
 
 ## Production topology
 
@@ -39,9 +44,10 @@ read-only tool allowlist; all new provider tools default off. Caption Studio can
 only a validated review draft through `/api/outbox`; the browser cannot choose the
 destination or supply its token.
 
-After the pending host-gate deploy, the Worker's public `workers.dev` hostname accepts
-only manual OAuth GET start/callback routes. Every non-OAuth request there returns 404.
-`Origin` is retained for browser CORS, not treated as authentication.
+The deployed Worker's public `workers.dev` hostname accepts only manual OAuth GET
+start/callback routes. Forged-Origin POSTs to all four `/api/*` routes returned 404 on
+both ordinary and trailing-dot host forms. `Origin` is retained for browser CORS, not
+treated as authentication.
 
 ## Canonical deployment files
 
@@ -134,10 +140,38 @@ update the harness when a deliberate contract change is verified.
 the static Python server cannot relay those requests. Use intercepted local tests
 and the authenticated production hostname for live API checks.
 
+## Current deployment evidence
+
+The 2026-09-20 release recorded:
+
+- 562/562 local release checks and 11/11 matching sponsor handles;
+- the merged release rendered through Pages on the custom hostname;
+- unauthenticated requests to the custom host, custom `/api/messages`, exact production
+  Pages alias, and current deployment alias redirected to Cloudflare Access;
+- a signed-in connector-free `stream:false` lab request completed through the Pages
+  binding in 1.3 seconds before the Worker update;
+- the Worker deployed with existing secrets preserved and server-only `OUTBOX_URL`
+  configured; no provider key or OAuth grant was rotated for this release;
+- after the Worker update, a signed-in streamed lab reply completed in 1.4 seconds;
+- explicit lab Play reached browser `playing` and `ended`, then returned the UI to
+  `Playback ended` with the mic off; physical audibility and quality were not tested;
+- all eight forged-Origin public-host POST probes returned 404, while Google OAuth
+  start redirected to `accounts.google.com`;
+- ordinary main chat completed, live OPS auto-sync populated provider-derived panels,
+  one connector-degraded response was surfaced honestly, and the focused follow-up
+  completed without the degraded banner;
+- the Drive librarian found the Ember Handoff Log by title; no file contents were read.
+
+Still pending: the signed-in data-free `/api/connectors/status` call, one controlled
+`/api/outbox` write confirmed by the private Drive file, and the Mac/iPhone physical
+voice gates.
+
 ## Staged release procedure
 
-The order matters. Pages must prove the internal path before the public direct Worker
-API is closed.
+The 2026-09-20 release completed the paired Pages → binding proof → Worker deployment;
+the remaining post-release checks are listed above. Keep this as the required
+procedure for future paired releases: Pages must prove the internal path before the
+public direct Worker API is closed.
 
 ### 1. Review the release candidate
 
@@ -331,18 +365,19 @@ Desktop results do not satisfy this separate gate.
 
 ## Production checklist
 
-- [ ] `npm run build:pages` succeeds and recreates the expected `dist/`
-- [ ] Worker, Pages, chat, layout, dashboard, and voice-probe suites pass
-- [ ] Staged diff contains no secrets and only intended files
-- [ ] Pages production deployment from `main` succeeds
-- [ ] Custom hostname serves the new build behind Cloudflare Access
-- [ ] Unauthenticated custom-host request is challenged/denied
+- [x] `npm run build:pages` succeeds and recreates the expected `dist/`
+- [x] Worker, Pages, chat, layout, dashboard, and voice-probe suites pass
+- [x] Staged diff contains no secrets and only intended files
+- [x] Pages production deployment from `main` succeeds
+- [x] Custom hostname serves the new build behind Cloudflare Access
+- [x] Custom host, API path, exact Pages alias, and deployment alias are challenged
 - [ ] Signed-in `/api/connectors/status` works through the Pages binding
-- [ ] Signed-in chat streams and degraded/error states remain honest
-- [ ] One signed-in TTS request returns playable audio
-- [ ] Worker host gate deploy succeeds
-- [ ] Direct `workers.dev` API request returns 404 with a forged allowed Origin
-- [ ] OAuth start GET still redirects and the Pages API still works
-- [ ] Controlled OPS sync returns verified provider data
+- [x] Signed-in chat streams and connector degradation/recovery remain honest
+- [x] One signed-in TTS request reaches browser `playing` and `ended` states
+- [x] Worker host gate deploy succeeds
+- [x] All four direct API routes return 404 on ordinary and trailing-dot public hosts
+- [x] OAuth start GET still redirects and the Pages API still works
+- [x] Controlled OPS sync returns verified provider data
+- [ ] Controlled `/api/outbox` draft creates the expected private Drive file
 - [ ] Brady completes the five-run physical Mac voice gate before voice integration
 - [ ] iPhone integration, if attempted, follows a separate passing physical lab result

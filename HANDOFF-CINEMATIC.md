@@ -10,8 +10,12 @@ Ember is Brady Baxter's desktop-first AI command center for Baxstar Fishing and 
 Golf Simulator. OPS, chat, Mission Control, Projects, Studio, the tools rail, and the
 conditional desktop-voice experiment are surfaces of one daily operating system.
 
-The desktop revival is implemented and locally verified. Production rollout of the
-new Pages gateway and Worker host gate is still pending. Desktop voice remains outside
+The desktop revival is implemented, locally verified, merged through PR #43, and live
+through Pages deployment `1f56234b-f359-43f2-ba38-c839d2e6b415` plus Worker version
+`ac3b4578-5a04-4abf-9286-8e95663517d5`. Access, the same-origin binding, public Worker
+host gate, OAuth start, signed-in streamed text, ordinary main chat, live OPS sync, and
+the isolated lab's browser TTS cycle passed production checks. Data-free connector
+status and one controlled Drive-outbox write remain open. Desktop voice remains outside
 the main app until Brady completes the physical five-run Mac Chrome gate. Reliable
 iPhone voice is also preferred if feasible, with a separate isolated reliability lab
 and physical test before integration.
@@ -76,10 +80,11 @@ or methods. The Worker owns every provider URL, secret, schema limit, model allo
 outbox destination, and connector tool permission. Ordinary chat has an explicit
 read-only MCP tool allowlist; new provider tools default off.
 
-The source host gate keeps `workers.dev` only for the registered manual OAuth GET
-start/callback. Direct API traffic there returns 404 after deployment. `Origin` remains
-a CORS check, never identity. Do not deploy that host gate until the bound same-origin
-production path is proven.
+The deployed host gate keeps `workers.dev` only for the registered manual OAuth GET
+start/callback. Forged-Origin POSTs to all four `/api/*` routes returned 404 on both
+ordinary and trailing-dot public host forms; Google OAuth start still redirected to
+the provider. `Origin` remains a CORS check, never identity. For future paired releases,
+prove the bound same-origin production path before changing the public host gate.
 
 ## Compatibility locks
 
@@ -199,20 +204,30 @@ The local preview is for UI iteration. It uses same-origin API paths that a stat
 Python server cannot relay; use intercepted tests or the authenticated production
 hostname for live API and voice-gate testing.
 
-## Current release gates
+## Current release status and remaining gates
 
-1. Pages deployment from `main` succeeds with `npm run build:pages` and `dist`.
-2. Cloudflare Access covers the custom hostname, exact production `pages.dev` alias,
-   and preview wildcard, including `/api/*`.
-3. A connector-free typed lab request with **Stream reply** off proves the service
-   binding against the old Worker, which labels SSE incorrectly.
-4. The paired Worker update deploys; direct `workers.dev` API POSTs return 404; OAuth GET
-   still starts; authenticated streaming chat, TTS, connector status, and controlled
-   outbox calls work through the Pages binding.
-5. OPS shows verified provider data without false-live fallback.
-6. Brady completes the five-run Mac Chrome voice gate before desktop voice integration.
-   The opt-in iPhone lab needs its own physical repeated-turn/interruption test before
-   phone integration.
+Completed on 2026-09-20:
 
-Until each environment-specific check is observed, label it **PROVISIONAL** rather
-than inferring it from source or mocks.
+1. the 562/562 local matrix and 11/11 sponsor-drift check passed;
+2. PR #43 merged and the exact release deployed through Pages;
+3. Access challenged the custom host, custom API path, exact production Pages alias,
+   and current deployment alias;
+4. a connector-free `stream:false` lab request proved the binding before the paired
+   Worker update;
+5. the Worker host gate deployed; eight forged-Origin route probes returned 404 and
+   OAuth start still redirected;
+6. a signed-in streamed lab reply and browser TTS cycle completed;
+7. ordinary main chat completed, connector degradation/recovery was visible, and OPS
+   populated verified live panels without false-live fallback.
+
+Still open:
+
+1. call signed-in `/api/connectors/status` and record only its data-free result;
+2. send one controlled `/api/outbox` draft and confirm the private Drive file exists;
+3. have Brady complete the five-run Mac Chrome voice gate before desktop voice
+   integration;
+4. run the opt-in iPhone physical repeated-turn/interruption test before phone
+   integration.
+
+Physical microphone release, speech recognition, speaker audibility/quality, and
+device reliability remain **PROVISIONAL** until observed on the named device.
