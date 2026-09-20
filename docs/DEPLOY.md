@@ -116,16 +116,16 @@ artifact. Hosted, you'll get a clear error naming this file rather than a silent
 
 ---
 
-## 4. Connectors: Quo live; Google revoked 2026-09-06, re-key to restore
+## 4. Connectors: all four live (re-keyed 2026-09-20)
 
-**Current state (verified 2026-09-20 via `/connectors/status`):** `quo` connected;
-`gmail`, `calendar`, `gdrive` offline. Google is offline because the 2026-09-06 Ember
-park deliberately revoked the Worker's Google grant (the `brady-9d1.workers.dev` client),
-which invalidated the `MCP_REFRESH_*` tokens. Nothing else changed — the re-key flow
-below is the whole fix. (An Apps Script "Ember Google Connector" was built 08-15 while
-the MCP endpoints were blocked on preview enrollment; enrollment was approved 08-22, the
-MCP path went live, and the Apps Script connector was never wired in and is archived.
-It is not the plan of record.)
+**Current state (verified 2026-09-20 via `/connectors/status`):** `quo`, `gmail`,
+`calendar` and `gdrive` all **connected**. They had been offline since the 2026-09-06
+Ember park, which deliberately revoked the Worker's Google grant (the
+`brady-9d1.workers.dev` client) and invalidated the `MCP_REFRESH_*` tokens — not a bug.
+Re-running the OAuth flow below and rotating the three secrets restored it. (An Apps
+Script "Ember Google Connector" was built 08-15 while the MCP endpoints were blocked on
+preview enrollment; enrollment was approved 08-22, the MCP path went live, and the Apps
+Script connector was never wired in and is archived. It is not the plan of record.)
 
 The Worker holds Google OAuth **refresh tokens** as secrets (`MCP_REFRESH_GMAIL`,
 `MCP_REFRESH_CALENDAR`, `MCP_REFRESH_GDRIVE` — same token, all three) and mints access
