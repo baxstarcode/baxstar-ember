@@ -5,8 +5,8 @@ import { useState, useEffect, useRef } from "react";
    ------------------------------------------------------------
    v4 adds:
      · Claude Chat: model toggle (Haiku / Sonnet / Opus / Fable) +
-       effort level (Low / Std / High). Non-Sonnet models
-       auto-fall back to Sonnet 4.6 if the gateway rejects them.
+       effort level (Low / Std / High). Failed requests stay visible so
+       Brady can retry or choose a different model explicitly.
      · Google Drive tool in the Studio rail (real Drive icon) —
        search + read Agent OS docs via the Drive connector.
      · Background system for OPS + Studio: 4 built-in scene
@@ -19,13 +19,13 @@ import { useState, useEffect, useRef } from "react";
 /* ---------- CONFIG ---------- */
 
 const MCP_SERVERS = [
-  // Quo published custom-agent support in Aug 2026. The /mcp path matters:
-  // the bare host redirects to docs and is not an MCP endpoint.
-  { type: "url", url: "https://mcp.quo.com/mcp", name: "quo" },
-  { type: "url", url: "https://gmailmcp.googleapis.com/mcp/v1", name: "gmail" },
-  { type: "url", url: "https://calendarmcp.googleapis.com/mcp/v1", name: "calendar" },
+  // The browser requests names only. The Worker owns destinations, credentials,
+  // and read-only toolsets, so client code cannot redirect or expand access.
+  { name: "quo" },
+  { name: "gmail" },
+  { name: "calendar" },
 ];
-const DRIVE_SERVER = { type: "url", url: "https://drivemcp.googleapis.com/mcp/v1", name: "gdrive" };
+const DRIVE_SERVER = { name: "gdrive" };
 
 const HANDOFF_DOC_URL = "https://docs.google.com/document/d/1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns/edit";
 
@@ -221,6 +221,103 @@ const TOOL_LINKS = [
   ]},
 ];
 
+/* ---------- THE ECOSYSTEM GRAPH ----------
+   Every moving part of Brady's operation and what it actually touches. Read-only:
+   it draws what is true, it does not edit, sync, or generate anything.
+
+   This is the ONE place the graph data lives. Edit these two arrays and nothing
+   else — the layout is computed, so adding a node needs no coordinates.
+
+   Provenance, so a later session can check a line instead of guessing: sites and
+   hosting come from TOOL_LINKS above (itself verified against the SITE HOSTING MAP
+   in 06_Baxstar_Tech_Stack_Context); connector edges from MCP_SERVERS and
+   proxy/cloudflare-worker.js; document ownership from the Drive Router
+   ("Baxstar Source of Truth", 1AgIxAj0YM8XNTTMHVcJInNAquLKnon-WB4i2DMzTzRQ);
+   repos from the baxstarcode org. Nothing here is invented.
+
+   The `g` field is the group id — it sets the colour and the legend filter.  */
+const ECO_GROUPS = [
+  { id: "core",     label: "Ember",     color: "#FF4D32" },
+  { id: "business", label: "Business",  color: "#FF7A45" },
+  { id: "site",     label: "Sites",     color: "#FFB13B" },
+  { id: "repo",     label: "Repos",     color: "#D6B36A" },
+  { id: "service",  label: "Services",  color: "#B08D57" },
+  { id: "truth",    label: "Truth",     color: "#C9B18A" },
+];
+
+const ECO_NODES = [
+  { id: "ember", g: "core", label: "EMBER", note: "This console — the front door to all of it", url: "https://ember.baxstarfishing.com" },
+
+  { id: "fishing", g: "business", label: "Baxstar Fishing", note: "Guided trips, ice houses, pontoon rentals" },
+  { id: "golf",    g: "business", label: "Lakes Golf Sim",  note: "Simulator bays and the tech camp" },
+  { id: "consult", g: "business", label: "AI Consulting",   note: "Workflow audits and productized packages" },
+  { id: "course",  g: "business", label: "AI, FOR REAL.",   note: "The course — landing page plus live sessions" },
+
+  { id: "s-fishing", g: "site", label: "baxstarfishing.com", note: "Main site — Wix shell, HTML embeds from bax1", url: "https://baxstarfishing.com" },
+  { id: "s-boat",    g: "site", label: "boat.baxstar…",      note: "Vexus DVX 20S page — GitHub Pages, self-publishing", url: "https://boat.baxstarfishing.com" },
+  { id: "s-golf",    g: "site", label: "lakesgolfsim.com",   note: "Golf sim site — tech-camp page only so far", url: "https://lakesgolfsim.com" },
+  { id: "s-ai",      g: "site", label: "ai.lakesgolfsim",    note: "Public course landing and signup", url: "https://ai.lakesgolfsim.com" },
+  { id: "s-learn",   g: "site", label: "learn.lakesgolfsim", note: "The classroom used during live sessions", url: "https://learn.lakesgolfsim.com" },
+  { id: "s-ember",   g: "site", label: "ember.baxstar…",     note: "Hosted Ember, behind Cloudflare Access", url: "https://ember.baxstarfishing.com" },
+
+  { id: "r-bax1",    g: "repo", label: "bax1",             note: "Fishing site HTML — the live embed code", url: "https://github.com/baxstarcode/bax1" },
+  { id: "r-ember",   g: "repo", label: "baxstar-ember",    note: "This app. src/baxstar-ember.jsx is canonical", url: "https://github.com/baxstarcode/baxstar-ember" },
+  { id: "r-caption", g: "repo", label: "caption-studio",   note: "Standalone caption tool — shares the SPONSORS set", url: "https://github.com/baxstarcode/caption-studio" },
+  { id: "r-vexus",   g: "repo", label: "baxstar-vexus",    note: "Serves the boat page directly from main", url: "https://github.com/baxstarcode/baxstar-vexus" },
+  { id: "r-pontoon", g: "repo", label: "baxstar-pontoon",  note: "Pontoon check-in app", url: "https://github.com/baxstarcode/baxstar-pontoon" },
+  { id: "r-course",  g: "repo", label: "ai-everyday-life", note: "Course repo — blueprint, releases, QA" },
+
+  { id: "claude", g: "service", label: "Anthropic API",   note: "Claude — Ember's brain" },
+  { id: "worker", g: "service", label: "Ember Worker",    note: "Key-holding, read-only connector gateway behind Access" },
+  { id: "cf",     g: "service", label: "Cloudflare",      note: "Worker, Pages hosting, and Access" },
+  { id: "fh",     g: "service", label: "FareHarbor",      note: "Bookings. De-facto price truth under the 2026 freeze", url: "https://fareharbor.com/dashboard/" },
+  { id: "wix",    g: "service", label: "Wix",             note: "Hosts the fishing site shell", url: "https://manage.wix.com/" },
+  { id: "gas",    g: "service", label: "Apps Script",     note: "Drive Gateway · Caption outbox · Site price feed" },
+  { id: "drive",  g: "service", label: "Google Drive",    note: "The Data Engine — every owning doc lives here", url: "https://drive.google.com/" },
+  { id: "gmail",  g: "service", label: "Gmail",           note: "MCP connector" },
+  { id: "cal",    g: "service", label: "Calendar",        note: "MCP connector" },
+  { id: "quo",    g: "service", label: "Quo",             note: "Phones and texts. Fishing + pontoon inboxes", url: "https://app.quo.com" },
+  { id: "zapier", g: "service", label: "Zapier",          note: "Automation rail. 1500 tasks/mo — spend them carefully" },
+  { id: "ig",     g: "service", label: "Instagram",       note: "Auto-post target. Sponsors ride as photo tags" },
+  { id: "gbp",    g: "service", label: "Google Business", note: "Posts and reviews" },
+  { id: "ga4",    g: "service", label: "GA4 / GTM",       note: "Tracking. GTM is the single source for tags" },
+  { id: "github", g: "service", label: "GitHub",          note: "Every repo, and Pages for three of the sites" },
+
+  { id: "router",  g: "truth", label: "SoT Router",    note: "The map. It routes; it never stores facts" },
+  { id: "pricing", g: "truth", label: "Pricing Engine",note: "2026 LIVE sheet. RECONCILER tab is the snapshot" },
+  { id: "tech",    g: "truth", label: "06 Tech Stack", note: "Tooling facts and the site hosting map" },
+  { id: "aictx",   g: "truth", label: "AI Context",    note: "How Brady and the agents work together" },
+  { id: "voice",   g: "truth", label: "Brand Voice",   note: "03 — the copy standard" },
+  { id: "elog",    g: "truth", label: "Ember Log",     note: "Ember state and the standing-truth block" },
+  { id: "blog",    g: "truth", label: "Baxstar Log",   note: "Recent state for everything that is not Ember" },
+];
+
+/* [from, to] — undirected. Order is cosmetic only. */
+const ECO_EDGES = [
+  ["ember","claude"], ["ember","worker"], ["worker","claude"], ["worker","cf"],
+  ["ember","s-ember"], ["s-ember","cf"], ["ember","r-ember"], ["r-ember","github"],
+  ["ember","gmail"], ["ember","cal"], ["ember","drive"], ["ember","quo"],
+  ["ember","fishing"], ["ember","golf"], ["ember","zapier"], ["ember","r-caption"],
+  ["ember","elog"],
+
+  ["fishing","s-fishing"], ["fishing","fh"], ["fishing","quo"], ["fishing","ig"],
+  ["fishing","gbp"], ["fishing","s-boat"], ["fishing","r-pontoon"],
+  ["s-fishing","wix"], ["s-fishing","r-bax1"], ["s-fishing","ga4"], ["s-fishing","fh"],
+  ["s-boat","r-vexus"], ["r-vexus","github"], ["r-pontoon","github"],
+  ["r-bax1","github"], ["r-caption","github"], ["r-course","github"],
+
+  ["golf","s-golf"], ["golf","course"], ["course","s-ai"], ["course","s-learn"],
+  ["course","r-course"], ["consult","drive"], ["consult","ember"],
+
+  ["r-caption","ig"], ["zapier","ig"], ["zapier","gbp"], ["ember","gas"],
+  ["gas","drive"], ["gas","s-fishing"], ["gas","pricing"],
+
+  ["fh","pricing"], ["drive","router"],
+  ["router","pricing"], ["router","tech"], ["router","aictx"], ["router","voice"],
+  ["router","elog"], ["router","blog"], ["elog","r-ember"], ["tech","cf"],
+  ["voice","s-fishing"], ["blog","fishing"],
+];
+
 const PROJECTS_META = {
   updated: "2026-08-24",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
@@ -252,7 +349,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
         links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "9/18: voice retired — Ember is a dashboard now (panels, typed ask, Caption Studio, Projects, tools rail). Left: nothing blocking.", sessions: "~0.5" },
+        outstanding: "Desktop dashboard and chat reliability checks in progress. Desktop voice probe pending Mac verification.", sessions: "~0.5" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -302,10 +399,9 @@ const MODELS = [
   { id: "claude-opus-5",     label: "Opus 5" },
   { id: "claude-fable-5",    label: "Fable 5" },
 ];
-// Brady's call (2026-08-23): Opus 5 on High effort is the default. Sonnet stays
-// the fallback when the gateway rejects the chosen model.
+// Preserve Brady's chosen model default. Failed requests require an explicit
+// retry or model change; silently retrying can repeat connector work.
 const DEFAULT_MODEL = "claude-opus-5";
-const FALLBACK_MODEL = "claude-sonnet-4-6";
 // Low, since 2026-08-28: effort genuinely rides the API now, and Brady's verdict
 // on High-by-default was "slow as hell". High stays one tap away for hard asks.
 const DEFAULT_EFFORT = "low";
@@ -359,22 +455,19 @@ const DEMO = {
 
 /* ---------- CLAUDE API HELPERS ---------- */
 
-/* Where Ember sends its Claude traffic.
-   Unset  → calls the Anthropic API direct. That only works inside a Claude artifact,
-            where the platform injects credentials.
-   Hosted → set window.EMBER_API_PROXY to a server-side proxy that holds the key.
-            See docs/DEPLOY.md. Never put an API key in this file — it ships to the browser. */
+/* Where Ember sends its Claude traffic. Production sets the same-origin Pages route in
+   build.mjs. Local preview also remains same-origin and fails honestly without a gateway;
+   the browser never receives an Anthropic or Worker destination. */
 const BUILD_STAMP = "__EMBER_BUILD__".startsWith("__") ? "dev" : "__EMBER_BUILD__";
 
-const ANTHROPIC_DIRECT = "https://api.anthropic.com/v1/messages";
 const API_ENDPOINT =
-  (typeof window !== "undefined" && window.EMBER_API_PROXY) || ANTHROPIC_DIRECT;
-const USING_PROXY = API_ENDPOINT !== ANTHROPIC_DIRECT;
+  (typeof window !== "undefined" && window.EMBER_API_PROXY) || "/api/messages";
 
-const NO_PROXY_HINT =
-  "Ember has no brain here. Hosted builds need a key-holding proxy — set window.EMBER_API_PROXY (docs/DEPLOY.md).";
+function responseError(data, fallback) {
+  return typeof data?.error === "string" ? data.error : data?.error?.message || data?.message || fallback;
+}
 
-async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens, effort, onDelta } = {}) {
+async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens, effort, onDelta, onMeta, signal } = {}) {
   // Thinking-capable models (Opus 5) bill their reasoning AND tool round-trips
   // against max_tokens. 1000 ran out before the first word of a tool-using
   // answer was written — reproduced live 2026-08-26: stop_reason max_tokens,
@@ -394,51 +487,171 @@ async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, se
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal,
     });
   } catch (e) {
+    if (signal?.aborted || e.name === "AbortError") throw e;
     // Network-level failure: CORS rejection hosted, or the proxy is down.
-    throw new Error(
-      USING_PROXY
-        ? "Can't reach the Ember proxy. Check it's deployed and its CORS allows this origin."
-        : NO_PROXY_HINT
-    );
+    throw new Error("Can't reach Ember's same-origin gateway. Check the hosted deployment and try again.");
   }
+  const degraded = res.headers.get("x-ember-connectors") === "degraded";
+  onMeta?.({ degraded });
   if (!res.ok) {
-    if (!USING_PROXY && (res.status === 401 || res.status === 403)) {
-      throw new Error(`API ${res.status} — no credentials. ${NO_PROXY_HINT}`);
-    }
-    throw new Error(`API ${res.status}`);
+    let detail;
+    try { detail = await res.json(); } catch {}
+    throw new Error(responseError(detail, `Ember request failed (HTTP ${res.status}). Try again when the service is available.`));
   }
-  const ctype = res.headers.get("content-type") || "";
-  if (!onDelta || !ctype.includes("text/event-stream")) return res.json();
-  // SSE: accumulate text deltas and surface them as they arrive, so the answer
-  // reads out while it is being written instead of landing all at once. Tool
-  // blocks stream too — only text deltas reach the transcript.
+  const ctype = (res.headers.get("content-type") || "").toLowerCase();
+  if (!ctype.includes("text/event-stream")) {
+    let data;
+    try { data = await res.json(); }
+    catch (e) {
+      if (signal?.aborted || e.name === "AbortError") throw e;
+      throw new Error("Ember received an unreadable reply. Please retry.");
+    }
+    if (data?.error || data?.type === "error") throw new Error(responseError(data, "The model could not finish this reply."));
+    if (!data || typeof data !== "object") throw new Error("Ember received an invalid reply.");
+    return { ...data, _connectorsDegraded: degraded };
+  }
+  if (!res.body) throw new Error("The reply stream was empty. Please retry.");
+  // SSE frames can cross byte/chunk boundaries and contain multiple data lines.
+  // Only a message_stop marks success; an EOF or error is never a finished answer.
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
   let text = "";
   let sawText = false;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      let ev;
-      try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
-      if (ev.type === "content_block_start" && ev.content_block && ev.content_block.type === "text") {
-        if (sawText && text && !text.endsWith("\n")) text += "\n";
-        sawText = true;
-      } else if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
-        text += ev.delta.text;
-        try { onDelta(text); } catch (e) {}
+  let eventName = "", dataLines = [], stopped = false, stopReason = null;
+  const dispatch = () => {
+    const data = dataLines.join("\n");
+    const name = eventName;
+    eventName = ""; dataLines = [];
+    if (!data.trim() && name !== "error") return;
+    let ev = {};
+    try { if (data.trim()) ev = JSON.parse(data); }
+    catch { throw new Error("Ember received a malformed reply stream. Please retry."); }
+    if (name === "error" || ev.type === "error" || ev.error) {
+      throw new Error(responseError(ev, "The model reported a streaming error. Please retry."));
+    }
+    if (ev.type === "content_block_start" && ev.content_block?.type === "text") {
+      if (sawText && text && !text.endsWith("\n")) text += "\n";
+      sawText = true;
+      text += ev.content_block.text || "";
+      if (text) onDelta?.(text);
+    } else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+      if (typeof ev.delta.text !== "string") throw new Error("Ember received an invalid text fragment.");
+      text += ev.delta.text;
+      onDelta?.(text);
+    }
+    if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+    if (ev.message?.stop_reason) stopReason = ev.message.stop_reason;
+    if (ev.type === "message_stop") stopped = true;
+  };
+  const line = (value) => {
+    const s = value.endsWith("\r") ? value.slice(0, -1) : value;
+    if (!s) { dispatch(); return; }
+    if (s.startsWith(":")) return;
+    const colon = s.indexOf(":");
+    const field = colon < 0 ? s : s.slice(0, colon);
+    let valueText = colon < 0 ? "" : s.slice(colon + 1);
+    if (valueText.startsWith(" ")) valueText = valueText.slice(1);
+    if (field === "event") eventName = valueText;
+    if (field === "data") dataLines.push(valueText);
+  };
+  const abort = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    while (!stopped) {
+      if (signal?.aborted) throw new DOMException("Reply stopped.", "AbortError");
+      let chunk;
+      try { chunk = await reader.read(); }
+      catch (e) {
+        if (signal?.aborted || e?.name === "AbortError") throw e;
+        throw new Error("The reply connection was interrupted. The partial reply is shown; retry when ready.");
+      }
+      const { done, value } = chunk;
+      if (signal?.aborted) throw new DOMException("Reply stopped.", "AbortError");
+      buf += done ? dec.decode() : dec.decode(value, { stream: true });
+      let end;
+      while (!stopped && (end = buf.indexOf("\n")) >= 0) {
+        line(buf.slice(0, end)); buf = buf.slice(end + 1);
+      }
+      if (done) {
+        if (!stopped && buf) line(buf);
+        if (!stopped && (dataLines.length || eventName)) dispatch();
+        break;
       }
     }
+    if (!stopped) throw new Error("The connection ended before the reply finished. The partial reply is shown; retry when ready.");
+    return { content: [{ type: "text", text }], stop_reason: stopReason, _streamed: true, _connectorsDegraded: degraded };
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
-  return { content: [{ type: "text", text }], _streamed: true };
+}
+
+const chatId = () => globalThis.crypto?.randomUUID?.() || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function validChatMessages(raw) {
+  if (!Array.isArray(raw)) return [];
+  const ids = new Set();
+  return raw.filter((m) => m && ["user", "assistant"].includes(m.role) &&
+    typeof m.content === "string" && m.content.trim() && !m.streaming && !m.error &&
+    (!m.status || m.status === "complete")).slice(-24).map((m) => {
+      const id = typeof m.id === "string" && m.id && !ids.has(m.id) ? m.id : chatId();
+      ids.add(id);
+      return { id, role: m.role, content: m.content, status: "complete" };
+    });
+}
+function chatContext(messages) {
+  const tail = messages.slice(-8);
+  while (tail[0]?.role === "assistant") tail.shift();
+  return tail.map(({ role, content }) => ({ role, content }));
+}
+
+// A deliberately small text renderer: React escapes every leaf. No raw HTML,
+// remote images, executable URLs, or generated markup enters the DOM.
+function ChatText({ text }) {
+  const lines = String(text).split(/\r?\n/), blocks = [];
+  const inline = (s) => s.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]\n]+\]\([^\s)]+\))/g).map((part, i) => {
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    const link = part.match(/^\[([^\]]+)\]\(([^\s)]+)\)$/);
+    if (link) {
+      try {
+        const url = new URL(link[2]);
+        if (["https:", "http:"].includes(url.protocol)) return <a key={i} href={url.href} target="_blank" rel="noopener noreferrer">{link[1]}</a>;
+      } catch { /* Invalid or executable links remain escaped text. */ }
+    }
+    return part;
+  });
+  const listItem = (s) => s.match(/^\s*(?:([-*+])|\d+[.)])\s+(.+)$/);
+  for (let i = 0; i < lines.length;) {
+    if (!lines[i].trim()) { i++; continue; }
+    if (/^\s*```/.test(lines[i])) {
+      const label = lines[i++].replace(/^\s*```/, "").trim();
+      const code = [];
+      while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+      if (i < lines.length) i++;
+      blocks.push(<div className="chat-code" key={i}>{label && <span>{label}</span>}<pre><code>{code.join("\n")}</code></pre></div>);
+      continue;
+    }
+    const item = listItem(lines[i]);
+    if (item) {
+      const ordered = !item[1], items = [];
+      while (i < lines.length) {
+        const next = listItem(lines[i]);
+        if (!next || (!next[1]) !== ordered) break;
+        items.push(<li key={i}>{inline(next[2])}</li>); i++;
+      }
+      blocks.push(ordered ? <ol key={i}>{items}</ol> : <ul key={i}>{items}</ul>);
+      continue;
+    }
+    const paragraph = [lines[i++]];
+    while (i < lines.length && lines[i].trim() && !/^\s*```/.test(lines[i]) && !listItem(lines[i])) paragraph.push(lines[i++]);
+    blocks.push(<p key={i}>{inline(paragraph.join("\n"))}</p>);
+  }
+  return <div className="chat-text">{blocks}</div>;
 }
 
 function extractText(data) {
@@ -447,6 +660,24 @@ function extractText(data) {
     .map((b) => b.text)
     .join("\n")
     .trim();
+}
+
+function verifiedConnectorResults(data, requiredNames) {
+  const blocks = Array.isArray(data?.content) ? data.content : [];
+  const calls = new Map();
+  for (const block of blocks) {
+    if (block?.type === "mcp_tool_use" && typeof block.id === "string" &&
+        typeof block.server_name === "string") {
+      calls.set(block.id, block.server_name);
+    }
+  }
+  const succeeded = new Set();
+  for (const block of blocks) {
+    if (block?.type !== "mcp_tool_result" || block.is_error !== false) continue;
+    const server = calls.get(block.tool_use_id);
+    if (server) succeeded.add(server);
+  }
+  return requiredNames.every((name) => succeeded.has(name));
 }
 
 function extractJSON(text) {
@@ -492,7 +723,7 @@ const MAX_PHOTOS = 6;
    PUBLISH (<=1440, q0.92) is what actually leaves for the Drive outbox and eventually
    Instagram. 1440px wide is Instagram's ingest ceiling — it downscales anything larger
    anyway — and doing it here in the browser is also what keeps a six-photo carousel under
-   the Apps Script payload limit and converts iPhone HEIC to JPEG on the way through. */
+   the outbox gateway's payload limit and converts iPhone HEIC to JPEG on the way through. */
 async function drawToJpeg(img, MAX, quality) {
   const scale = Math.min(1, MAX / Math.max(img.width, img.height));
   const w = Math.round(img.width * scale);
@@ -682,7 +913,7 @@ function assembleCaption(caption, sponsors, { withHandles = true } = {}) {
    persistence. It's absent everywhere else (local preview, the hosted deploy), where its
    calls silently no-op. These helpers add a plain-localStorage layer for state that must
    actually survive a reload OUTSIDE the artifact — the caption draft that has to outlive a
-   dropped lake connection, the outbox URL, and Mission Control's numbers. Every call is
+   dropped lake connection and Mission Control's numbers. Every call is
    wrapped so a disabled/full/again-absent store can never throw into a render. */
 function lsGet(key, fallback) {
   try {
@@ -698,21 +929,10 @@ function lsDel(key) {
   try { window.localStorage.removeItem(key); } catch (e) { /* ignore */ }
 }
 
-const OUTBOX_URL_KEY = "ember-outbox-url";
-
-/* The deployed Drive-outbox endpoint, baked in so a fresh browser, a wiped phone, or a
-   cleared cache just works — localStorage alone meant re-pasting this by hand on every
-   device and after every "clear browsing data".
-
-   Safe to keep here: this repo is private, and the built page is served behind Cloudflare
-   Access gated to Brady's own two emails, so the URL isn't publicly readable either way.
-   It also isn't a credential — the worst it grants is writing files into that one private
-   Drive folder.
-
-   The in-app field still overrides it (localStorage wins), which is the escape hatch if
-   the deployment ever mints a new URL before this constant is updated. */
-const DEFAULT_OUTBOX_URL =
-  "https://script.google.com/macros/s/AKfycby-xcjTOM4tabBgVc-Jpy66_B8kpgROT86Z7J8Qz3wx5DRI94W_tySk3HzexCv9g6VE/exec";
+// Pre-gateway builds stored a write-capable endpoint in the browser. Delete that legacy
+// value during hydration; the client must never choose or transmit an outbox destination.
+const LEGACY_OUTBOX_URL_KEY = "ember-outbox-url";
+const OUTBOX_ENDPOINT = "/api/outbox";
 const CAPTION_DRAFT_KEY = "ember-caption-draft";
 
 /* ---------- GOOGLE DRIVE ICON ---------- */
@@ -881,7 +1101,7 @@ function BrandMark({ tool, active, size = 22 }) {
   );
 }
 
-// Contextual action lever (Draft Reply / Create Task) — art per state from the
+// Contextual action lever (Draft Reply / Task draft) — art per state from the
 // pack; status point pulses at 900ms during pending-review per motion-spec.
 function ContextLever({ side, label, state, onPull }) {
   const img =
@@ -914,6 +1134,8 @@ export default function BaxstarEmber() {
   const [draftEdit, setDraftEdit] = useState(null);       // editable lever draft text
   const [draftCopied, setDraftCopied] = useState(false);
   const [taskProposal, setTaskProposal] = useState(null); // { title, source, due, details }
+  const [taskFeedback, setTaskFeedback] = useState("");
+  const [taskError, setTaskError] = useState("");
 
   // ---- OPS state ----
   const [data, setData] = useState(DEMO);
@@ -933,13 +1155,9 @@ export default function BaxstarEmber() {
   const scopeRef = useRef(null);
   const prevLvlRef = useRef(0);
   const lastVentRef = useRef(0);
-  const sendRef = useRef(() => {});
-  const busyRef = useRef(false);        // a command is in flight — state lags, this doesn't
-  const pendingRef = useRef(null);      // what he asked while she was still answering
   // The instrument reads these every animation frame, where state would be stale.
   const thinkingRef = useRef(false);
   const syncingRef = useRef(false);
-  const [queued, setQueued] = useState("");
   useEffect(() => { thinkingRef.current = thinking; }, [thinking]);
   useEffect(() => { syncingRef.current = syncing; }, [syncing]);
 
@@ -970,11 +1188,8 @@ export default function BaxstarEmber() {
   useEffect(() => { tallOkRef.current = false; }, [photos, surfaces]);
 
   // ---- CAPTION: PUBLISH → DRIVE OUTBOX ----
-  // The outbox URL is the deployed Apps Script /exec endpoint (see apps-script/outbox/).
-  // It's a deployment URL, not a secret, so localStorage is the right home — it must
-  // persist outside the artifact where window.storage doesn't exist.
-  const [outboxUrl, setOutboxUrl] = useState("");
-  const [outboxEdit, setOutboxEdit] = useState(false); // reveal the field again after setup
+  // The browser sends only to Ember's same-origin server gateway. The server owns the
+  // private destination and confirms the Drive handoff before this UI reports success.
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState("");
   const [captionRestored, setCaptionRestored] = useState(false);
@@ -985,6 +1200,22 @@ export default function BaxstarEmber() {
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
+  const [chatReady, setChatReady] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [chatConnectors, setChatConnectors] = useState("");
+  const [chatFeedback, setChatFeedback] = useState("");
+  const [copiedChatId, setCopiedChatId] = useState(null);
+  const chatMsgsRef = useRef([]);
+  const activeChatRef = useRef(null);
+  const chatWriteRef = useRef(Promise.resolve());
+  const chatSavedRef = useRef(null);
+  function updateChat(update) {
+    const next = update(chatMsgsRef.current);
+    chatMsgsRef.current = next;
+    historyRef.current = validChatMessages(next);
+    setChatMsgs(next);
+  }
+  useEffect(() => () => { activeChatRef.current?.controller.abort(); activeChatRef.current = null; }, []);
 
   /* Today's revenue is MANUAL — Brady sets it, nothing invents it. The panel
      used to show a hardcoded demo number ("+$1,240 · 2 FareHarbor bookings")
@@ -1012,11 +1243,16 @@ export default function BaxstarEmber() {
   };
 
   const chatEndRef = useRef(null);
+  const chatThreadRef = useRef(null);
+  const chatPinnedRef = useRef(true);
   const cmdInputRef = useRef(null);
   // greeting-count buttons jump to these two panel columns
   const callsColRef = useRef(null);
   const inboxColRef = useRef(null);
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [chatMsgs, thinking]);
+  useEffect(() => {
+    const thread = chatThreadRef.current;
+    if (thread && chatPinnedRef.current) thread.scrollTop = thread.scrollHeight;
+  }, [chatMsgs, thinking]);
 
   // ---- GOOGLE DRIVE state ----
   const [driveMsgs, setDriveMsgs] = useState([]);
@@ -1070,8 +1306,8 @@ export default function BaxstarEmber() {
       if (prefs) {
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
         if (prefs.v >= PREFS_V) {
-          if (prefs.chatModel) setChatModel(prefs.chatModel);
-          if (prefs.chatEffort) setChatEffort(prefs.chatEffort);
+          if (MODELS.some((m) => m.id === prefs.chatModel)) setChatModel(prefs.chatModel);
+          if (Object.hasOwn(EFFORT, prefs.chatEffort)) setChatEffort(prefs.chatEffort);
         }
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
@@ -1079,13 +1315,14 @@ export default function BaxstarEmber() {
         if (prefs.coreMode) setCoreMode(prefs.coreMode);
         if (prefs.studioTool) setStudioTool(prefs.studioTool === "chat" ? "captions" : prefs.studioTool);
       }
-      if (Array.isArray(chat)) setChatMsgs(chat);
+      updateChat(() => validChatMessages(chat));
       if (Array.isArray(drive)) setDriveMsgs(drive);
       hydrated.current = true;
+      setChatReady(true);
     })();
   }, []);
 
-  /* ---- MOBILE DEEP-LINK + OUTBOX URL + CAPTION DRAFT RECOVERY ----
+  /* ---- MOBILE DEEP-LINK + LEGACY OUTBOX CLEANUP + CAPTION DRAFT RECOVERY ----
      Runs once, synchronously off localStorage, so a phone that opens
      ember?tool=captions (or #caption) lands straight in the caption tool and — if the
      lake connection dropped mid-caption last time — offers the unsent draft back. */
@@ -1103,10 +1340,9 @@ export default function BaxstarEmber() {
       if (qs.get("lean") === "1" || /lean/.test(hash)) { setLeanCaption(true); setView("studio"); setStudioTool("captions"); }
     } catch (e) { /* no location — artifact/SSR */ }
 
-    // Outbox endpoint (deployment URL, not a secret).
-    // A device-specific override wins; otherwise fall back to the built-in endpoint.
-    const savedUrl = lsGet(OUTBOX_URL_KEY, "");
-    setOutboxUrl(typeof savedUrl === "string" && savedUrl ? savedUrl : DEFAULT_OUTBOX_URL);
+    // Old builds stored a write-capable destination in localStorage. The server gateway
+    // now owns routing, so erase the legacy browser value instead of reading or sending it.
+    lsDel(LEGACY_OUTBOX_URL_KEY);
 
     // Caption draft recovery — the survives-a-dropped-connection piece.
     const draft = lsGet(CAPTION_DRAFT_KEY, null);
@@ -1157,7 +1393,22 @@ export default function BaxstarEmber() {
       }
     } catch (e) { /* persistence optional */ }
   };
-  useEffect(() => { if (hydrated.current) persist("ember-chat", chatMsgs.slice(-24)); }, [chatMsgs]);
+  function saveChat(messages) {
+    const json = JSON.stringify(validChatMessages(messages));
+    if (json === chatSavedRef.current) return;
+    chatSavedRef.current = json;
+    const failed = () => {
+      chatSavedRef.current = null;
+      setChatFeedback("Conversation could not be saved on this device. Keep a copy before reloading.");
+    };
+    if (window.storage?.set) {
+      // Serial writes prevent a slow earlier save from resurrecting a cleared thread.
+      chatWriteRef.current = chatWriteRef.current.then(() => window.storage.set("ember-chat", json, false)).catch(failed);
+    } else {
+      try { localStorage.setItem("ember-chat", json); } catch { failed(); }
+    }
+  }
+  useEffect(() => { if (chatReady) saveChat(chatMsgs); }, [chatMsgs, chatReady]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
     if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
@@ -1271,89 +1522,107 @@ export default function BaxstarEmber() {
 
   /* ---------- OPS: COMMAND PIPELINE ---------- */
 
-  async function sendCommand(text) {
-    const q = (text ?? command).trim();
-    if (!q) return;
-
+  async function sendCommand(text, { retryId } = {}) {
+    // Ref guard is synchronous: two clicks in one render cannot launch two requests.
+    if (activeChatRef.current || !chatReady) return null;
+    const current = chatMsgsRef.current;
+    const lastUser = [...current].reverse().find((m) => m.role === "user");
+    const retryIndex = retryId ? current.findIndex((m) => m.id === retryId && m.role === "user") : -1;
+    if (retryId && (retryIndex < 0 || lastUser?.id !== retryId)) return null;
+    const q = (retryId ? current[retryIndex].content : (text ?? command)).trim();
+    if (!q) return null;
+    const before = retryId ? current.slice(0, retryIndex) : current;
+    const userMsg = retryId ? current[retryIndex] : { id: chatId(), role: "user", content: q, status: "complete" };
+    const assistantId = chatId();
+    const request = { controller: new AbortController(), assistantId };
+    activeChatRef.current = request;
+    const isCurrent = () => activeChatRef.current === request;
+    const patchAssistant = (patch) => {
+      if (isCurrent()) updateChat((items) => items.map((m) => m.id === assistantId ? { ...m, ...patch } : m));
+    };
+    const context = chatContext(retryId ? validChatMessages(before) : historyRef.current);
+    chatPinnedRef.current = true;
+    updateChat(() => [...before, userMsg, { id: assistantId, role: "assistant", content: "", status: "streaming" }]);
     setThinking(true);
-    setError("");
-    setCommand("");
+    setChatError("");
+    setChatConnectors("");
+    setChatFeedback("");
+    setCopiedChatId(null);
+    if (!retryId) setCommand("");
     try {
-      const userMsg = { role: "user", content: q };
-      // The home surface IS the chat now — the question lands in the thread
-      // immediately so it's visible while she thinks, like any messenger.
-      setChatMsgs((m) => [...m, userMsg]);
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + "\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
-        ...historyRef.current.slice(-8),
-        userMsg,
+        ...context,
+        { role: "user", content: q },
       ];
-      // historyRef stays the canonical rolling context (chatMsgs can be stale in a
-      // closure when a queued command fires); chatMsgs is the display thread.
-      let resp;
-      let fellBack = false;
-      // Stream the reply into the thread as it is written — the single biggest
-      // "she answers faster" change there is: first words in ~1-2s instead of
-      // the full wait. Voice still speaks the finished text.
-      let streamedShown = false;
-      const onDelta = (t) => {
-        setThinking(false);
-        if (!streamedShown) {
-          streamedShown = true;
-          setChatMsgs((m) => [...m, { role: "assistant", content: t, streaming: true }]);
-        } else {
-          setChatMsgs((m) => {
-            const out = m.slice();
-            const last = out[out.length - 1];
-            if (last && last.streaming) out[out.length - 1] = { ...last, content: t };
-            return out;
-          });
-        }
-      };
-      const apiEffort = (EFFORT[chatEffort] && EFFORT[chatEffort].api) || undefined;
-      try {
-        resp = await callClaude(messages, { useTools: true, model: chatModel, effort: apiEffort, onDelta });
-      } catch (err) {
-        if (chatModel !== FALLBACK_MODEL) {
-          resp = await callClaude(messages, { useTools: true, model: FALLBACK_MODEL, effort: apiEffort, onDelta });
-          fellBack = true;
-        } else {
-          throw err;
-        }
-      }
-      let answer = extractText(resp) || "Done — no text returned.";
-      if (fellBack) answer = "[Model unavailable here — answered with the default]\n\n" + answer;
-      historyRef.current = [...historyRef.current.slice(-8), userMsg, { role: "assistant", content: answer }];
-      // Finalize: replace the streaming bubble with the finished text, or append
-      // the whole answer when nothing streamed (JSON path, fallback model).
-      setChatMsgs((m) => {
-        const out = m.slice();
-        const last = out[out.length - 1];
-        if (last && last.streaming) { out[out.length - 1] = { role: "assistant", content: answer }; return out; }
-        return [...out, { role: "assistant", content: answer }];
+      // No automatic model retry: connector calls may already have run upstream.
+      const resp = await callClaude(messages, {
+        useTools: true, model: chatModel, effort: EFFORT[chatEffort]?.api,
+        signal: request.controller.signal,
+        onDelta: (content) => patchAssistant({ content }),
+        onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors("Connectors unavailable — this reply uses conversation context only. Live business data was not checked."); },
       });
-      setThinking(false);
+      if (!isCurrent()) return null;
+      const answer = extractText(resp);
+      if (resp.stop_reason === "max_tokens") {
+        patchAssistant({ content: answer, status: "truncated" });
+        setChatError("Reply reached its output limit and is incomplete. Retry with a narrower question or request a shorter answer.");
+        return null;
+      }
+      if (!answer.trim()) throw new Error("Ember returned no readable text. Retry the request when ready.");
+      patchAssistant({ content: answer, status: "complete" });
       return answer;
     } catch (e) {
-      setError("Command failed — check connection and try again.");
+      if (!isCurrent()) return null;
+      if (request.controller.signal.aborted || e?.name === "AbortError") {
+        patchAssistant({ status: "stopped" });
+        setChatFeedback("Reply stopped. Partial text is not saved as conversation context.");
+      } else {
+        patchAssistant({ status: "error" });
+        setChatError(e?.message || "Chat connection failed. Retry when ready.");
+      }
       return null;
     } finally {
-      setThinking(false);
-      busyRef.current = false;
-      const next = pendingRef.current;
-      pendingRef.current = null;
-      setQueued("");
-      if (next) {
-        Promise.resolve(sendRef.current(next.q)).then(
-          (r) => next.resolve(r ?? null),
-          () => next.resolve(null)
-        );
-      }
+      if (isCurrent()) { activeChatRef.current = null; setThinking(false); }
     }
   }
 
-  sendRef.current = sendCommand;
+  function stopChat() {
+    const request = activeChatRef.current;
+    if (!request) return;
+    activeChatRef.current = null;
+    request.controller.abort();
+    updateChat((items) => items.map((m) => m.id === request.assistantId ? { ...m, status: "stopped" } : m));
+    setThinking(false);
+    setChatFeedback("Reply stopped. Partial text is not saved as conversation context.");
+  }
+
+  function clearChat() {
+    const request = activeChatRef.current;
+    activeChatRef.current = null;
+    request?.controller.abort();
+    updateChat(() => []);
+    setThinking(false);
+    setCommand("");
+    setChatError("");
+    setChatConnectors("");
+    setChatFeedback("");
+    setCopiedChatId(null);
+    chatPinnedRef.current = true;
+    saveChat([]);
+  }
+
+  async function copyChat(message) {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      if (!chatMsgsRef.current.some((m) => m.id === message.id)) return;
+      setCopiedChatId(message.id);
+      setChatFeedback("Reply copied.");
+    } catch {
+      if (chatMsgsRef.current.some((m) => m.id === message.id)) setChatFeedback("Could not copy to the clipboard. Select the reply text to copy it.");
+    }
+  }
 
   /* ---------- OPS: SYNC LIVE DATA ---------- */
 
@@ -1385,15 +1654,29 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
       // Haiku, deliberately: pulling three feeds into JSON is mechanical work,
       // and the fast model turns a 30-40s Opus sync into ~10s.
       const resp = await callClaude([{ role: "user", content: prompt }], { useTools: true, maxTokens: 4000, model: "claude-haiku-4-5" });
+      // The Worker can deliberately fall back to connector-free chat when a
+      // provider is unavailable. That is useful for conversation, but it must
+      // never make invented/empty JSON look like a successful live-data sync.
+      if (resp._connectorsDegraded) {
+        throw new Error("Live connectors are unavailable; no feeds were replaced.");
+      }
+      if (!verifiedConnectorResults(resp, ["quo", "gmail", "calendar"])) {
+        throw new Error("Live sync did not verify successful results from Quo, Gmail, and Calendar; no feeds were replaced.");
+      }
       const parsed = extractJSON(extractText(resp));
+      if (!["voicemails", "emails", "events"].every((key) => Array.isArray(parsed[key]))) {
+        throw new Error("Sync did not return all three feeds.");
+      }
       setData({
-        voicemails: parsed.voicemails?.length ? parsed.voicemails : [{ from: "—", line: "", time: "", note: "No missed calls in the last 48h.", vm: "" }],
-        emails: parsed.emails?.length ? parsed.emails : [{ from: "—", time: "", subject: "Inbox zero — no unread." }],
-        events: parsed.events?.length ? parsed.events : [{ time: "—", title: "Nothing scheduled.", detail: "" }],
+        voicemails: parsed.voicemails,
+        emails: parsed.emails,
+        events: parsed.events,
       });
+      setSelectedComm(null);
       setLive(true);
     } catch (e) {
-      setError("Sync failed — showing demo data. Try again.");
+      const truth = live ? "Keeping the last synced data." : "Showing the demo preview; no live data was loaded.";
+      setError(`${e?.message || "Sync failed."} ${truth}`);
     } finally {
       setSyncing(false);
     }
@@ -1406,7 +1689,7 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
   // a harness testing THIS behavior sets window.__EMBER_AUTOSYNC_TEST.
   const autoSyncedRef = useRef(false);
   useEffect(() => {
-    if (autoSyncedRef.current || !USING_PROXY) return;
+    if (autoSyncedRef.current) return;
     if (typeof navigator !== "undefined" && navigator.webdriver && !window.__EMBER_AUTOSYNC_TEST) return;
     autoSyncedRef.current = true;
     const t = setTimeout(() => { try { syncLive(); } catch (e) {} }, 1500);
@@ -1585,13 +1868,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     setSponsors((s) => ({ ...s, [key]: { ...s[key], on: !s[key].on } }));
   }
 
-  function saveOutboxUrl(u) {
-    const v = (u || "").trim();
-    // Emptying the field means "go back to the built-in endpoint", not "break publishing".
-    if (v && v !== DEFAULT_OUTBOX_URL) { setOutboxUrl(v); lsSet(OUTBOX_URL_KEY, v); }
-    else { setOutboxUrl(v || DEFAULT_OUTBOX_URL); lsDel(OUTBOX_URL_KEY); }
-  }
-
   function discardDraft() {
     lsDel(CAPTION_DRAFT_KEY);
     setCaptionRestored(false);
@@ -1599,17 +1875,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     setSponsors(blankSponsors());
   }
 
-  /* Publish the finished JPEG + caption to Brady's private Drive outbox (an Apps Script
-     web app — see apps-script/outbox/Code.gs). This does NOT post to Instagram/Facebook;
-     it drops a ready-to-post pair into Drive for review. The endpoint is set once in the
-     outbox settings. Apps Script web apps choke on CORS preflight, so we send a
-     "simple" text/plain request and, if the browser still blocks reading the response,
-     fall back to an opaque no-cors write (the file still lands; we just can't read a
-     confirmation). */
+  /* Publish the finished JPEG + caption through Ember's same-origin gateway to Brady's
+     private Drive outbox. This does NOT post to Instagram/Facebook; it drops a reviewed,
+     ready-to-post package into Drive. Only a readable `{ ok: true }` server response is a
+     success — an opaque or interrupted request must never be presented as sent. */
   async function publishToOutbox() {
     if (!photos.length || !caption || publishing) return;
-    const url = (outboxUrl || "").trim();
-    if (!url) { setPublishMsg("Add your Drive Outbox URL first — the field is in the left panel."); return; }
     const picked = SURFACES.filter((sf) => surfaces[sf.id] && !sf.needsVideo).map((sf) => sf.id);
     if (!picked.length) { setPublishMsg("Pick at least one destination — tap IG FEED, a story, or FB PAGE."); return; }
     // Feed-aspect gate. A slide taller than 4:5 headed for a feed surface will be
@@ -1655,16 +1926,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     const forPost = assembleCaption(caption, sponsors, { withHandles: false });
     const forHumans = assembleCaption(caption, sponsors, { withHandles: true });
 
+    const publishImages = photos.map((p) => `data:image/jpeg;base64,${p.publishB64 || p.b64}`);
     const payload = {
       source: "ember-caption-studio",
       caption: forPost.text,
       captionWithHandles: forHumans.text,
       lockedTag: LOCKED_TAG,
       hashtagCount: forPost.total,
-      // Full-quality publish renders, first slide first. imageBase64 repeats slide one so
-      // an outbox deployed before carousel support still writes something usable.
-      images: photos.map((p) => p.publishB64 || p.b64),
-      imageBase64: photos[0].publishB64 || photos[0].b64,
+      // Full-quality publish renders, first slide first. The gateway derives any legacy
+      // compatibility field only after validating this canonical array.
+      images: publishImages,
       mimeType: "image/jpeg",
       species: fishId?.species || "",
       // The lake NAME as a plain string, never a location ID. A publish attempt on
@@ -1682,32 +1953,22 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       payloadVersion: 2,
       format: photos.length > 1 ? "carousel" : "post",
       surfaces: picked,
-      storyImages,
+      storyImages: storyImages.map((image) => `data:image/jpeg;base64,${image}`),
     };
-    const body = JSON.stringify(payload);
     try {
-      const res = await fetch(url, {
+      const res = await fetch(OUTBOX_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      let ok = res.ok;
-      try { const j = await res.json(); ok = ok && (j.ok !== false); } catch (e) { /* opaque/non-JSON */ }
-      if (ok) {
-        setPublishMsg(`✓ Sent to the Drive outbox for ${picked.length} destination${picked.length > 1 ? "s" : ""} — review and post from there.`);
-        lsDel(CAPTION_DRAFT_KEY);
-      } else {
-        setPublishMsg("Outbox responded with an error — check the Apps Script deployment.");
-      }
+      let result;
+      try { result = await res.json(); }
+      catch { throw new Error("The Drive outbox returned an unreadable confirmation."); }
+      if (!res.ok || result?.ok !== true) throw new Error("The Drive outbox did not confirm the handoff.");
+      setPublishMsg(`✓ Sent to the Drive outbox for ${picked.length} destination${picked.length > 1 ? "s" : ""} — review and post from there.`);
+      lsDel(CAPTION_DRAFT_KEY);
     } catch (e) {
-      // CORS or network — retry as a fire-and-forget opaque write so the file still lands.
-      try {
-        await fetch(url, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body });
-        setPublishMsg("Sent (couldn't read a confirmation — verify it landed in Drive).");
-        lsDel(CAPTION_DRAFT_KEY);
-      } catch (e2) {
-        setPublishMsg("Couldn't reach the outbox. Check the URL and that the web app is deployed.");
-      }
+      setPublishMsg("Couldn't confirm the Drive outbox handoff. Your draft is still here — retry when Ember's gateway is available.");
     } finally {
       setPublishing(false);
     }
@@ -1741,7 +2002,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
   /* ---------- STUDIO: AI HANDOFF ---------- */
 
   // OPS commands and chat share one thread now, so one pull covers both.
-  const lastClaudeReply = [...chatMsgs].reverse().find((m) => m.role === "assistant")?.content || "";
+  const lastClaudeReply = [...chatMsgs].reverse().find((m) => m.role === "assistant" && m.status === "complete")?.content || "";
+  const lastChatUserId = [...chatMsgs].reverse().find((m) => m.role === "user")?.id;
   const PULLS = [
     { label: "Last Ember answer", val: lastClaudeReply },
     { label: "Current caption", val: caption ? sanitizeCaption(caption) + "\n\n" + LOCKED_TAG : "" },
@@ -1831,7 +2093,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     } catch (e) { /* clipboard blocked — silent, chip just won't confirm */ }
   }
 
-  /* ---------- CONTEXT LEVERS: Draft Reply + Create Task ---------- */
+  /* ---------- CONTEXT LEVERS: Draft Reply + Local Task Draft ---------- */
 
   const commItem = selectedComm
     ? (selectedComm.type === "vm" ? data.voicemails[selectedComm.i] : data.emails[selectedComm.i]) || null
@@ -1842,13 +2104,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     if (!commItem) return "idle";
     if (leverPending === kind) return "pending";
     return "ready";
-  }
-
-  function commLabel() {
-    if (!commItem) return "";
-    return selectedComm.type === "vm"
-      ? `call/voicemail from ${commItem.from}${commItem.line ? " (" + commItem.line + " line)" : ""}`
-      : `email from ${commItem.from}: "${commItem.subject}"`;
   }
 
   async function leverDraftReply() {
@@ -1866,36 +2121,35 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     }
   }
 
-  async function leverCreateTask() {
-    if (!commItem || leverBusy || thinking) return;
-    setLeverPending(null); setDraftEdit(null); setTaskProposal(null);
-    setLeverBusy("task");
-    try {
-      const src = commLabel();
-      const resp = await callClaude([{
-        role: "user",
-        content: `${bradyContext()}\nFrom this item: ${src}${selectedComm.type === "vm" && commItem.vm ? ` Voicemail: "${commItem.vm}"` : ""}\nPropose ONE follow-up task for Brady. Respond with ONLY valid JSON, no commentary: {"title":"","due":"suggested due date in plain words","details":"one or two sentences"}`,
-      }], { useTools: false });
-      const parsed = extractJSON(extractText(resp));
-      setTaskProposal({
-        title: parsed.title || `Follow up: ${commItem.from}`,
-        source: src,
-        due: parsed.due || "tomorrow morning",
-        details: parsed.details || "",
-      });
-      setLeverPending("task");
-    } catch (e) {
-      setError("Task proposal failed — try again.");
-    } finally {
-      setLeverBusy(null);
-    }
+  function openTaskDraft(item, type, index) {
+    if (!item) return;
+    setSelectedComm({ type, i: index });
+    setDraftEdit(null);
+    setTaskFeedback("");
+    setTaskError("");
+    setTaskProposal({
+      id: chatId(),
+      title: `${type === "vm" ? "Call back" : "Follow up with"} ${item.from}`,
+      due: "",
+      details: type === "vm" ? item.vm || item.note || "" : item.subject || "",
+      source: (!live ? "Demo preview — " : "") + (type === "vm" ? `call/voicemail from ${item.from}${item.line ? " (" + item.line + " line)" : ""}` : `email from ${item.from}: "${item.subject}"`),
+    });
+    setLeverPending("task");
   }
 
-  async function confirmTaskProposal() {
-    if (!taskProposal || thinking) return;
-    const t = taskProposal;
-    setTaskProposal(null); setLeverPending(null);
-    await sendCommand(`Create a Quo task titled "${t.title}" due ${t.due}. Details: ${t.details || "—"} (Source: ${t.source})`);
+  function leverCreateTask() {
+    if (commItem) openTaskDraft(commItem, selectedComm.type, selectedComm.i);
+  }
+
+  function confirmTaskProposal() {
+    if (!taskProposal?.title.trim()) return;
+    try {
+      mcSaveTaskDraft(taskProposal);
+      setTaskProposal(null); setLeverPending(null); setTaskError("");
+      setTaskFeedback("Saved locally in Mission Control → Baxstar Ember; not sent to Quo.");
+    } catch (e) {
+      setTaskError(e.message || "Could not save the task on this device. Your draft is still here.");
+    }
   }
 
   /* ---------- QUICK ACTIONS ---------- */
@@ -1944,12 +2198,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           --ember-ease-sweep:cubic-bezier(.22,1,.36,1);
         }
         html, body, #root { margin:0; width:100%; height:100%; background:var(--bg); }
+        html { scroll-padding-bottom:calc(126px + env(safe-area-inset-bottom)); }
         * { box-sizing:border-box; }
         body, button, input, textarea { font-family:var(--ember-font-ui); }
         .font-mono-x { font-family:"SF Mono",ui-monospace,Menlo,monospace; }
         .font-display { font-family:"Cinzel","Georgia",serif; }
 
-        .ember-root { position:relative; height:100vh; min-height:720px; overflow:hidden; }
+        .ember-root { position:relative; min-height:100vh; overflow-x:clip; }
         .ember-root::before {
           content:""; position:fixed; inset:0; z-index:20; pointer-events:none;
           border:7px solid #171008;
@@ -1965,9 +2220,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           box-shadow:0 5px 15px rgba(0,0,0,.62);
         }
         .ember-shell {
-          width:100vw; height:100vh; min-height:720px; max-width:none;
-          padding:16px clamp(68px,5.4vw,96px) calc(84px + env(safe-area-inset-bottom));
-          gap:8px; overflow:hidden;
+          width:100%; min-height:100vh; max-width:none;
+          padding:16px clamp(68px,5.4vw,96px) calc(126px + env(safe-area-inset-bottom));
+          gap:12px; overflow:visible;
         }
         .ember-header {
           flex:0 0 auto; min-height:58px; padding:9px 16px;
@@ -2004,16 +2259,19 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           background:var(--ember-orange); box-shadow:0 0 10px var(--ember-orange); }
 
         .main-grid {
-          display:grid; grid-template-columns:minmax(300px,1fr) minmax(430px,1.28fr) minmax(300px,1fr);
-          gap:10px; align-items:stretch; min-height:0; overflow:hidden;
+          display:grid; grid-template-columns:minmax(0,1fr) minmax(420px,1.9fr) minmax(0,1fr);
+          gap:12px; align-items:stretch; min-height:640px; flex:none;
         }
         .cap-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:stretch; min-height:0; }
         .ops-side { min-height:0; gap:10px!important; }
+        .ops-core, .ops-side { min-width:0; }
+        .ops-data-note { margin:0 4px; color:var(--ink-dim); font-size:12px; line-height:1.5; }
+        .feed-empty { padding:22px 0; color:var(--ink-dim); font-size:13px; line-height:1.6; }
 
         @media (max-width:1020px){
           .ember-root { height:auto; min-height:100vh; overflow:auto; }
-          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px 14px calc(92px + env(safe-area-inset-bottom)); overflow:visible; }
-          .main-grid, .cap-grid { grid-template-columns:1fr; }
+          .ember-shell { width:100%; height:auto; min-height:100vh; padding:14px 14px calc(110px + env(safe-area-inset-bottom)); overflow:visible; }
+          .main-grid, .cap-grid { grid-template-columns:minmax(0,1fr); }
           .ops-core { order:-1; }
           /* the QUO/GMAIL/CALENDAR dots are demo-state, not tappable — dead weight on a phone */
           .conn-dots { display:none; }
@@ -2151,20 +2409,40 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .greet-short { display:none; }
 
         /* the home chat thread — scrolls inside the chamber, newest pinned by autoscroll */
-        .home-thread { display:flex; flex-direction:column; gap:10px; overflow-y:auto;
-          max-width:520px; max-height:clamp(170px,30vh,320px); padding:2px 6px 2px 2px; }
-        /* Once the levers appear they float over the chamber at z-index 4, and the
-           thread is centred beneath them -- so a wide answer slid under the brass and
-           became unreadable. Keep the thread inside the gap between the two levers.
-           Expressed against the chamber width so it holds at any window size. */
-        @media (min-width:980px){
-          .home-thread { max-width:min(520px, calc(100% - 210px)); }
-        }
-        /* Phones have no lever overlay to dodge — give the conversation the room
-           Brady asked for (2026-08-28: "the chat window is small"). */
-        @media (max-width:979px){
-          .home-thread { max-height:min(54vh, 500px); }
-        }
+        .home-thread { display:flex; flex-direction:column; gap:12px; overflow-y:auto;
+          width:100%; min-height:240px; height:clamp(240px,32vh,360px); max-height:none;
+          flex:none; padding:4px; scrollbar-gutter:stable; overscroll-behavior:contain; }
+        .home-thread > div { flex-shrink:0; }
+        .home-thread > div:last-child { scroll-margin-bottom:76px; }
+        .chat-bubble { max-width:94%; font-size:15px; line-height:1.65; overflow-wrap:anywhere; }
+        .chat-composer { display:flex; align-items:center; gap:8px; width:100%; }
+        .chat-composer .cmd-input { flex:1; min-width:0; min-height:76px; max-height:240px; resize:vertical; font-size:16px; line-height:1.5; padding:12px 14px; }
+        .chat-run { flex:none; min-width:58px; min-height:52px; border-radius:10px;
+          padding:10px; font-size:12px; font-weight:800; color:#fff; }
+        .chat-run:disabled { cursor:not-allowed; opacity:.4; }
+        .chat-controls button, .chat-message-actions button { min-width:44px; min-height:44px; }
+        .chat-message-actions { display:flex; align-items:center; gap:8px; margin-top:8px; }
+        .chat-message-status { font-size:12px; color:var(--ink-dim); }
+        .chat-text { white-space:normal; }
+        .chat-text p { white-space:pre-wrap; margin:0 0 10px; }
+        .chat-text > :last-child { margin-bottom:0; }
+        .chat-text ul, .chat-text ol { padding-left:24px; margin:8px 0; }
+        .chat-text ul { list-style:disc; }
+        .chat-text ol { list-style:decimal; }
+        .chat-text li { margin:3px 0; }
+        .chat-text a { color:var(--ember-brass-bright); text-decoration:underline; text-underline-offset:3px; }
+        .chat-text code { font-family:monospace; font-size:.9em; background:rgba(255,255,255,.06); border-radius:4px; padding:2px 4px; }
+        .chat-code { min-width:0; max-width:100%; margin:10px 0; }
+        .chat-code > span { display:block; color:var(--ink-dim); font-size:11px; }
+        .chat-code pre { white-space:pre; overflow-x:auto; max-width:100%; padding:12px; border:1px solid var(--line); border-radius:8px; }
+        .chat-code code { padding:0; background:none; }
+        .chat-error, .chat-connectors, .chat-feedback, .chat-hint { width:100%; font-size:12px; line-height:1.5; }
+        .chat-error { color:#ffb4aa; }
+        .chat-connectors { color:var(--ember-brass-bright); }
+        .chat-feedback, .chat-hint { color:var(--ink-dim); }
+        .task-proposal button, .task-proposal input, .task-proposal textarea, .task-feedback button, .task-draft-button { min-height:44px; }
+        .task-proposal button { min-width:44px; }
+        @media (max-width:979px){ .home-thread { height:clamp(260px,45vh,420px); } }
         .cmd-input { border:1px solid var(--line); transition:border-color .25s, box-shadow .25s; caret-color:var(--ember-orange); }
         .cmd-input:focus { outline:none; border-color:var(--ember-orange);
           box-shadow:0 0 0 1px rgba(255,158,61,.35), 0 0 28px rgba(255,120,60,.22), 0 8px 30px rgba(0,0,0,.5); }
@@ -2332,8 +2610,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            column so it never overflows onto the side panels' text (readability) */
         /* visible at EVERY width — the skeleton is the identity, and on a phone it
            was hidden entirely, which is why the home screen read as generic panels */
-        .skull-arch { position:absolute; left:50%; top:0; transform:translate(-50%,-34%);
-          width:clamp(300px,88vw,720px); max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:block; }
+        .skull-arch { position:absolute; left:50%; top:0; transform:translateX(-50%);
+          width:360px; max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:block; }
         .skull-host { overflow:hidden; }
         /* Lift the chamber's contents above the arch. z-index needs a position, but this
            must not clobber children that place themselves — .ctx-lever is absolute and
@@ -2344,17 +2622,22 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
 
         .core-chamber {
-          overflow:hidden; gap:4px!important; padding:9px 26px 8px!important;
+          overflow:hidden; min-height:640px; gap:12px!important; padding:12px 16px 18px!important;
+          justify-content:flex-start;
           background:
             radial-gradient(circle at 50% 48%,rgba(255,92,24,.08),transparent 42%),
             linear-gradient(180deg,#0b0a08,#070706)!important;
         }
         .core-chamber h2 { font-size:clamp(22px,1.55vw,28px); line-height:1.05; }
         .core-chamber .reveal.text-center .mt-3\\.5 { margin-top:8px!important; }
-        .core-chamber .max-w-sm { max-width:440px; }
+        .core-chamber .max-w-sm { max-width:100%; }
+        .core-chamber .greet-row { margin-top:64px; max-width:100%; }
+        .core-chamber .core-wrap { flex:none; }
+        .core-chamber.has-thread .reactor-stage { width:128px; height:128px; }
+        .core-chamber.has-thread .greet-row { margin-top:60px; }
         .reactor-stage {
-          position:relative; width:clamp(238px,35vh,326px); height:clamp(238px,35vh,326px);
-          margin:-6px auto -12px; cursor:pointer; isolation:isolate;
+          position:relative; width:218px; height:218px;
+          margin:0 auto; cursor:pointer; isolation:isolate;
           filter:drop-shadow(0 16px 24px rgba(0,0,0,.72));
         }
         .reactor-bezel { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; z-index:1; pointer-events:none; }
@@ -2425,11 +2708,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           max-width:1180px; margin:0 auto;
         }
         /* ---------- MISSION CONTROL (iron/bronze) ---------- */
-        .mc-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; min-height:0; }
+        .mc-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; min-height:0; min-width:0; width:100%; }
         @media (max-width:1020px){ .mc-grid { grid-template-columns:1fr; } }
+        .mc-stack, .mc-grid .panel { min-width:0; width:100%; max-width:100%; }
         .mc-stack { display:flex; flex-direction:column; gap:12px; min-height:0; }
         .mc-input { border:1px solid var(--line); background:#0f0d0b; color:var(--candle);
-          border-radius:7px; padding:5px 8px; font-size:12px; caret-color:var(--brass); }
+          min-width:0; max-width:100%; border-radius:7px; padding:5px 8px; font-size:12px; caret-color:var(--brass); }
         .mc-input:focus { outline:none; border-color:var(--brass); box-shadow:0 0 0 3px rgba(176,141,87,.14); }
         .mc-num { width:74px; text-align:right; font-variant-numeric:tabular-nums; }
         .mc-metric { display:flex; flex-direction:column; gap:2px; padding:8px 10px; border-radius:9px;
@@ -2456,7 +2740,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           border-radius:50%; background:radial-gradient(circle,#fff,var(--ember-orange) 45%,transparent 70%);
           box-shadow:0 0 9px 2px rgba(255,120,60,.75); animation:mcSpark 1.5s ease-in-out infinite; }
         @keyframes mcSpark { 0%,100%{ transform:scale(1); opacity:.9; } 50%{ transform:scale(1.35); opacity:1; } }
-        .mc-row { border:1px solid var(--ember-panel-line); border-radius:11px; padding:10px 12px;
+        .mc-row { min-width:0; max-width:100%; border:1px solid var(--ember-panel-line); border-radius:11px; padding:10px 12px;
           background:linear-gradient(180deg,var(--ember-panel-alt),var(--ember-panel)); }
         .mc-row.blocked { border-color:rgba(217,60,43,.5); }
         .mc-row.frozen { opacity:.72; }
@@ -2480,14 +2764,34 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .mc-resume { color:var(--ember-amber); border-color:rgba(255,158,61,.5); background:rgba(255,158,61,.10); white-space:nowrap; }
         .mc-resume:hover:not(:disabled) { background:rgba(255,158,61,.20); border-color:rgba(255,158,61,.85); }
         .mc-resume:disabled { opacity:.35; cursor:default; }
-        .mc-linkchip { display:inline-flex; align-items:center; gap:4px; padding:2px 5px; border-radius:6px;
+        .mc-linkchip { display:inline-flex; align-items:center; gap:4px; max-width:100%; padding:2px 5px; border-radius:6px;
           border:1px solid var(--ember-panel-line); background:#0e0c0b; font-size:10px; }
-        .mc-linkchip a { color:var(--ember-amber); text-decoration:underline; text-underline-offset:2px; white-space:nowrap; }
+        .mc-linkchip a { max-width:100%; overflow:hidden; text-overflow:ellipsis; color:var(--ember-amber); text-decoration:underline; text-underline-offset:2px; white-space:nowrap; }
         .mc-linkchip a:hover { color:var(--candle); }
         .mc-linkin { width:74px; font-size:9px; padding:1px 4px; }
         .mc-linkurl { width:150px; }
         .mc-x { color:var(--ink-faint); background:transparent; border:none; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
         .mc-x:hover { color:var(--ember-red); }
+
+        @media (max-width:760px) {
+          .mc-grid, .mc-stack, .mc-grid .panel, .mc-row { min-width:0; width:100%; max-width:100%; }
+          .mc-grid .grid-cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+          .mc-project-head, .mc-project-meta, .mc-next-row, .mc-links { min-width:0; width:100%; }
+          .mc-project-head { align-items:stretch; flex-wrap:wrap; }
+          .mc-project-head > .mc-input { flex:1 1 100%; width:100%; }
+          .mc-project-head .mc-status { flex:1 1 auto; }
+          .mc-project-meta .mc-mini { margin-left:0; }
+          .mc-next-row { align-items:stretch; flex-wrap:wrap; }
+          .mc-next-row > .fieldlabel { flex:0 0 100%; }
+          .mc-next-row > .mc-input { flex:1 1 100%; width:100%; }
+          .mc-links { align-items:stretch; }
+          .mc-linkchip { flex:1 1 100%; flex-wrap:wrap; width:100%; }
+          .mc-linkchip > a, .mc-linkchip > span { flex:1 1 100%; }
+          .mc-linkin { flex:1 1 90px; width:auto; }
+          .mc-linkurl { flex-basis:150px; width:auto; }
+          .mc-input, .mc-status, .mc-mini { min-height:44px; }
+          .mc-x { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; }
+        }
 
         .dock-control {
           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
@@ -2542,11 +2846,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .pipe-junction.pj-r { right:-12px; transform:scaleX(-1); }
         @media (min-width:980px){ .pipe-junction { display:block; } }
 
-        .ctx-lever { position:absolute; top:48%; transform:translateY(-50%); z-index:4;
+        .ctx-lever { position:absolute; top:200px; transform:translateY(-50%); z-index:4;
           display:none; flex-direction:column; align-items:center; gap:4px;
           background:none; border:none; padding:0; cursor:pointer;
           transition:filter 220ms var(--ember-ease-mechanical), transform 220ms var(--ember-ease-mechanical); }
         @media (min-width:980px){ .ctx-lever { display:flex; } }
+        .has-thread .ctx-lever { top:160px; }
         .ctx-lever.left { left:7px; } .ctx-lever.right { right:7px; }
         .ctx-lever img {
           width:clamp(48px,4.3vw,62px); height:auto; max-height:82px;
@@ -2605,16 +2910,58 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         /* ---------- YOUR TOOLS RAIL ----------
            Engraved brass plates screwed to the foot of the dashboard. Same
            warmth law as the rest of the instrument: no blues, no purples. */
-        .tools-rail { width:100%; padding:14px 16px 16px; margin-top:4px; }
+        /* ---------- THE WORKS — ecosystem graph ----------
+           Same warmth law as the rest of the instrument: no blues, no purples.
+           On a phone the SVG keeps its min-width and the rail scrolls sideways —
+           shrinking 39 labels to fit a 360px screen makes them unreadable, which
+           is worse than panning. */
+        .eco-rail { width:100%; padding:10px 16px; margin-top:4px; flex:none; }
+        .eco-head { display:flex; align-items:center; gap:7px; min-height:44px; cursor:pointer; list-style:none; }
+        .eco-head::-webkit-details-marker { display:none; }
+        .eco-head::after { content:"Open map +"; font-size:11px; color:var(--brass); margin-left:10px; }
+        .eco-rail[open] .eco-head { padding-bottom:9px; margin-bottom:11px; border-bottom:1px solid var(--ember-panel-line); }
+        .eco-rail[open] .eco-head::after { content:"Close map −"; }
+        .eco-count { margin-left:auto; font-size:8.5px; letter-spacing:.2em; color:var(--ink-faint); }
+        .eco-legend { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+        .eco-key { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:999px;
+          border:1px solid var(--ember-panel-line); background:rgba(18,16,13,.6); cursor:pointer;
+          font-size:9.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+          color:var(--ink-dim); transition:border-color 160ms var(--ember-ease-mechanical), color 160ms; }
+        .eco-key:hover { border-color:var(--line-hot); color:var(--ink); }
+        .eco-key.on { border-color:var(--ember-brass-bright); color:var(--ink); background:rgba(214,179,106,.1); }
+        .eco-key.reset { color:var(--ink-faint); }
+        .eco-dot { width:8px; height:8px; border-radius:50%; }
+        .eco-scroll { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
+          border:1px solid var(--ember-panel-line); border-radius:12px; background:rgba(10,9,7,.5); }
+        .eco-svg { display:block; width:100%; min-width:1040px; height:auto; }
+        .eco-node { cursor:pointer; }
+        .eco-node:focus { outline:none; }
+        .eco-node:focus-visible circle { stroke:var(--ember-brass-bright); }
+        .eco-label { font-family:var(--ember-font-ui); font-size:10px; font-weight:600;
+          letter-spacing:.02em; pointer-events:none; }
+        .eco-label.core { font-size:12px; font-weight:800; letter-spacing:.12em; }
+        .eco-detail { display:flex; align-items:baseline; flex-wrap:wrap; gap:9px; min-height:34px;
+          padding:9px 2px 0; }
+        .eco-detail-name { font-size:12.5px; font-weight:800; letter-spacing:.03em; }
+        .eco-detail-note { font-size:11.5px; line-height:1.5; color:var(--ink-dim); }
+        .eco-detail-meta { font-size:8.5px; letter-spacing:.2em; color:var(--ink-faint); }
+        .eco-detail-open { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+          color:var(--ember-brass-bright); text-decoration:none; }
+        .eco-detail-open:hover { text-decoration:underline; }
+        @media (max-width:760px) {
+          .eco-rail { padding:12px 13px 14px; }
+          .eco-detail { min-height:46px; }
+        }
+        @media (prefers-reduced-motion:reduce) { .eco-node { transition:none; } }
+
+        .tools-rail { width:100%; padding:7px 12px 10px; flex:none; }
         .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
           border-bottom:1px solid var(--ember-panel-line); }
-        .tools-groups { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
-        .tools-group .fieldlabel { margin-bottom:7px; }
-        /* A grid, not flex-wrap: equal tiles that line up in rows instead of
-           stretching to ragged widths as each group's count changes. */
-        .tools-links { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+        .tools-groups { display:grid; grid-template-columns:repeat(11,minmax(0,1fr)); gap:7px; }
+        .tools-group, .tools-links { display:contents; }
+        .tools-group .fieldlabel, .tool-note { display:none; }
         .tool-link { display:flex; flex-direction:column; gap:1px; min-width:0;
-          padding:8px 11px; border-radius:9px; text-decoration:none;
+          min-height:44px; justify-content:center; padding:8px; border-radius:9px; text-decoration:none;
           border:1px solid var(--ember-panel-line);
           background:linear-gradient(180deg,rgba(214,179,106,.07),rgba(10,9,7,.55));
           box-shadow:inset 0 1px 0 rgba(255,201,122,.10);
@@ -2624,9 +2971,19 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           box-shadow:inset 0 1px 0 rgba(255,201,122,.2), 0 3px 16px rgba(255,120,60,.16); }
         .tool-name { font-size:11.5px; font-weight:700; letter-spacing:.02em; color:var(--ink); overflow-wrap:anywhere; }
         .tool-note { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+        @media (max-width:1179px){
+          .tools-groups { display:flex; overflow-x:auto; padding-bottom:5px; scrollbar-width:thin; }
+          .tool-link { flex:0 0 128px; }
+          .tools-head::after { content:"scroll for more →"; margin-left:auto; font-size:10px; color:var(--ink-dim); }
+        }
         @media (max-width:760px){
-          .tools-groups { grid-template-columns:1fr; gap:13px; }
-          .tools-rail { padding:12px 13px 14px; }
+          .tools-rail { padding:7px 10px 10px; }
+          .core-chamber { padding-left:10px!important; padding-right:10px!important; }
+          .core-chamber .greet-row { gap:6px!important; padding:3px 4px!important; }
+          .core-chamber .greet-row .chip { min-height:44px; padding:8px 9px!important; }
+          .ember-header .header-control, .seg.sm, button.chip, .eco-key { min-height:44px; }
+          .chat-bubble { max-width:100%; }
+          .eco-count { letter-spacing:.04em; }
         }
 
         .sync-gear { display:inline-block; }
@@ -2644,11 +3001,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
         @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important;} .reveal{opacity:1;} }
         @media (max-height:820px) and (min-width:1021px) {
-          .ember-shell { padding-top:18px; padding-bottom:6px; gap:7px; }
+          .ember-shell { padding-top:18px; gap:10px; }
           .ember-header { min-height:48px; padding-block:6px; }
           .mic-rail { min-height:32px; padding-block:5px!important; }
           .core-chamber { padding-block:8px!important; }
-          .reactor-stage { width:252px; height:252px; }
           .tool-tile { min-height:50px; }
         }
       `}</style>
@@ -2794,13 +3150,42 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
         )}
 
+        {/* Daily destinations stay ahead of the workspace and its optional map. */}
+        {view === "ops" && (
+          <div className="tools-rail panel reveal" style={{ animationDelay: "0.1s" }}>
+            <div className="tools-head">
+              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="12" height="12" aria-hidden="true" />
+              <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>YOUR TOOLS</span>
+            </div>
+            <div className="tools-groups">
+              {TOOL_LINKS.map((g) => (
+                <div key={g.group} className="tools-group">
+                  <div className="fieldlabel">{g.group}</div>
+                  <div className="tools-links">
+                    {g.items.map((t) => (
+                      <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link" title={`${g.group} · ${t.note}`}>
+                        <span className="tool-name">{t.label}</span>
+                        <span className="tool-note">{t.note}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ================= OPS VIEW ================= */}
+        {view === "ops" && !live && (
+          <p className="ops-data-note" role="status">Demo preview · Sync to load current calls, email, and schedule.</p>
+        )}
         {view === "ops" && (
         <div className="main-grid flex-1">
 
           {/* LEFT */}
           <div ref={callsColRef} className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
+              {data.voicemails.length === 0 && <p className="feed-empty">No missed calls or voicemails returned for the last 48 hours.</p>}
               {data.voicemails.map((v, i) => (
                 <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
                   selected={selectedComm?.type === "vm" && selectedComm.i === i}
@@ -2817,8 +3202,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <button className="chip solid" onClick={(e) => { e.stopPropagation(); sendCommand(`Draft a reply text to ${v.from} on the ${v.line || "Fishing"} Quo line responding to: "${v.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`); }}>
                       Draft reply
                     </button>
-                    <button className="chip ghost" onClick={(e) => { e.stopPropagation(); sendCommand(`Create a Quo task to call back ${v.from} (${v.line || "Fishing"} line) tomorrow morning re: ${v.vm ? "their voicemail" : "their missed call"}.`); }}>
-                      Task
+                    <button className="chip ghost task-draft-button" onClick={(e) => { e.stopPropagation(); openTaskDraft(v, "vm", i); }}>
+                      Task draft
                     </button>
                   </div>
                 </Row>
@@ -2860,14 +3245,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               One compact greeting line; the counts are BUTTONS that jump to their
               panels, because a number you can't act on is dead weight up here. */}
           <div className="ops-core flex min-h-0 flex-col">
-            <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${thinking || syncing ? "is-thinking" : ""}`}>
+            <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}`}>
               {/* The skeleton. Its CSS survived the v2 merge but this element didn't —
                   the class had nothing to draw until 2026-08-01. */}
               <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
               <span className="notch hot" />
 
               <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
-              <ContextLever side="right" label="Create Task" state={leverState("task")} onPull={leverCreateTask} />
+              <ContextLever side="right" label="Task draft" state={leverState("task")} onPull={leverCreateTask} />
 
               <div className="greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center" style={{ animationDelay: "0.1s" }}>
                 <span className="greet-hi text-[15px] font-bold tracking-tight">
@@ -2923,68 +3308,70 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   scrolling history, not a single-answer box; OPS commands, dock
                   actions and typed questions all land here. */}
               {chatMsgs.length > 0 && (
-                <div className="home-thread reveal w-full" style={{ animationDelay: "0.45s" }}>
-                  {chatMsgs.map((m, i) => (
+                <div ref={chatThreadRef} className="home-thread reveal w-full" role="region" aria-label="Conversation" aria-busy={thinking}
+                  onScroll={(e) => { const el = e.currentTarget; chatPinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }}
+                  style={{ animationDelay: "0.45s" }}>
+                  {chatMsgs.map((m) => (
                     m.role === "user" ? (
-                      <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
+                      <div key={m.id} data-message-id={m.id} data-role="user" data-status={m.status} className="chat-bubble self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5"
                         style={{ background: "rgba(255,77,61,.13)", borderColor: "var(--line-hot)", color: "var(--ink)" }}>
                         {m.content}
+                        {m.id === lastChatUserId && !thinking && <div className="chat-message-actions"><button className="chip ghost" onClick={() => sendCommand(undefined, { retryId: m.id })}>Retry</button></div>}
                       </div>
                     ) : (
-                      <div key={i} className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl rounded-bl-sm border px-4 py-2.5 text-[12.5px] leading-relaxed"
+                      <div key={m.id} data-message-id={m.id} data-role="assistant" data-status={m.status} className="chat-bubble self-start rounded-2xl rounded-bl-sm border px-4 py-2.5"
                         style={{ background: "#140d0d", borderColor: "var(--line)", color: "var(--ink)" }}>
                         <span className="font-mono-x mb-1 block text-[8.5px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>EMBER</span>
-                        {m.content}
+                        {m.content ? <ChatText text={m.content} /> : m.status === "streaming" ? <span>Thinking…</span> : <span>No reply text received.</span>}
+                        <div className="chat-message-actions">
+                          {m.status === "complete" ? <button className="chip ghost" aria-label="Copy reply" onClick={() => copyChat(m)}>{copiedChatId === m.id ? "Copied" : "Copy"}</button> :
+                            <span className="chat-message-status">{({ streaming: "Replying…", stopped: "Stopped · not saved", truncated: "Incomplete · output limit", error: "Incomplete · not saved" })[m.status]}</span>}
+                        </div>
                       </div>
                     )
                   ))}
-                  {thinking && (
-                    <div className="flex items-center gap-2 self-start rounded-2xl rounded-bl-sm border px-4 py-3"
-                      style={{ background: "#140d0d", borderColor: "var(--line)" }}>
-                      <span className="spinner dark" />
-                      <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-orange)" }}>THINKING…</span>
-                    </div>
-                  )}
                   <div ref={chatEndRef} />
                 </div>
               )}
 
-              <div className="reveal relative w-full max-w-sm" style={{ animationDelay: "0.55s" }}>
-                <input
+              {chatConnectors && <div className="chat-connectors" role="status">{chatConnectors}</div>}
+              {chatError && <div className="chat-error" role="alert">{chatError}</div>}
+              {chatFeedback && <div className="chat-feedback" role="status">{chatFeedback}</div>}
+              <span className="sr-only" role="status">{thinking ? "Ember is replying. Stop is available." : chatMsgs.at(-1)?.status === "complete" && chatMsgs.at(-1)?.role === "assistant" ? "Reply complete." : ""}</span>
+
+              <div className="chat-composer reveal" style={{ animationDelay: "0.55s" }}>
+                <textarea
                   ref={cmdInputRef}
-                  type="text" value={command}
+                  rows={2} value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-                  onKeyDown={(e) => e.key === "Enter" && sendCommand()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) { e.preventDefault(); if (!e.repeat) sendCommand(); }
+                    if (e.key === "Escape" && activeChatRef.current) { e.preventDefault(); stopChat(); }
+                  }}
+                  aria-label="Ask Ember"
+                  aria-describedby="chat-input-hint"
+                  placeholder="Ask Ember anything…"
                   className="cmd-input w-full rounded-xl px-5 py-3.5 text-sm"
                   style={{ background: "#120c0c", color: "var(--ink)" }}
                 />
-                {command === "" && !focused && (
-                  <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-sm" style={{ color: "var(--ink-faint)" }}>
-                    Ask anything — "what'd I miss?"<span className="cursor-block" />
-                  </span>
-                )}
-                <button onClick={() => sendCommand()}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2.5 py-1 text-[10px] font-bold text-white transition-opacity"
-                  style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)", opacity: command ? 1 : 0.35 }}>
-                  RUN
+                <button onClick={() => thinking ? stopChat() : sendCommand()}
+                  disabled={!thinking && (!chatReady || !command.trim())}
+                  className="chat-run transition-opacity"
+                  style={{ background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)" }}>
+                  {thinking ? "Stop" : "RUN"}
                 </button>
               </div>
-
-              {queued && (
-                <div className="font-mono-x w-full max-w-sm text-[9px] tracking-[0.2em]" style={{ color: "var(--ink-faint)" }}>
-                  QUEUED — RUNS WHEN SHE FINISHES: {queued.length > 54 ? queued.slice(0, 54) + "…" : queued}
-                </div>
-              )}
+              <div id="chat-input-hint" className="chat-hint">Enter to send · Shift+Enter for a new line. Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled.</div>
 
               {/* Model + Effort live on the home page now — the codex wraps instead of
                   running off the right edge of a phone. */}
-              <div className="reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
+              <div className="chat-controls reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
                 <div className="flex max-w-full items-center gap-2">
                   <span className="fieldlabel">Model</span>
                   <div className="codex">
                     {MODELS.map((m) => (
-                      <button key={m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
+                      <button key={m.id} disabled={thinking} aria-pressed={chatModel === m.id} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
                         {m.label}
                       </button>
                     ))}
@@ -2994,14 +3381,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <span className="fieldlabel">Effort</span>
                   <div className="codex">
                     {Object.entries(EFFORT).map(([k, e]) => (
-                      <button key={k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
+                      <button key={k} disabled={thinking} aria-pressed={chatEffort === k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
                         {e.label}
                       </button>
                     ))}
                   </div>
                 </div>
                 {chatMsgs.length > 0 && (
-                  <button className="chip ghost" onClick={() => { setChatMsgs([]); historyRef.current = []; }}>Clear thread</button>
+                  <button className="chip ghost" onClick={clearChat}>Clear thread</button>
                 )}
               </div>
 
@@ -3028,31 +3415,33 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
               )}
 
-              {/* task proposal — requires explicit confirmation before saving */}
+              {taskFeedback && <div className="task-feedback w-full text-xs" role="status" style={{ color: "var(--ember-brass-bright)" }}>{taskFeedback} <button className="chip ghost" onClick={() => setView("mission")}>View in Mission Control</button></div>}
+              {taskError && <div className="task-error w-full text-xs" role="alert" style={{ color: "#ffb4aa" }}>{taskError}</div>}
+              {/* Local reviewable task draft. General chat has no write-capable tools. */}
               {taskProposal && (
-                <div className="w-full max-w-sm rounded-xl border px-4 py-3"
+                <div className="task-proposal w-full max-w-sm rounded-xl border px-4 py-3"
                   style={{ borderColor: "rgba(255,177,59,.5)", background: "rgba(255,177,59,.05)" }}>
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-warning)" }}>TASK PROPOSAL — CONFIRM TO SAVE</span>
-                    <button onClick={() => { setTaskProposal(null); setLeverPending(null); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
+                    <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-warning)" }}>TASK DRAFT — LOCAL ONLY</span>
+                    <button aria-label="Close task draft" onClick={() => { setTaskProposal(null); setLeverPending(null); setTaskError(""); }} className="text-xs" style={{ color: "var(--ink-faint)" }}>✕</button>
                   </div>
                   <div className="fieldlabel">Title</div>
-                  <input value={taskProposal.title}
+                  <input aria-label="Task title" value={taskProposal.title}
                     onChange={(e) => { setTaskProposal({ ...taskProposal, title: e.target.value }); setLeverPending(null); }}
                     className="cmd-input mt-1 w-full rounded-lg px-3 py-2 text-sm" style={{ background: "#120c0c", color: "var(--ink)" }} />
                   <div className="fieldlabel mt-2">Due</div>
-                  <input value={taskProposal.due}
+                  <input aria-label="Task due" placeholder="Optional — choose a due date" value={taskProposal.due}
                     onChange={(e) => { setTaskProposal({ ...taskProposal, due: e.target.value }); setLeverPending(null); }}
                     className="cmd-input mt-1 w-full rounded-lg px-3 py-2 text-sm" style={{ background: "#120c0c", color: "var(--ink)" }} />
                   <div className="fieldlabel mt-2">Details</div>
-                  <textarea value={taskProposal.details}
+                  <textarea aria-label="Task details" value={taskProposal.details}
                     onChange={(e) => { setTaskProposal({ ...taskProposal, details: e.target.value }); setLeverPending(null); }}
                     className="cmd-input mt-1 w-full rounded-lg px-3 py-2 text-[12.5px]"
                     style={{ background: "#120c0c", color: "var(--ink)", minHeight: "60px", resize: "vertical" }} />
                   <div className="mt-1 text-[10px]" style={{ color: "var(--ink-faint)" }}>Source: {taskProposal.source}</div>
                   <div className="mt-2 flex gap-2">
-                    <button className="chip solid" disabled={thinking} onClick={confirmTaskProposal}>Create task</button>
-                    <button className="chip ghost" onClick={() => { setTaskProposal(null); setLeverPending(null); }}>Discard</button>
+                    <button className="chip solid" disabled={!taskProposal.title.trim()} onClick={confirmTaskProposal}>Save locally</button>
+                    <button className="chip ghost" onClick={() => { setTaskProposal(null); setLeverPending(null); setTaskError(""); }}>Discard</button>
                   </div>
                 </div>
               )}
@@ -3063,6 +3452,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           {/* RIGHT */}
           <div ref={inboxColRef} className="ops-side flex min-h-0 flex-col gap-4">
             <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow>
+              {data.emails.length === 0 && <p className="feed-empty">No unread email returned for the last 24 hours.</p>}
               {data.emails.map((m, i) => (
                 <Row key={i} who={m.from} when={m.time}
                   selected={selectedComm?.type === "email" && selectedComm.i === i}
@@ -3078,6 +3468,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </Panel>
 
             <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
+              {data.events.length === 0 && <p className="feed-empty">No calendar events returned for today or tomorrow.</p>}
               {data.events.map((e, i) => (
                 <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail} />
               ))}
@@ -3086,32 +3477,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         </div>
         )}
 
-        {/* ================= YOUR TOOLS — the brass rail along the foot of the
-            dashboard. Everything Brady actually opens in a day, one tap away,
-            so Ember is the front door and not another tab. ================= */}
-        {view === "ops" && (
-          <div className="tools-rail panel reveal" style={{ animationDelay: "0.65s" }}>
-            <div className="tools-head">
-              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="12" height="12" aria-hidden="true" />
-              <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>YOUR TOOLS</span>
-            </div>
-            <div className="tools-groups">
-              {TOOL_LINKS.map((g) => (
-                <div key={g.group} className="tools-group">
-                  <div className="fieldlabel">{g.group}</div>
-                  <div className="tools-links">
-                    {g.items.map((t) => (
-                      <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link">
-                        <span className="tool-name">{t.label}</span>
-                        <span className="tool-note">{t.note}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Optional reference map. The operating dashboard keeps priority. */}
+        {view === "ops" && <EcoGraph />}
 
         {/* ================= BAXSTAR STUDIO VIEW ================= */}
         {view === "studio" && (
@@ -3325,46 +3692,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   )}
                 </div>
 
-                {/* The outbox endpoint is a ONE-TIME, PER-DEVICE setup step, so it earns
-                    permanent space only until it's done. Unset: the full field, impossible
-                    to miss. Set: a single quiet line with a Change link. It has been both
-                    too hidden (behind an icon that needed a finished caption to appear) and
-                    too loud (a permanent form field in the panel used on every trip) —
-                    this is the middle. */}
-                {!outboxUrl ? (
-                  <div className="mt-4 rounded-lg border p-3"
-                    style={{ borderColor: "rgba(255,177,59,.45)", background: "rgba(255,177,59,.05)" }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="fieldlabel" style={{ color: "var(--ember-amber)" }}>Drive Outbox — one-time setup</div>
-                      <span className="font-mono-x text-[9px] tracking-[0.2em]" style={{ color: "var(--ember-amber)" }}>NOT SET</span>
-                    </div>
-                    <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
-                      placeholder="Paste your Apps Script /exec URL here"
-                      aria-label="Drive outbox URL"
-                      className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
-                      style={{ background: "#120c0c", color: "var(--ink)" }} />
-                    <div className="mt-1 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
-                      Saved on this device, then this box goes away. Publishing drops the photo +
-                      caption into a private Drive folder — it does <b>not</b> post to Instagram by itself.
-                    </div>
+                <div className="mt-4 rounded-lg border p-3"
+                  style={{ borderColor: "rgba(255,177,59,.35)", background: "rgba(255,177,59,.04)" }}>
+                  <div className="flex items-center gap-2">
+                    <EmberIcon name="drive" size={14} />
+                    <span className="fieldlabel" style={{ color: "var(--ember-amber)" }}>Protected Drive outbox</span>
                   </div>
-                ) : outboxEdit ? (
-                  <div className="mt-4">
-                    <div className="fieldlabel">Drive Outbox URL</div>
-                    <input value={outboxUrl} onChange={(e) => saveOutboxUrl(e.target.value)}
-                      autoFocus aria-label="Drive outbox URL"
-                      className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-[12px]"
-                      style={{ background: "#120c0c", color: "var(--ink)" }} />
-                    <button className="chip ghost mt-2" onClick={() => setOutboxEdit(false)}>Done</button>
+                  <div className="mt-1 text-[10px] leading-relaxed" style={{ color: "var(--ink-faint)" }}>
+                    Ember's server gateway protects the private destination. Publishing sends this reviewed package to Drive; it does <b>not</b> post to social by itself. If the gateway is unavailable, the draft stays here.
                   </div>
-                ) : (
-                  <div className="mt-3 flex items-center gap-2 text-[10px]" style={{ color: "var(--ink-faint)" }}>
-                    <span style={{ color: "#54e08a" }}>●</span>
-                    <span>Drive outbox connected</span>
-                    <button className="underline" style={{ color: "var(--ink-faint)" }}
-                      onClick={() => setOutboxEdit(true)}>change</button>
-                  </div>
-                )}
+                </div>
 
                 <button className="big primary mt-5 w-full justify-center" disabled={!photos.length || analyzing || genBusy} onClick={generateCaption}>
                   {genBusy ? <span className="spinner" /> : <EmberIcon name="spark" size={14} />}
@@ -3832,6 +4169,260 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
    SMALL PIECES
    ============================================================ */
 
+/* ============================================================
+   THE ECOSYSTEM GRAPH — read-only picture of what touches what.
+
+   No graph library. A dependency for one panel is not worth it, and the
+   generated index.html must stay self-contained with no CDN (see build.mjs).
+   So the layout is ~40 lines of force relaxation below.
+
+   DETERMINISTIC ON PURPOSE. The seed positions come from a golden-angle
+   spiral, not Math.random, so the graph draws identically on every render
+   and every reload. A graph that rearranges itself each visit is a graph
+   Brady has to re-read each visit.
+   ============================================================ */
+
+function ecoLayout(nodes, edges, W, H) {
+  const N = nodes.length;
+  const idx = new Map(nodes.map((n, i) => [n.id, i]));
+  const GOLDEN = 2.399963229728653;
+  const P = nodes.map((n, i) => {
+    const a = i * GOLDEN;
+    const r = 40 + 210 * Math.sqrt((i + 0.5) / N);
+    return { x: W / 2 + r * Math.cos(a), y: H / 2 + r * Math.sin(a), vx: 0, vy: 0 };
+  });
+  const links = edges
+    .map(([a, b]) => [idx.get(a), idx.get(b)])
+    .filter(([a, b]) => a !== undefined && b !== undefined);
+
+  /* Repulsion is deliberately ANISOTROPIC. What collides on screen is not the
+     circles — those sit ~46px apart — it is the LABELS, which are wide and
+     short. Pushing equally in every direction produced a readable ring of dots
+     with "baxstar-pontoon" printed straight through "Lakes Golf Sim". Shoving
+     harder along x buys the horizontal room a text label actually needs. */
+  const XBIAS = 2.35;
+  const STEPS = 460;
+  for (let it = 0; it < STEPS; it++) {
+    const cool = 1 - it / STEPS;
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        let dx = P[i].x - P[j].x, dy = P[i].y - P[j].y;
+        let d2 = dx * dx + dy * dy || 0.01;
+        if (d2 > 160000) continue;             // ignore far pairs — cheap and harmless
+        const d = Math.sqrt(d2), f = 7400 / d2;
+        dx /= d; dy /= d;
+        P[i].vx += dx * f * XBIAS; P[i].vy += dy * f;
+        P[j].vx -= dx * f * XBIAS; P[j].vy -= dy * f;
+      }
+    }
+    for (const [a, b] of links) {
+      let dx = P[b].x - P[a].x, dy = P[b].y - P[a].y;
+      const d = Math.hypot(dx, dy) || 0.01;
+      const f = (d - 125) * 0.045;
+      dx /= d; dy /= d;
+      P[a].vx += dx * f; P[a].vy += dy * f;
+      P[b].vx -= dx * f; P[b].vy -= dy * f;
+    }
+    for (let i = 0; i < N; i++) {
+      P[i].vx += (W / 2 - P[i].x) * 0.0016;
+      P[i].vy += (H / 2 - P[i].y) * 0.0022;
+      P[i].x += P[i].vx * 0.52 * cool;
+      P[i].y += P[i].vy * 0.52 * cool;
+      P[i].vx *= 0.8; P[i].vy *= 0.8;
+    }
+  }
+
+  /* LABEL DE-OVERLAP. The force pass positions circles; what a reader actually
+     collides with is the text under them. Estimate each label's box from its
+     character count and push overlapping pairs apart along their cheapest axis,
+     with a weak spring back to the force solution so the shape of the graph
+     survives. Deterministic, like everything above it. */
+  const LW = (n) => n.label.length * 6.8 + 14;   // ~10px Inter, measured generously
+  const LH = 19;
+  const home = P.map((p) => ({ x: p.x, y: p.y }));
+  for (let pass = 0; pass < 240; pass++) {
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const need = (LW(nodes[i]) + LW(nodes[j])) / 2 + 6;
+        const dx = P[j].x - P[i].x, dy = P[j].y - P[i].y;
+        const ox = need - Math.abs(dx), oy = LH - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue;        // boxes already clear
+        if (ox / need < oy / LH) {               // cheaper to separate sideways
+          const push = (ox / 2) * (dx < 0 ? -1 : 1) * 0.6;
+          P[i].x -= push; P[j].x += push;
+        } else {
+          const push = (oy / 2) * (dy < 0 ? -1 : 1) * 0.6;
+          P[i].y -= push; P[j].y += push;
+        }
+      }
+    }
+    for (let i = 0; i < N; i++) {                // weak pull home keeps the shape
+      P[i].x += (home[i].x - P[i].x) * 0.015;
+      P[i].y += (home[i].y - P[i].y) * 0.015;
+    }
+  }
+
+  // Fit whatever shape it settled into back inside the viewBox.
+  const pad = 58;
+  const xs = P.map((p) => p.x), ys = P.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const s = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxY - minY || 1));
+  const ox = pad + ((W - 2 * pad) - (maxX - minX) * s) / 2;
+  const oy = pad + ((H - 2 * pad) - (maxY - minY) * s) / 2;
+  return nodes.map((n, i) => ({
+    ...n,
+    x: ox + (P[i].x - minX) * s,
+    y: oy + (P[i].y - minY) * s,
+  }));
+}
+
+/* Solved once when the module loads, not per render. The inputs are module
+   constants, so there is nothing to recompute — and doing it here keeps the
+   component down to plain useState, which matters: build.mjs and
+   sync-standalone.py both match the React import line as an exact string and
+   abort if a new hook has to be added to it. */
+const ECO_W = 1460, ECO_H = 760;
+const ECO_PLACED = ecoLayout(ECO_NODES, ECO_EDGES, ECO_W, ECO_H);
+const ECO_BY_ID = new Map(ECO_PLACED.map((n) => [n.id, n]));
+const ECO_COLOR = new Map(ECO_GROUPS.map((g) => [g.id, g.color]));
+/* Who each node touches — powers the highlight and the detail line. */
+const ECO_NEAR = (() => {
+  const m = new Map(ECO_NODES.map((n) => [n.id, new Set()]));
+  for (const [a, b] of ECO_EDGES) {
+    if (m.has(a) && m.has(b)) { m.get(a).add(b); m.get(b).add(a); }
+  }
+  return m;
+})();
+
+function EcoGraph() {
+  /* Hover and pin are SEPARATE. Collapsing them into one "selected" id looks
+     tempting and is wrong: on a desktop the pointer is already inside the node
+     when the click lands, so a single toggling id gets set by mouseenter and
+     immediately cleared by the click — clicking would do nothing at all.
+     Hover peeks, click pins, and a pin survives the pointer leaving. */
+  const [hover, setHover] = useState(null);
+  const [pin, setPin] = useState(null);
+  const [only, setOnly] = useState(null);    // group id isolated via the legend
+
+  const sel = pin || hover;
+  const colorOf = (g) => ECO_COLOR.get(g) || "var(--brass)";
+  const active = sel ? ECO_BY_ID.get(sel) : null;
+  const near = sel ? ECO_NEAR.get(sel) : null;
+  const dimmed = (n) => (only && n.g !== only) || (sel && n.id !== sel && !near.has(n.id));
+
+  return (
+    <details className="eco-rail panel reveal" style={{ animationDelay: "0.62s" }}>
+      <summary className="eco-head">
+        <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" width="12" height="12" aria-hidden="true" />
+        <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>THE WORKS</span>
+        <span className="eco-count font-mono-x">{ECO_NODES.length} PARTS · {ECO_EDGES.length} LINKS</span>
+      </summary>
+
+      <div className="eco-legend">
+        {ECO_GROUPS.map((g) => (
+          <button
+            key={g.id}
+            className={`eco-key ${only === g.id ? "on" : ""}`}
+            onClick={() => { setOnly(only === g.id ? null : g.id); setPin(null); setHover(null); }}
+          >
+            <span className="eco-dot" style={{ background: g.color }} />
+            {g.label}
+          </button>
+        ))}
+        {(only || sel) && (
+          <button className="eco-key reset" onClick={() => { setOnly(null); setPin(null); setHover(null); }}>Reset</button>
+        )}
+      </div>
+
+      <div className="eco-scroll">
+        <svg className="eco-svg" viewBox={`0 0 ${ECO_W} ${ECO_H}`} role="img"
+          aria-label="Map of Brady's sites, repos, services and sources of truth, and how they connect">
+          <g>
+            {ECO_EDGES.map(([a, b], i) => {
+              const na = ECO_BY_ID.get(a), nb = ECO_BY_ID.get(b);
+              if (!na || !nb) return null;
+              const lit = sel && (a === sel || b === sel);
+              const off = (only && na.g !== only && nb.g !== only) || (sel && !lit);
+              return (
+                <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
+                  stroke={lit ? colorOf(active.g) : "var(--ember-brass-dark)"}
+                  strokeWidth={lit ? 1.8 : 1}
+                  opacity={off ? 0.07 : lit ? 0.85 : 0.34} />
+              );
+            })}
+          </g>
+          <g>
+            {ECO_PLACED.map((n) => {
+              const core = n.id === "ember";
+              const r = core ? 17 : n.g === "business" ? 11 : 8;
+              const off = dimmed(n);
+              const c = colorOf(n.g);
+              return (
+                <g key={n.id} className="eco-node" opacity={off ? 0.2 : 1}
+                  onMouseEnter={() => setHover(n.id)}
+                  onMouseLeave={() => setHover((h) => (h === n.id ? null : h))}
+                  onClick={() => setPin((q) => (q === n.id ? null : n.id))}
+                  role="button" tabIndex={0}
+                  onFocus={() => setHover(n.id)}
+                  onBlur={() => setHover((h) => (h === n.id ? null : h))}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPin((q) => (q === n.id ? null : n.id)); } }}>
+                  {/* Named with SVG's own <title> rather than aria-label. The
+                      dashboard smoke test reads any aria-label containing
+                      "Voice" as a surviving voice control, and one of these
+                      nodes is the Brand Voice doc — and <title> is the correct
+                      SVG naming idiom regardless. */}
+                  <title>{`${n.label} — ${n.note}`}</title>
+                  {/* Invisible, finger-sized hit target. The painted circle is
+                      about 11px across on a phone — too small to tap, and small
+                      enough that the centre of this group's bounding box (which
+                      includes the label beneath) lands OUTSIDE it, so a tap or a
+                      synthetic click missed the node entirely. Verified on a
+                      390px viewport before this was added. */}
+                  <circle cx={n.x} cy={n.y} r={Math.max(r + 16, 26)} fill="transparent" />
+                  {(core || n.id === sel) && (
+                    <circle cx={n.x} cy={n.y} r={r + 9} fill={c} opacity={0.14} />
+                  )}
+                  <circle cx={n.x} cy={n.y} r={r} fill="#100D0A" stroke={c}
+                    strokeWidth={n.id === sel ? 3 : core ? 2.5 : 1.6} />
+                  {core && <circle cx={n.x} cy={n.y} r={r - 6} fill={c} opacity={0.85} />}
+                  <text x={n.x} y={n.y + r + 13} textAnchor="middle"
+                    className={core ? "eco-label core" : "eco-label"}
+                    fill={n.id === sel ? "var(--ink)" : core ? c : "var(--ink-dim)"}>
+                    {n.label}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      </div>
+
+      <div className="eco-detail">
+        {active ? (
+          <>
+            <span className="eco-detail-name" style={{ color: colorOf(active.g) }}>{active.label}</span>
+            <span className="eco-detail-note">{active.note}</span>
+            <span className="eco-detail-meta font-mono-x">
+              {near.size} {near.size === 1 ? "LINK" : "LINKS"}
+            </span>
+            {pin === active.id && (
+              <button className="eco-detail-open" onClick={() => setPin(null)}>pinned — tap to release</button>
+            )}
+            {active.url && (
+              <a href={active.url} target="_blank" rel="noopener noreferrer" className="eco-detail-open">open ↗</a>
+            )}
+          </>
+        ) : (
+          <span className="eco-detail-note">
+            Hover or tap any part to trace what it touches. Tap a colour to isolate that layer.
+          </span>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge }) {
   return (
     <div className={`panel reveal flex flex-col px-5 py-4 ${grow ? "flex-1" : ""}`} style={{ animationDelay: delay, minHeight: 0 }}>
@@ -3899,6 +4490,7 @@ function Badge({ label }) {
    were superseded by the ear machine, but the view itself is the product Brady uses.
    Ported onto main so both AI lines finally build one codebase. */
 const MC_KEY = "ember-mc";
+const MC_CHANGED = "ember:mc-updated";
 const MC_STATUSES = ["active", "blocked", "parked", "frozen"];
 const mcUid = () => Math.random().toString(36).slice(2, 9);
 const mcToday = () => { try { return new Date().toISOString().slice(0, 10); } catch (e) { return ""; } };
@@ -3908,40 +4500,85 @@ function mcDefaults() {
   const d = mcToday();
   const dom = (() => { try { return new Date().getDate(); } catch (e) { return 15; } })();
   return {
-    zap: { used: 340, allowance: 750, dayOfCycle: dom, daysInCycle: 30 },
+    zap: { used: null, allowance: PROJECTS_META.zapierTasks.cap, dayOfCycle: dom, daysInCycle: 30 },
     projects: [
-      { id: mcUid(), name: "Baxstar Ember", pct: 97, status: "active", revenue: false, sessions: 1, hours: 2, next: "Dashboard-only build shipped; voice retired", updated: d,
+      { id: mcUid(), name: "Baxstar Ember", pct: 97, status: "active", revenue: false, sessions: 1, hours: 2, next: "Verify desktop dashboard and chat reliability; voice probe pending Mac verification", updated: d,
         links: [
-          { id: mcUid(), label: "app", url: "https://baxstar-ember.pages.dev" },
+          { id: mcUid(), label: "app", url: "https://ember.baxstarfishing.com" },
           { id: mcUid(), label: "repo", url: "https://github.com/baxstarcode/baxstar-ember" },
           { id: mcUid(), label: "cloudflare", url: "https://dash.cloudflare.com/?to=/:account/workers-and-pages" },
         ],
         tasks: [{ id: mcUid(), text: "Caption HEIC + Drive outbox", done: true }, { id: mcUid(), text: "Mission Control view", done: false }] },
       { id: mcUid(), name: "Pontoon check-in", pct: 85, status: "active", revenue: true, sessions: 1, hours: 2, next: "Close multi-tab queue TOCTOU", updated: d,
         links: [], tasks: [{ id: mcUid(), text: "Sync-truth v8 live", done: true }] },
-      { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Deploy outbox Apps Script", updated: d,
-        links: [{ id: mcUid(), label: "studio", url: "https://baxstar-ember.pages.dev" }], tasks: [] },
+      { id: mcUid(), name: "Caption Studio (Ember)", pct: 70, status: "active", revenue: true, sessions: 2, hours: 4, next: "Verify protected Drive outbox gateway", updated: d,
+        links: [{ id: mcUid(), label: "studio", url: "https://ember.baxstarfishing.com" }], tasks: [] },
       { id: mcUid(), name: "Open-water page", pct: 90, status: "blocked", revenue: true, sessions: 1, hours: 1, next: "Brady re-paste + publish in Wix", updated: d,
         links: [{ id: mcUid(), label: "wix editor", url: "https://manage.wix.com/" }], tasks: [] },
     ],
     decisions: [
       { id: mcUid(), text: "Turn the Caption → IG Zap ON (throwaway test first)", done: false },
-      { id: mcUid(), text: "Deploy the Drive-outbox Apps Script", done: false },
-      { id: mcUid(), text: "Merge the voice rig into the app (one brain)", done: false },
+      { id: mcUid(), text: "Verify the protected Drive-outbox gateway", done: false },
+      { id: mcUid(), text: "Verify dashboard data and connector status", done: false },
     ],
   };
 }
 
+function mcSaveTaskDraft(draft) {
+  let record;
+  try {
+    const raw = window.localStorage.getItem(MC_KEY);
+    record = raw === null ? mcDefaults() : JSON.parse(raw);
+  } catch {
+    throw new Error("Cannot read saved Mission Control data. Nothing was overwritten; your task draft is still here.");
+  }
+  if (!record || typeof record !== "object" || !Array.isArray(record.projects)) {
+    throw new Error("Saved Mission Control data is unreadable. Nothing was overwritten; your task draft is still here.");
+  }
+  const projects = [...record.projects];
+  let index = projects.findIndex((p) => typeof p?.name === "string" && p.name.trim().toLowerCase() === "baxstar ember");
+  if (index < 0) {
+    index = projects.length;
+    projects.push({ ...mcDefaults().projects[0], tasks: [] });
+  }
+  const project = projects[index];
+  if (project.tasks != null && !Array.isArray(project.tasks)) throw new Error("The Baxstar Ember task list is unreadable. Nothing was overwritten.");
+  const tasks = project.tasks || [];
+  // A draft carries one ID through review and save, making double clicks harmless.
+  if (tasks.some((task) => task.id === draft.id)) return;
+  projects[index] = {
+    ...project, updated: mcToday(),
+    tasks: [...tasks, { id: draft.id, text: draft.title.trim(), done: false, due: draft.due.trim(), details: draft.details.trim(), source: draft.source, localOnly: true }],
+  };
+  const next = { ...record, projects };
+  if (!lsSet(MC_KEY, next)) throw new Error("Could not save locally. Check this browser's storage; your task draft is still here.");
+  window.dispatchEvent(new CustomEvent(MC_CHANGED));
+}
+
 function MissionControl() {
-  const init = (typeof window !== "undefined" && lsGet(MC_KEY, null)) || mcDefaults();
+  const [init] = useState(() => (typeof window !== "undefined" && lsGet(MC_KEY, null)) || mcDefaults());
   const [zap, setZap] = useState(init.zap || mcDefaults().zap);
   const [projects, setProjects] = useState(init.projects || []);
   const [decisions, setDecisions] = useState(init.decisions || []);
   const [openRows, setOpenRows] = useState({});
-  useEffect(() => { lsSet(MC_KEY, { zap, projects, decisions }); }, [zap, projects, decisions]);
+  useEffect(() => { lsSet(MC_KEY, { ...lsGet(MC_KEY, {}), zap, projects, decisions }); }, [zap, projects, decisions]);
+  useEffect(() => {
+    const refresh = (event) => {
+      if (event.type === "storage" && event.key !== MC_KEY) return;
+      const saved = lsGet(MC_KEY, null);
+      if (!saved || !Array.isArray(saved.projects)) return;
+      setProjects(saved.projects);
+      setZap(saved.zap || mcDefaults().zap);
+      setDecisions(Array.isArray(saved.decisions) ? saved.decisions : []);
+    };
+    window.addEventListener(MC_CHANGED, refresh);
+    window.addEventListener("storage", refresh);
+    return () => { window.removeEventListener(MC_CHANGED, refresh); window.removeEventListener("storage", refresh); };
+  }, []);
 
   // --- Zapier meter math ---
   const used = mcNum(zap.used), allowance = mcNum(zap.allowance);
+  const hasUsage = zap.used != null && String(zap.used).trim() !== "" && Number.isFinite(Number(zap.used));
   const dayOfCycle = mcNum(zap.dayOfCycle), daysInCycle = mcNum(zap.daysInCycle);
   const pctUsed = allowance > 0 ? (used / allowance) * 100 : 0;
   const callsLeft = Math.max(0, Math.floor((allowance - used) / 2));
@@ -3998,27 +4635,28 @@ function MissionControl() {
     <div className="mc-grid flex-1" style={{ minHeight: 0 }}>
       {/* LEFT — meter + projects */}
       <div className="mc-stack" style={{ minHeight: 0 }}>
-        <Panel notch="cool" title="Zapier Task Meter" count={pacingOver ? "PACING OVER" : "ON PACE"}
-          countColor={pacingOver ? "var(--ember-red)" : "#54e08a"} delay="0.05s" scroll={false}>
+        <Panel notch="cool" title="Zapier Task Meter" count={!hasUsage ? "NOT RECORDED" : pacingOver ? "PACING OVER" : "ON PACE"}
+          countColor={!hasUsage ? "var(--brass)" : pacingOver ? "var(--ember-red)" : "#54e08a"} delay="0.05s" scroll={false}>
           <div className="grid grid-cols-4 gap-2">
             {[["used", "Used"], ["allowance", "Allowance"], ["dayOfCycle", "Day of cycle"], ["daysInCycle", "Days in cycle"]].map(([k, label]) => (
               <label key={k} className="flex flex-col gap-1">
                 <span className="fieldlabel">{label}</span>
                 <input type="number" className="mc-input mc-num" style={{ width: "100%", textAlign: "left" }}
-                  value={zap[k]} onChange={(e) => setZapField(k, e.target.value)} />
+                  value={zap[k] ?? ""} placeholder={k === "used" ? "Not recorded" : undefined} onChange={(e) => setZapField(k, e.target.value)} />
               </label>
             ))}
           </div>
           <div className="mc-meter mt-3">
             <div className={`mc-meter-fill ${pacingOver ? "warn" : ""}`} style={{ width: `${Math.max(0, Math.min(100, pctUsed))}%` }} />
-            <div className="mc-meter-mark" title="projected cycle end" style={{ left: `${projMark}%` }} />
+            {hasUsage && <div className="mc-meter-mark" title="projected cycle end" style={{ left: `${projMark}%` }} />}
           </div>
           <div className="grid grid-cols-4 gap-2 mt-3">
-            <div className="mc-metric"><span className="k">% Used</span><span className={`v ${pctUsed >= 100 ? "warn" : ""}`}>{Math.round(pctUsed)}%</span></div>
-            <div className="mc-metric"><span className="k">Calls left ÷2</span><span className="v">{callsLeft}</span></div>
-            <div className="mc-metric"><span className="k">Daily burn</span><span className="v">{dailyBurn.toFixed(1)}</span></div>
-            <div className="mc-metric"><span className="k">Proj. end</span><span className={`v ${pacingOver ? "warn" : "ok"}`}>{projection}</span></div>
+            <div className="mc-metric"><span className="k">% Used</span><span className={`v ${pctUsed >= 100 ? "warn" : ""}`}>{hasUsage ? `${Math.round(pctUsed)}%` : "—"}</span></div>
+            <div className="mc-metric"><span className="k">Calls left ÷2</span><span className="v">{hasUsage ? callsLeft : "—"}</span></div>
+            <div className="mc-metric"><span className="k">Daily burn</span><span className="v">{hasUsage ? dailyBurn.toFixed(1) : "—"}</span></div>
+            <div className="mc-metric"><span className="k">Proj. end</span><span className={`v ${hasUsage ? pacingOver ? "warn" : "ok" : ""}`}>{hasUsage ? projection : "—"}</span></div>
           </div>
+          <p className="mt-2 text-[11px]" style={{ color: "var(--ink-dim)" }}>Entered on this device · check Zapier for current usage.</p>
         </Panel>
 
         <Panel notch="hot" title="Projects" count={`${projects.length} TRACKED`} countColor="var(--brass)" delay="0.12s" grow>
@@ -4027,7 +4665,7 @@ function MissionControl() {
               const pct = Math.max(0, Math.min(100, mcNum(p.pct)));
               return (
                 <div key={p.id} className={`mc-row ${p.status}`}>
-                  <div className="flex items-center gap-2">
+                  <div className="mc-project-head flex items-center gap-2">
                     <input className="mc-input flex-1" value={p.name} onChange={(e) => updProject(p.id, { name: e.target.value })} />
                     {/* The name stays editable, so the link lives beside it -- one tap
                         reopens every page this project needs to pick back up. */}
@@ -4047,7 +4685,7 @@ function MissionControl() {
                     <div className="mc-fuse-live" style={{ left: `${pct}%`, width: `${100 - pct}%` }} />
                     {pct > 0 && pct < 100 && <div className="mc-fuse-spark" style={{ left: `${pct}%` }} />}
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
+                  <div className="mc-project-meta mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]" style={{ color: "var(--ink-faint)" }}>
                     <label className="flex items-center gap-1">%<input type="number" className="mc-input mc-num" style={{ width: 54 }} value={p.pct} onChange={(e) => updProject(p.id, { pct: e.target.value })} /></label>
                     <label className="flex items-center gap-1">sessions<input type="number" className="mc-input mc-num" style={{ width: 48 }} value={p.sessions} onChange={(e) => updProject(p.id, { sessions: e.target.value })} /></label>
                     <label className="flex items-center gap-1">hours<input type="number" className="mc-input mc-num" style={{ width: 48 }} value={p.hours} onChange={(e) => updProject(p.id, { hours: e.target.value })} /></label>
@@ -4055,12 +4693,12 @@ function MissionControl() {
                       {openRows[p.id] ? "hide tasks" : `tasks (${p.tasks.length})`}
                     </button>
                   </div>
-                  <div className="mt-2 flex items-center gap-1.5">
+                  <div className="mc-next-row mt-2 flex items-center gap-1.5">
                     <span className="fieldlabel" style={{ whiteSpace: "nowrap" }}>Next</span>
                     <input className="mc-input flex-1" placeholder="next action" value={p.next} onChange={(e) => updProject(p.id, { next: e.target.value })} />
                   </div>
                   {/* Individual pages: click a chip for just that one, or edit them. */}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <div className="mc-links mt-2 flex flex-wrap items-center gap-1.5">
                     {linksOf(p).map((l) => (
                       <span key={l.id} className="mc-linkchip">
                         {(l.url || "").trim() ? (
@@ -4083,10 +4721,18 @@ function MissionControl() {
                   {openRows[p.id] && (
                     <div className="mt-2 rounded-lg p-2" style={{ background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" }}>
                       {p.tasks.map((t) => (
-                        <div key={t.id} className={`mc-check ${t.done ? "done" : ""}`}>
-                          <input type="checkbox" checked={t.done} onChange={(e) => updTask(p.id, t.id, { done: e.target.checked })} />
-                          <input className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={t.text} onChange={(e) => updTask(p.id, t.id, { text: e.target.value })} />
-                          <button className="mc-x" onClick={() => delTask(p.id, t.id)}>×</button>
+                        <div key={t.id} data-task-id={t.id}>
+                          <div className={`mc-check ${t.done ? "done" : ""}`}>
+                            <input type="checkbox" aria-label={`Complete ${t.text}`} checked={t.done} onChange={(e) => updTask(p.id, t.id, { done: e.target.checked })} />
+                            <input aria-label="Task name" className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={t.text} onChange={(e) => updTask(p.id, t.id, { text: e.target.value })} />
+                            <button className="mc-x" aria-label={`Remove ${t.text}`} onClick={() => delTask(p.id, t.id)}>×</button>
+                          </div>
+                          {(t.localOnly || t.due || t.details || t.source) && <div className="mb-2 pl-6 text-[11px] whitespace-pre-wrap" style={{ color: "var(--ink-dim)" }}>
+                            {t.localOnly && <div>Local task · not sent to Quo</div>}
+                            {t.due && <div>Due: {t.due}</div>}
+                            {t.details && <div>{t.details}</div>}
+                            {t.source && <div>Source: {t.source}</div>}
+                          </div>}
                         </div>
                       ))}
                       <button className="mc-mini mt-1" onClick={() => addTask(p.id)}>+ task</button>
@@ -4102,7 +4748,7 @@ function MissionControl() {
 
       {/* RIGHT — rollups + decisions */}
       <div className="mc-stack" style={{ minHeight: 0 }}>
-        <Panel notch="warm" title="Rollups" count="LIVE" countColor="var(--ember-orange)" delay="0.08s" scroll={false}>
+        <Panel notch="warm" title="Rollups" count="LOCAL ESTIMATES" countColor="var(--ember-orange)" delay="0.08s" scroll={false}>
           <div className="grid grid-cols-2 gap-2">
             <div className="mc-metric"><span className="k">Total hours left</span><span className="v">{totalHours}</span></div>
             <div className="mc-metric"><span className="k">Total sessions</span><span className="v">{totalSessions}</span></div>

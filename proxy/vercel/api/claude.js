@@ -1,9 +1,13 @@
 /**
- * EMBER — Anthropic API proxy (Vercel serverless function)
+ * HISTORICAL / UNSUPPORTED — DO NOT DEPLOY.
  *
- * Alternative to proxy/cloudflare-worker.js. Same contract, same protections.
- * Drop this repo's proxy/vercel/ directory into a Vercel project and the endpoint
- * lands at /api/claude. Point Ember at it with window.EMBER_API_PROXY.
+ * This adapter predates Ember's server-owned MCP tool allowlists, same-origin
+ * Access gateway, streaming guarantees, OAuth refresh flow, and TTS route.
+ * Production is exclusively proxy/cloudflare-worker.js. This file remains only
+ * to explain old deployments in Git history; copying it would reopen the gaps
+ * the current Worker closes.
+ *
+ * Former Ember Anthropic API proxy (Vercel serverless function).
  *
  * Environment variables (Vercel dashboard → Settings → Environment Variables):
  *   ANTHROPIC_API_KEY   required

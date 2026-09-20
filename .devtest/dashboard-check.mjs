@@ -1,92 +1,180 @@
-// Post-voice-removal smoke test on the GENERATED build.
-// Proves: the app renders with zero console/page errors, no voice control
-// survives anywhere in the UI, the tools rail is present and links out, the
-// dashboard panels and typed ask still work, and it holds up at phone width.
-import { chromium } from 'playwright';
-import fs from 'fs';
-const PRE = '/opt/pw-browsers/chromium';
-const b = await chromium.launch(fs.existsSync(PRE) ? { executablePath: PRE } : {});
+// Generated-build dashboard smoke test.
+// Exercises the current same-origin API contract at desktop and phone widths.
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const stub = () => {
-  window.__reqs = [];
-  const of_ = window.fetch;
-  window.fetch = (...a) => {
-    const url = String(a[0]);
-    if (/workers|anthropic|proxy/i.test(url) && a[1] && a[1].method === 'POST') {
-      window.__reqs.push(JSON.parse(a[1].body));
-      const sync = /ONLY valid JSON/.test(a[1].body);
-      const text = sync
-        ? '{"voicemails":[{"from":"(218) 555-0000","line":"Fishing","time":"1:00 PM","note":"live sync landed","vm":""}],"emails":[{"from":"LiveSyncProof","time":"1:01 PM","subject":"real data"}],"events":[{"time":"3:00 PM","title":"LiveSyncEvent","detail":""}]}'
-        : 'Two bookings today, Brady.';
-      return Promise.resolve(new Response(JSON.stringify({ content: [{ type: 'text', text }] }), { headers: { 'Content-Type': 'application/json' } }));
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const SHOTS = path.join(ROOT, ".devtest", "ui-shots");
+fs.mkdirSync(SHOTS, { recursive: true });
+
+async function loadPlaywright() {
+  try {
+    return await import("playwright");
+  } catch (error) {
+    const bundled = path.join(path.dirname(path.dirname(process.execPath)), "node_modules", "playwright", "index.mjs");
+    if (!fs.existsSync(bundled)) throw error;
+    return import(pathToFileURL(bundled).href);
+  }
+}
+
+function startStaticServer() {
+  const rootPrefix = `${path.resolve(ROOT)}${path.sep}`;
+  const server = http.createServer((req, res) => {
+    const pathname = decodeURIComponent(new URL(req.url || "/", "http://ember.test").pathname);
+    const relative = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const file = path.resolve(ROOT, relative);
+    if ((!file.startsWith(rootPrefix) && file !== path.resolve(ROOT, "index.html")) ||
+        !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+      return;
     }
-    return of_(...a);
-  };
-  window.__EMBER_AUTOSYNC_TEST = true;
+    const type = {
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".webmanifest": "application/manifest+json",
+      ".svg": "image/svg+xml",
+      ".png": "image/png",
+      ".webp": "image/webp",
+    }[path.extname(file)] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" }).end(fs.readFileSync(file));
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+const { chromium } = await loadPlaywright();
+const server = await startStaticServer();
+const ORIGIN = `http://127.0.0.1:${server.address().port}`;
+const browser = await chromium.launch();
+const failures = [];
+let assertions = 0;
+
+const check = (label, condition, extra = "") => {
+  assertions += 1;
+  console.log(`${condition ? "PASS" : "FAIL"} — ${label}${extra ? ` :: ${extra}` : ""}`);
+  if (!condition) failures.push(label);
 };
 
-const fails = [];
-const ok = (label, cond, extra = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} — ${label}${extra ? ' :: ' + extra : ''}`); if (!cond) fails.push(label); };
-
-for (const [name, viewport] of [['DESKTOP', { width: 1440, height: 900 }], ['PHONE', { width: 393, height: 852 }]]) {
-  const ctx = await b.newContext({ viewport, deviceScaleFactor: name === 'PHONE' ? 3 : 1 });
-  const p = await ctx.newPage();
-  const errs = [];
-  p.on('pageerror', (e) => errs.push(e.message));
-  // Google Fonts is blocked by this sandbox's TLS interception and fails
-  // identically on the pre-surgery build — environmental, not the app's.
-  const NOISE = /fonts\.googleapis|fonts\.gstatic|ERR_CERT_AUTHORITY_INVALID|favicon/i;
-  p.on('console', (m) => { if (m.type() === 'error' && !NOISE.test(m.text())) errs.push('console: ' + m.text()); });
-  p.on('requestfailed', (r) => { if (!NOISE.test(r.url())) errs.push('net: ' + r.url().slice(0, 80)); });
-  p.on('response', (r) => { if (r.status() >= 400 && !NOISE.test(r.url())) errs.push('http ' + r.status() + ': ' + r.url().slice(0, 90)); });
-  await p.addInitScript(stub);
-  await p.goto('http://localhost:8099/index.html', { waitUntil: 'networkidle' });
-  await p.waitForTimeout(2600);
-
-  console.log(`\n===== ${name} =====`);
-  ok(`${name} no page/console errors`, errs.length === 0, errs.slice(0, 3).join(' | '));
-
-  // No voice affordance may survive anywhere in the rendered UI.
-  const body = (await p.evaluate(() => document.body.innerText)).toUpperCase();
-  const banned = ['TAP TO TALK', 'VOICE MODE', 'VOICE ON', 'HER VOICE', 'HEAR IT', 'TAP TO HEAR', 'EMBER, AWAKE', 'MIC ARMED', 'MIC RELEASED', 'LISTENING', 'SPEAKING'];
-  const found = banned.filter((t) => body.includes(t));
-  ok(`${name} zero voice controls in UI`, found.length === 0, found.join(','));
-  const mics = await p.locator('[aria-label*="Voice"], [aria-label*="mic" i], [title*="Talk" i]').count();
-  ok(`${name} no mic/voice controls in DOM`, mics === 0);
-
-  // Steampunk identity survives.
-  ok(`${name} skull present`, await p.locator('.skull-host').count() > 0);
-  ok(`${name} core instrument present`, await p.locator('.reactor-stage, .scope-bezel').count() > 0);
-
-  // Dashboard does its job.
-  ok(`${name} panels filled from live sync`, body.includes('LIVE SYNC LANDED') && body.includes('LIVESYNCPROOF'));
-  ok(`${name} revenue panel present`, body.includes("TODAY'S REVENUE"));
-
-  // The tools rail.
-  const links = await p.locator('.tool-link').count();
-  ok(`${name} tools rail rendered`, body.includes('YOUR TOOLS') && links === 11, `${links} links`);
-  const first = await p.locator('.tool-link').first();
-  ok(`${name} tool links open in a new tab`, (await first.getAttribute('target')) === '_blank' && /noopener/.test(await first.getAttribute('rel') || ''));
-
-  // No horizontal overflow at this width.
-  const overflow = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  ok(`${name} no sideways scroll`, overflow <= 1, `overflow ${overflow}px`);
-
-  // Typed ask still reaches the model and answers in the thread.
-  await p.evaluate(() => {
-    const i = document.querySelector('.cmd-input');
-    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    set.call(i, 'how does today look'); i.dispatchEvent(new Event('input', { bubbles: true }));
-    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  });
-  await p.waitForTimeout(1200);
-  ok(`${name} typed ask answers`, (await p.getByText(/Two bookings today, Brady\./).count()) > 0);
-  const chat = await p.evaluate(() => (window.__reqs || []).find((r) => !/ONLY valid JSON/.test(JSON.stringify(r.messages))));
-  ok(`${name} no voice-mode text in the prompt`, !!chat && !/spoken aloud|Spoken output/i.test(JSON.stringify(chat.messages)));
-
-  if (name === 'PHONE') await p.screenshot({ path: '/tmp/claude-0/-home-user-baxstar-ember/749a3292-fd97-597e-bb97-d3ca8baf4d82/scratchpad/ember-phone.png', fullPage: true });
-  else await p.screenshot({ path: '/tmp/claude-0/-home-user-baxstar-ember/749a3292-fd97-597e-bb97-d3ca8baf4d82/scratchpad/ember-desktop.png', fullPage: true });
-  await ctx.close();
+function verifiedSyncContent(text) {
+  const content = [];
+  for (const [server, tool] of [["quo", "fetch-missed-calls"], ["gmail", "search_threads"], ["calendar", "list_events"]]) {
+    const id = `mcp_${server}`;
+    content.push({ type: "mcp_tool_use", id, name: tool, server_name: server, input: {} });
+    content.push({ type: "mcp_tool_result", tool_use_id: id, is_error: false, content: [] });
+  }
+  content.push({ type: "text", text });
+  return content;
 }
-await b.close();
-console.log(fails.length ? `\nDASHBOARD FAIL: ${fails.join(' | ')}` : '\nDASHBOARD PASS');
+
+try {
+  for (const [name, viewport] of [["DESKTOP", { width: 1440, height: 900 }], ["PHONE", { width: 393, height: 852 }]]) {
+    const requests = [];
+    let syncEvidence = true;
+    const context = await browser.newContext({
+      viewport,
+      deviceScaleFactor: name === "PHONE" ? 3 : 1,
+      serviceWorkers: "block",
+    });
+    const page = await context.newPage();
+    const errors = [];
+    const noise = /fonts\.googleapis|fonts\.gstatic|ERR_CERT_AUTHORITY_INVALID|favicon/i;
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error" && !noise.test(message.text())) errors.push(`console: ${message.text()}`);
+    });
+    page.on("requestfailed", (request) => {
+      if (!noise.test(request.url())) errors.push(`net: ${request.url().slice(0, 100)}`);
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 400 && !noise.test(response.url())) errors.push(`http ${response.status()}: ${response.url().slice(0, 100)}`);
+    });
+
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await page.route(`${ORIGIN}/api/messages`, async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST") {
+        await route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ error: "POST required" }) });
+        return;
+      }
+      const body = JSON.parse(request.postData() || "{}");
+      requests.push(body);
+      const isSync = /ONLY valid JSON/.test(request.postData() || "");
+      const text = isSync
+        ? JSON.stringify({
+            voicemails: [{ from: "(218) 555-0000", line: "Fishing", time: "1:00 PM", note: "live sync landed", vm: "" }],
+            emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data" }],
+            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "" }],
+          })
+        : "Two bookings today, Brady.";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ content: isSync && syncEvidence ? verifiedSyncContent(text) : [{ type: "text", text }] }),
+      });
+    });
+
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForSelector(".core-chamber", { timeout: 15000 });
+    await page.waitForFunction(() => /live sync landed/i.test(document.body.innerText), null, { timeout: 10000 });
+
+    console.log(`\n===== ${name} =====`);
+    check(`${name} no page/console errors`, errors.length === 0, errors.slice(0, 3).join(" | "));
+
+    const body = (await page.locator("body").innerText()).toUpperCase();
+    const banned = ["TAP TO TALK", "VOICE MODE", "VOICE ON", "HER VOICE", "HEAR IT", "TAP TO HEAR", "EMBER, AWAKE", "MIC ARMED", "MIC RELEASED", "LISTENING", "SPEAKING"];
+    const found = banned.filter((text) => body.includes(text));
+    check(`${name} zero voice controls in UI`, found.length === 0, found.join(","));
+    const microphones = await page.locator('[aria-label*="Voice"], [aria-label*="mic" i], [title*="Talk" i]').count();
+    check(`${name} no mic/voice controls in DOM`, microphones === 0);
+
+    check(`${name} skull present`, await page.locator(".skull-host").count() > 0);
+    check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
+    check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));
+    const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));
+    check(`${name} sync requests connector names only`,
+      JSON.stringify(syncRequest?.mcp_servers) === JSON.stringify([{ name: "quo" }, { name: "gmail" }, { name: "calendar" }]));
+    syncEvidence = false;
+    await page.locator(".sync-control").click();
+    await page.waitForFunction(() => /did not verify successful results/i.test(document.body.innerText), null, { timeout: 10000 });
+    const afterUnverified = (await page.locator("body").innerText()).toUpperCase();
+    check(`${name} valid-looking JSON without tool results cannot replace live panels`,
+      afterUnverified.includes("LIVE SYNC LANDED") && afterUnverified.includes("LIVESYNCPROOF"));
+    check(`${name} revenue panel present`, body.includes("TODAY'S REVENUE"));
+
+    const links = await page.locator(".tool-link").count();
+    check(`${name} tools rail rendered`, body.includes("YOUR TOOLS") && links === 11, `${links} links`);
+    const firstLink = page.locator(".tool-link").first();
+    check(`${name} tool links open in a new tab`,
+      (await firstLink.getAttribute("target")) === "_blank" && /noopener/.test(await firstLink.getAttribute("rel") || ""));
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    check(`${name} no sideways scroll`, overflow <= 1, `overflow ${overflow}px`);
+
+    const composer = page.getByRole("textbox", { name: "Ask Ember" });
+    await composer.fill("how does today look");
+    await composer.press("Enter");
+    await page.getByText("Two bookings today, Brady.", { exact: true }).waitFor({ timeout: 10000 });
+    check(`${name} typed ask answers`, await page.getByText("Two bookings today, Brady.", { exact: true }).count() > 0);
+
+    const chatRequest = requests.find((request) => !/ONLY valid JSON/.test(JSON.stringify(request.messages)));
+    check(`${name} chat uses same-origin messages POST`, !!chatRequest);
+    check(`${name} no voice-mode text in the prompt`, !!chatRequest && !/spoken aloud|Spoken output/i.test(JSON.stringify(chatRequest.messages)));
+
+    await page.screenshot({
+      path: path.join(SHOTS, `dashboard-${name.toLowerCase()}.png`),
+      fullPage: true,
+    });
+    await context.close();
+  }
+} finally {
+  await browser.close();
+  await new Promise((resolve) => server.close(resolve));
+}
+
+console.log(`\n${assertions - failures.length}/${assertions} passed`);
+if (failures.length) console.log(`DASHBOARD FAIL: ${failures.join(" | ")}`);
+else console.log("DASHBOARD PASS");
+process.exit(failures.length ? 1 : 0);

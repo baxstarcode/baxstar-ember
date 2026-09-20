@@ -5,7 +5,9 @@
  * PRIVATE Google Drive folder for Brady to review and post. It does NOT post to Instagram,
  * Facebook, or anywhere else — it is a staging outbox, nothing more.
  *
- * SCAFFOLD ONLY — this is not deployed. See README-DEPLOY.md for the exact steps.
+ * A live deployment exists. This file is its maintained source; see README-DEPLOY.md.
+ * The supported caller is Ember's Cloudflare Worker relay. Never ship the /exec URL or
+ * shared token to the browser — the endpoint URL is a write capability.
  *
  * WHY DRIVE AND NOT AN IMAGE CDN
  * A browser photo can't be handed to Meta directly — Meta needs a URL it can fetch, and it
@@ -55,8 +57,9 @@
 var OUTBOX_FOLDER_ID = "";
 var OUTBOX_FOLDER_NAME = "Baxstar Ember Outbox";
 
-// Optional shared secret. If set, Ember must send the same value as ?token= on the URL
-// or as payload.token. Leave "" to disable (the /exec URL is already unguessable).
+// Shared secret for the server-side Ember Worker relay. A live deployment may predate
+// this requirement; set a strong value before publishing the next Apps Script version,
+// then store the match only in the Worker's encrypted OUTBOX_TOKEN secret.
 var SHARED_TOKEN = "";
 
 // Instagram's own ceiling. More slides than this can't post as one carousel anyway.

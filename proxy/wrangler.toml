@@ -5,13 +5,30 @@
 
 name = "ember-claude-proxy"
 main = "cloudflare-worker.js"
-compatibility_date = "2026-08-24"
+compatibility_date = "2026-09-20"
+
+# Keep workers.dev enabled only for the registered OAuth start/callback URLs.
+# Worker code refuses every non-OAuth request on that hostname. Production API
+# traffic is relayed by the Access-gated Pages Function service binding because
+# the custom hostname's DNS zone is outside this Worker account.
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
 
 [vars]
-# Exact origins allowed to call this proxy — comma separated, no trailing slash.
-# Production + both documented local harnesses. Keep this aligned with the
-# dashboard value before deploying through Wrangler.
-ALLOWED_ORIGINS = "http://localhost:8787,http://localhost:8080,https://baxstar-ember.pages.dev"
+# Browser CORS is intentionally narrow even though Access and the hostname gate
+# are the real authorization boundary. Local harnesses intercept same-origin API
+# calls; Pages aliases are not supported API origins.
+ALLOWED_ORIGINS = "https://ember.baxstarfishing.com"
+# Preserve the current OAuth callback during the staged API-only cutover. Move
+# this to the authenticated custom hostname only after both Google and Quo have
+# that exact redirect registered, then add an explicit /oauth/* Worker route.
+OAUTH_REDIRECT_URI = "https://ember-claude-proxy.brady-9d1.workers.dev/oauth/callback"
 
 # Secrets are NOT set here — they would end up in git.
 # Set them with: npx wrangler secret put <NAME>
@@ -22,3 +39,5 @@ ALLOWED_ORIGINS = "http://localhost:8787,http://localhost:8080,https://baxstar-e
 #   MCP_TOKEN_GMAIL       (optional)
 #   MCP_TOKEN_CALENDAR    (optional)
 #   MCP_TOKEN_GDRIVE      (optional)
+#   OUTBOX_URL            (required for Caption Studio publish)
+#   OUTBOX_TOKEN          (optional; matches Apps Script shared token)

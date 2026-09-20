@@ -25,10 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "baxstar-ember.jsx"
 TARGET = ROOT / "_preview.html"
 
-# The deployed Worker. Declared once here and written into BOTH generated surfaces,
-# so the preview and the deploy build can never disagree about where the brain lives.
-# Not a secret: the Worker enforces its origin allowlist server-side.
-PROXY_URL = "https://ember-claude-proxy.brady-9d1.workers.dev"
+# Local preview keeps the same browser boundary as production. Python's static server
+# has no /api/messages implementation, so live chat fails honestly; intercepted browser
+# tests and the Access-authenticated production hostname exercise live API behavior.
+PROXY_URL = "/api/messages"
 
 IMPORT_LINE = 'import { useState, useEffect, useRef } from "react";'
 EXPORT_LINE = "export default function BaxstarEmber"
@@ -55,10 +55,8 @@ HEAD = """<!doctype html>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
   <style>html,body,#root{margin:0;height:100%;background:#000;}</style>
   <script>
-  /* Brady's deployed proxy — this is what gives the local preview a working brain.
-     Not a secret: the Worker enforces an origin allowlist server-side, so this URL is
-     useless from anywhere but ALLOWED_ORIGINS. Verified 403 from curl and from a
-     forged origin. See docs/DEPLOY.md. */
+  /* Same-origin API boundary. The local static server does not implement this route;
+     use intercepted tests or authenticated production for live model calls. */
   window.EMBER_API_PROXY = "__PROXY_URL__";
   </script>
   <script>

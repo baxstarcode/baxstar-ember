@@ -6,31 +6,42 @@ You are continuing the build of **Ember**, my personal AI command center — my 
 
 ## 0. Current State — Read This First
 
-Ember exists in three pieces. Know what each one is before you change anything.
+This document is Ember's visual and product-design constitution. It is not the active
+operational briefing. Before changing code, read `docs/CURRENT-STATE.md` for the verified
+architecture, product surfaces, voice policy, deployment state, test totals, and remaining
+gates. Then read `SOURCES-OF-TRUTH.md`, `HANDOFF-CINEMATIC.md`, and
+`docs/KNOWN-ISSUES.md` for provenance and locked constraints.
 
-**1. `baxstar-ember.jsx` — the app (canonical source of truth).** A working React artifact:
-- Claude API chat with MCP servers wired (Quo phones, Gmail, Google Calendar, Google Drive)
-- 8 tools: Claude Chat, AI Handoff, Caption Studio, Drive Librarian, HTML Viewer, Image Filters, GitHub, Snippets
-- System contexts (BRADY_CONTEXT, DRIVE_CONTEXT), canned policy snippets, sponsor handles, model + effort selectors, demo data with live SYNC
-- Ember-orange-on-dark palette, CSS variables already defined (`--ember-red`, `--ember-orange`, `--ember-amber`, `--panel`, `--line`)
+Canonical ownership is simple: edit `src/baxstar-ember.jsx` for application behavior and
+appearance, `proxy/cloudflare-worker.js` for the API Worker, and
+`functions/api/[[path]].js` for the Pages gateway. Generate `index.html` and the exact
+`dist/` payload through the build scripts; never hand-edit generated output.
 
-**2. `index.html` — the standalone deploy wrapper.** The same app (99.8% identical code) packaged to run in a plain browser via React UMD + Babel Standalone from CDN. This is the path to Ember living at a real URL instead of inside a chat window. **It is currently broken in two specific ways — see §1.**
+Preserve verified working behavior. Ordinary chat may use only the approved read-only Quo,
+Gmail, and Calendar connectors. Google Drive access remains isolated to the separate Drive
+Librarian surface. Keep every external draft, reply, post, and task reviewable before action.
+Do not remove or simplify a working surface without an explicit product decision and a
+regression test.
 
-**3. `ember-demo.html` / `ember-voice-deck.html` — the voice rig.** Separate, self-contained, and working. Web Speech API for speech-in, `speechSynthesis` with a scored local-voice picker and MP3 fallback for speech-out, a live mic-level meter, and an animated "gas" orb that scales and shifts with audio level. `ember-demo.html` adds a canned Baxstar demo brain (pontoon rates, guided trips, booking curve, golf sim, tech camp). This voice layer is **not yet connected to the real app** — the demo brain is hardcoded string matching, not Claude.
-
-**Preserve all of it functionally.** Every tool, every MCP call, every context string, every snippet works today. Do not break, remove, or "simplify" working features. Refactor only when a change requires it, and verify behavior survives.
-
-**What must change visually:** the current skin has comic-book DNA — BURST_WORDS ("ZOWIE!", "POW!"), emoji tool icons, generic gradient backgrounds. All of that is replaced by the design language in §3. The warm ember palette stays; the cartoon energy goes.
+**Established visual law:** Ember has no comic-book bursts, emoji tool icons, or generic
+gradient skin. Preserve the serious steampunk language in §3: warm, restrained, mechanical,
+and premium.
 
 ---
 
-## 1. Known Blockers — Fix These, Don't Rediscover Them
+## 1. Active Gates — Verify These, Don't Rediscover Them
 
-**Blocker A — `index.html` has no Tailwind.** The JSX uses Tailwind utility classes throughout (`flex items-center gap-3`, `rounded-full`, `text-[13px]`, `grid`, `absolute`). The file loads React, ReactDOM, and Babel from CDN — and nothing else. Its 15KB inline `<style>` block defines the custom Ember CSS (variables, panels, animations) but zero utility classes. Result: hosted standalone, the colors survive and the entire layout collapses. Either add a Tailwind CDN build or compile the utilities into the inline stylesheet.
+The former standalone styling and browser-auth blockers are resolved by the compiled,
+self-contained production build and the same-origin Pages-to-Worker gateway. Do not restore
+CDN JSX compilation, direct provider calls, browser-held destinations, or client secrets.
 
-**Blocker B — `index.html` has no API auth.** It calls `fetch("https://api.anthropic.com/v1/messages")` with no `x-api-key` and no `Authorization` header. That works only inside a Claude artifact, where the platform injects the key. Hosted anywhere else it fails on auth and CORS — Ember renders with a dead brain. Any real deployment needs a thin proxy (Cloudflare Worker, Netlify/Vercel function) holding the key server-side. Never ship a key in client code.
-
-Flag it if I ask you to deploy without solving B. Don't quietly ship something that will fail on first use.
+The active release gates live in `docs/CURRENT-STATE.md` and `docs/DEPLOY.md`: protect every
+production and preview hostname with Cloudflare Access, prove the Pages service binding in a
+signed-in session, then deploy and verify the Worker host gate. Desktop voice stays outside
+the main app until the isolated probe passes five real turns in Mac Chrome. Reliable
+iPhone voice is also preferred if feasible and needs a separate isolated repeated-turn,
+interruption, and microphone-handback experiment. The historical stack is not restored
+automatically; wake words, background listening, and automatic restart are outside the lab.
 
 ---
 
@@ -49,8 +60,10 @@ Steampunk is the foundation — executed at a luxury-brand level, never costume-
 **Palette**
 - Base: deep charcoal iron, near-black walnut, oxblood leather (the existing `#080606` / `#100b0b` family is on target)
 - Metals: aged brass, burnished copper, gunmetal — accents and structure, never full-surface chrome
-- Glow: keep the existing ember range (`--ember-orange` / `--ember-amber`) but push it warmer and less neon — banked-coal amber, candle-white for readouts
-- No blues, no purples for primary UI. Retire `--ember-ice` (`#5dd8ff`), the Glacier Lake and Violet Sky backgrounds, or rebuild them as brass-and-smoke variants. Warmth only.
+- Glow: preserve the warm ember range (`--ember-orange` / `--ember-amber`) as banked-coal
+  amber, with candle-white for readouts rather than neon light.
+- No blue or purple primary surfaces. Glacier Lake, Violet Sky, and the retired
+  `--ember-ice` treatment must not return. Warmth only.
 
 **Materials & texture**
 - Subtle riveted panel edges, machined bezels, hairline etched borders on the existing `Panel` component
@@ -58,22 +71,31 @@ Steampunk is the foundation — executed at a luxury-brand level, never costume-
 - Restraint: texture supports, it never shouts. If a decorative element doesn't clarify state or hierarchy, cut it.
 
 **Typography**
-- Display: refined Victorian-industrial serif or engraved-brass-plate for headers and panel titles (the current Big Shoulders Display is closer to sports-poster than watchmaker — replace it)
+- Display: preserve the refined Victorian-industrial serif and engraved-brass-plate
+  treatment used for headers and panel titles; do not return to sports-poster display type.
 - Data/UI: clean humanist or slab, legible small; keep monospace for code/HTML surfaces
 - Never gimmick "steampunk fonts" with gears baked into letterforms.
 
 **Iconography**
-- Replace emoji tool icons (💬 🔀 ✍️ 🌐 🎛️ 📋) with a consistent engraved-line icon set — thin brass linework, one style across all 8 tools. The existing custom GitHub/Drive SVGs show the right instinct; extend that.
+- Preserve the consistent engraved-line icon set: thin brass linework, one visual language
+  across every tool. Extend that same SVG treatment when a new tool is added; never use
+  emoji as primary interface icons.
 
 **Motion**
 - Mechanical easing — things settle like weighted brass, not bouncy plastic
 - Idle states breathe like a banked fire: slow amber pulse, nothing frantic
 - BURST_WORDS and any comic-splash effects are deleted, replaced by mechanical feedback: a gauge tick, a latch-click flash, a pressure-release glow.
 
-**Voice surface (from the voice rig)**
-- The blurred "gas" orb becomes a machined instrument: a brass-ringed pressure gauge, glowing coal in a firebox window, or a boiler dial whose needle rides the mic level. Same live audio data, mechanical housing.
-- Status states (`READY` / `LISTENING` / `SPEAKING`) read as engraved plate labels, not letterspaced sans.
-- Keep the mic meter, the local-voice scoring, and the MP3 fallback chain intact — that logic is hard-won and works.
+**Voice surface (only after the relevant physical gate passes)**
+- Keep the interaction explicit and one-turn: click Talk, review or correct the transcript,
+  send, then optionally play the neural reply.
+- If a future desktop surface visualizes audio, house it as a restrained machined instrument:
+  a brass-ringed gauge, a firebox window, or a boiler dial.
+- Status states (`READY` / `LISTENING` / `SPEAKING`) read as engraved plate labels, not
+  letterspaced sans. Never imply the microphone is active when it is not.
+- Use the historical implementation as reference, not an automatic restore. Desktop
+  proof does not prove iPhone reliability; the opt-in phone experiment needs its own
+  repeated-turn and interruption results before integration.
 
 ---
 

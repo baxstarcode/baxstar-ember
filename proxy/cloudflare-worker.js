@@ -12,8 +12,8 @@
  * Required var:
  *   ALLOWED_ORIGINS     comma-separated exact origins allowed to call this Worker,
  *                       e.g. "https://ember.baxstarfishing.com"
- *                       Leave this open at your peril — an unrestricted proxy lets
- *                       anyone on the internet spend your Anthropic balance.
+ *                       This is a browser CORS policy, not authentication. Protect
+ *                       every API/OAuth route with Access before production use.
  *
  * Optional MCP secrets — see docs/DEPLOY.md §MCP. Without these, chat works but the
  * Quo / Gmail / Calendar / Drive connectors will not.
@@ -36,14 +36,19 @@
  *
  * POST /tts — Ember's natural voice. Relays Microsoft Edge's free neural TTS
  * (the Read Aloud voices) over an outbound WebSocket and returns raw MP3.
- * No key, no secret, no per-use cost. The same origin allowlist gates it, so
- * a leaked Worker URL cannot be farmed as an open TTS service.
+ * No provider key is required. The same CORS policy applies; Access protection
+ * is still needed to prevent a direct client from farming the endpoint.
+ *
+ * POST /api/outbox — accepts Caption Studio's bounded publish payload and relays it
+ * to the private Drive outbox URL held in OUTBOX_URL. OUTBOX_TOKEN is optional.
+ * Neither value is ever accepted from, or returned to, the browser.
  */
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-// Required for the mcp_servers field. Without it the API rejects MCP requests.
-const MCP_BETA = "mcp-client-2025-04-04";
+// Current connector contract: each server has one top-level MCP toolset.
+// https://platform.claude.com/docs/en/agents-and-tools/mcp-connector
+const MCP_BETA = "mcp-client-2025-11-20";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -51,14 +56,19 @@ const QUO_DISCOVERY_URL = "https://mcp.quo.com/.well-known/oauth-authorization-s
 const QUO_REGISTER_URL = "https://mcp.quo.com/register";
 
 // One Google consent covers all three Google connectors; Brady pastes the same
-// refresh token into all three secrets.
+// refresh token into all three secrets. Keep both consent and refreshed access
+// tokens read-only. Existing broad refresh grants still need revocation/re-consent.
 const GOOGLE_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/calendar",
-  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  "https://www.googleapis.com/auth/calendar.events.freebusy",
+  "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/drive.readonly",
 ].join(" ");
 
-const QUO_SCOPES = "read:conversations write:contacts read:account";
+// Quo exposes contact reads only through its write:contacts grant. Ordinary
+// Ember chat does not need that risk: conversation/account reads remain useful.
+const QUO_SCOPES = "read:conversations read:account";
 
 const CONNECTOR_PROVIDER = {
   gmail: "google",
@@ -66,6 +76,41 @@ const CONNECTOR_PROVIDER = {
   gdrive: "google",
   quo: "quo",
 };
+
+// Only the name is selected by the browser. Destinations and tool permissions
+// belong to the Worker: never attach a secret to a client-owned URL.
+const MCP_SERVER_DEFINITIONS = new Map([
+  ["quo", { type: "url", name: "quo", url: "https://mcp.quo.com/mcp" }],
+  ["gmail", { type: "url", name: "gmail", url: "https://gmailmcp.googleapis.com/mcp/v1" }],
+  ["calendar", { type: "url", name: "calendar", url: "https://calendarmcp.googleapis.com/mcp/v1" }],
+  ["gdrive", { type: "url", name: "gdrive", url: "https://drivemcp.googleapis.com/mcp/v1" }],
+]);
+
+// Ordinary chat can read these tools only. New provider tools remain disabled
+// until explicitly reviewed here. Confirmed writes need a separate action API;
+// neither a chat prompt nor client-supplied configs can enable them.
+const MCP_READ_TOOLS = new Map([
+  ["quo", ["fetch-call-transcripts", "fetch-messages", "fetch-missed-calls", "list-inboxes", "list-tasks", "list-users"]],
+  ["gmail", ["get_message", "get_thread", "list_drafts", "list_labels", "search_threads"]],
+  ["calendar", ["get_event", "list_calendars", "list_events", "search_events", "suggest_time"]],
+  ["gdrive", ["download_file_content", "get_file_metadata", "get_file_permissions", "list_recent_files", "read_file_content", "search_files"]],
+]);
+
+function readOnlyToolset(name) {
+  return {
+    type: "mcp_toolset",
+    mcp_server_name: name,
+    default_config: { enabled: false },
+    configs: Object.fromEntries((MCP_READ_TOOLS.get(name) || []).map((tool) => [tool, { enabled: true }])),
+  };
+}
+
+const POST_ROUTES = new Map([
+  ["/api/messages", "messages"],
+  ["/api/tts", "tts"],
+  ["/api/connectors/status", "connectors"],
+  ["/api/outbox", "outbox"],
+]);
 
 // Ember's selectable models — keep in sync with MODELS in src/baxstar-ember.jsx.
 // Anything else is refused so a leaked endpoint can't be repurposed into a
@@ -108,8 +153,274 @@ function corsHeaders(origin, env) {
 function json(body, status, headers) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...headers, "Content-Type": "application/json" },
+    headers: { ...headers, "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
+}
+
+const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+class RequestInputError extends Error {
+  constructor(message, status = 400) { super(message); this.status = status; }
+}
+
+// Count the actual bytes as they arrive, including requests without a truthful
+// Content-Length. The limit bounds buffering before JSON.parse, not after it.
+async function readJsonBody(request, allowEmpty = false) {
+  if (Number(request.headers.get("Content-Length")) > MAX_BODY_BYTES) {
+    throw new RequestInputError("Request too large.", 413);
+  }
+  let raw = "";
+  let bytes = 0;
+  if (request.body) {
+    const reader = request.body.getReader();
+    const decoder = new TextDecoder();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > MAX_BODY_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw new RequestInputError("Request too large.", 413);
+        }
+        raw += decoder.decode(value, { stream: true });
+      }
+      raw += decoder.decode();
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  let body;
+  try { body = JSON.parse(allowEmpty && !raw.trim() ? "{}" : raw); }
+  catch { throw new RequestInputError("Invalid JSON."); }
+  if (!isRecord(body)) throw new RequestInputError("Request body must be an object.");
+  return body;
+}
+
+function validateMessagesBody(body) {
+  if (!ALLOWED_MODELS.has(body.model)) throw new RequestInputError("Model not allowed.");
+  if (!Array.isArray(body.messages) || !body.messages.length || body.messages.some((message) => {
+    if (!isRecord(message) || !["user", "assistant"].includes(message.role)) return true;
+    if (typeof message.content === "string") return false;
+    return !Array.isArray(message.content) || !message.content.length || message.content.some((block) =>
+      !isRecord(block) || !["text", "image"].includes(block.type) ||
+      (block.type === "text" && typeof block.text !== "string") ||
+      (block.type === "image" && (message.role !== "user" || !isRecord(block.source) ||
+        block.source.type !== "base64" || block.source.media_type !== "image/jpeg" ||
+        typeof block.source.data !== "string" || !block.source.data)));
+  })) throw new RequestInputError("messages must contain user/assistant messages with text or content blocks.");
+  const tokens = body.max_tokens === undefined ? 1000 : body.max_tokens;
+  const maxTokens = typeof tokens === "number" || (typeof tokens === "string" && /^\d+$/.test(tokens))
+    ? Number(tokens) : NaN;
+  if (!Number.isSafeInteger(maxTokens) || maxTokens <= 0) {
+    throw new RequestInputError("max_tokens must be a positive integer.");
+  }
+  body.max_tokens = Math.min(maxTokens, MAX_TOKENS_CAP);
+  if (body.stream !== undefined && typeof body.stream !== "boolean") {
+    throw new RequestInputError("stream must be a boolean.");
+  }
+  if (body.mcp_servers !== undefined && (!Array.isArray(body.mcp_servers) ||
+      body.mcp_servers.some((server) => !isRecord(server) || typeof server.name !== "string" ||
+        !MCP_SERVER_DEFINITIONS.has(server.name)))) {
+    throw new RequestInputError("mcp_servers must contain canonical connector names.");
+  }
+  if (body.output_config !== undefined && (!isRecord(body.output_config) ||
+      (body.output_config.effort !== undefined && !["low", "medium", "high", "max"].includes(body.output_config.effort)))) {
+    throw new RequestInputError("Invalid output_config.");
+  }
+}
+
+function messagesPayload(body) {
+  // Keep the existing text/vision/effort contract, but never forward arbitrary
+  // provider capabilities (tools, tool_choice, containers, server configs, etc.).
+  // Rebuild nested messages too: exact canonical keys prevent hidden capability
+  // fields from hitching a ride inside otherwise valid text/image blocks.
+  const messages = body.messages.map((message) => ({
+    role: message.role,
+    content: typeof message.content === "string"
+      ? message.content
+      : message.content.map((block) => block.type === "text"
+        ? { type: "text", text: block.text }
+        : {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/jpeg",
+              data: block.source.data,
+            },
+          }),
+  }));
+  const payload = { model: body.model, max_tokens: body.max_tokens, messages };
+  if (body.stream !== undefined) payload.stream = body.stream;
+  if (body.output_config?.effort !== undefined) payload.output_config = { effort: body.output_config.effort };
+  return payload;
+}
+
+function upstreamHeaders(response, cors, extra = {}) {
+  return {
+    ...cors,
+    "Content-Type": response.headers.get("Content-Type") || "application/json",
+    "Cache-Control": "no-store",
+    ...extra,
+  };
+}
+
+// --- /outbox: private Drive staging relay ---------------------------------
+//
+// The Apps Script deployment URL is a capability: exposing it in generated HTML
+// would let anyone bypass Ember's Access gate. The browser therefore sends only
+// a same-origin JSON payload. This Worker owns the destination, strips every
+// unrecognized field, and converts JPEG data URLs to the legacy base64 contract.
+
+const OUTBOX_SURFACES = new Set(["ig_feed", "fb_page", "ig_story", "fb_story"]);
+const OUTBOX_STRING_FIELDS = new Map([
+  ["lockedTag", 128],
+  ["species", 160],
+  ["lake", 240],
+  ["postWindow", 160],
+  ["postAt", 64],
+  ["postTimeLocal", 32],
+  ["clientTime", 64],
+]);
+const JPEG_DATA_URL = /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/;
+
+function outboxDestination(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    if (url.protocol !== "https:" || url.hostname !== "script.google.com" || url.port ||
+        url.username || url.password || url.search || url.hash ||
+        !/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url.pathname)) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function jpegBase64(dataUrl) {
+  if (typeof dataUrl !== "string") return null;
+  const match = dataUrl.match(JPEG_DATA_URL);
+  if (!match || match[1].length % 4 !== 0 || !match[1].startsWith("/9j/")) return null;
+  return match[1];
+}
+
+function outboxPayload(body, token) {
+  if (body.source !== "ember-caption-studio" ||
+      typeof body.caption !== "string" || !body.caption.trim() || body.caption.length > 10_000 ||
+      typeof body.captionWithHandles !== "string" || body.captionWithHandles.length > 10_000 ||
+      !Array.isArray(body.images) || body.images.length < 1 || body.images.length > 6 ||
+      (body.mimeType !== undefined && body.mimeType !== "image/jpeg")) {
+    throw new RequestInputError("Invalid outbox request.");
+  }
+
+  const images = body.images.map(jpegBase64);
+  if (images.some((image) => !image)) throw new RequestInputError("Invalid outbox request.");
+
+  const payload = {
+    source: "ember-caption-studio",
+    caption: body.caption,
+    captionWithHandles: body.captionWithHandles,
+    images,
+    // The Apps Script still supports its original single-slide field. Derive it
+    // here so a browser cannot smuggle a second, unvalidated image through it.
+    imageBase64: images[0],
+    mimeType: "image/jpeg",
+  };
+
+  for (const [field, max] of OUTBOX_STRING_FIELDS) {
+    if (body[field] === undefined) continue;
+    if (typeof body[field] !== "string" || body[field].length > max) {
+      throw new RequestInputError("Invalid outbox request.");
+    }
+    payload[field] = body[field];
+  }
+
+  if (body.hashtagCount !== undefined) {
+    if (!Number.isSafeInteger(body.hashtagCount) || body.hashtagCount < 0 || body.hashtagCount > 5) {
+      throw new RequestInputError("Invalid outbox request.");
+    }
+    payload.hashtagCount = body.hashtagCount;
+  }
+
+  if (body.sponsors !== undefined) {
+    if (!Array.isArray(body.sponsors) || body.sponsors.length > 16 ||
+        body.sponsors.some((item) => typeof item !== "string" || item.length > 128)) {
+      throw new RequestInputError("Invalid outbox request.");
+    }
+    payload.sponsors = body.sponsors;
+  }
+
+  if (body.payloadVersion !== undefined) {
+    if (body.payloadVersion !== 2) throw new RequestInputError("Invalid outbox request.");
+    payload.payloadVersion = 2;
+  }
+  if (body.format !== undefined) {
+    if (!["post", "carousel"].includes(body.format)) throw new RequestInputError("Invalid outbox request.");
+    payload.format = body.format;
+  }
+  if (body.surfaces !== undefined) {
+    if (!Array.isArray(body.surfaces) || !body.surfaces.length || body.surfaces.length > OUTBOX_SURFACES.size ||
+        new Set(body.surfaces).size !== body.surfaces.length ||
+        body.surfaces.some((surface) => !OUTBOX_SURFACES.has(surface))) {
+      throw new RequestInputError("Invalid outbox request.");
+    }
+    payload.surfaces = body.surfaces;
+  }
+  if (body.storyImages !== undefined) {
+    if (!Array.isArray(body.storyImages) || body.storyImages.length > 6) {
+      throw new RequestInputError("Invalid outbox request.");
+    }
+    const storyImages = body.storyImages.map(jpegBase64);
+    if (storyImages.some((image) => !image)) throw new RequestInputError("Invalid outbox request.");
+    payload.storyImages = storyImages;
+  }
+
+  // Only the server-owned secret is forwarded. Client `token`, `url`, and other
+  // unknown fields never enter this allowlisted payload.
+  if (typeof token === "string" && token.length) {
+    if (token.length > 1024) throw new RequestInputError("Outbox unavailable.", 503);
+    payload.token = token;
+  }
+  return payload;
+}
+
+async function handleOutbox(body, env, cors, fetchImpl) {
+  const destination = outboxDestination(env.OUTBOX_URL);
+  if (!destination) return json({ error: "Drive outbox unavailable." }, 503, cors);
+
+  let payload;
+  try {
+    payload = outboxPayload(body, env.OUTBOX_TOKEN);
+  } catch (error) {
+    return json(
+      { error: error instanceof RequestInputError && error.status === 503 ? "Drive outbox unavailable." : "Invalid outbox request." },
+      error instanceof RequestInputError ? error.status : 400,
+      cors,
+    );
+  }
+
+  let upstream;
+  try {
+    upstream = await fetchImpl(destination, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      redirect: "follow",
+    });
+  } catch {
+    return json({ error: "Drive outbox unavailable." }, 502, cors);
+  }
+
+  if (!upstream.ok) return json({ error: "Drive outbox unavailable." }, 502, cors);
+  try {
+    const result = await upstream.json();
+    if (!isRecord(result) || result.ok !== true) {
+      return json({ error: "Drive outbox unavailable." }, 502, cors);
+    }
+  } catch {
+    return json({ error: "Drive outbox unavailable." }, 502, cors);
+  }
+  return json({ ok: true }, 200, cors);
 }
 
 // --- OAuth handshake ------------------------------------------------------
@@ -186,16 +497,22 @@ function readCookie(request, name) {
   return null;
 }
 
+function htmlEscape(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]);
+}
+
 function htmlPage(title, bodyHtml, status) {
   return new Response(
     `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-      `<title>${title}</title>` +
+      `<title>${htmlEscape(title)}</title>` +
       `<style>body{font:16px/1.55 system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1.25rem;` +
       `background:#0b0f14;color:#e6edf3}code{background:#161b22;padding:.15rem .4rem;border-radius:4px;` +
       `font-size:.95em;word-break:break-all}h1{font-size:1.35rem}li{margin:.5rem 0}a{color:#58a6ff}` +
       `.tok{display:block;background:#161b22;padding:.75rem;border-radius:6px;margin:.75rem 0}</style>` +
       bodyHtml,
-    { status, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    { status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } }
   );
 }
 
@@ -255,7 +572,7 @@ async function oauthStart(request, env, url, fetchImpl) {
     try {
       cfg = await quoConfig(env, fetchImpl);
     } catch (e) {
-      return htmlPage("Ember OAuth", `<h1>Quo setup failed</h1><p>${String(e.message || e)}</p>`, 502);
+      return htmlPage("Ember OAuth", `<h1>Quo setup failed</h1><p>${htmlEscape(e.message || e)}</p>`, 502);
     }
     authorizeUrl = cfg.authorize;
     clientId = cfg.clientId;
@@ -285,7 +602,7 @@ async function oauthStart(request, env, url, fetchImpl) {
 
 async function oauthCallback(request, env, url, fetchImpl) {
   const err = url.searchParams.get("error");
-  if (err) return htmlPage("Ember OAuth", `<h1>Denied</h1><p>The provider returned <code>${err}</code>.</p>`, 400);
+  if (err) return htmlPage("Ember OAuth", `<h1>Denied</h1><p>The provider returned <code>${htmlEscape(err)}</code>.</p>`, 400);
 
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -304,7 +621,7 @@ async function oauthCallback(request, env, url, fetchImpl) {
     try {
       tokenUrl = (await quoConfig(env, fetchImpl)).token;
     } catch (e) {
-      return htmlPage("Ember OAuth", `<h1>Quo setup failed</h1><p>${String(e.message || e)}</p>`, 502);
+      return htmlPage("Ember OAuth", `<h1>Quo setup failed</h1><p>${htmlEscape(e.message || e)}</p>`, 502);
     }
   }
 
@@ -333,7 +650,7 @@ async function oauthCallback(request, env, url, fetchImpl) {
     const detail = data && (data.error_description || data.error) ? String(data.error_description || data.error) : "no refresh_token in response";
     return htmlPage(
       "Ember OAuth",
-      `<h1>No refresh token</h1><p>${detail}</p><p>For Google this usually means the account has consented before — revoke Ember at <a href="https://myaccount.google.com/permissions">Google permissions</a> and run it again.</p>`,
+      `<h1>No refresh token</h1><p>${htmlEscape(detail)}</p><p>For Google this usually means the account has consented before — revoke Ember at <a href="https://myaccount.google.com/permissions">Google permissions</a> and run it again.</p>`,
       400
     );
   }
@@ -343,17 +660,17 @@ async function oauthCallback(request, env, url, fetchImpl) {
     : ["MCP_REFRESH_QUO"];
   const clientNote =
     !isGoogle && saved.c && !env.QUO_CLIENT_ID
-      ? `<li>Also add <code>QUO_CLIENT_ID</code> = <span class="tok">${saved.c}</span> so it does not register a new client each time.</li>`
+      ? `<li>Also add <code>QUO_CLIENT_ID</code> = <span class="tok">${htmlEscape(saved.c)}</span> so it does not register a new client each time.</li>`
       : "";
 
   // The Worker deliberately cannot write its own secrets — that would mean giving
   // it an API token that can rewrite its own configuration. Brady pastes them.
   return htmlPage(
     "Ember OAuth — done",
-    `<h1>Authorized ${isGoogle ? "Google" : "Quo"}</h1>` +
+    `<h1>Authorized ${htmlEscape(isGoogle ? "Google" : "Quo")}</h1>` +
       `<p>Copy this refresh token into Cloudflare — Workers &rsaquo; your Worker &rsaquo; Settings &rsaquo; Variables, as an <strong>encrypted</strong> secret:</p>` +
-      `<span class="tok">${data.refresh_token}</span>` +
-      `<ul><li>Set ${names.map((n) => `<code>${n}</code>`).join(", ")} to that value.</li>${clientNote}` +
+      `<span class="tok">${htmlEscape(data.refresh_token)}</span>` +
+      `<ul><li>Set ${names.map((n) => `<code>${htmlEscape(n)}</code>`).join(", ")} to that value.</li>${clientNote}` +
       `<li>Then redeploy the Worker.</li></ul>` +
       `<p>This page is the only time the token is shown. It is not stored anywhere — the Worker has no permission to write its own secrets, which is why this is a copy-paste step.</p>`,
     200
@@ -427,7 +744,7 @@ async function accessTokenFor(connector, env, fetchImpl, now) {
  * app sends its full connector list on every message.
  */
 async function injectMcpTokens(servers, env, fetchImpl, now) {
-  if (!Array.isArray(servers)) return [];
+  if (!Array.isArray(servers)) return { authorized: [], missing: [] };
   const staticTokens = {
     quo: env.MCP_TOKEN_QUO,
     gmail: env.MCP_TOKEN_GMAIL,
@@ -435,28 +752,33 @@ async function injectMcpTokens(servers, env, fetchImpl, now) {
     gdrive: env.MCP_TOKEN_GDRIVE,
   };
   const out = [];
+  const missing = [];
+  const seen = new Set();
   for (const s of servers) {
     const name = s && s.name;
-    if (!name) continue;
+    const canonical = MCP_SERVER_DEFINITIONS.get(name);
+    if (!canonical || seen.has(name)) continue;
+    seen.add(name);
     // A refreshed token beats a static one: static tokens expire silently and
     // take the connector down until Brady notices and pastes a new one.
     const t = (await accessTokenFor(name, env, fetchImpl, now)) || staticTokens[name];
-    if (t) out.push({ ...s, authorization_token: t });
+    if (t) out.push({ ...canonical, authorization_token: t });
+    else missing.push(name);
   }
-  return out;
+  return { authorized: out, missing };
 }
 
 // Privacy-safe connector check: refreshes credentials but never calls an MCP
 // tool or reads mailbox, calendar, Drive, call, or message data. This exists so
 // production auth can be verified without asking a model to inspect private
 // records merely to prove the connection works.
-async function connectorStatus(request, env, cors, fetchImpl, now) {
+async function connectorStatus(body, env, cors, fetchImpl, now) {
   let requested = ["quo", "gmail", "calendar", "gdrive"];
-  try {
-    const body = JSON.parse(await request.text() || "{}");
-    if (Array.isArray(body.connectors)) requested = body.connectors;
-  } catch {
-    return json({ error: "Invalid JSON." }, 400, cors);
+  if (body.connectors !== undefined) {
+    if (!Array.isArray(body.connectors) || body.connectors.some((name) => typeof name !== "string")) {
+      return json({ error: "connectors must be an array of names." }, 400, cors);
+    }
+    requested = body.connectors;
   }
   const allowed = new Set(["quo", "gmail", "calendar", "gdrive"]);
   const names = [...new Set(requested.filter((name) => allowed.has(name)))];
@@ -544,13 +866,7 @@ function xmlEscape(s) {
     .replace(/"/g, "&quot;");
 }
 
-async function handleTts(request, cors, fetchImpl, now) {
-  let body;
-  try {
-    body = JSON.parse(await request.text());
-  } catch {
-    return json({ error: "Invalid JSON." }, 400, cors);
-  }
+async function handleTts(body, cors, fetchImpl, now) {
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) return json({ error: "No text to speak." }, 400, cors);
   if (text.length > TTS_MAX_CHARS) return json({ error: "Text too long." }, 400, cors);
@@ -665,6 +981,20 @@ export default {
     const origin = request.headers.get("Origin");
     const { headers: cors, ok: originOk } = corsHeaders(origin, env);
 
+    // workers.dev remains enabled only for the manual OAuth GET callbacks above.
+    // Production API traffic arrives through the Access-gated Pages service
+    // binding and retains Ember's custom hostname in request.url. Refusing every
+    // non-OAuth workers.dev request closes the old public direct-call bypass;
+    // browser Origin checks alone are not authentication.
+    const requestHostname = url.hostname.replace(/\.+$/, "").toLowerCase();
+    if (requestHostname.endsWith(".workers.dev")) {
+      return json({ error: "Not found." }, 404, cors);
+    }
+
+    const route = POST_ROUTES.get(url.pathname);
+
+    if (!route) return json({ error: "Not found." }, 404, cors);
+
     if (request.method === "OPTIONS") {
       return new Response(null, { status: originOk ? 204 : 403, headers: cors });
     }
@@ -679,16 +1009,26 @@ export default {
       );
     }
     if (!originOk) {
-      // Blocked here as well as by CORS, so a non-browser client can't bypass it.
+      // This is CORS defense only: non-browser clients can forge Origin.
+      // Access protection for every API/OAuth entry point is a deployment gate.
       return json({ error: "Origin not allowed." }, 403, cors);
+    }
+    let body;
+    try { body = await readJsonBody(request, route === "connectors"); }
+    catch (error) {
+      return json({ error: error instanceof RequestInputError ? error.message : "Could not read request body." },
+        error instanceof RequestInputError ? error.status : 400, cors);
     }
     // The natural voice needs no Anthropic key — routed after the origin gate
     // but before the key check, so a voice-only misconfiguration still speaks.
-    if (url.pathname === "/tts") {
-      return handleTts(request, cors, fetchImpl, now);
+    if (route === "tts") {
+      return handleTts(body, cors, fetchImpl, now);
     }
-    if (url.pathname === "/connectors/status") {
-      return connectorStatus(request, env, cors, fetchImpl, now);
+    if (route === "connectors") {
+      return connectorStatus(body, env, cors, fetchImpl, now);
+    }
+    if (route === "outbox") {
+      return handleOutbox(body, env, cors, fetchImpl);
     }
     if (!env.ANTHROPIC_API_KEY) {
       return json(
@@ -698,35 +1038,27 @@ export default {
       );
     }
 
-    const raw = await request.text();
-    if (raw.length > MAX_BODY_BYTES) {
-      return json({ error: "Request too large." }, 413, cors);
-    }
-
-    let body;
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      return json({ error: "Invalid JSON." }, 400, cors);
-    }
-
-    if (!ALLOWED_MODELS.has(body.model)) {
-      return json({ error: `Model not allowed: ${body.model}` }, 400, cors);
-    }
-    body.max_tokens = Math.min(Number(body.max_tokens) || 1000, MAX_TOKENS_CAP);
-    if (body.mcp_servers) {
-      const authorized = await injectMcpTokens(body.mcp_servers, env, fetchImpl, now);
-      if (authorized.length) body.mcp_servers = authorized;
-      else delete body.mcp_servers;
+    try { validateMessagesBody(body); }
+    catch (error) { return json({ error: error.message }, 400, cors); }
+    const requestedServers = body.mcp_servers;
+    body = messagesPayload(body);
+    let connectorsDegraded = false;
+    if (requestedServers) {
+      const { authorized, missing } = await injectMcpTokens(requestedServers, env, fetchImpl, now);
+      connectorsDegraded = missing.length > 0;
+      if (authorized.length) {
+        body.mcp_servers = authorized;
+        body.tools = authorized.map((server) => readOnlyToolset(server.name));
+      }
     }
 
     // Build headers ourselves — nothing from the client is forwarded.
-    const upstreamHeaders = {
+    const requestHeaders = {
       "Content-Type": "application/json",
       "x-api-key": env.ANTHROPIC_API_KEY,
       "anthropic-version": ANTHROPIC_VERSION,
     };
-    if (body.mcp_servers) upstreamHeaders["anthropic-beta"] = MCP_BETA;
+    if (body.mcp_servers) requestHeaders["anthropic-beta"] = MCP_BETA;
 
     const call = (payload, headers) =>
       fetchImpl(ANTHROPIC_URL, {
@@ -737,9 +1069,13 @@ export default {
 
     let upstream;
     try {
-      upstream = await call(body, upstreamHeaders);
+      upstream = await call(body, requestHeaders);
     } catch (e) {
-      return json({ error: "Upstream request failed." }, 502, cors);
+      return json(
+        { error: "Upstream request failed." },
+        502,
+        { ...cors, ...(connectorsDegraded ? { "x-ember-connectors": "degraded" } : {}) },
+      );
     }
 
     // A connector whose token is missing, expired, or simply the wrong kind of
@@ -749,20 +1085,18 @@ export default {
     if (upstream.status >= 400 && body.mcp_servers) {
       const raw = await upstream.clone().text();
       if (/mcp server/i.test(raw)) {
-        const { mcp_servers, ...withoutConnectors } = body;
-        const retryHeaders = { ...upstreamHeaders };
+        const { mcp_servers, tools, ...withoutConnectors } = body;
+        const retryHeaders = { ...requestHeaders };
         delete retryHeaders["anthropic-beta"];
         try {
           const retry = await call(withoutConnectors, retryHeaders);
           if (retry.ok) {
             return new Response(retry.body, {
               status: retry.status,
-              headers: {
-                ...cors,
-                "Content-Type": "application/json",
+              headers: upstreamHeaders(retry, cors, {
                 // So the app can say "connectors offline" instead of guessing.
                 "x-ember-connectors": "degraded",
-              },
+              }),
             });
           }
         } catch (e) {
@@ -771,14 +1105,14 @@ export default {
       }
       return new Response(raw, {
         status: upstream.status,
-        headers: { ...cors, "Content-Type": "application/json" },
+        headers: upstreamHeaders(upstream, cors, connectorsDegraded ? { "x-ember-connectors": "degraded" } : {}),
       });
     }
 
     // Pass the response through, but only headers we choose.
     return new Response(upstream.body, {
       status: upstream.status,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: upstreamHeaders(upstream, cors, connectorsDegraded ? { "x-ember-connectors": "degraded" } : {}),
     });
   },
 };

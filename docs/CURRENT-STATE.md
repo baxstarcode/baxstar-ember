@@ -1,148 +1,166 @@
 # Ember — Current State
 
-> **2026-09-18 — VOICE REMOVED.** Everything below that describes microphone input,
-> spoken replies, the voice picker or the voice rigs is **historical**. Ember is a
-> dashboard now: panels, a typed line to Claude, Caption Studio, Projects, and the
-> YOUR TOOLS rail. See the STOP note at the top of `SOURCES-OF-TRUTH.md`. Do not
-> restore voice from these notes.
+Last verified against the working repository on **2026-09-20**.
 
-Last verified against the repository on 2026-08-24. The voice repair, Quo
-re-entry, and cache update described below are source-complete and tested; the
-Worker change still needs deployment before production voice can use it.
+**Status:** the desktop revival is source-complete and the local/simulated suites are
+green. The new Cloudflare Pages build, same-origin API gateway, and Worker host gate
+still need their staged production rollout and signed-in verification. Desktop voice is
+an isolated experiment until Brady passes the physical five-run Mac Chrome gate.
+Reliable iPhone voice is an approved experiment with a separate physical-device gate.
 
-## What Ember is
+## What Ember is now
 
-Ember is Brady Baxter's personal AI command center for Baxstar Fishing and Lakes
-Golf Simulator. It is meant to be the daily front door for business operations,
-project control, content work, and voice interaction—not a generic chatbot.
+Ember is Brady Baxter's desktop-first AI command center for Baxstar Fishing and Lakes
+Golf Simulator. It is one daily operating system, not a set of demos:
 
-The product currently has three primary views:
+- **OPS:** calls and voicemail, unread email, schedule, manual revenue, quick actions,
+  the YOUR TOOLS rail, and the collapsed THE WORKS ecosystem map.
+- **Chat:** a readable persisted Claude thread with streaming replies, Stop, Retry,
+  Copy, Clear, keyboard controls, safe lightweight formatting, and explicit
+  connector/error states.
+- **Mission Control:** browser-local project state, next actions, task lists, links,
+  effort estimates, decisions, and reviewable local task drafts. Saving a task does
+  not send it to Quo.
+- **Projects:** the lighter session-maintained progress bars and Zapier-usage summary.
+- **Baxstar Studio:** Caption Studio, AI Handoff, Drive librarian, HTML Viewer, Image
+  Filters, GitHub, and reusable snippets.
 
-1. **OPS** — calls and voicemail, email, calendar, revenue, quick actions, and a
-   Claude command surface grounded in Baxstar business context.
-2. **MISSION CONTROL** — editable project tracking, completion fuses, next actions,
-   resumable project links, task lists, Zapier usage and pacing, effort rollups, and
-   a decision queue. This view persists in browser `localStorage`.
-3. **BAXSTAR STUDIO** — Claude Chat, AI Handoff, Caption Studio, Drive Librarian,
-   HTML Viewer, Image Filters, GitHub, and reusable snippets.
+Live data is deliberately honest. A degraded connector response cannot replace OPS
+panels or label generated/demo data as live. Revenue remains manual until a real
+booking-system source is chosen.
 
-The interface is a cinematic steampunk control console. The visual system is not
-decoration pasted over the app: live values, controls, text, and motion remain DOM,
-while compressed raster/SVG assets supply depth and mechanical character.
+## Voice policy
 
-## What works now
+The former phone/wake-word stack is not part of the application. Brady's latest voice
+direction, recorded in the Ember Handoff Log and Agent Relay on 2026-09-20, calls for
+excellent desktop voice and chat and prefers reliable iPhone voice if feasible. The
+historical removal is release history, not a permanent product prohibition.
 
-- The three views render and switch from one canonical React source file.
-- The hosted build runs at `baxstar-ember.pages.dev` behind Cloudflare Access.
-- Claude chat works through a Cloudflare Worker that holds the API key server-side.
-- Gmail, Calendar, and Drive are authorized in the production Worker. A
-  data-free production handshake for Gmail + Calendar returned 200 on
-  2026-08-24. Quo now supports custom MCP clients and is back in the app at
-  `https://mcp.quo.com/mcp`; its user authorization/secrets are still pending.
-- OPS and Studio degrade gracefully when an optional connector is unavailable.
-- Voice replies and microphone input are integrated into the main app. The
-  2026-08-24 repair updates Microsoft's current neural-TTS handshake, makes the
-  picker recover from stale stored voice names, retires the robotic Brian
-  fallback, and prevents the service worker from serving an old UI shell first.
-- Caption Studio can generate a reviewable caption/JPEG package and hand it to a
-  private Drive outbox when the Apps Script endpoint is configured.
-- Mission Control can keep project state locally and reopen the pages needed to
-  resume a project.
-- The production build is generated and self-contained; the local preview is
-  generated separately for fast iteration.
+Desktop voice may return only after the isolated probe at
+`work/desktop-voice-probe/` passes five real turns in desktop Chrome. The approved
+interaction is explicit and one-turn: click Talk, review/correct the transcript, send
+it, then optionally play the reply. Automated tests do not prove microphone release,
+recognition quality, audible playback, permission recovery, or repeated timing.
 
-## Current product truth
+Until Brady records a pass, desktop microphone and speaker behavior is
+**PROVISIONAL**. A pass permits the explicit desktop interaction tested. An opt-in iPhone
+lab must separately prove repeated turns, interruptions, permission recovery, playback,
+and microphone handback on that phone before integration. Neither pass establishes wake
+words, background listening, automatic restart, or full duplex.
+The complete historical implementation remains recoverable on
+`snapshot/voice-era-final`.
 
-- **Canonical application source:** `src/baxstar-ember.jsx`
-- **Production output:** `index.html`, generated by `npm run build`; never edit it
-  directly.
-- **Local preview output:** `_preview.html`, generated by `./start-ember.sh`; never
-  treat it as source.
-- **API proxy:** `proxy/cloudflare-worker.js`
-- **Voice test rigs:** `voice/`; useful for diagnosis, but the main app now contains
-  the active voice experience.
-- **Design constitution:** `docs/BUILD-PROMPT.md`
-- **Detailed provenance and file ownership:** `SOURCES-OF-TRUTH.md`
-- **Historical cinematic handoff:** `HANDOFF-CINEMATIC.md`
-- **Detailed issue history:** `docs/KNOWN-ISSUES.md`
+## Current architecture
 
-When documents disagree with the current source or Git history, the source and Git
-history win. Several older handoff notes describe the proxy or voice integration as
-future work; those passages are historical, not the current state.
+```text
+Authenticated browser
+  -> https://ember.baxstarfishing.com (Cloudflare Access)
+  -> Cloudflare Pages static dist/
+  -> same-origin /api/* Pages Function
+  -> EMBER_API service binding
+  -> ember-claude-proxy Worker
+  -> Anthropic / neural TTS / approved read-only MCP connectors / Drive outbox
+```
 
-## Open work, in priority order
+- Pages builds `main` with `npm run build:pages` and publishes only `dist/`.
+- `functions/api/[[path]].js` accepts the exact production hostname, the exact paths
+  `/api/messages`, `/api/tts`, `/api/connectors/status`, and `/api/outbox`, and only
+  POST/OPTIONS. Preview and lookalike hosts are denied.
+- The Worker owns secrets, provider destinations, model/body limits, OAuth, TTS, the
+  private Drive-outbox destination, and the server-controlled connector tool allowlist.
+  Browser-supplied destinations, tokens, tools, and tool configuration are discarded.
+- Ordinary chat can read the approved Quo, Gmail, and Calendar tools. The separate
+  Drive librarian can search and read approved Drive data. Neither can send messages,
+  create external tasks, alter mail/calendar data, or write Drive files.
+- After the pending host-gate deploy, the public `workers.dev` hostname will accept
+  only the manual OAuth start/callback GET routes; every API request there returns 404.
+  `Origin` is CORS policy, not authentication.
 
-### 1. Deploy and verify the voice repair
+Quo, Gmail, Calendar, and Drive credentials were all reported connected by the live
+credential-status route on 2026-09-20. The new gateway/host-gate release still needs
+production verification before that state is attributed to the revived build.
 
-Deploy `proxy/cloudflare-worker.js`, then verify `POST /tts` returns
-`audio/mpeg` instead of the currently deployed `502 Voice engine produced no
-audio`. Automated inspection cannot prove real browser audio timing. Test on
-the actual Mac/iPhone experience:
+## Verified in this revival
 
-- turn the mic on and off repeatedly;
-- interrupt or speak while Ember is answering;
-- stop an answer and immediately issue another command;
-- deny and then restore microphone permission;
-- leave and return to the page;
-- confirm no green/listening state is shown when recognition has actually stopped.
+The latest recorded local release matrix is green: **562/562 checks**.
 
-The offline Worker suite is 55/55 green. The desktop/iPhone-sized browser regression is
-2/2 green, including automatic typed-reply TTS and iOS-style gesture gating. Until the
-Worker deploy and real-speaker device checks pass, the hosted voice path is
-**PROVISIONAL**.
+- production build and exact Pages staging payload;
+- Worker contract and security tests: 193/193;
+- Pages gateway tests: 36/36;
+- chat regressions: 26/26;
+- dashboard checks: 30/30;
+- layout/truth checks: 81/81;
+- streaming/effort checks: 9/9;
+- ecosystem graph checks: 32/32;
+- UI rework checks: 34/34;
+- Caption Studio browser checks: 46/46;
+- desktop and opt-in phone voice-lab simulations: 24/24;
+- Drive outbox tests: 27/27;
+- posting-time tests: 24/24.
 
-### 2. Finish Quo authorization
+Browser checks cover desktop, laptop, and phone widths with intercepted external calls.
+They do not replace signed-in production, provider, microphone, speaker, OAuth, or
+device verification.
 
-Google connector auth is live. Quo dynamic registration now succeeds and redirects
-to its consent screen, reversing the Aug 19 descope. Complete the browser approval,
-then store the returned `MCP_REFRESH_QUO` and `QUO_CLIENT_ID` as encrypted
-Worker secrets and redeploy. Use `POST /connectors/status` to verify credentials
-without reading calls, email, or calendar data.
+## Remaining gates, in order
 
-### 3. Finish the review-to-publish path
+1. Publish the `npm run build:pages` output through the `main` Pages deployment and
+   confirm the custom hostname, exact production `pages.dev` alias, and preview wildcard
+   all challenge unauthenticated visitors through Cloudflare Access.
+2. In an authenticated production session, disable the lab's **Stream reply** option
+   and use a typed-only, connector-free message to prove the Pages service binding
+   against the existing Worker (which incorrectly labels SSE as JSON).
+3. Deploy the updated Worker promptly as the second half of the release. Confirm
+   direct API POSTs on `workers.dev` return 404 while OAuth GET and the binding work.
+4. Verify signed-in chat, data-free connector status, TTS, one controlled outbox draft,
+   and verified OPS sync. The historical Worker cannot provide the new status/TTS/
+   outbox paths before this update; see the staged sequence in `docs/DEPLOY.md`.
+5. Have Brady complete the five-run physical Mac Chrome voice gate. Test the opt-in
+   iPhone lab separately for repeated turns, interruptions, and microphone handback.
+   Integrate only the interaction and platform that passes its physical gate.
 
-Deploy and verify the private Drive outbox Apps Script, then test Caption Studio with
-a disposable item before enabling any downstream social automation. Preserve the
-review gate: Ember prepares content; it does not silently publish it.
+## Canonical files
 
-### 4. Make Mission Control authoritative
+| Concern | Owner |
+| --- | --- |
+| Application behavior, markup, and CSS | `src/baxstar-ember.jsx` |
+| Anthropic, connector, OAuth, and TTS gateway | `proxy/cloudflare-worker.js` |
+| Same-origin Pages API relay | `functions/api/[[path]].js` |
+| Production HTML generator | `build.mjs` |
+| Exact Pages payload | `scripts/stage-pages.mjs` |
+| Local preview generator | `scripts/sync-standalone.py` |
+| Desktop voice feasibility gate | `work/desktop-voice-probe/` |
+| Design constitution | `docs/BUILD-PROMPT.md` |
+| Deployment procedure | `docs/DEPLOY.md` |
+| Current risks and deliberate limits | `docs/KNOWN-ISSUES.md` |
+| Locked compatibility details | `HANDOFF-CINEMATIC.md` |
+| Ownership and provenance | `SOURCES-OF-TRUTH.md` |
 
-Mission Control is currently manual and browser-local. Decide which data belongs in a
-durable shared source before adding automation. The likely first step is export/import
-or a small versioned data file—not a large backend rewrite.
+`index.html`, `_preview.html`, and `dist/` are generated outputs. Never hand-edit or
+build from them.
 
-### 5. Refresh stale documentation
+## Rules that must not drift
 
-`README.md`, `MORNING-BRIEF.md`, and parts of `docs/KNOWN-ISSUES.md` preserve valuable
-history but contain statements superseded by later commits. Keep them as history and
-move active status here.
+- Never put API keys, OAuth tokens, refresh tokens, or other secrets in client files
+  or Git.
+- Keep drafts, replies, posts, and tasks reviewable before external action. General
+  chat is read-only even when a prompt asks it to act.
+- Preserve frozen IDs, storage keys, business contexts, connector names/routing, and
+  persisted shapes unless Brady explicitly changes them and a migration is supplied.
+- Preserve the warm steampunk identity and fixed CSS brass dock. Fishing and golf are
+  restrained engravings, not alternate themes.
+- Keep hosted chat useful when optional connectors fail, while never presenting
+  connector-free output as live business data.
+- State local, simulated, production, and physical-device verification separately.
 
-## Product rules that should not drift
+## Resume procedure
 
-- Never ship API keys or OAuth secrets in browser code.
-- Never edit generated HTML by hand.
-- Preserve the frozen model IDs, background preset IDs, persisted keys, business
-  context, and connector routing documented in `HANDOFF-CINEMATIC.md`.
-- Customer-facing drafts remain reviewable; do not auto-send or auto-publish.
-- Keep Baxstar voice premium, warm, specific, and operationally accurate.
-- Do not redesign working controls while fixing behavior.
-- Prefer one explicit state machine over accumulating overlapping voice timing guards.
-
-## How to resume work
-
-1. Read this file.
-2. Read `AGENTS.md` for the working contract.
-3. Inspect the current branch and working tree before changing anything.
-4. Edit `src/baxstar-ember.jsx` or the relevant proxy/source file.
-5. Run `npm run build` and `npm run test:worker`.
-6. Test the affected experience in a browser; mark real-device-only behavior
-   PROVISIONAL until Brady confirms it.
-7. Update this file when the product state or priorities materially change.
-
-## Note on the two project views
-
-Both a lightweight PROJECTS dashboard (session-maintained `PROJECTS` constant,
-dock button) and MISSION CONTROL (editable, localStorage-backed) currently
-exist. They overlap; Brady decides which one retires. Until then, sessions
-update the `PROJECTS` constant per CLAUDE.md, and Mission Control belongs to
-Brady's own edits.
+1. Read `AGENTS.md`, this file, `SOURCES-OF-TRUTH.md`, and the current Ember Handoff
+   Log standing-truth block.
+2. Inspect the branch and working tree before changing anything.
+3. Edit the canonical owner, not a generated output.
+4. Run `npm run test:release`; use targeted suites only for focused iteration.
+5. Follow the staged production sequence in `docs/DEPLOY.md`; do not deploy the Worker
+   host gate before the same-origin production gateway is proven.
+6. Mark anything requiring Access, OAuth, providers, a real microphone, or speakers
+   **PROVISIONAL** until it is tested there.

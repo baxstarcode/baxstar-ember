@@ -1,47 +1,55 @@
 # Caption Studio → Drive Outbox — deploy steps
 
-`Code.gs` is a **scaffold**. It is intentionally **not deployed**. When you're ready, this
-is the whole path — ~5 minutes, no billing.
+`Code.gs` is the maintained source for Ember's Drive-outbox Apps Script. A live
+deployment exists. Treat its `/exec` URL as a write capability: it belongs only in the
+Cloudflare Worker secret `OUTBOX_URL`, never in client source, browser storage, docs,
+screenshots, or command history.
 
 ## What it does
-Ember's Caption Studio "Publish to Drive Outbox" button sends the finished JPEG(s) +
-caption to a Google Apps Script Web App, which drops them into a **private Drive folder**
-for you to review and post. It does **not** post to Instagram or Facebook.
+Ember's Caption Studio sends the finished JPEG(s) and caption to same-origin
+`/api/outbox`. The Access-protected Pages gateway and Worker validate the draft, and the
+Worker relays it to the Apps Script Web App. The script drops the files into a **private
+Drive folder** for review. It does **not** post to Instagram or Facebook.
 
 A carousel writes one JPEG per slide (`…_01.jpg`, `…_02.jpg`, …) plus a single `.txt`
 sidecar for the whole post. Every image also carries the full post as JSON in its **Drive
 file description** — that is the field a Zap reads, so a "new file in folder" trigger has
 the caption, sponsors, lake and posting window without a second lookup.
 
-## Deploy
+## Create or replace the Apps Script deployment
 
 1. Go to <https://script.google.com> → **New project**. Name it `Baxstar Ember Outbox`.
 2. Delete the starter `Code.gs` content and paste this repo's `apps-script/outbox/Code.gs`.
 3. (Optional) Set `OUTBOX_FOLDER_ID` at the top to a specific private folder's ID — the
    long string in `drive.google.com/drive/folders/<THIS>`. If you leave it blank, the
    script creates/uses a My Drive folder named **Baxstar Ember Outbox**.
-4. (Optional) Set `SHARED_TOKEN` to any random string for a little extra guard.
+4. Set `SHARED_TOKEN` to a strong random value. Store the matching value only in the
+   Worker secret `OUTBOX_TOKEN`.
 5. **Deploy ▸ New deployment ▸ Web app.**
    - **Execute as:** Me (your account — so it writes to *your* Drive).
-   - **Who has access:** **Anyone** (required so the browser can POST to it; the URL is
-     unguessable and, if you set `SHARED_TOKEN`, also token-gated).
+   - **Who has access:** **Anyone** (required so the Worker can POST; the browser never
+     receives the URL or token).
 6. Click **Deploy**, approve the Drive permission prompt, and copy the **Web app URL**
    (ends in `/exec`).
-7. In Ember → Caption Studio → the **gear** next to Publish → paste the `/exec` URL. It's
-   saved on that device (localStorage). If you set a `SHARED_TOKEN`, append it to the URL
-   as `?token=YOURTOKEN`.
+7. Store the `/exec` URL interactively as the Worker's encrypted `OUTBOX_URL` secret.
+   Store the shared token as `OUTBOX_TOKEN`. Do not pass either value on a command line
+   or add them to `wrangler.toml`.
+8. Deploy the Worker, then verify through authenticated Ember. There is no browser-side
+   endpoint setting.
 
 ## Verify
-- Open the `/exec` URL in a browser → you should see
-  `{"ok":true,"service":"baxstar-ember-outbox","ready":true,"maxSlides":6}`.
-- In Ember, generate a caption for a test photo and hit **Publish to Drive Outbox** →
+- Run `npm run test:release`; the offline suites verify both the Apps Script contract
+  and the Worker relay without contacting Drive.
+- In authenticated Ember, generate a caption for a disposable test photo and hit
+  **Publish to Drive Outbox** →
   the JPEG + a matching `.txt` appear in the outbox folder.
 - Right-click the JPEG in Drive → **File information ▸ Details**. The description should
   be a JSON blob with `caption`, `sponsors`, `lake`, `postWindow`, `slide`, `slideCount`.
   If that's empty, a Zap reading it will have nothing to work with.
 
-Before deploying, the contract is checkable offline: `npm run test:outbox` evaluates this
-exact file against a stubbed Drive and asserts what lands and what the description says.
+Never test by posting directly to the Apps Script URL from a browser. A successful Ember
+response means the Worker received a readable `{ok:true}` from the upstream deployment;
+opaque `no-cors` requests are not treated as success.
 
 ## Wiring the Zap (when you get there)
 
@@ -65,18 +73,15 @@ Zapier auto-guessed one and Meta rejected it with "Location ID invalid". The lak
 a plain string works; empty works; an ID does not.
 
 ## Notes / gotchas
-- **CORS:** Apps Script mishandles CORS preflight, so Ember sends the body as
-  `text/plain` (a "simple" request that skips preflight). If your browser still blocks
-  reading the response, Ember falls back to an opaque `no-cors` POST — the file still
-  lands; you just won't get an in-app confirmation. The health-check `doGet` is the way to
-  confirm the endpoint is alive.
+- **Transport:** the Worker, not the browser, sends `text/plain` to Apps Script and reads
+  the response. Ember never uses an opaque `no-cors` success path.
 - **Payload size:** Ember downscales every slide to ≤1440px JPEG in the browser before
   sending. That is what keeps a six-slide carousel inside the Apps Script payload limit —
   don't remove it.
 - **Re-deploying after edits:** use **Deploy ▸ Manage deployments ▸ (edit) ▸ New version**
-  so the `/exec` URL stays the same. A brand-new deployment mints a new URL you'd have to
-  re-paste into Ember.
+  so the `/exec` URL stays the same. A brand-new deployment mints a new URL; update the
+  encrypted Worker `OUTBOX_URL` secret, never the Ember client.
 - **Privacy:** files are written to *your* Drive under your account. Keep the folder
-  private — a private file is all Zapier needs, so there's no reason to ever make it
-  public. The `/exec` URL is not a secret worth protecting like a password, but don't
-  publish it — anyone with it can write into that one folder.
+  private. Treat the `/exec` URL as a capability secret because anyone who obtains an
+  unprotected URL can attempt to write into that folder; keep the shared token enabled
+  and rotate both secrets if either is exposed.

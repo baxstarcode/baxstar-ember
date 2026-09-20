@@ -3,11 +3,10 @@
  * Drives the generated index.html at phone (390×844) and desktop (1440×900),
  * asserting the 2026-08-01 layout rework and saving screenshots for review.
  */
-import { chromium } from "playwright";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SHOTS = path.join(ROOT, ".devtest", "ui-shots");
@@ -15,6 +14,16 @@ fs.mkdirSync(SHOTS, { recursive: true });
 
 const results = [];
 const check = (name, ok, detail) => results.push([name, !!ok, detail || ""]);
+
+async function loadPlaywright() {
+  try {
+    return await import("playwright");
+  } catch (error) {
+    const bundled = path.join(path.dirname(path.dirname(process.execPath)), "node_modules", "playwright", "index.mjs");
+    if (!fs.existsSync(bundled)) throw error;
+    return import(pathToFileURL(bundled).href);
+  }
+}
 
 const server = http.createServer((req, res) => {
   const rel = decodeURIComponent((req.url || "/").split("?")[0]);
@@ -27,6 +36,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const ORIGIN = `http://127.0.0.1:${server.address().port}`;
 
+const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 
 async function run(label, viewport) {
@@ -40,13 +50,40 @@ async function run(label, viewport) {
 
   const mobile = viewport.width < 1021;
 
-  // Dock: fixed, 6 buttons, visible, labels centered
+  // Dock: fixed, 6 cropped instrument images, visible, labels centered. The images
+  // preserve their intrinsic aspect ratio and are translated behind overflow-hidden
+  // crop windows; no object-fit stretch declaration is allowed on a matching rule.
   const dock = await page.evaluate(() => {
     const d = document.querySelector(".console-dock");
     if (!d) return null;
     const cs = getComputedStyle(d);
     const r = d.getBoundingClientRect();
     const btns = [...d.querySelectorAll(".dock-control")];
+    const explicitObjectFit = (img) => {
+      if (img.style.objectFit) return img.style.objectFit;
+      const scan = (rules) => {
+        for (const rule of [...(rules || [])]) {
+          if (rule.cssRules) {
+            const nested = scan(rule.cssRules);
+            if (nested) return nested;
+          }
+          if (!rule.selectorText || !rule.style?.getPropertyValue("object-fit")) continue;
+          try {
+            if (rule.selectorText.split(",").some((selector) => img.matches(selector.trim()))) {
+              return rule.style.getPropertyValue("object-fit").trim();
+            }
+          } catch { /* Ignore unsupported selectors in unrelated rules. */ }
+        }
+        return "";
+      };
+      for (const sheet of [...document.styleSheets]) {
+        try {
+          const value = scan(sheet.cssRules);
+          if (value) return value;
+        } catch { /* Cross-origin stylesheets are irrelevant to the dock. */ }
+      }
+      return "";
+    };
     const labels = btns.map((b) => {
       const l = b.querySelector(".dock-label");
       const br = b.getBoundingClientRect();
@@ -54,11 +91,33 @@ async function run(label, viewport) {
       // label horizontal center vs button center, in px
       return Math.abs((lr.left + lr.width / 2) - (br.left + br.width / 2));
     });
+    const art = btns.map((button) => {
+      const crop = button.querySelector(".dock-art");
+      const img = crop?.querySelector(":scope > img");
+      if (!crop || !img) return { valid: false };
+      const cropStyle = getComputedStyle(crop);
+      const imgStyle = getComputedStyle(img);
+      const cropRect = crop.getBoundingClientRect();
+      const imgRect = img.getBoundingClientRect();
+      const naturalRatio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0;
+      const renderedRatio = imgRect.height ? imgRect.width / imgRect.height : 0;
+      const fit = explicitObjectFit(img);
+      return {
+        valid: cropStyle.overflow === "hidden" && imgStyle.position === "absolute" &&
+          imgRect.width > cropRect.width * 2 && naturalRatio > 0 &&
+          Math.abs(renderedRatio - naturalRatio) < 0.02 && !/^(fill|stretch)$/i.test(fit),
+        fit: fit || "none declared",
+        naturalRatio,
+        renderedRatio,
+      };
+    });
     return { position: cs.position, bottomGap: innerHeight - r.bottom, buttons: btns.length,
-      maxLabelOffset: Math.max(...labels), hasImg: !!d.querySelector("img") };
+      maxLabelOffset: Math.max(...labels), artCount: art.filter((item) => item.valid).length,
+      art };
   });
   check(`${label}: dock is position:fixed at the bottom`, dock && dock.position === "fixed" && dock.bottomGap < 1, JSON.stringify(dock));
-  check(`${label}: dock has 6 buttons, no stretched raster`, dock && dock.buttons === 6 && !dock.hasImg);
+  check(`${label}: dock has 6 cropped art images with no object-fit stretching`,
+    dock && dock.buttons === 6 && dock.artCount === 6, JSON.stringify(dock?.art));
   check(`${label}: dock labels centered (worst offset < 2px)`, dock && dock.maxLabelOffset < 2, String(dock?.maxLabelOffset));
 
   // Dock stays pinned after scroll
