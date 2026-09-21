@@ -65,6 +65,18 @@ with the label as natively-centered HTML text below. The bar itself stays CSS-bu
 `position:fixed`. Never render the raster as one stretched strip, and never put label text
 on the painted nameplates — those are the two failures that got it benched the first time.
 
+2026-09-21: the dock's **motion** is back — gear spin and lever throw on Caption Studio,
+an idle amber breath on the reactor. The motion was never judged bad; it was collateral
+damage when `f278227` (2026-08-01) deleted the bar it was pinned to, and `615c7c0`
+(2026-08-15) restored the art without it. The rule that governs any future dock motion is
+load-bearing and predates this pass: **nothing may draw a second outline of a painted
+mechanism.** The gears have painted teeth and the gauge has a painted needle, so a
+synthetic shape on top *is* a duplicate — that is what benched the original `.dock-machine`
+layer. Two ways satisfy the rule, and only two: add light that can only brighten
+(`mix-blend-mode:screen`, as the reactor glow does), or move the painted pixels themselves
+under an opaque mask that covers the still artwork (as the gear and lever do). A moving
+layer must be provably contained: outside its mask, consecutive frames must be pixel-identical.
+
 ## Source-of-truth preflight
 
 For work that changes Ember code/config/live behavior, depends on a prior Ember decision,

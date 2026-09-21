@@ -156,6 +156,12 @@ compatibility or ship an intentional migration.
 - The command dock is a CSS-built, fixed brass bar with six controls. The raster
   console art is texture/reference inside the controls, not a stretched dock or page
   background.
+- Three of the painted mechanisms move again (restored 2026-09-21): the Caption Studio
+  gear turns, its linkage lever throws on press, and the reactor core breathes. Nothing
+  is drawn over the artwork to achieve this — each moving part is either light that can
+  only brighten it, or a masked copy of the artwork's own pixels that covers the still
+  version rather than adding to it. A second outline of a painted mechanism is the one
+  thing dock motion may never produce.
 - The skull, reactor, odometer, brass frames, gauges, and controls remain a layered
   raster/SVG/DOM system. Reference mockups are intent references, never backgrounds.
 - Preserve reduced-motion support, visible focus, no sideways overflow, and touchable

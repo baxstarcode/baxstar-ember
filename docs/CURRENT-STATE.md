@@ -169,7 +169,9 @@ build from them.
   chat is read-only even when a prompt asks it to act.
 - Preserve frozen IDs, storage keys, business contexts, connector names/routing, and
   persisted shapes unless Brady explicitly changes them and a migration is supplied.
-- Preserve the warm steampunk identity and fixed CSS brass dock. Fishing and golf are
+- Preserve the warm steampunk identity and fixed CSS brass dock — including the three
+  restored tile animations (gear spin, lever throw, reactor breath) and the rule that no
+  dock motion may draw a second outline of a painted mechanism. Fishing and golf are
   restrained engravings, not alternate themes.
 - Keep hosted chat useful when optional connectors fail, while never presenting
   connector-free output as live business data.
