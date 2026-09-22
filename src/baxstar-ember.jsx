@@ -2423,7 +2423,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .chat-run { flex:none; min-width:58px; min-height:52px; border-radius:10px;
           padding:10px; font-size:12px; font-weight:800; color:#fff; }
         .chat-run:disabled { cursor:not-allowed; opacity:.4; }
-        .chat-controls button, .chat-message-actions button { min-width:44px; min-height:44px; }
+        .chat-message-actions button { min-width:44px; min-height:44px; }
+        /* Touch only: on a mouse pointer these 44px minimums wrapped Model onto two
+           tall rows and pushed Model/Effort below the fold. Phones keep the target
+           (they also get .seg.sm min-height:44px in the max-width:760px block). */
+        @media (pointer:coarse) { .chat-controls button { min-width:44px; min-height:44px; } }
         .chat-message-actions { display:flex; align-items:center; gap:8px; margin-top:8px; }
         .chat-message-status { font-size:12px; color:var(--ink-dim); }
         .chat-text { white-space:normal; }
@@ -2609,23 +2613,19 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         }
         @media (min-width:1180px){ .tank-wrap { display:block; } }
 
-        /* skull crowns the center chamber only — width capped to the center
-           column so it never overflows onto the side panels' text (readability) */
-        /* visible at EVERY width — the skeleton is the identity, and on a phone it
-           was hidden entirely, which is why the home screen read as generic panels */
-        .skull-arch { position:absolute; left:50%; top:0; transform:translateX(-50%);
-          width:360px; max-width:100%; opacity:.80; pointer-events:none; z-index:0; display:block; }
-        .skull-host { overflow:hidden; }
-        /* Lift the chamber's contents above the arch. z-index needs a position, but this
-           must not clobber children that place themselves — .ctx-lever is absolute and
-           carries its own z-index, and being forced to relative dropped both levers into
-           flow, on top of the greeting. */
-        .skull-host > :not(.skull-arch):not(.ctx-lever) { position:relative; z-index:1; }
+        /* The brass skull arch was removed 2026-09-22 (Brady: "get rid of that and
+           move the circular full version up and bigger"). The reactor is the crown now. */
+        .core-host { overflow:hidden; }
+        /* Lift the chamber's contents above the background gradients. z-index needs a
+           position, but this must not clobber children that place themselves —
+           .ctx-lever is absolute and carries its own z-index, and being forced to
+           relative dropped both levers into flow, on top of the greeting. */
+        .core-host > :not(.ctx-lever) { position:relative; z-index:1; }
 
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
 
         .core-chamber {
-          overflow:hidden; min-height:640px; gap:12px!important; padding:12px 16px 18px!important;
+          overflow:hidden; min-height:640px; gap:8px!important; padding:8px 16px 12px!important;
           justify-content:flex-start;
           background:
             radial-gradient(circle at 50% 48%,rgba(255,92,24,.08),transparent 42%),
@@ -2634,12 +2634,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .core-chamber h2 { font-size:clamp(22px,1.55vw,28px); line-height:1.05; }
         .core-chamber .reveal.text-center .mt-3\\.5 { margin-top:8px!important; }
         .core-chamber .max-w-sm { max-width:100%; }
-        .core-chamber .greet-row { margin-top:64px; max-width:100%; }
+        .core-chamber .greet-row { margin-top:2px; max-width:100%; }
         .core-chamber .core-wrap { flex:none; }
-        .core-chamber.has-thread .reactor-stage { width:128px; height:128px; }
-        .core-chamber.has-thread .greet-row { margin-top:60px; }
+        .core-chamber.has-thread .reactor-stage { width:150px; height:150px; }
+        .core-chamber.has-thread .greet-row { margin-top:2px; }
         .reactor-stage {
-          position:relative; width:218px; height:218px;
+          position:relative; width:250px; height:250px;
           margin:0 auto; cursor:pointer; isolation:isolate;
           filter:drop-shadow(0 16px 24px rgba(0,0,0,.72));
         }
@@ -3296,30 +3296,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
         )}
 
-        {/* Daily destinations stay ahead of the workspace and its optional map. */}
-        {view === "ops" && (
-          <div className="tools-rail panel reveal" style={{ animationDelay: "0.1s" }}>
-            <div className="tools-head">
-              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="12" height="12" aria-hidden="true" />
-              <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>YOUR TOOLS</span>
-            </div>
-            <div className="tools-groups">
-              {TOOL_LINKS.map((g) => (
-                <div key={g.group} className="tools-group">
-                  <div className="fieldlabel">{g.group}</div>
-                  <div className="tools-links">
-                    {g.items.map((t) => (
-                      <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link" title={`${g.group} · ${t.note}`}>
-                        <span className="tool-name">{t.label}</span>
-                        <span className="tool-note">{t.note}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* ================= OPS VIEW ================= */}
         {view === "ops" && !live && (
@@ -3391,10 +3367,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               One compact greeting line; the counts are BUTTONS that jump to their
               panels, because a number you can't act on is dead weight up here. */}
           <div className="ops-core flex min-h-0 flex-col">
-            <div className={`core-chamber panel skull-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}`}>
+            <div className={`core-chamber panel core-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}`}>
               {/* The skeleton. Its CSS survived the v2 merge but this element didn't —
                   the class had nothing to draw until 2026-08-01. */}
-              <img src={`${ASSETS}/raster/skull-arch@2x.png`} alt="" aria-hidden="true" className="skull-arch" />
               <span className="notch hot" />
 
               <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
@@ -3512,7 +3487,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
               {/* Model + Effort live on the home page now — the codex wraps instead of
                   running off the right edge of a phone. */}
-              <div className="chat-controls reveal flex w-full max-w-md flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
+              <div className="chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
                 <div className="flex max-w-full items-center gap-2">
                   <span className="fieldlabel">Model</span>
                   <div className="codex">
@@ -3625,6 +3600,33 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
         {/* Optional reference map. The operating dashboard keeps priority. */}
         {view === "ops" && <EcoGraph />}
+
+        {/* YOUR TOOLS sits at the FOOT of the dashboard — Brady's original spec, and
+            it gives the workspace back the ~140px at the top of the page that the
+            reactor, composer and Model/Effort controls need to fit one screen. */}
+        {view === "ops" && (
+          <div className="tools-rail panel reveal" style={{ animationDelay: "0.7s" }}>
+            <div className="tools-head">
+              <img src={`${ASSETS}/svg/ornaments/corner-gear.svg`} alt="" width="12" height="12" aria-hidden="true" />
+              <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>YOUR TOOLS</span>
+            </div>
+            <div className="tools-groups">
+              {TOOL_LINKS.map((g) => (
+                <div key={g.group} className="tools-group">
+                  <div className="fieldlabel">{g.group}</div>
+                  <div className="tools-links">
+                    {g.items.map((t) => (
+                      <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link" title={`${g.group} · ${t.note}`}>
+                        <span className="tool-name">{t.label}</span>
+                        <span className="tool-note">{t.note}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ================= BAXSTAR STUDIO VIEW ================= */}
         {view === "studio" && (
