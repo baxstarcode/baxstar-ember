@@ -162,8 +162,10 @@ compatibility or ship an intentional migration.
   only brighten it, or a masked copy of the artwork's own pixels that covers the still
   version rather than adding to it. A second outline of a painted mechanism is the one
   thing dock motion may never produce.
-- The skull, reactor, odometer, brass frames, gauges, and controls remain a layered
+- The reactor, odometer, brass frames, gauges, and controls remain a layered
   raster/SVG/DOM system. Reference mockups are intent references, never backgrounds.
+  The brass skull arch was removed on 2026-09-22 (Brady) and the reactor crowns the
+  centre chamber in its place — do not restore the skull from older notes.
 - Preserve reduced-motion support, visible focus, no sideways overflow, and touchable
   controls. Do not trade legibility or behavior for cinematic decoration.
 - Preserve working behavior while fixing defects; do not use a reliability pass as an
