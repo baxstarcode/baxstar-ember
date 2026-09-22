@@ -184,16 +184,21 @@ try {
         const box = await bounds(page.locator('.core-chamber'));
         return { pass: box.height >= 360 && box.visibleHeight >= 220 && box.visibleWidth >= (phone ? 250 : 300), detail: JSON.stringify(box) };
       });
-      await check(`${name} skull crown stays inside chamber`, async () => {
-        const result = await page.locator('.skull-arch').evaluate((image) => {
-          const skull = image.getBoundingClientRect(), chamber = image.closest('.core-chamber').getBoundingClientRect();
+      // The brass skull arch was removed 2026-09-22 (Brady). The reactor is the
+      // crown now — assert IT is the one that stays inside the chamber.
+      await check(`${name} skull ornament is gone`, async () => {
+        const count = await page.locator('.skull-arch').count();
+        return { pass: count === 0, detail: `${count} found` };
+      });
+      await check(`${name} reactor crown stays inside chamber`, async () => {
+        const result = await page.locator('.reactor-stage').evaluate((stage) => {
+          const core = stage.getBoundingClientRect(), chamber = stage.closest('.core-chamber').getBoundingClientRect();
           return {
-            loaded: image.complete && image.naturalWidth > 0,
-            topInset: skull.top - chamber.top, leftInset: skull.left - chamber.left,
-            rightInset: chamber.right - skull.right, width: skull.width, height: skull.height,
+            topInset: core.top - chamber.top, leftInset: core.left - chamber.left,
+            rightInset: chamber.right - core.right, width: core.width, height: core.height,
           };
         });
-        return { pass: result.loaded && result.width > 100 && result.height > 50 && result.topInset >= -1 && result.leftInset >= -1 && result.rightInset >= -1, detail: JSON.stringify(result) };
+        return { pass: result.width > 100 && result.height > 100 && result.topInset >= -1 && result.leftInset >= -1 && result.rightInset >= -1, detail: JSON.stringify(result) };
       });
       await check(`${name} no initial horizontal overflow`, () => noOverflow(page));
 
