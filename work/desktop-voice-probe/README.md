@@ -13,6 +13,27 @@ recognition and neural `/tts` contracts, plus the current app’s JSON/SSE reque
 format. On production it uses Access-protected same-origin `/api/messages` and
 `/api/tts`; API credentials remain in the bound Worker.
 
+## End-of-speech grace: 750 ms
+
+`END_OF_SPEECH_GRACE_MS` in `probe.js` adds 750 ms after a finalized phrase,
+while the same recognition session remains open (`continuous = true`). Resumed
+sound/speech activity cancels the pending stop before the next words arrive.
+New recognition results also cancel it. A fresh all-final result starts a new full
+window; a final result mixed with any interim result never starts a cutoff.
+
+Manual Finish and Cancel do not wait for this grace. The existing 30-second turn
+cap and microphone-release gates are unchanged. Send and Play remain explicit;
+there is no automatic restart, background listening, or dashboard integration.
+The exported report includes `environment.endOfSpeechGraceMs` and grace events.
+
+This is an **additional browser-result grace**, not a claim that Web Speech exposes
+an acoustic silence-threshold setting. The browser can still end its own recognition
+session; the lab respects that end rather than silently reacquiring the microphone.
+Retest pauses and resumed speech on the actual Mac after deployment. Automated mocks
+do not prove that the physical early-cutoff issue is resolved.
+
+Reference: [Web Speech API recognition interface and events](https://webaudio.github.io/web-speech-api/#speechreco-section).
+
 ## Physical test: Mac first, then optional iPhone Safari
 
 The preferred test is the authenticated production page:
@@ -46,8 +67,10 @@ UI/permission diagnostics only, open Terminal and run:
    On iPhone, check Safari’s website microphone permission and that Siri is enabled
    if recognition is unavailable or blocked.
 5. Say “Give me one sentence of encouragement.” Interim words should appear while
-   you speak, then a final transcript. Tap **Finish talking** or let the browser end
-   the short turn. Verify the actual device microphone indicator turns off.
+   you speak, then a final transcript. After a finalized phrase the lab allows an
+   extra **750 ms** for continuation before requesting stop. Also test a brief pause
+   followed by more speech: the whole phrase should survive. **Finish talking** ends
+   immediately. Verify the actual device microphone indicator turns off.
 6. Review/correct the final transcript and click **Send transcript**. Expect a
    short text response and a `Complete` status. One request uses Sonnet 4.6 with
    a 300-token cap. This incurs ordinary API usage. No connectors or tools are sent.
@@ -133,6 +156,7 @@ If a request fails, the UI reports HTTP, CORS/network, empty/truncated response,
 or timeout. Use the production URL for the pass; do not change Worker secrets or its
 allowlist to hide a failure. Requests time out at 45 seconds, TTS at 15 seconds,
 microphone startup at 15 seconds, and a listening turn requests stop at 30 seconds.
+A finalized phrase requests stop after the additional 750 ms grace described above.
 Stop waits three seconds before abort; abort waits three seconds before the manual
 release gate. Background suspension can delay JavaScript timers.
 
@@ -143,8 +167,20 @@ With Node and this repo’s Playwright dependency available:
 ```sh
 node --check work/desktop-voice-probe/probe.js
 node --check work/desktop-voice-probe/test.mjs
-node work/desktop-voice-probe/test.mjs
+npm run test:voice-probe
 ```
+
+The dependency-free timing suite can also run separately:
+
+```sh
+npm run test:voice-grace
+```
+
+It executes the real `probe.js` in a simulated DOM with a deterministic clock.
+The 22 checks cover the exact 749/750 ms boundary, resumed speech/sound, cumulative
+results, unfinished interim text, stale callbacks, immediate Finish/Cancel, tab/page
+exit, native end, errors, opt-in, report privacy, and the unchanged release/time caps.
+`test:voice-probe` runs these checks before the existing browser suite.
 
 On this Mac, Codex’s bundled runtime is also available without installing packages:
 

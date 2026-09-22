@@ -4,6 +4,8 @@ const MESSAGE_ENDPOINT = window.EMBER_MESSAGE_ENDPOINT || window.EMBER_API_PROXY
 const TTS_ENDPOINT = window.EMBER_TTS_ENDPOINT || "/api/tts";
 const MODEL = "claude-sonnet-4-6";
 const VOICE = "en-US-JennyNeural";
+// Extra patience after the browser finalizes a phrase, not a native VAD setting.
+const END_OF_SPEECH_GRACE_MS = 750;
 const $ = (id) => document.getElementById(id);
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
@@ -21,6 +23,8 @@ let answer = "";
 let replyComplete = false;
 let generation = 0;
 let micTimer = null;
+let endSpeechTimer = null;
+let endSpeechSequence = 0;
 const audio = $("audio");
 const sessionStarted = new Date().toISOString();
 const sessionClock = performance.now();
@@ -34,6 +38,27 @@ function audioSupported() { return typeof HTMLMediaElement !== "undefined"; }
 function ready() { return transportReady && (!mobile || mobileOptIn); }
 function speechReady() { return ready() && Boolean(Recognition); }
 function elapsed() { return Math.round(performance.now() - sessionClock); }
+
+function clearEndSpeechGrace(reason = "") {
+  endSpeechSequence += 1;
+  if (endSpeechTimer === null) return;
+  clearTimeout(endSpeechTimer);
+  endSpeechTimer = null;
+  if (reason) mark("end-of-speech-grace-cancelled", reason);
+}
+
+function scheduleEndSpeechGrace(rec) {
+  clearEndSpeechGrace();
+  if (recognition !== rec || micPhase !== "listening") return;
+  const sequence = endSpeechSequence;
+  mark("end-of-speech-grace-started", `${END_OF_SPEECH_GRACE_MS}ms`);
+  endSpeechTimer = setTimeout(() => {
+    if (sequence !== endSpeechSequence || recognition !== rec || micPhase !== "listening") return;
+    endSpeechTimer = null;
+    mark("end-of-speech-grace-elapsed", `${END_OF_SPEECH_GRACE_MS}ms`);
+    finishTalking();
+  }, END_OF_SPEECH_GRACE_MS);
+}
 
 function mark(name, detail = "") {
   const entry = { atMs: elapsed(), turn: turn?.number || null, event: name };
@@ -60,7 +85,7 @@ function report() {
     startedAt: sessionStarted,
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext,
       recognitionAPI: Boolean(Recognition), playbackAPI: playbackReady, mobileDetected: mobile,
-      mobileOptIn, deviceNotes: $("device-notes").value.trim().slice(0, 500) },
+      mobileOptIn, endOfSpeechGraceMs: END_OF_SPEECH_GRACE_MS, deviceNotes: $("device-notes").value.trim().slice(0, 500) },
     privacy: "No transcript, reply text, audio, credentials, or business data included. Review your device notes before sharing.",
     turns, events,
   };
@@ -111,20 +136,24 @@ function clearAudio() {
 function releasedMic(rec, manual = false) {
   if (recognition !== rec) return;
   clearTimeout(micTimer);
+  clearEndSpeechGrace();
   clearTimeout(releaseTimer);
   rec.onstart = rec.onresult = rec.onerror = rec.onend = null;
+  rec.onsoundstart = rec.onspeechstart = null;
   recognition = null;
   mark(manual ? "mic-release-user-confirmed" : "recognition-ended");
   micState("off", manual ? "Mic off — indicator confirmed by you" : "Mic off — recognition ended");
 }
 
 function closeMic() {
+  clearEndSpeechGrace();
   clearTimeout(micTimer);
   const rec = recognition;
   if (!rec) { micState("off", "Mic off"); return; }
   if (["releasing", "unconfirmed"].includes(micPhase)) return;
   // Keep only the release event. A late transcript cannot enter a cancelled turn.
   rec.onstart = rec.onresult = rec.onerror = null;
+  rec.onsoundstart = rec.onspeechstart = null;
   rec.onend = () => releasedMic(rec);
   mark("mic-abort-requested");
   micState("releasing", "Mic release requested…");
@@ -154,12 +183,14 @@ function stopAll(reason = "Stopped. Click Talk to start a new turn.") {
 }
 
 function finishTalking() {
+  clearEndSpeechGrace();
   if (!recognition) return;
   if (micPhase === "starting") {
     closeMic();
     message("Microphone start cancelled. Nothing was sent.");
     return;
   }
+  if (micPhase !== "listening") return;
   const rec = recognition;
   mark("mic-stop-requested");
   micState("stopping", "Mic stopping…");
@@ -178,6 +209,7 @@ function finishTalking() {
 function startTalking() {
   if (recognition) { finishTalking(); return; }
   if (!speechReady() || request || micPhase !== "off") return;
+  clearEndSpeechGrace();
   generation += 1;
   if (audioUrl) mark("playback-to-mic-handoff-requested");
   clearAudio();
@@ -197,7 +229,8 @@ function startTalking() {
   }
   recognition = rec;
   rec.lang = "en-US";
-  rec.continuous = false;
+  // Keep this explicit session open across phrase finals. Never auto-restart.
+  rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 1;
   rec.onstart = () => {
@@ -206,20 +239,32 @@ function startTalking() {
     mark("recognition-started");
     $("permission").textContent = "Microphone permission: recognition started.";
     micState("listening", "Listening");
-    message("Say one short sentence, then tap Finish talking or let the browser end the turn.");
+    message("Speak naturally. After a final phrase, the lab waits an extra 0.75 seconds for you to continue. Finish talking ends immediately.");
     micTimer = setTimeout(finishTalking, 30000);
+  };
+  // Activity events can arrive before a new transcript. Do not cut off a speaker
+  // merely because recognition has not produced their next words yet.
+  rec.onsoundstart = rec.onspeechstart = () => {
+    if (recognition === rec && micPhase === "listening") clearEndSpeechGrace("speech-activity");
   };
   rec.onresult = (event) => {
     if (recognition !== rec) return;
+    clearEndSpeechGrace("recognition-result");
     let finalText = "";
     let interim = "";
-    for (const result of Array.from(event.results)) {
+    const results = Array.from(event.results);
+    for (const result of results) {
       if (result.isFinal) finalText += `${result[0].transcript} `;
       else interim += `${result[0].transcript} `;
     }
     $("transcript").value = finalText.trim().slice(0, 1000);
     if (finalText && turn && !("first-final-transcript" in turn.marks)) mark("first-final-transcript");
     $("interim").textContent = interim.trim() || "—";
+    // A result event may include an old final plus an unfinished new phrase.
+    // Even an empty interim result is unfinished; never arm a cutoff for it.
+    const changed = results.slice(Number.isInteger(event.resultIndex) ? event.resultIndex : 0);
+    if (finalText.trim() && !results.some((result) => !result.isFinal) &&
+        changed.some((result) => result.isFinal)) scheduleEndSpeechGrace(rec);
   };
   rec.onerror = (event) => {
     if (recognition !== rec) return;
