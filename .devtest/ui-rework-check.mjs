@@ -134,14 +134,18 @@ async function run(label, viewport) {
   const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check(`${label}: no horizontal page overflow`, overflowX <= 0, `${overflowX}px`);
 
-  // Skull arch visible
-  const skull = await page.evaluate(() => {
-    const el = document.querySelector(".skull-arch");
+  // PR #46 replaced the skull ornament with the 250px reactor crown.
+  const crown = await page.evaluate(() => {
+    const el = document.querySelector(".core-chamber .reactor-stage");
     if (!el) return null;
     const cs = getComputedStyle(el);
-    return { display: cs.display, w: el.getBoundingClientRect().width };
+    const r = el.getBoundingClientRect();
+    return { skulls: document.querySelectorAll(".skull-arch").length,
+      display: cs.display, visibility: cs.visibility, w: r.width, h: r.height };
   });
-  check(`${label}: skull arch is rendered`, skull && skull.display !== "none" && skull.w > 200, JSON.stringify(skull));
+  check(`${label}: reactor crown replaces the skull arch`, crown && crown.skulls === 0 &&
+    crown.display !== "none" && crown.visibility !== "hidden" &&
+    Math.abs(crown.w - 250) <= 2 && Math.abs(crown.h - 250) <= 2, JSON.stringify(crown));
 
   if (mobile) {
     // Chamber is the first OPS element
