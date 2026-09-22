@@ -77,6 +77,16 @@ layer. Two ways satisfy the rule, and only two: add light that can only brighten
 under an opaque mask that covers the still artwork (as the gear and lever do). A moving
 layer must be provably contained: outside its mask, consecutive frames must be pixel-identical.
 
+Containment is necessary but not sufficient, and that caught this pass out once. A clip can
+hold a neighbouring mechanism's brass **inside** it, where a containment test cannot see it —
+the gear's first radius (r=47) swallowed the lever's ball joint, and the joint then orbited the
+gear once per turn while "nothing outside the disc changes" stayed perfectly true. So measure
+the boundary ring itself: sample luminance all the way round it and require near-zero bright
+brass. For this gear the usable window is exactly r=45 — two pixels wide, between tooth tips at
+r~44 and the ball joint at r~46. A mask edge on bare plate is the requirement; a wide moat is a
+convenience, and assuming one is how you ship a moving artefact that every containment check
+still passes.
+
 ## Source-of-truth preflight
 
 For work that changes Ember code/config/live behavior, depends on a prior Ember decision,

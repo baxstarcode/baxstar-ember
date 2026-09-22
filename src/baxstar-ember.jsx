@@ -2871,15 +2871,26 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            a source pixel. An off-centre pivot is what makes a swing look like a
            slide, so it is measured, not estimated.
            The mask is the rod's SWEPT ENVELOPE across the whole throw, feathered, so
-           its edge always falls on bare backplate: the rod can never be sliced by the
-           mask, and the still rod is never left showing beside the moving one.
-           Travel stops at 12deg. At about 15deg the rising vessel reaches the hanger
-           painted above it and the illusion breaks; the gears and the bottom rail are
-           nowhere near. The boss itself is deliberately left out of the moving layer,
-           because its upper-left overlaps the big gear's teeth and any mask holding it
-           would drag a tooth with it. */
+           its edge always falls on bare backplate — the rod is never sliced by the mask,
+           and the still rod is never left showing beside the moving one.
+
+           WHAT SETS THE TRAVEL is the hanger assembly above the vessel, and it is not
+           what it looks like. The hanger is INSIDE the mask, so it rises with the
+           vessel rather than standing still; push too far and its brass climbs past the
+           mask's top edge and is simply erased, shearing the assembly in half. The
+           envelope's top is therefore raised to y=114 across x=174..207 — the dark gap
+           that runs between the hanger's upper eye and the vessel below it (measured:
+           that band peaks at luminance 40-97, while y<=113 and y>=126 are brass at
+           121-202). The shear line now falls in bare plate, and the eye above it stays
+           put, which is what a bolted hanger should do.
+           Travel stops at 7deg, where the dimmest hanger pixel is still at 69% mask
+           opacity and none is erased; erasure only starts around 10deg and is total
+           by 12deg. The gears, the small gear and the bottom rail are nowhere near at
+           any of these angles. The boss itself is deliberately left out of the moving
+           layer, because its upper-left overlaps the big gear's teeth and any mask
+           holding it would drag a tooth with it. */
         .dock-mech-lever {
-          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3Cpolygon points='129.5,146.4 133.5,124.8 206.8,119.2 213.8,152.5 213.5,154.1 213.1,155.6 212.7,157.2 212.3,158.8 211.9,160.3 211.4,161.9 210.9,163.4 210.4,165.0 209.8,166.5 209.2,168.0 208.6,169.5 208.0,171.0 178.0,171.0' fill='white' filter='url(%23s)'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3Cpolygon points='129.5,146.4 133.5,124.8 206.8,119.2 213.8,152.5 213.5,154.1 213.1,155.6 212.7,157.2 212.3,158.8 211.9,160.3 211.4,161.9 210.9,163.4 210.4,165.0 209.8,166.5 209.2,168.0 208.6,169.5 208.0,171.0 178.0,171.0' fill='white' filter='url(%23s)'/%3E%3C/svg%3E");
+          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3Cpolygon points='129.5,146.4 133.5,124.8 172.0,121.9 174.0,114.0 207.0,114.0 213.8,152.5 213.5,154.1 213.1,155.6 212.7,157.2 212.3,158.8 211.9,160.3 211.4,161.9 210.9,163.4 210.4,165.0 209.8,166.5 209.2,168.0 208.6,169.5 208.0,171.0 178.0,171.0' fill='white' filter='url(%23s)'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3Cpolygon points='129.5,146.4 133.5,124.8 172.0,121.9 174.0,114.0 207.0,114.0 213.8,152.5 213.5,154.1 213.1,155.6 212.7,157.2 212.3,158.8 211.9,160.3 211.4,161.9 210.9,163.4 210.4,165.0 209.8,166.5 209.2,168.0 208.6,169.5 208.0,171.0 178.0,171.0' fill='white' filter='url(%23s)'/%3E%3C/svg%3E");
           -webkit-mask-size:100% 100%; mask-size:100% 100%;
           -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
         }
@@ -2890,27 +2901,32 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         }
         @keyframes dockLeverPull {
           0%   { transform:rotate(0deg); }
-          24%  { transform:rotate(-12deg); }
-          38%  { transform:rotate(-12deg); }
+          24%  { transform:rotate(-7deg); }
+          38%  { transform:rotate(-7deg); }
           100% { transform:rotate(0deg); }
         }
 
-        /* GEAR — the same Caption Studio tile: the twelve-tooth brass gear. It turns,
+        /* GEAR — the same Caption Studio tile: the sixteen-tooth brass gear. It turns,
            slowly and forever, and it is the real gear in the artwork rather than
            something wheel-shaped standing in for one.
-           Centre panel-local (85.47, 88), clip r=47. The radius is the whole trick.
-           The gear's own material stops at r~43 and the panel's brass frame does not
-           start until r~54, so there is a dark moat between them; putting the clip
-           edge in the middle of it means the boundary crosses no brass at all
-           (0.1% bright brass on the boundary ring, against 5-7% at r=56 and r=64,
-           where the disc swallows the frame bar and sweeps it round as a diagonal).
+           Centre panel-local (85.47, 88), clip r=45. The radius is the whole trick,
+           and the usable window is TWO pixels wide, not eight. Measured brightness on
+           the boundary ring itself (1440 angular samples): r=43 is 12.5% bright brass
+           and r=44 is 3.3% — those are the gear's own tooth tips, so clipping there
+           shaves the mechanism. r=46 is 2.6% (max 177) and r=47 is 5.8% (max 172) —
+           that is the lever's polished ball joint, whose inner edge sits at r=46, and
+           a clip through it makes one bright blob orbit the gear once per turn.
+           r=45 is the only ring that is inside neither: 0.0% above luminance 110,
+           max 83. For scale, the r=56 radius that visibly swallows the panel's frame
+           bar and sweeps it round as a diagonal measures 5.4% — indistinguishable
+           from r=47.
            A circular mask is what keeps the rotation seamless: the boundary is
            rotation-invariant, so no angle of the turn can reveal an edge, and
            centring it on the measured hub is what stops it wobbling.
            14s matches the idle gear cadence motion-spec.json states for
            console-control ("Studio gears rotate at 14s/9s idle"). */
         .dock-mech-gear {
-          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='g'%3E%3CfeGaussianBlur stdDeviation='1.5'/%3E%3C/filter%3E%3Ccircle cx='85.47' cy='88.0' r='47' fill='white' filter='url(%23g)'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='g'%3E%3CfeGaussianBlur stdDeviation='1.5'/%3E%3C/filter%3E%3Ccircle cx='85.47' cy='88.0' r='47' fill='white' filter='url(%23g)'/%3E%3C/svg%3E");
+          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='g'%3E%3CfeGaussianBlur stdDeviation='1.5'/%3E%3C/filter%3E%3Ccircle cx='85.47' cy='88.0' r='45' fill='white' filter='url(%23g)'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='g'%3E%3CfeGaussianBlur stdDeviation='1.5'/%3E%3C/filter%3E%3Ccircle cx='85.47' cy='88.0' r='45' fill='white' filter='url(%23g)'/%3E%3C/svg%3E");
           -webkit-mask-size:100% 100%; mask-size:100% 100%;
           -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
         }
