@@ -107,6 +107,17 @@ of links to Brady's other properties.
   events were verified. Data-free connector status, a controlled outbox write, and
   physical voice behavior remain open.
 
+- **Claude Code, 2026‑09‑21 — dock motion restored:** the three animations the dock lost
+  on 2026-08-01 are back on the six `.dock-art` tiles: the Caption Studio gear turns, its
+  linkage lever throws on press, and the reactor core breathes. They were not rebuilt from
+  the retired `DockMotion` layer — that layer was pinned to the stretched full-bar mounting
+  and died with it in `f278227`; `615c7c0` restored the art without it. This pass keys the
+  motion to the tile geometry instead, so it needs no `--dock-squash` observer and no JS
+  measurement at all. Regions were measured off the asset's pixels, not estimated. The
+  governing rule — **no second outline of a painted mechanism** — is recorded in `CLAUDE.md`
+  under Design law and is enforced by containment proof: outside each moving part's mask,
+  consecutive frames are pixel-identical.
+
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 

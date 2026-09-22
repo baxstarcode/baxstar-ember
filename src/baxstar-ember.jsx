@@ -1126,6 +1126,9 @@ function ContextLever({ side, label, state, onPull }) {
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
   const [studioTool, setStudioTool] = useState("captions");
+  // Bumped on every Caption Studio press; DockMech keys the lever rotor off it,
+  // so each click restarts the throw animation from the top with no timers.
+  const [leverPull, setLeverPull] = useState(0);
 
   // steampunk context actions — selected Calls/Inbox item feeds the two levers
   const [selectedComm, setSelectedComm] = useState(null); // { type:"vm"|"email", i }
@@ -2836,6 +2839,166 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           background:#3a2718; box-shadow:inset 0 1px 1px rgba(0,0,0,.8); }
         .dock-control.active .dock-lamp { background:var(--ember-active); box-shadow:0 0 8px var(--ember-active); }
 
+        /* ---------- DOCK MECHANISM MOTION ----------
+           Restored 2026-09-21. The 2026-08-01 rebuild swapped the whole bar for a
+           CSS one and the cinematic motion layer went with it; the 2026-08-15 tiles
+           brought the painted mechanisms back but not their movement. Three of them
+           move again here — the linkage lever, the wheel, the reactor core — under
+           one rule that is not stylistic:
+
+               NOTHING DRAWS A SECOND OUTLINE OF ANYTHING.
+
+           The first attempt at dock motion had to be benched because synthesised
+           line-art mechanisms sat on top of the photoreal ones and double-drew them.
+           So none of the moving parts here is drawn. Each is a MASKED COPY OF THE
+           SAME PAINTED PIXELS, transformed in place: the mask element never moves,
+           the copy inside it does, and inside the mask that copy is opaque — so it
+           covers the still artwork rather than adding to it. There is no frame in
+           which two versions of a mechanism are on screen at once.
+
+           Geometry is expressed as a percentage of .dock-art, whose box IS the
+           233.333 x 200 source-pixel crop and which scales that crop uniformly.
+           Every region therefore stays locked to its own brass at any tile width,
+           on any screen, with nothing measured in JS. */
+        .dock-mech { position:absolute; inset:0; pointer-events:none; }
+        .dock-mech-rotor { position:absolute; inset:0; }
+
+        /* LEVER — Caption Studio, the strip's second panel: the connecting rod that
+           runs from the crank boss down to the suspended brass vessel. Pressing the
+           button throws it and lets it settle.
+           The pivot is the boss centre, panel-local (122.75, 134) — located by ring
+           symmetry and confirmed against the rod's fitted centreline to within half
+           a source pixel. An off-centre pivot is what makes a swing look like a
+           slide, so it is measured, not estimated.
+           The mask is the rod's SWEPT ENVELOPE across the whole throw, feathered, so
+           its edge always falls on bare backplate — the rod is never sliced by the mask,
+           and the still rod is never left showing beside the moving one.
+
+           WHAT SETS THE TRAVEL is the hanger assembly above the vessel, and it is not
+           what it looks like. The hanger is INSIDE the mask, so it rises with the
+           vessel rather than standing still; push too far and its brass climbs past the
+           mask's top edge and is simply erased, shearing the assembly in half. The
+           envelope's top is therefore raised to y=114 across x=174..207 — the dark gap
+           that runs between the hanger's upper eye and the vessel below it (measured:
+           that band peaks at luminance 40-97, while y<=113 and y>=126 are brass at
+           121-202). The shear line now falls in bare plate, and the eye above it stays
+           put, which is what a bolted hanger should do.
+           Travel stops at 8deg — the mask's true ceiling, where the dimmest hanger
+           pixel still sits at 57% opacity and none is erased. Erasure starts near
+           10deg and is total by 12deg, so there is no more angle to take. The throw
+           is short by nature, so it is made FAST instead: 420ms with an overshoot,
+           because at this size the eye catches a snap it would miss in a drift. The gears, the small gear and the bottom rail are nowhere near at
+           any of these angles. The boss itself is deliberately left out of the moving
+           layer, because its upper-left overlaps the big gear's teeth and any mask
+           holding it would drag a tooth with it. */
+        .dock-mech-lever {
+          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3Cpolygon points='129.5,146.4 133.5,124.8 172.0,121.9 174.0,114.0 207.0,114.0 213.8,152.5 213.5,154.1 213.1,155.6 212.7,157.2 212.3,158.8 211.9,160.3 211.4,161.9 210.9,163.4 210.4,165.0 209.8,166.5 209.2,168.0 208.6,169.5 208.0,171.0 178.0,171.0' fill='white' filter='url(%23s)'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='s'%3E%3CfeGaussianBlur stdDeviation='2.4'/%3E%3C/filter%3E%3Cpolygon points='129.5,146.4 133.5,124.8 172.0,121.9 174.0,114.0 207.0,114.0 213.8,152.5 213.5,154.1 213.1,155.6 212.7,157.2 212.3,158.8 211.9,160.3 211.4,161.9 210.9,163.4 210.4,165.0 209.8,166.5 209.2,168.0 208.6,169.5 208.0,171.0 178.0,171.0' fill='white' filter='url(%23s)'/%3E%3C/svg%3E");
+          -webkit-mask-size:100% 100%; mask-size:100% 100%;
+          -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+        }
+        .dock-mech-lever .dock-mech-rotor {
+          transform-origin:52.607% 67%;
+          /* Idle: one throw every 9s, unprompted — motion-spec's "intermittent
+             mechanical cycles". The button's own click also changes the view, so an
+             on-press-only throw is a throw nobody is looking at. */
+          animation:dockLeverIdle 9s cubic-bezier(.16,1.1,.3,1) infinite;
+          will-change:transform;
+        }
+        .dock-mech-lever .dock-mech-rotor.run {
+          animation:dockLeverPull 420ms cubic-bezier(.16,1.1,.3,1);
+        }
+        @keyframes dockLeverIdle {
+          0%, 100% { transform:rotate(0deg); }
+          2.2%     { transform:rotate(-8deg); }
+          3.6%     { transform:rotate(-8deg); }
+          5.2%     { transform:rotate(0deg); }
+        }
+        @keyframes dockLeverPull {
+          0%   { transform:rotate(0deg); }
+          18%  { transform:rotate(-8deg); }
+          30%  { transform:rotate(-8deg); }
+          100% { transform:rotate(0deg); }
+        }
+
+        /* GEAR — the same Caption Studio tile: the sixteen-tooth brass gear. It turns,
+           slowly and forever, and it is the real gear in the artwork rather than
+           something wheel-shaped standing in for one.
+           Centre panel-local (85.47, 88), clip r=45. The radius is the whole trick,
+           and the usable window is TWO pixels wide, not eight. Measured brightness on
+           the boundary ring itself (1440 angular samples): r=43 is 12.5% bright brass
+           and r=44 is 3.3% — those are the gear's own tooth tips, so clipping there
+           shaves the mechanism. r=46 is 2.6% (max 177) and r=47 is 5.8% (max 172) —
+           that is the lever's polished ball joint, whose inner edge sits at r=46, and
+           a clip through it makes one bright blob orbit the gear once per turn.
+           r=45 is the only ring that is inside neither: 0.0% above luminance 110,
+           max 83. For scale, the r=56 radius that visibly swallows the panel's frame
+           bar and sweeps it round as a diagonal measures 5.4% — indistinguishable
+           from r=47.
+           A circular mask is what keeps the rotation seamless: the boundary is
+           rotation-invariant, so no angle of the turn can reveal an edge, and
+           centring it on the measured hub is what stops it wobbling.
+           SPEED, corrected 2026-09-22 after Brady looked at it: motion-spec's
+           14s idle was written for a large studio gear, and at this tile the disc is
+           24 CSS px across — one revolution every 14s is about five pixels of rim
+           travel per second, which reads as a still image. 4.5s is the slowest rate
+           that still reads as machinery running rather than a photograph. */
+        .dock-mech-gear {
+          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='g'%3E%3CfeGaussianBlur stdDeviation='1.5'/%3E%3C/filter%3E%3Ccircle cx='85.47' cy='88.0' r='45' fill='white' filter='url(%23g)'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='g'%3E%3CfeGaussianBlur stdDeviation='1.5'/%3E%3C/filter%3E%3Ccircle cx='85.47' cy='88.0' r='45' fill='white' filter='url(%23g)'/%3E%3C/svg%3E");
+          -webkit-mask-size:100% 100%; mask-size:100% 100%;
+          -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+        }
+        .dock-mech-gear .dock-mech-rotor {
+          transform-origin:36.63% 44.0%;
+          animation:dockGearSpin 4.5s linear infinite;
+          will-change:transform;
+        }
+        @keyframes dockGearSpin { to { transform:rotate(360deg); } }
+
+        /* REACTOR — the third quick action, the strip's third panel: the glowing
+           porthole. An idle amber breath over the painted core, centred on the
+           glow's own luminance-weighted centroid, panel-local (121.24, 122.72), and
+           stopping at r=52 where the glow has fallen back to plate level — eight
+           pixels short of the bezel's inner edge, so it can never bloom onto brass.
+           mix-blend-mode:screen means this layer can only ADD light. It cannot
+           occlude the artwork, cannot darken it, and cannot put an edge anywhere —
+           which is the whole reason a glow is safe where a drawn ring would not be.
+           Every gradient stop is SAMPLED from the asset's own core — #fefde9, #f98719,
+           #fa7716, #e64a06, #a72902, a candle-white centre falling through ember
+           orange into oxblood. No new hue is introduced, so warmth-only
+           (BUILD-PROMPT S3) holds by construction, not by inspection.
+           4200ms matches the ambient cadence motion-spec.json already uses for
+           tank-energy, so the dock breathes at the same rate as the rest of the room. */
+        .dock-reactor {
+          position:absolute; pointer-events:none; mix-blend-mode:screen;
+          left:29.6743%; top:35.36%; width:44.5714%; height:52.0%;
+          border-radius:50%;
+          background:radial-gradient(circle at 50% 50%,
+            rgba(255,214,150,.44) 0 6%,
+            rgba(255,140,40,.42) 18%,
+            rgba(242,98,22,.30) 36%,
+            rgba(204,58,8,.17) 56%,
+            rgba(150,36,2,.06) 76%,
+            transparent 92%);
+          opacity:.70;
+          animation:dockReactorPulse 4200ms ease-in-out infinite alternate;
+          will-change:opacity, transform;
+        }
+        @keyframes dockReactorPulse {
+          from { opacity:.16; transform:scale(.92); }
+          to   { opacity:1;   transform:scale(1.08); }
+        }
+
+        /* Reduced motion: the movement stops, the light stays. The global rule near
+           the end of this sheet already kills every animation, which parks each rotor
+           at 0deg and the reactor at its resting opacity — so the resting frame is
+           deliberately the LIT one, not a hidden one. These two lines restate that
+           locally so a future edit to the base opacity cannot silently leave
+           reduced-motion users with a dark core. */
+        @media (prefers-reduced-motion:reduce) {
+          .dock-mech .dock-mech-rotor { transform:none !important; }
+          .dock-reactor { opacity:.70 !important; transform:none !important; }
+        }
+
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
@@ -4136,26 +4299,26 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         <div className="console-dock reveal" style={{ animationDelay: "0.65s" }}>
           <div className="console-dock-grid">
             <button className={`dock-control ${view === "ops" ? "active" : ""}`} onClick={() => setView("ops")}>
-              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": "42.857%" }} /></span>
+              <span className="dock-art" style={{ "--panel-x": "42.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /></span>
               <span className="dock-label">OPS</span>
               <span className="dock-lamp" />
             </button>
             <button className={`dock-control ${view === "studio" ? "active" : ""}`}
-              onClick={() => { setView("studio"); setStudioTool("captions"); }}>
-              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": "142.857%" }} /></span>
+              onClick={() => { setView("studio"); setStudioTool("captions"); setLeverPull((n) => n + 1); }}>
+              <span className="dock-art" style={{ "--panel-x": "142.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /><DockMech kind="gear" /><DockMech kind="lever" pull={leverPull} /></span>
               <span className="dock-label">Caption Studio</span>
               <span className="dock-lamp" />
             </button>
           {ACTIONS.map((a, i) => (
             <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
               onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": `${242.857 + i * 100}%` }} /></span>
+              <span className="dock-art" style={{ "--panel-x": `${242.857 + i * 100}%` }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" />{i === 0 && <DockMech kind="reactor" />}</span>
               <span className="dock-label">{a.label}</span>
               <span className="dock-lamp" />
             </button>
           ))}
             <button className={`dock-control ${view === "projects" ? "active" : ""}`} onClick={() => setView("projects")}>
-              <span className="dock-art"><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" style={{ "--panel-x": "542.857%" }} /></span>
+              <span className="dock-art" style={{ "--panel-x": "542.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /></span>
               <span className="dock-label">Projects</span>
               <span className="dock-lamp" />
             </button>
@@ -4170,6 +4333,21 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 /* ============================================================
    SMALL PIECES
    ============================================================ */
+
+/* One painted mechanism, put back in motion.
+   Every kind here is a masked copy of the tile's OWN pixels — never new geometry
+   drawn over them. `pull` is a counter: keying the rotor off it restarts the throw
+   on each press without timers, and the falsy first value keeps it still on load. */
+function DockMech({ kind, pull }) {
+  if (kind === "reactor") return <span className="dock-reactor" aria-hidden="true" />;
+  return (
+    <span className={`dock-mech dock-mech-${kind}`} aria-hidden="true">
+      <span key={pull} className={`dock-mech-rotor ${pull ? "run" : ""}`}>
+        <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" />
+      </span>
+    </span>
+  );
+}
 
 /* ============================================================
    THE ECOSYSTEM GRAPH — read-only picture of what touches what.
