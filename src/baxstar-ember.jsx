@@ -535,6 +535,18 @@ function degradedChatNote(status) {
   return "Connectors unavailable — this reply uses conversation context only. Live business data was not checked.";
 }
 
+// Midnight in America/Chicago, `days` after today's Chicago date, as an ISO
+// instant. 06:00Z is midnight CST; the Chicago hour shown at that instant (0 in
+// winter, 1 in summer) is exactly how far past midnight it is.
+function chicagoMidnightISO(now, days) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now).map((p) => [p.type, p.value]));
+  const guess = Date.UTC(+parts.year, +parts.month - 1, +parts.day + days, 6);
+  const hour = +new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hourCycle: "h23" }).format(guess);
+  return new Date(guess - hour * 3600 * 1000).toISOString();
+}
+
 function listNames(names) {
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
@@ -1746,14 +1758,16 @@ export default function BaxstarEmber() {
 
       // Computed here and passed verbatim: when the model picked its own dates
       // it guessed the wrong month and dragged in a quarter of call history.
+      // "Today" is Detroit Lakes' today (America/Chicago), whatever clock the
+      // browser happens to be on.
       const now = new Date();
       const since48 = new Date(now.getTime() - 48 * 3600 * 1000).toISOString();
-      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+      const dayStart = chicagoMidnightISO(now, 0);
+      const dayEnd = chicagoMidnightISO(now, 2);
       const steps = {
         voicemails: `Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) — pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.`,
         emails: "Up to 5 unread Gmail messages from the last 24 hours.",
-        events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow) — pass these exact timestamps to the tool.`,
+        events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow in America/Chicago) — pass these exact timestamps to the tool. Give each event's time in America/Chicago (e.g. "2:00 PM").`,
       };
       const shapes = {
         voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',

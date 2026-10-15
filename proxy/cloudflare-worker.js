@@ -695,9 +695,49 @@ async function oauthCallback(request, env, url, fetchImpl) {
 // handed out in its last few seconds of life.
 const tokenCache = new Map();
 
+// ROTATED REFRESH TOKENS (2026-10-15). Some providers hand back a NEW refresh token
+// on each refresh and retire the old one; Ember's Quo client is a public OAuth
+// client, the kind that rule is written for. The secret Brady pasted can't be
+// rewritten by this Worker (by design, see the callback page), so a rotated token
+// used to be thrown away and the connector died at the next refresh.
+// With the optional EMBER_TOKENS KV binding, the newest token is kept there and
+// used first. Each saved token carries a fingerprint of the secret it descends
+// from, so when Brady re-keys (a new secret) the stale saved token is ignored.
+// Without the binding nothing changes. Free-tier KV: one write per rotation.
+async function secretFingerprint(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function currentRefresh(connector, env) {
+  const base = env["MCP_REFRESH_" + connector.toUpperCase()];
+  if (!base) return null;
+  const store = env.EMBER_TOKENS;
+  if (!store || typeof store.get !== "function") return { refresh: base, base, store: null };
+  const fp = await secretFingerprint(base);
+  try {
+    const saved = await store.get("refresh:" + connector, "json");
+    if (saved && saved.base === fp && typeof saved.token === "string" && saved.token) {
+      return { refresh: saved.token, base, store, fp };
+    }
+  } catch {
+    // An unreadable store is the same as no store.
+  }
+  return { refresh: base, base, store, fp };
+}
+
 async function accessTokenFor(connector, env, fetchImpl, now) {
-  const refresh = env["MCP_REFRESH_" + connector.toUpperCase()];
-  if (!refresh) return null;
+  const current = await currentRefresh(connector, env);
+  if (!current) return null;
+  const minted = await mintAccessToken(connector, current.refresh, current, env, fetchImpl, now);
+  // A saved token that stopped working falls back once to the pasted secret.
+  if (!minted && current.refresh !== current.base) {
+    return mintAccessToken(connector, current.base, { ...current, refresh: current.base }, env, fetchImpl, now);
+  }
+  return minted;
+}
+
+async function mintAccessToken(connector, refresh, current, env, fetchImpl, now) {
 
   const hit = tokenCache.get(connector);
   if (hit && hit.exp > now && hit.refresh === refresh) return hit.token;
@@ -733,6 +773,14 @@ async function accessTokenFor(connector, env, fetchImpl, now) {
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.access_token) return null;
+    if (current.store && typeof data.refresh_token === "string" && data.refresh_token && data.refresh_token !== refresh) {
+      try {
+        await current.store.put("refresh:" + connector, JSON.stringify({ base: current.fp, token: data.refresh_token }));
+        refresh = data.refresh_token;
+      } catch {
+        // Losing the save costs one future refresh, never this request.
+      }
+    }
     const ttl = Math.max(30, Number(data.expires_in) || 3600);
     tokenCache.set(connector, {
       token: data.access_token,

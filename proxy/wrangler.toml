@@ -41,3 +41,13 @@ OAUTH_REDIRECT_URI = "https://ember-claude-proxy.brady-9d1.workers.dev/oauth/cal
 #   MCP_TOKEN_GDRIVE      (optional)
 #   OUTBOX_URL            (required for Caption Studio publish)
 #   OUTBOX_TOKEN          (optional; matches Apps Script shared token)
+
+# Optional: keep rotated OAuth refresh tokens (Quo's public client may rotate them
+# on every refresh; without this the pasted secret dies at the next refresh).
+# Free-tier Workers KV, one write per rotation. To enable, once:
+#   npx wrangler@4.135.0 kv namespace create EMBER_TOKENS --config proxy/wrangler.toml
+# then uncomment the block below with the id it prints, and deploy. The Worker
+# works unchanged without it.
+# [[kv_namespaces]]
+# binding = "EMBER_TOKENS"
+# id = "<id printed by the command above>"

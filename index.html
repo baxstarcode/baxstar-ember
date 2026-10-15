@@ -778,7 +778,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-15 21:17Z".startsWith("__") ? "dev" : "2026-10-15 21:17Z";
+  const BUILD_STAMP = "2026-10-15 21:19Z".startsWith("__") ? "dev" : "2026-10-15 21:19Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -810,6 +810,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       return `${listNames(off.map((f) => f.label))} ${off.length === 1 ? "is" : "are"} offline \u2014 ${listNames(off.map((f) => f.what))} not checked in this reply.`;
     }
     return "Connectors unavailable \u2014 this reply uses conversation context only. Live business data was not checked.";
+  }
+  function chicagoMidnightISO(now, days) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(now).map((p) => [p.type, p.value]));
+    const guess = Date.UTC(+parts.year, +parts.month - 1, +parts.day + days, 6);
+    const hour = +new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hourCycle: "h23" }).format(guess);
+    return new Date(guess - hour * 3600 * 1e3).toISOString();
   }
   function listNames(names) {
     return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -1776,12 +1787,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         }
         const now2 = /* @__PURE__ */ new Date();
         const since48 = new Date(now2.getTime() - 48 * 3600 * 1e3).toISOString();
-        const dayStart = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate()).toISOString();
-        const dayEnd = new Date(now2.getFullYear(), now2.getMonth(), now2.getDate() + 2).toISOString();
+        const dayStart = chicagoMidnightISO(now2, 0);
+        const dayEnd = chicagoMidnightISO(now2, 2);
         const steps = {
           voicemails: `Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) \u2014 pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.`,
           emails: "Up to 5 unread Gmail messages from the last 24 hours.",
-          events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow) \u2014 pass these exact timestamps to the tool.`
+          events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow in America/Chicago) \u2014 pass these exact timestamps to the tool. Give each event's time in America/Chicago (e.g. "2:00 PM").`
         };
         const shapes = {
           voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
