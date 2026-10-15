@@ -707,7 +707,21 @@ for (const degraded of [false, true]) {
 {
   const f = stubFetch([["api.anthropic.com", jsonRes({ ok: true })]]);
   await worker.fetch(post(chat({ max_tokens: 999999 })), baseEnv, {}, { fetch: f });
-  check("max_tokens cap still holds", JSON.parse(f.calls[0].body).max_tokens === 4096);
+  check("max_tokens cap still holds", JSON.parse(f.calls[0].body).max_tokens === 16000);
+}
+
+for (const model of ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"]) {
+  const f = stubFetch([["api.anthropic.com", jsonRes({ ok: true })]]);
+  const res = await worker.fetch(post(chat({ model, output_config: { effort: "xhigh" } })), baseEnv, {}, { fetch: f });
+  const sent = f.calls[0] ? JSON.parse(f.calls[0].body) : {};
+  check(`${model} accepted with xhigh effort forwarded`,
+    res.status === 200 && sent.model === model && sent.output_config?.effort === "xhigh");
+}
+
+{
+  const f = stubFetch([["api.anthropic.com", jsonRes({ ok: true })]]);
+  const res = await worker.fetch(post(chat({ output_config: { effort: "turbo" } })), baseEnv, {}, { fetch: f });
+  check("unknown effort level still refused", res.status === 400 && f.calls.length === 0);
 }
 
 {

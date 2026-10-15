@@ -115,7 +115,14 @@ const POST_ROUTES = new Map([
 // Ember's selectable models — keep in sync with MODELS in src/baxstar-ember.jsx.
 // Anything else is refused so a leaked endpoint can't be repurposed into a
 // general-purpose model proxy.
+// The four current IDs are what the app sends. The previous five stay accepted only
+// so the deployed page keeps working between this Worker deploy and the Pages
+// release that switches models; remove them once that release is live.
 const ALLOWED_MODELS = new Set([
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+  "claude-fable-5-1",
   "claude-haiku-4-5",
   "claude-sonnet-4-6",
   "claude-opus-4-8",
@@ -123,7 +130,11 @@ const ALLOWED_MODELS = new Set([
   "claude-fable-5",
 ]);
 
-const MAX_TOKENS_CAP = 4096;
+// The current models always think before answering and that thinking counts
+// against max_tokens; at Xtra (xhigh) effort 4096 could end before the first
+// word. Billing follows tokens actually used, not this ceiling.
+const MAX_TOKENS_CAP = 16000;
+const ALLOWED_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const MAX_BODY_BYTES = 5 * 1024 * 1024; // Ember sends resized image b64 in captions
 
 function allowedOrigins(env) {
@@ -225,7 +236,7 @@ function validateMessagesBody(body) {
     throw new RequestInputError("mcp_servers must contain canonical connector names.");
   }
   if (body.output_config !== undefined && (!isRecord(body.output_config) ||
-      (body.output_config.effort !== undefined && !["low", "medium", "high", "max"].includes(body.output_config.effort)))) {
+      (body.output_config.effort !== undefined && !ALLOWED_EFFORTS.includes(body.output_config.effort)))) {
     throw new RequestInputError("Invalid output_config.");
   }
 }
