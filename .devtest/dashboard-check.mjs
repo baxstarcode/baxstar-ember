@@ -177,6 +177,35 @@ try {
     check(`${name} chat uses same-origin messages POST`, !!chatRequest);
     check(`${name} no voice-mode text in the prompt`, !!chatRequest && !/spoken aloud|Spoken output/i.test(JSON.stringify(chatRequest.messages)));
 
+    // The push-plates and the Inbox link run the existing prompts — no copies.
+    for (const [locate, label, want] of [
+      [() => page.locator(".prompt-plate.left"), "WHAT'D I MISS plate", /What did I miss\? Check missed calls/],
+      [() => page.locator(".prompt-plate.right"), "BRIEF MY DAY plate", /Brief me on tomorrow/],
+      [() => page.getByRole("button", { name: "Triage Inbox ›" }), "Triage Inbox link", /Triage my unread Gmail/],
+    ]) {
+      const before = requests.length;
+      await locate().click();
+      await page.waitForFunction((n) => !document.querySelector('[data-status="streaming"]') && true, before, { timeout: 10000 });
+      await page.waitForTimeout(300);
+      const sent = requests.slice(before).find((r) => !/ONLY valid JSON/.test(JSON.stringify(r.messages)));
+      check(`${name} ${label} runs its existing prompt`, !!sent && want.test(JSON.stringify(sent.messages)));
+    }
+    const dock = page.locator(".console-dock");
+    check(`${name} dock reads OPS · Caption Studio · Knowledge Graph · Google Drive · FareHarbor · Projects`,
+      (await dock.locator(".dock-label").allInnerTexts()).map((t) => t.trim().toUpperCase()).join("|") ===
+      "OPS|CAPTION STUDIO|KNOWLEDGE GRAPH|GOOGLE DRIVE|FAREHARBOR|PROJECTS");
+    check(`${name} Google Drive tile opens Drive in a new tab`,
+      (await dock.getByRole("link", { name: /Google Drive/ }).getAttribute("href")) === "https://drive.google.com/" &&
+      (await dock.getByRole("link", { name: /Google Drive/ }).getAttribute("target")) === "_blank");
+    check(`${name} FareHarbor tile opens the Baxstar dashboard`,
+      (await dock.getByRole("link", { name: /FareHarbor/ }).getAttribute("href")) === "https://fareharbor.com/baxstarfishing/dashboard/");
+    check(`${name} Caption Studio gear still turns`, await page.evaluate(() =>
+      document.getAnimations().some((a) => a.animationName === "dockGearSpin" && a.playState === "running")));
+    check(`${name} FareHarbor wheel and furnace animate`, await page.evaluate(() => {
+      const names = document.getAnimations().map((a) => a.animationName);
+      return names.includes("dockWheelCycle") && names.includes("dockFurnaceSwell") && names.includes("dockFurnaceFlicker");
+    }));
+
     await page.screenshot({
       path: path.join(SHOTS, `dashboard-${name.toLowerCase()}.png`),
       fullPage: true,

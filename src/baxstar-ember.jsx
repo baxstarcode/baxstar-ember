@@ -27,6 +27,14 @@ const MCP_SERVERS = [
 ];
 const DRIVE_SERVER = { name: "gdrive" };
 
+// Dock destinations (2026-10-15). FareHarbor's company dashboard is confirmed by
+// the "Baxstar FareHarbor Pricing — Operator Playbook" (shortname baxstarfishing).
+// Drive opens in Brady's own signed-in browser — no new sign-in system.
+const DRIVE_URL = "https://drive.google.com/";
+const FAREHARBOR_URL = "https://fareharbor.com/baxstarfishing/dashboard/";
+// The Knowledge Foundry: baxstarcode/baxstar-knowledge-network, Cloudflare Pages.
+const FOUNDRY_URL = "https://baxstar-knowledge-network.pages.dev/";
+
 const HANDOFF_DOC_URL = "https://docs.google.com/document/d/1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns/edit";
 
 const BRADY_CONTEXT = `You are EMBER, Brady Baxter's operations assistant for Baxstar Fishing and Lakes Golf Simulator in Detroit Lakes, MN.
@@ -1201,6 +1209,8 @@ export default function BaxstarEmber() {
   const [selectedComm, setSelectedComm] = useState(null); // { type:"vm"|"email", i }
   const [leverBusy, setLeverBusy] = useState(null);       // "draft" | "task" | null
   const [promptRunning, setPromptRunning] = useState(null);  // which push-plate is running
+  const [graphOpen, setGraphOpen] = useState(false);
+  const closeGraph = useRef(() => setGraphOpen(false)).current;
   const [leverPending, setLeverPending] = useState(null); // pending-review pulse
   const [draftEdit, setDraftEdit] = useState(null);       // editable lever draft text
   const [draftCopied, setDraftCopied] = useState(false);
@@ -3140,6 +3150,114 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .dock-reactor { opacity:.70 !important; transform:none !important; }
         }
 
+        /* WHEEL — FareHarbor (2026-10-15), the old Brief My Day tile's ship's wheel.
+           Same masked-copy technique as the gear: the painted wheel itself turns.
+           Brady's spec: spin fast, slow down, come home, rest five seconds, repeat.
+           Three whole turns (1080deg) with a long ease-out land EXACTLY on the start
+           pose, so nothing ever snaps back; then it holds still for 5s of the 8.6s.
+           Geometry measured on the asset, not estimated: centre panel-local
+           (104.19, 108.37) by a least-squares fit to the rim's outer edge (168 edge
+           points), rim outer radius 68.1. This wheel is not as clean a case as the
+           gear: its rim touches fixed brackets, handle stubs and a ring of bolt
+           heads, so NO circle is bare plate all the way round. Boundary-ring scan,
+           1440 samples per ring: r=70 3.75% bright, r=70.5 2.29%, r=72 1.88%,
+           r=74 0.69%, r=74.5 0.49%, r=77 1.32%.
+           The clip is r=70.5, NOT the lowest-scoring r=74.5, and that is the lesson
+           this wheel adds to CLAUDE.md's: a quiet boundary is still not enough. At
+           r=74.5 the disc carries a ring of plate whose shadow is lit from the upper
+           left; turned, that shading made the disc's edge visible mid-spin as a
+           dark crescent. At r=70.5 the disc holds only the wheel — rim, spokes, hub
+           — and almost no plate, so nothing in it betrays the turn. Its bright
+           boundary samples are the four places the rim meets its mounts, which then
+           read as what they are: a wheel turning between fixed brackets.
+           Verified on frames: outside the mask plus its feather (r=72.9) two
+           mid-spin frames differ in 0 of 80517 pixels; the 3.6s and 6.0s rest frames
+           are identical to frame 0 in every pixel. */
+        .dock-mech-wheel {
+          -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='w'%3E%3CfeGaussianBlur stdDeviation='0.8'/%3E%3C/filter%3E%3Ccircle cx='104.19' cy='108.37' r='70.5' fill='%23fff' filter='url(%23w)'/%3E%3C/svg%3E");
+          mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 233.3333 200'%3E%3Cfilter id='w'%3E%3CfeGaussianBlur stdDeviation='0.8'/%3E%3C/filter%3E%3Ccircle cx='104.19' cy='108.37' r='70.5' fill='%23fff' filter='url(%23w)'/%3E%3C/svg%3E");
+          -webkit-mask-size:100% 100%; mask-size:100% 100%;
+          -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+        }
+        .dock-mech-wheel .dock-mech-rotor {
+          transform-origin:44.653% 54.185%;
+          animation:dockWheelCycle 8.6s infinite;
+          will-change:transform;
+        }
+        @keyframes dockWheelCycle {
+          0%      { transform:rotate(0deg); animation-timing-function:cubic-bezier(.08,.62,.2,1); }
+          41.86%  { transform:rotate(1080deg); }
+          100%    { transform:rotate(1080deg); }
+        }
+
+        /* FURNACE — Knowledge Graph (2026-10-15), the old What'd I Miss reactor tile.
+           Same screen-blended light as the reactor breath (it can only ADD light,
+           never outline anything), slowed into a heat swell with a second, smaller
+           flicker riding on it. The flicker changes about twice a second and only by
+           a few percent — fire, not a strobe; well clear of the 3-flashes-a-second
+           photosensitivity line. Reduced motion leaves it steadily lit. */
+        .dock-furnace { animation:dockFurnaceSwell 5600ms ease-in-out infinite alternate; }
+        .dock-furnace::after { content:""; position:absolute; inset:-6%; border-radius:50%;
+          background:radial-gradient(circle at 50% 56%, rgba(255,170,90,.38), rgba(230,74,6,.18) 45%, transparent 70%);
+          animation:dockFurnaceFlicker 3700ms linear infinite; }
+        @keyframes dockFurnaceSwell {
+          from { opacity:.28; transform:scale(.94); }
+          to   { opacity:1;   transform:scale(1.06); }
+        }
+        @keyframes dockFurnaceFlicker {
+          0% { opacity:.55; } 14% { opacity:.8; } 23% { opacity:.62; } 37% { opacity:.9; } 49% { opacity:.66; }
+          63% { opacity:.84; } 76% { opacity:.58; } 88% { opacity:.78; } 100% { opacity:.55; }
+        }
+
+        /* GOOGLE DRIVE plate — see DrivePlate. Opaque, round, set into the gauge's own
+           bezel; a slow sheen crosses it (screen blend: light only). */
+        .dock-drive { position:absolute; left:26.396%; top:29.74%; width:43.286%; height:50.5%;
+          border-radius:50%; overflow:hidden; pointer-events:none;
+          box-shadow:inset 0 1px 2px rgba(0,0,0,.7); }
+        .dock-drive svg { display:block; width:100%; height:100%; }
+        .dock-drive-sheen { position:absolute; inset:0; mix-blend-mode:screen;
+          background:linear-gradient(115deg, transparent 35%, rgba(255,214,150,.30) 50%, transparent 65%);
+          background-size:300% 100%; animation:dockDriveSheen 7s ease-in-out infinite; }
+        @keyframes dockDriveSheen { 0%, 55% { background-position:120% 0; } 100% { background-position:-120% 0; } }
+
+        a.dock-control { text-decoration:none; }
+
+        /* Inbox heading link — runs the existing triage prompt into chat. */
+        .panel-link { background:none; border:none; padding:0; cursor:pointer;
+          font-family:var(--ember-font-display); font-size:10.5px; font-weight:700; letter-spacing:.08em;
+          color:var(--ember-brass-bright); text-decoration:underline; text-decoration-color:rgba(214,179,106,.4);
+          text-underline-offset:3px; white-space:nowrap; }
+        .panel-link:hover:not(:disabled) { color:#ffd08a; text-decoration-color:currentColor; }
+        .panel-link:disabled { opacity:.5; cursor:default; }
+        @media (pointer:coarse) { .panel-link { min-height:44px; padding:0 4px; } }
+
+        /* KNOWLEDGE GRAPH overlay. */
+        .kg-overlay { position:fixed; inset:0; z-index:80; background:rgba(0,0,0,.5);
+          display:flex; align-items:center; justify-content:center; padding:clamp(10px,3vw,40px); }
+        .kg-sheet { position:relative; display:flex; flex-direction:column; width:min(1500px,100%); height:min(940px,100%);
+          border:2px solid #6b4a26; border-radius:16px; overflow:hidden;
+          background:linear-gradient(180deg,#120d08,#070605);
+          box-shadow:inset 0 0 0 1px rgba(214,179,106,.25), 0 24px 60px rgba(0,0,0,.75), 0 0 30px rgba(255,105,38,.12); }
+        .kg-head { display:flex; align-items:center; gap:14px; padding:10px 12px 10px 18px; flex:none;
+          border-bottom:1px solid var(--ember-panel-line); }
+        .kg-title { font-size:13px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--ember-text-soft); }
+        .kg-open { margin-left:auto; font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--ember-brass-bright); }
+        .kg-close { margin-left:auto; width:44px; height:44px; flex:none; border-radius:10px; cursor:pointer;
+          border:1px solid #8a6230; color:#ffe1b0; font-size:18px; line-height:1;
+          background:linear-gradient(180deg,#3a2716,#140d07); box-shadow:inset 0 1px 0 rgba(255,214,150,.25); }
+        .kg-open + .kg-close { margin-left:0; }
+        .kg-close:hover { filter:brightness(1.2); border-color:var(--ember-brass-bright); }
+        .kg-body { position:relative; flex:1; min-height:0; }
+        .kg-frame { display:block; width:100%; height:100%; border:0; background:#080605; }
+        .kg-works { height:100%; overflow:auto; padding:10px; }
+        .kg-works .eco-rail { margin:0; }
+        .kg-works .reveal { opacity:1; animation:none; }
+        @media (max-width:760px) {
+          .kg-overlay { padding:6px; }
+          .kg-head { gap:8px; padding:6px 6px 6px 12px; flex-wrap:wrap; }
+          .kg-title { font-size:11px; letter-spacing:.12em; }
+        }
+
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
@@ -3816,7 +3934,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
           {/* RIGHT */}
           <div ref={inboxColRef} className="ops-side flex min-h-0 flex-col gap-4">
-            <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow>
+            <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow
+              action={<button type="button" className="panel-link" disabled={thinking} onClick={() => runPrompt("triage")}>Triage Inbox ›</button>}>
               {data.emails.length === 0 && <p className="feed-empty">No unread email returned for the last 24 hours.</p>}
               {data.emails.map((m, i) => (
                 <Row key={i} who={m.from} when={m.time}
@@ -4537,14 +4656,25 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               <span className="dock-label">Caption Studio</span>
               <span className="dock-lamp" />
             </button>
-          {ACTIONS.map((a, i) => (
-            <button key={a.label} disabled={thinking} className={`dock-control ${a.primary && thinking ? "active" : ""}`}
-              onClick={() => { setView("ops"); sendCommand(a.prompt); }}>
-              <span className="dock-art" style={{ "--panel-x": `${242.857 + i * 100}%` }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" />{i === 0 && <DockMech kind="reactor" />}</span>
-              <span className="dock-label">{a.label}</span>
+            {/* Dock reorganised 2026-10-15 (Brady): the three quick-action tiles became
+                destinations. Their prompts moved, not vanished — WHAT'D I MISS and BRIEF
+                MY DAY are the reactor's push-plates, Triage is a link on the Inbox. */}
+            <button className={`dock-control ${graphOpen ? "active" : ""}`} onClick={() => setGraphOpen(true)}
+              aria-haspopup="dialog">
+              <span className="dock-art" style={{ "--panel-x": "242.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /><DockMech kind="furnace" /></span>
+              <span className="dock-label">Knowledge Graph</span>
               <span className="dock-lamp" />
             </button>
-          ))}
+            <a className="dock-control" href={DRIVE_URL} target="_blank" rel="noopener noreferrer" title="Open Google Drive in a new tab">
+              <span className="dock-art" style={{ "--panel-x": "342.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /><DockMech kind="drive" /></span>
+              <span className="dock-label">Google Drive</span>
+              <span className="dock-lamp" />
+            </a>
+            <a className="dock-control" href={FAREHARBOR_URL} target="_blank" rel="noopener noreferrer" title="Open the FareHarbor dashboard in a new tab">
+              <span className="dock-art" style={{ "--panel-x": "442.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /><DockMech kind="wheel" /></span>
+              <span className="dock-label">FareHarbor</span>
+              <span className="dock-lamp" />
+            </a>
             <button className={`dock-control ${view === "projects" ? "active" : ""}`} onClick={() => setView("projects")}>
               <span className="dock-art" style={{ "--panel-x": "542.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /></span>
               <span className="dock-label">Projects</span>
@@ -4554,6 +4684,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         </div>
         )}
       </div>
+      <GraphOverlay open={graphOpen} onClose={closeGraph} />
     </div>
   );
 }
@@ -4568,12 +4699,95 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
    on each press without timers, and the falsy first value keeps it still on load. */
 function DockMech({ kind, pull }) {
   if (kind === "reactor") return <span className="dock-reactor" aria-hidden="true" />;
+  if (kind === "furnace") return <span className="dock-reactor dock-furnace" aria-hidden="true" />;
+  if (kind === "drive") return <DrivePlate />;
   return (
     <span className={`dock-mech dock-mech-${kind}`} aria-hidden="true">
       <span key={pull} className={`dock-mech-rotor ${pull ? "run" : ""}`}>
         <img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" />
       </span>
     </span>
+  );
+}
+
+/* GOOGLE DRIVE — the Triage tile's painted gauge keeps its brass bezel; an opaque
+   engraved plate replaces the dial face (it covers the face and its needle whole,
+   so nothing painted is ever doubled). The Drive mark is drawn by its shape alone,
+   in three warm metals — brass, copper, bronze — because Google's green/yellow/blue
+   would break the warmth law (BUILD-PROMPT S3). Geometry, measured on the asset:
+   gauge centre panel-local (112.09, 109.98) by fitting the face's edge; the plate's
+   edge is r=50.5, inside the dark band at r=47-50 (0% of 1440 samples above
+   luminance 110) and just short of the bright brass line at r=52, which frames it. */
+function DrivePlate() {
+  return (
+    <span className="dock-drive" aria-hidden="true">
+      <svg viewBox="0 0 100 100">
+        <defs>
+          <radialGradient id="drvFace" cx="40%" cy="34%" r="70%">
+            <stop offset="0" stopColor="#4a3520" /><stop offset=".55" stopColor="#2a1c10" /><stop offset="1" stopColor="#120c06" />
+          </radialGradient>
+          <linearGradient id="drvBrass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f3cf7f" /><stop offset=".5" stopColor="#c89a45" /><stop offset="1" stopColor="#7a5622" /></linearGradient>
+          <linearGradient id="drvCopper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f0a06a" /><stop offset=".5" stopColor="#c0612c" /><stop offset="1" stopColor="#6e2e10" /></linearGradient>
+          <linearGradient id="drvBronze" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e8c48c" /><stop offset=".5" stopColor="#b07a3a" /><stop offset="1" stopColor="#6a4720" /></linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r="50" fill="url(#drvFace)" />
+        {[44, 37, 30].map((r) => <circle key={r} cx="50" cy="50" r={r} fill="none" stroke="rgba(214,179,106,.10)" strokeWidth=".8" />)}
+        <g stroke="rgba(0,0,0,.6)" strokeWidth="1.4" strokeLinejoin="round" transform="translate(50 50) scale(1.2) translate(-50 -51)">
+          <polygon points="38,24 52,24 34,56 20,56" fill="url(#drvBronze)" transform="translate(4 6)" />
+          <polygon points="48,24 62,24 86,66 72,66" fill="url(#drvBrass)" transform="translate(-6 4)" />
+          <polygon points="27,58 74,58 68,70 21,70" fill="url(#drvCopper)" transform="translate(2 2)" />
+        </g>
+      </svg>
+      <span className="dock-drive-sheen" />
+    </span>
+  );
+}
+
+/* KNOWLEDGE GRAPH overlay. Default tab: the Baxstar Knowledge Foundry — the graph
+   Brady preferred, a self-contained page in baxstarcode/baxstar-knowledge-network —
+   embedded, so it keeps its own search, filters, zoom and sources with no copy to
+   drift. It loads only when opened. Second tab: THE WORKS, which used to sit
+   collapsed on the OPS page. Backdrop 50% black; Escape, the close button or a
+   tap outside the sheet closes it; focus returns to the dock. */
+function GraphOverlay({ open, onClose }) {
+  const [tab, setTab] = useState("foundry");
+  const closeRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      previous?.focus?.();
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="kg-overlay" role="dialog" aria-modal="true" aria-label="Knowledge Graph"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="kg-sheet">
+        <div className="kg-head">
+          <span className="kg-title font-display">Knowledge Graph</span>
+          <div className="codex kg-tabs" role="tablist" aria-label="Graph">
+            <button role="tab" aria-selected={tab === "foundry"} className={`seg sm ${tab === "foundry" ? "on" : ""}`} onClick={() => setTab("foundry")}>Foundry</button>
+            <button role="tab" aria-selected={tab === "works"} className={`seg sm ${tab === "works" ? "on" : ""}`} onClick={() => setTab("works")}>The Works</button>
+          </div>
+          {tab === "foundry" && <a className="kg-open" href={FOUNDRY_URL} target="_blank" rel="noopener noreferrer">Open full page ↗</a>}
+          <button ref={closeRef} type="button" className="kg-close" onClick={onClose} aria-label="Close Knowledge Graph">✕</button>
+        </div>
+        <div className="kg-body">
+          {tab === "foundry"
+            ? <iframe className="kg-frame" src={FOUNDRY_URL} title="Baxstar Knowledge Foundry" referrerPolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" />
+            : <div className="kg-works"><EcoGraph defaultOpen /></div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -4703,7 +4917,7 @@ const ECO_NEAR = (() => {
   return m;
 })();
 
-function EcoGraph() {
+function EcoGraph({ defaultOpen = false } = {}) {
   /* Hover and pin are SEPARATE. Collapsing them into one "selected" id looks
      tempting and is wrong: on a desktop the pointer is already inside the node
      when the click lands, so a single toggling id gets set by mouseenter and
@@ -4720,7 +4934,7 @@ function EcoGraph() {
   const dimmed = (n) => (only && n.g !== only) || (sel && n.id !== sel && !near.has(n.id));
 
   return (
-    <details className="eco-rail panel reveal" style={{ animationDelay: "0.62s" }}>
+    <details className="eco-rail panel reveal" style={{ animationDelay: "0.62s" }} open={defaultOpen || undefined}>
       <summary className="eco-head">
         <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" width="12" height="12" aria-hidden="true" />
         <span className="font-mono-x text-[9px] tracking-[0.28em]" style={{ color: "var(--brass)" }}>THE WORKS</span>
@@ -4754,9 +4968,11 @@ function EcoGraph() {
               const off = (only && na.g !== only && nb.g !== only) || (sel && !lit);
               return (
                 <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
-                  stroke={lit ? colorOf(active.g) : "var(--ember-brass-dark)"}
-                  strokeWidth={lit ? 1.8 : 1}
-                  opacity={off ? 0.07 : lit ? 0.85 : 0.34} />
+                  // Visible at rest (Brady, 2026-10-15): dark brass at 34% was invisible
+                  // on near-black until a hover lit it, so the map read as loose dots.
+                  stroke={lit ? colorOf(active.g) : "var(--ember-brass)"}
+                  strokeWidth={lit ? 1.9 : 1.25}
+                  opacity={off ? 0.1 : lit ? 0.95 : 0.6} />
               );
             })}
           </g>
@@ -4831,12 +5047,15 @@ function EcoGraph() {
   );
 }
 
-function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge }) {
+function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge, action }) {
   return (
     <div className={`panel reveal flex flex-col px-5 py-4 ${grow ? "flex-1" : ""}`} style={{ animationDelay: delay, minHeight: 0 }}>
       <span className={`notch ${notch}`} />
       <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="font-display text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-dim)" }}>{title}</h3>
+        <span className="flex min-w-0 items-baseline gap-3">
+          <h3 className="font-display text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-dim)" }}>{title}</h3>
+          {action}
+        </span>
         <span className="flex items-center gap-2">
           {gauge != null && (
             <span className="gauge-wrap" aria-hidden="true">
