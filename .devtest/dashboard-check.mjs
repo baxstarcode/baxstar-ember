@@ -143,7 +143,8 @@ try {
     check(`${name} no skull ornament`, await page.locator(".skull-arch").count() === 0);
     check(`${name} core chamber present`, await page.locator(".core-host").count() > 0);
     const reactor = await page.locator(".reactor-stage").first().boundingBox();
-    check(`${name} reactor ~250px`, !!reactor && Math.abs(reactor.height - 250) <= 2, reactor ? `${Math.round(reactor.height)}px` : "missing");
+    check(`${name} reactor sized to the screen`, !!reactor && reactor.height >= (name === "PHONE" ? 160 : 240) && reactor.height <= 330,
+      reactor ? `${Math.round(reactor.height)}px` : "missing");
     check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
     check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));
     const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));

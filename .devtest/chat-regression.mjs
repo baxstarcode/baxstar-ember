@@ -418,7 +418,7 @@ try {
 
   await test('voicemail task draft saves once locally and preserves Mission Control', async (f) => {
     const requestsBefore = await syncCommunications(f);
-    await f.page.getByRole('button', { name: 'Task draft', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Task draft', exact: true }).first().click();
     const proposal = f.page.locator('.task-proposal');
     assert.match(await proposal.getByLabel('Task title', { exact: true }).inputValue(), /Call back.*555-0199/);
     assert.equal(await proposal.getByLabel('Task due', { exact: true }).inputValue(), '');
@@ -456,10 +456,10 @@ try {
     assert.equal(await f.page.locator(`[data-task-id="${savedMission.projects[0].tasks[0].id}"] input[type="checkbox"]`).isChecked(), true);
   }, taskOptions);
 
-  await test('email task lever prepares local source and discard changes nothing', async (f) => {
+  await test('email task draft prepares local source and discard changes nothing', async (f) => {
     const requestsBefore = await syncCommunications(f);
-    await f.page.locator('.ember-row').filter({ hasText: 'Fixture Email Sender' }).click();
-    await f.page.getByRole('button', { name: 'Task draft for selected communication', exact: true }).click();
+    await f.page.locator('.ember-row').filter({ hasText: 'Fixture Email Sender' })
+      .getByRole('button', { name: 'Task draft', exact: true }).click();
     const proposal = f.page.locator('.task-proposal');
     assert.match(await proposal.getByLabel('Task title', { exact: true }).inputValue(), /Fixture Email Sender/);
     assert.equal(await proposal.getByLabel('Task details', { exact: true }).inputValue(), 'Confirm the dock schedule');
@@ -472,7 +472,7 @@ try {
 
   await test('invalid Mission Control data is preserved and keeps the task draft', async (f) => {
     const requestsBefore = await syncCommunications(f);
-    await f.page.getByRole('button', { name: 'Task draft', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Task draft', exact: true }).first().click();
     const proposal = f.page.locator('.task-proposal');
     for (const invalid of ['{invalid JSON', JSON.stringify({ projects: 'not an array', keep: true }), JSON.stringify({ projects: [{ name: 'Baxstar Ember', tasks: 'not an array' }], keep: true })]) {
       await f.page.evaluate((value) => localStorage.setItem('ember-mc', value), invalid);
@@ -488,7 +488,7 @@ try {
 
   await test('storage failure leaves reviewed task draft available', async (f) => {
     const requestsBefore = await syncCommunications(f);
-    await f.page.getByRole('button', { name: 'Task draft', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Task draft', exact: true }).first().click();
     const proposal = f.page.locator('.task-proposal');
     await proposal.getByLabel('Task title', { exact: true }).fill('Preserve reviewed task on quota failure');
     await f.page.evaluate(() => {
@@ -528,7 +528,7 @@ try {
 
   await test('phone task draft is reviewable and saves with optional due blank', async (f) => {
     const requestsBefore = await syncCommunications(f);
-    await f.page.getByRole('button', { name: 'Task draft', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Task draft', exact: true }).first().click();
     const proposal = f.page.locator('.task-proposal');
     await proposal.getByLabel('Task title', { exact: true }).fill('   ');
     assert.equal(await proposal.getByRole('button', { name: 'Save locally', exact: true }).isDisabled(), true);

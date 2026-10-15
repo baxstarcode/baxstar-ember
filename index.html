@@ -775,7 +775,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-15 20:56Z".startsWith("__") ? "dev" : "2026-10-15 20:56Z";
+  const BUILD_STAMP = "2026-10-15 21:04Z".startsWith("__") ? "dev" : "2026-10-15 21:04Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1267,20 +1267,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     if (tool === "drive") return /* @__PURE__ */ React.createElement("svg", { width: size + 3, height: size, viewBox: "0 0 72 64", fill: "none", style: fx, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("path", { d: "M27 5h18l24 42-9 15H12L3 47 27 5Z", stroke: c, strokeWidth: "7", strokeLinejoin: "round" }), /* @__PURE__ */ React.createElement("path", { d: "M27 5 12 32m48 0H12m33-27-15 27 15 30", stroke: c, strokeWidth: "5", strokeLinejoin: "round" }));
     return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 64 64", fill: "none", style: fx, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("path", { d: "M32 4C16.5 4 4 16.9 4 32.8c0 12.7 8 23.5 19.1 27.3 1.4.3 1.9-.6 1.9-1.4v-5.5c-7.8 1.7-9.4-3.4-9.4-3.4-1.3-3.3-3.1-4.2-3.1-4.2-2.5-1.8.2-1.7.2-1.7 2.8.2 4.3 3 4.3 3 2.5 4.4 6.6 3.1 8.2 2.4.3-1.9 1-3.1 1.8-3.8-6.2-.7-12.8-3.2-12.8-14.2 0-3.1 1.1-5.7 2.9-7.7-.3-.7-1.3-3.6.3-7.6 0 0 2.4-.8 7.7 2.9a26.2 26.2 0 0 1 14 0c5.4-3.7 7.7-2.9 7.7-2.9 1.5 4 .6 6.9.3 7.6a11.2 11.2 0 0 1 2.9 7.7c0 11-6.6 13.4-12.9 14.1 1 1 1.9 2.8 1.9 5.6v8.2c0 .8.5 1.7 1.9 1.4A28.8 28.8 0 0 0 60 32.8C60 16.9 47.5 4 32 4Z", fill: c }));
   }
-  function ContextLever({ side, label, state, onPull }) {
-    const img = state === "active" ? "action-lever-active.svg" : state === "idle" ? "action-lever-idle.svg" : "action-lever-ready.svg";
+  function PromptPlate({ side, lines, running, disabled, onPress }) {
     return /* @__PURE__ */ React.createElement(
       "button",
       {
         type: "button",
-        disabled: state === "idle" || state === "active",
-        onClick: onPull,
-        "aria-label": `${label} for selected communication`,
-        className: `ctx-lever ${side} ${state}`
+        className: `prompt-plate ${side} ${running ? "running" : ""}`,
+        disabled,
+        onClick: onPress,
+        "aria-label": lines.join(" ")
       },
-      /* @__PURE__ */ React.createElement("img", { alt: "", src: `${ASSETS}/svg/controls/${img}` }),
-      /* @__PURE__ */ React.createElement("span", { className: `lever-dot ${state}` }),
-      /* @__PURE__ */ React.createElement("span", { className: "lever-label" }, label)
+      /* @__PURE__ */ React.createElement("span", { className: "plate-lamp", "aria-hidden": "true" }),
+      /* @__PURE__ */ React.createElement("span", { className: "plate-label" }, lines.map((l) => /* @__PURE__ */ React.createElement("span", { key: l }, l)))
     );
   }
   function BaxstarEmber() {
@@ -1290,6 +1288,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [leverPull, setLeverPull] = useState(0);
     const [selectedComm, setSelectedComm] = useState(null);
     const [leverBusy, setLeverBusy] = useState(null);
+    const [promptRunning, setPromptRunning] = useState(null);
     const [leverPending, setLeverPending] = useState(null);
     const [draftEdit, setDraftEdit] = useState(null);
     const [draftCopied, setDraftCopied] = useState(false);
@@ -2187,21 +2186,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       } catch (e) {
       }
     }
-    const commItem = selectedComm ? (selectedComm.type === "vm" ? data.voicemails[selectedComm.i] : data.emails[selectedComm.i]) || null : null;
-    function leverState(kind) {
-      if (leverBusy === kind) return "active";
-      if (!commItem) return "idle";
-      if (leverPending === kind) return "pending";
-      return "ready";
-    }
-    async function leverDraftReply() {
-      if (!commItem || leverBusy || thinking) return;
+    async function draftReply(item, type, index) {
+      if (!item || leverBusy || thinking) return;
+      setSelectedComm({ type, i: index });
       setLeverPending(null);
       setDraftEdit(null);
       setTaskProposal(null);
       setLeverBusy("draft");
       try {
-        const prompt = selectedComm.type === "vm" ? `Draft a reply text to ${commItem.from} on the ${commItem.line || "Fishing"} Quo line responding to: "${commItem.vm || "their missed call \u2014 apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft \u2014 don't send yet.` : `Draft a reply to the email from ${commItem.from}: "${commItem.subject}". Match Baxstar voice. Show me the draft \u2014 don't send yet.`;
+        const prompt = type === "vm" ? `Draft a reply text to ${item.from} on the ${item.line || "Fishing"} Quo line responding to: "${item.vm || "their missed call \u2014 apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft \u2014 don't send yet.` : `Draft a reply to the email from ${item.from}: "${item.subject}". Match Baxstar voice. Show me the draft \u2014 don't send yet.`;
         const answer = await sendCommand(prompt);
         if (answer) {
           setDraftEdit(answer);
@@ -2225,9 +2218,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         source: (!feedLive[type === "vm" ? "voicemails" : "emails"] ? "Demo preview \u2014 " : "") + (type === "vm" ? `call/voicemail from ${item.from}${item.line ? " (" + item.line + " line)" : ""}` : `email from ${item.from}: "${item.subject}"`)
       });
       setLeverPending("task");
-    }
-    function leverCreateTask() {
-      if (commItem) openTaskDraft(commItem, selectedComm.type, selectedComm.i);
     }
     function confirmTaskProposal() {
       if (!(taskProposal == null ? void 0 : taskProposal.title.trim())) return;
@@ -2253,13 +2243,20 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       return [fresh.length ? `Live: ${fresh.map((f) => f.what).join(", ")}` : null, ...rest].filter(Boolean).join(" \xB7 ");
     })();
     const ACTIONS = [
-      { label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
-      { label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
-      { label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." }
+      { id: "miss", label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
+      { id: "triage", label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
+      { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." }
       // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
       // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
       // tool still covers manual pulls.
     ];
+    function runPrompt(id) {
+      const action = ACTIONS.find((a) => a.id === id);
+      if (!action || thinking) return;
+      setView("ops");
+      setPromptRunning(id);
+      Promise.resolve(sendCommand(action.prompt)).finally(() => setPromptRunning(null));
+    }
     return /* @__PURE__ */ React.createElement("div", { className: "ember-root w-full", style: { background: "var(--bg)", color: "var(--ink)" } }, /* @__PURE__ */ React.createElement("style", null, `
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
         :root {
@@ -2705,10 +2702,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            move the circular full version up and bigger"). The reactor is the crown now. */
         .core-host { overflow:hidden; }
         /* Lift the chamber's contents above the background gradients. z-index needs a
-           position, but this must not clobber children that place themselves \u2014
-           .ctx-lever is absolute and carries its own z-index, and being forced to
-           relative dropped both levers into flow, on top of the greeting. */
-        .core-host > :not(.ctx-lever) { position:relative; z-index:1; }
+           position, but this must not clobber children that place themselves: give
+           any such child .core-abs. (The :not() also keeps this rule's specificity
+           where it has always been, above single-class rules like .notch.) */
+        .core-host > :not(.core-abs) { position:relative; z-index:1; }
 
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
 
@@ -2724,7 +2721,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .core-chamber .max-w-sm { max-width:100%; }
         .core-chamber .greet-row { margin-top:2px; max-width:100%; }
         .core-chamber .core-wrap { flex:none; }
-        .core-chamber.has-thread .reactor-stage { width:150px; height:150px; }
         .core-chamber.has-thread .greet-row { margin-top:2px; }
         .reactor-stage {
           position:relative; width:250px; height:250px;
@@ -3097,43 +3093,40 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .pipe-junction.pj-r { right:-12px; transform:scaleX(-1); }
         @media (min-width:980px){ .pipe-junction { display:block; } }
 
-        .ctx-lever { position:absolute; top:200px; transform:translateY(-50%); z-index:4;
-          display:none; flex-direction:column; align-items:center; gap:4px;
-          background:none; border:none; padding:0; cursor:pointer;
-          transition:filter 220ms var(--ember-ease-mechanical), transform 220ms var(--ember-ease-mechanical); }
-        @media (min-width:980px){ .ctx-lever { display:flex; } }
-        .has-thread .ctx-lever { top:160px; }
-        .ctx-lever.left { left:7px; } .ctx-lever.right { right:7px; }
-        .ctx-lever img {
-          width:clamp(48px,4.3vw,62px); height:auto; max-height:82px;
-          transform-origin:50% 82%; transition:filter 220ms var(--ember-ease-mechanical),transform 220ms var(--ember-ease-mechanical);
+        /* PUSH-PLATES \u2014 WHAT'D I MISS / BRIEF MY DAY either side of the reactor
+           (Brady, 2026-10-15; they replaced the Draft Reply / Task Draft levers).
+           Machined brass, engraved caps, an ember lamp that glows while its prompt
+           runs. They sit in the reactor's row, so they can never cover it. */
+        .core-row { display:flex; align-items:center; justify-content:center; gap:clamp(10px,2.2vw,34px); width:100%; }
+        .prompt-plate {
+          flex:none; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px;
+          width:clamp(74px,6.4vw,98px); min-height:clamp(78px,7vw,98px); padding:10px 6px 9px;
+          border:2px solid #6b4a26; border-radius:12px; cursor:pointer;
+          background:
+            radial-gradient(circle at 9px 9px,#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            radial-gradient(circle at calc(100% - 9px) 9px,#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            radial-gradient(circle at 9px calc(100% - 9px),#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            radial-gradient(circle at calc(100% - 9px) calc(100% - 9px),#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            linear-gradient(180deg,#3a2716 0%,#1c130b 46%,#0d0905 100%);
+          box-shadow:inset 0 1px 0 rgba(255,214,150,.28), inset 0 0 0 1px rgba(214,179,106,.22),
+            inset 0 -10px 16px rgba(0,0,0,.5), 0 8px 18px rgba(0,0,0,.6), 0 0 14px rgba(255,105,38,.08);
+          transition:transform 140ms var(--ember-ease-mechanical), filter 180ms, box-shadow 180ms;
         }
-        .ctx-lever:disabled { cursor:default; }
-        .ctx-lever:disabled img { opacity:.6; }
-        .ctx-lever:not(:disabled):hover { filter:brightness(1.15); transform:translateY(calc(-50% - 2px)); }
-        .ctx-lever:not(.idle) img { animation:leverAttention 5.8s var(--ember-ease-mechanical) infinite; }
-        .ctx-lever.active img { animation:contextLeverPull 720ms var(--ember-ease-mechanical) infinite alternate; }
-        @keyframes leverAttention {
-          0%,76%,100%{transform:rotate(0deg);}
-          82%{transform:rotate(-7deg);}
-          89%{transform:rotate(5deg);}
-          94%{transform:rotate(0deg);}
-        }
-        @keyframes contextLeverPull { to{transform:rotate(17deg) translateY(3px);} }
-        .lever-label {
-          order:-1; width:76px; padding:4px 3px; margin-bottom:-5px;
-          border:2px solid #5f4428; border-radius:5px; color:var(--ember-text-soft);
-          background:linear-gradient(180deg,#18110c,#070604);
-          box-shadow:inset 0 0 0 1px rgba(214,179,106,.18),0 5px 12px rgba(0,0,0,.55);
-          font-family:var(--ember-font-display); font-size:8px; font-weight:700;
-          line-height:1.15; letter-spacing:.06em; text-transform:uppercase; text-align:center;
-        }
-        .lever-dot { width:7px; height:7px; border-radius:50%; background:var(--ember-brass-dark); transition:background 220ms; }
-        .lever-dot.ready { background:var(--ember-brass-bright); box-shadow:0 0 6px rgba(214,179,106,.8); }
-        .lever-dot.active { background:var(--ember-active); box-shadow:0 0 8px rgba(255,77,50,.85); }
-        .lever-dot.pending { background:var(--ember-warning); box-shadow:0 0 8px rgba(255,177,59,.8);
-          animation:leverPulse 900ms ease-in-out infinite; }
-        @keyframes leverPulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+        .prompt-plate:hover:not(:disabled) { filter:brightness(1.16); box-shadow:inset 0 1px 0 rgba(255,214,150,.32),
+            inset 0 0 0 1px rgba(214,179,106,.4), inset 0 -10px 16px rgba(0,0,0,.5), 0 8px 18px rgba(0,0,0,.6), 0 0 18px rgba(255,105,38,.22); }
+        .prompt-plate:active:not(:disabled) { transform:translateY(2px); box-shadow:inset 0 3px 8px rgba(0,0,0,.7), inset 0 0 0 1px rgba(214,179,106,.3); }
+        .prompt-plate:focus-visible { outline:2px solid var(--ember-brass-bright); outline-offset:3px; }
+        .prompt-plate:disabled { cursor:default; opacity:.62; }
+        .prompt-plate.running { opacity:1; }
+        .plate-lamp { width:9px; height:9px; border-radius:50%;
+          background:radial-gradient(circle at 35% 35%,#ffb27a,#c3381c 60%,#5a1408);
+          box-shadow:0 0 6px rgba(255,77,50,.55), inset 0 -1px 2px rgba(0,0,0,.5); }
+        .prompt-plate.running .plate-lamp { animation:plateLamp 900ms ease-in-out infinite; }
+        @keyframes plateLamp { 0%,100% { box-shadow:0 0 5px rgba(255,77,50,.5); filter:brightness(.9); } 50% { box-shadow:0 0 14px rgba(255,122,69,.95); filter:brightness(1.35); } }
+        .plate-label { display:flex; flex-direction:column; align-items:center; gap:1px;
+          font-family:var(--ember-font-display); font-weight:700; font-size:clamp(10px,.8vw,12px); line-height:1.15;
+          letter-spacing:.1em; color:#f0d9a8; text-shadow:0 1px 0 #000, 0 0 8px rgba(255,150,70,.18); }
+        @media (prefers-reduced-motion:reduce) { .prompt-plate.running .plate-lamp { animation:none; } }
 
         .row-sel { cursor:pointer; transition:background 140ms, box-shadow 140ms, padding 140ms; }
         .row-sel:hover { background:rgba(214,179,106,.05); }
@@ -3258,6 +3251,88 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .core-chamber { padding-block:8px!important; }
           .tool-tile { min-height:50px; }
         }
+
+        /* ---------- ONE-SCREEN OPS (Brady, 2026-10-15) ----------
+           On a desktop-sized window the OPS view is exactly one viewport tall:
+           header, the three columns, YOUR TOOLS and the fixed dock all show at once,
+           and the panels scroll inside themselves instead of the page scrolling.
+           Measured before: 1440x900 ran to 1144px with YOUR TOOLS hidden under the
+           dock. Short or narrow windows keep the normal scrolling layout. */
+        .ops-error { margin:0 4px; color:#ff8074; font-size:12px; font-weight:600; line-height:1.4;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .core-wrap { width:100%; container-type:inline-size; }
+        .reactor-stage {
+          /* Height-led: everything else in the centre column is ~270px fixed. */
+          --r: clamp(140px, calc(100dvh - 630px), 330px);
+          width:min(var(--r), calc(100cqw - 2 * clamp(74px,6.4vw,98px) - 2 * clamp(10px,2.2vw,34px)));
+          height:auto; aspect-ratio:1;
+        }
+        .core-chamber.has-thread .reactor-stage { --r: clamp(96px, calc(100dvh - 760px), 170px); height:auto; }
+        @media (max-width:760px){
+          .prompt-plate { width:58px; min-height:70px; padding:8px 3px; gap:5px; }
+          .plate-label { font-size:9px; letter-spacing:.05em; }
+          .core-row { gap:6px; }
+          .reactor-stage { --r:240px; width:min(var(--r), calc(100cqw - 2 * 58px - 2 * 6px)); }
+        }
+        @media (min-width:1021px) and (min-height:640px){
+          .ember-shell.ops-fit { height:100dvh; min-height:0; overflow:hidden; }
+          .ops-fit .main-grid { flex:1 1 0; min-height:0; grid-template-rows:minmax(0,1fr); }
+          .ops-fit .ops-side, .ops-fit .ops-core { min-height:0; }
+          .ops-fit .ops-core { display:flex; flex-direction:column; }
+          .ops-fit .core-chamber { min-height:0; }
+          .ops-fit .home-thread { flex:1 1 0; height:auto; min-height:80px; }
+          .ops-fit .chat-composer, .ops-fit .chat-hint, .ops-fit .chat-controls { flex:none; }
+          .ops-fit .chat-hint { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+          /* Model and Effort share one row. */
+          .ops-fit .chat-controls { flex-wrap:nowrap; max-width:none; column-gap:12px; }
+          .ops-fit .chat-controls .codex { flex-wrap:nowrap; padding:1px 4px; gap:3px; }
+          .ops-fit .chat-controls .seg.sm { padding:4px 9px; font-size:10px; }
+          .ops-fit .chat-controls .fieldlabel { letter-spacing:.18em; }
+        }
+        /* A conversation is open: the thread gets the room. The reactor shrinks,
+           the push-plates become one-line pills, and the greeting and ENIGMA/SCOPE
+           rows step aside until the thread is cleared. */
+        @media (min-width:1021px) and (min-height:640px){
+          .ops-fit .core-chamber.has-thread .reactor-stage { --r: clamp(64px, calc(100dvh - 810px), 150px); }
+          .ops-fit .core-chamber.has-thread .greet-row,
+          .ops-fit .core-chamber.has-thread .core-wrap > .mt-2 { display:none; }
+          .ops-fit .core-chamber.has-thread .prompt-plate { flex-direction:row; width:auto; min-height:0; padding:7px 12px; gap:7px; }
+          .ops-fit .core-chamber.has-thread .plate-label { flex-direction:row; gap:4px; }
+          .ops-fit .core-chamber.has-thread .chat-composer .cmd-input { min-height:56px; }
+          .ops-fit .core-chamber.has-thread .home-thread { min-height:220px; }
+        }
+        /* Short laptop windows: the composer starts at two lines, not three. */
+        @media (min-width:1021px) and (min-height:640px) and (max-height:800px){
+          .ops-fit .chat-composer .cmd-input { min-height:56px; padding:9px 12px; }
+          .ops-fit .core-wrap > .mt-2 { margin-top:2px; }
+          .ops-fit .core-chamber { gap:6px!important; padding-top:6px!important; padding-bottom:8px!important; }
+        }
+        /* Narrower centre columns: the field labels give their room to the buttons
+           (the buttons still name themselves; the row stays one row). */
+        .ops-core { container-type:inline-size; }
+        @container (max-width:620px){
+          .ops-fit .chat-controls .fieldlabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+          .ops-fit .chat-controls { column-gap:8px; }
+          .ops-fit .chat-controls .seg.sm { padding:4px 7px; font-size:9.5px; }
+        }
+        /* YOUR TOOLS: one slim row with its label inline. */
+        .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }
+        .tools-rail .tools-head { flex:none; border:none; padding:0; margin:0; }
+        .tools-rail .tools-groups { flex:1; min-width:0; }
+        .tools-rail .tools-groups { display:flex; gap:7px; overflow-x:auto; scrollbar-width:thin; }
+        .tool-link { flex:1 0 auto; min-height:32px; padding:5px 10px; }
+        .tool-name { white-space:nowrap; overflow-wrap:normal; }
+        @media (pointer:coarse){ .tool-link { min-height:44px; } }
+        @media (max-width:1179px){ .tools-rail .tools-head::after { content:none; } }
+        /* Warm focus everywhere: the browser's default blue ring broke the warmth
+           law on the YOUR TOOLS links (Brady's screenshot, 2026-10-15). */
+        a:focus-visible, button:focus-visible, [role="button"]:focus-visible, summary:focus-visible {
+          outline:2px solid var(--ember-brass-bright); outline-offset:2px; }
+        a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline:none; }
+        /* Chat replies: 1pt smaller than the 15px they were (Brady, 2026-10-15). */
+        .chat-bubble { font-size:calc(15px - 1pt); }
+        /* The composer grows up to 192px (was 240px, -20%), then scrolls inside. */
+        .chat-composer .cmd-input { max-height:192px; }
       `), bgActive && /* @__PURE__ */ React.createElement("div", { className: "fixed inset-0", style: {
       zIndex: 0,
       background: activeBgCss || void 0,
@@ -3269,7 +3344,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       animationDuration: `${7.5 + i % 5 * 2.2}s`,
       animationDelay: `${-i * 1.6}s`,
       "--dx": `${(i % 2 ? -1 : 1) * (14 + i * 5)}px`
-    } }))), /* @__PURE__ */ React.createElement("div", { className: `ember-shell relative z-10 mx-auto flex flex-col ${bgActive ? "bg-on" : ""}` }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/pipe-junction.svg`, alt: "", "aria-hidden": "true", className: "pipe-junction pj-l" }), /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/pipe-junction.svg`, alt: "", "aria-hidden": "true", className: "pipe-junction pj-r" }), /* @__PURE__ */ React.createElement("header", { className: "ember-header reveal relative flex items-center justify-between", style: { animationDelay: "0.05s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3.5" }, /* @__PURE__ */ React.createElement(
+    } }))), /* @__PURE__ */ React.createElement("div", { className: `ember-shell relative z-10 mx-auto flex flex-col ${bgActive ? "bg-on" : ""} ${view === "ops" ? "ops-fit" : ""}` }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/pipe-junction.svg`, alt: "", "aria-hidden": "true", className: "pipe-junction pj-l" }), /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/pipe-junction.svg`, alt: "", "aria-hidden": "true", className: "pipe-junction pj-r" }), /* @__PURE__ */ React.createElement("header", { className: "ember-header reveal relative flex items-center justify-between", style: { animationDelay: "0.05s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3.5" }, /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "flex h-9 w-9 items-center justify-center rounded-lg text-base font-extrabold text-white",
@@ -3389,14 +3464,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), error && /* @__PURE__ */ React.createElement(
-      "div",
-      {
-        className: "rounded-lg border px-4 py-2 text-xs font-semibold",
-        style: { borderColor: "rgba(255,77,61,.5)", background: "rgba(255,77,61,.08)", color: "#ff8074" }
-      },
-      error
-    ), view === "ops" && opsNote && /* @__PURE__ */ React.createElement("p", { className: "ops-data-note", role: "status" }, opsNote), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "main-grid flex-1" }, /* @__PURE__ */ React.createElement("div", { ref: callsColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Calls & Voicemail", count: `${data.voicemails.length} ITEMS`, countColor: "var(--ember-orange)", delay: "0.15s", grow: true }, data.voicemails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No missed calls or voicemails returned for the last 48 hours."), data.voicemails.map((v, i) => /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), error && /* @__PURE__ */ React.createElement("p", { className: "ops-error", role: "alert", title: error }, error), view === "ops" && opsNote && /* @__PURE__ */ React.createElement("p", { className: "ops-data-note", role: "status" }, opsNote), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "main-grid flex-1" }, /* @__PURE__ */ React.createElement("div", { ref: callsColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Calls & Voicemail", count: `${data.voicemails.length} ITEMS`, countColor: "var(--ember-orange)", delay: "0.15s", grow: true }, data.voicemails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No missed calls or voicemails returned for the last 48 hours."), data.voicemails.map((v, i) => /* @__PURE__ */ React.createElement(
       Row,
       {
         key: i,
@@ -3415,9 +3483,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         v.vm,
         '"'
       ) : /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-xs", style: { color: "var(--ink-dim)" } }, v.note || "No voicemail."),
-      /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: (e) => {
+      /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", disabled: thinking || !!leverBusy, onClick: (e) => {
         e.stopPropagation();
-        sendCommand(`Draft a reply text to ${v.from} on the ${v.line || "Fishing"} Quo line responding to: "${v.vm || "their missed call \u2014 apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft \u2014 don't send yet.`);
+        draftReply(v, "vm", i);
       } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", onClick: (e) => {
         e.stopPropagation();
         openTaskDraft(v, "vm", i);
@@ -3438,19 +3506,37 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         style: { background: "#120c0c", color: "var(--ink)" },
         "aria-label": "Today's revenue in dollars"
       }
-    ), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => commitRevenue(revEdit) }, "Save"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setRevEdit(null) }, "Cancel")), revEdit !== null && /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[10px]", style: { color: "var(--ink-faint)" } }, "Numbers only \u2014 save empty to clear."))))), /* @__PURE__ */ React.createElement("div", { className: "ops-core flex min-h-0 flex-col" }, /* @__PURE__ */ React.createElement("div", { className: `core-chamber panel core-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}` }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement(ContextLever, { side: "left", label: "Draft Reply", state: leverState("draft"), onPull: leverDraftReply }), /* @__PURE__ */ React.createElement(ContextLever, { side: "right", label: "Task draft", state: leverState("task"), onPull: leverCreateTask }), /* @__PURE__ */ React.createElement("div", { className: "greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center", style: { animationDelay: "0.1s" } }, /* @__PURE__ */ React.createElement("span", { className: "greet-hi text-[15px] font-bold tracking-tight" }, dayPart, ",", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } }, "Brady.")), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
+    ), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => commitRevenue(revEdit) }, "Save"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setRevEdit(null) }, "Cancel")), revEdit !== null && /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[10px]", style: { color: "var(--ink-faint)" } }, "Numbers only \u2014 save empty to clear."))))), /* @__PURE__ */ React.createElement("div", { className: "ops-core flex min-h-0 flex-col" }, /* @__PURE__ */ React.createElement("div", { className: `core-chamber panel core-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}` }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center", style: { animationDelay: "0.1s" } }, /* @__PURE__ */ React.createElement("span", { className: "greet-hi text-[15px] font-bold tracking-tight" }, dayPart, ",", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } }, "Brady.")), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
       var _a2;
       return (_a2 = callsColRef.current) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "start" });
     } }, data.voicemails.length, " ", /* @__PURE__ */ React.createElement("span", { className: "greet-long" }, "voicemails"), /* @__PURE__ */ React.createElement("span", { className: "greet-short" }, "vm"), " \u2193"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
       var _a2;
       return (_a2 = inboxColRef.current) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "start" });
-    } }, data.emails.length, " unread \u2193")), /* @__PURE__ */ React.createElement("div", { className: "reveal core-wrap flex flex-col items-center", style: { animationDelay: "0.35s" } }, coreMode === "enigma" ? /* @__PURE__ */ React.createElement("div", { className: "reactor-stage", onClick: () => {
+    } }, data.emails.length, " unread \u2193")), /* @__PURE__ */ React.createElement("div", { className: "reveal core-wrap flex flex-col items-center", style: { animationDelay: "0.35s" } }, /* @__PURE__ */ React.createElement("div", { className: "core-row" }, /* @__PURE__ */ React.createElement(
+      PromptPlate,
+      {
+        side: "left",
+        lines: ["WHAT'D", "I MISS"],
+        running: thinking && promptRunning === "miss",
+        disabled: thinking,
+        onPress: () => runPrompt("miss")
+      }
+    ), coreMode === "enigma" ? /* @__PURE__ */ React.createElement("div", { className: "reactor-stage", onClick: () => {
       var _a2;
       return (_a2 = cmdInputRef.current) == null ? void 0 : _a2.focus();
     }, role: "button", "aria-label": "Focus the ask box" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/reactor-bezel@2x.webp`, alt: "", "aria-hidden": "true", className: "reactor-bezel" }), /* @__PURE__ */ React.createElement("div", { className: "reactor-core-orb" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/controls/mic-orb-shell.svg`, alt: "", "aria-hidden": "true", className: "orb-shell" }), /* @__PURE__ */ React.createElement("div", { ref: gasRef, className: "gas-wrap" }, /* @__PURE__ */ React.createElement("div", { className: "gas g1" }), /* @__PURE__ */ React.createElement("div", { className: "gas g2" }), /* @__PURE__ */ React.createElement("div", { className: "gas g3" }), /* @__PURE__ */ React.createElement("div", { className: "gas g4" })), /* @__PURE__ */ React.createElement("div", { ref: ventRef, className: "pointer-events-none absolute z-10", style: { inset: "-26px" } }))) : /* @__PURE__ */ React.createElement("div", { className: "scope-bezel mx-auto my-6", onClick: () => {
       var _a2;
       return (_a2 = cmdInputRef.current) == null ? void 0 : _a2.focus();
-    }, role: "button", "aria-label": "Focus the ask box" }, /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", left: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", right: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", left: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", right: "6px" } }), /* @__PURE__ */ React.createElement("canvas", { ref: scopeRef, width: "300", height: "110", style: { display: "block" } })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1" }, /* @__PURE__ */ React.createElement(
+    }, role: "button", "aria-label": "Focus the ask box" }, /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", left: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { top: "5px", right: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", left: "6px" } }), /* @__PURE__ */ React.createElement("span", { className: "scope-screw", style: { bottom: "5px", right: "6px" } }), /* @__PURE__ */ React.createElement("canvas", { ref: scopeRef, width: "300", height: "110", style: { display: "block" } })), /* @__PURE__ */ React.createElement(
+      PromptPlate,
+      {
+        side: "right",
+        lines: ["BRIEF", "MY DAY"],
+        running: thinking && promptRunning === "brief",
+        disabled: thinking,
+        onPress: () => runPrompt("brief")
+      }
+    )), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1" }, /* @__PURE__ */ React.createElement(
       "span",
       {
         className: "font-mono-x text-[9.5px] tracking-[0.25em]",
@@ -3532,7 +3618,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         style: { background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)" }
       },
       thinking ? "Stop" : "RUN"
-    )), /* @__PURE__ */ React.createElement("div", { id: "chat-input-hint", className: "chat-hint" }, "Enter to send \xB7 Shift+Enter for a new line. Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled."), /* @__PURE__ */ React.createElement("div", { className: "chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2", style: { animationDelay: "0.6s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Model"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, MODELS.map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, disabled: thinking, "aria-pressed": chatModel === m.id, title: `${m.name} \xB7 ${m.id}`, className: `seg sm ${chatModel === m.id ? "on" : ""}`, onClick: () => setChatModel(m.id) }, m.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Effort"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, Object.entries(EFFORT).map(([k, e]) => /* @__PURE__ */ React.createElement("button", { key: k, disabled: thinking, "aria-pressed": chatEffort === k, className: `seg sm ${chatEffort === k ? "on" : ""}`, onClick: () => setChatEffort(k) }, e.label)))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: clearChat }, "Clear thread")), draftEdit !== null && /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { id: "chat-input-hint", className: "chat-hint", title: "Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled." }, "Enter to send \xB7 Shift+Enter for a new line \xB7 connectors are read-only; nothing is sent for you."), /* @__PURE__ */ React.createElement("div", { className: "chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2", style: { animationDelay: "0.6s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Model"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, MODELS.map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, disabled: thinking, "aria-pressed": chatModel === m.id, title: `${m.name} \xB7 ${m.id}`, className: `seg sm ${chatModel === m.id ? "on" : ""}`, onClick: () => setChatModel(m.id) }, m.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Effort"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, Object.entries(EFFORT).map(([k, e]) => /* @__PURE__ */ React.createElement("button", { key: k, disabled: thinking, "aria-pressed": chatEffort === k, className: `seg sm ${chatEffort === k ? "on" : ""}`, onClick: () => setChatEffort(k) }, e.label)))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: clearChat }, "Clear thread")), draftEdit !== null && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "w-full max-w-sm rounded-xl border px-4 py-3",
@@ -3634,11 +3720,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         onClick: () => setSelectedComm((selectedComm == null ? void 0 : selectedComm.type) === "email" && selectedComm.i === i ? null : { type: "email", i })
       },
       /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-xs leading-relaxed", style: { color: "var(--ink-dim)" } }, m.subject),
-      /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: (e) => {
+      /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", disabled: thinking || !!leverBusy, onClick: (e) => {
         e.stopPropagation();
-        sendCommand(`Draft a reply to the email from ${m.from}: "${m.subject}". Match Baxstar voice. Show me the draft \u2014 don't send yet.`);
-      } }, "Draft reply"))
-    ))), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }))))), view === "ops" && /* @__PURE__ */ React.createElement(EcoGraph, null), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => /* @__PURE__ */ React.createElement("a", { key: t.url, href: t.url, target: "_blank", rel: "noopener noreferrer", className: "tool-link", title: `${g.group} \xB7 ${t.note}` }, /* @__PURE__ */ React.createElement("span", { className: "tool-name" }, t.label), /* @__PURE__ */ React.createElement("span", { className: "tool-note" }, t.note)))))))), view === "studio" && /* @__PURE__ */ React.createElement("div", { className: "studio-stack flex-1" }, !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "studio-tools-panel panel reveal px-5 py-4", style: { animationDelay: "0.08s" } }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "tool-grid" }, TOOLS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, className: `tool-tile ${studioTool === t.id ? "on" : ""}`, onClick: () => setStudioTool(t.id) }, /* @__PURE__ */ React.createElement("span", { className: "tic" }, t.id === "drive" || t.id === "github" ? /* @__PURE__ */ React.createElement(BrandMark, { tool: t.id, active: studioTool === t.id }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: t.icon })), t.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, studioTool === "captions" && /* @__PURE__ */ React.createElement("div", { className: "cap-grid flex-1" }, /* @__PURE__ */ React.createElement(
+        draftReply(m, "email", i);
+      } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", onClick: (e) => {
+        e.stopPropagation();
+        openTaskDraft(m, "email", i);
+      } }, "Task draft"))
+    ))), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => /* @__PURE__ */ React.createElement("a", { key: t.url, href: t.url, target: "_blank", rel: "noopener noreferrer", className: "tool-link", title: `${g.group} \xB7 ${t.note}` }, /* @__PURE__ */ React.createElement("span", { className: "tool-name" }, t.label), /* @__PURE__ */ React.createElement("span", { className: "tool-note" }, t.note)))))))), view === "studio" && /* @__PURE__ */ React.createElement("div", { className: "studio-stack flex-1" }, !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "studio-tools-panel panel reveal px-5 py-4", style: { animationDelay: "0.08s" } }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "tool-grid" }, TOOLS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, className: `tool-tile ${studioTool === t.id ? "on" : ""}`, onClick: () => setStudioTool(t.id) }, /* @__PURE__ */ React.createElement("span", { className: "tic" }, t.id === "drive" || t.id === "github" ? /* @__PURE__ */ React.createElement(BrandMark, { tool: t.id, active: studioTool === t.id }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: t.icon })), t.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, studioTool === "captions" && /* @__PURE__ */ React.createElement("div", { className: "cap-grid flex-1" }, /* @__PURE__ */ React.createElement(
       Panel,
       {
         notch: "warm",
@@ -4272,114 +4361,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     }
     return m;
   })();
-  function EcoGraph() {
-    const [hover, setHover] = useState(null);
-    const [pin, setPin] = useState(null);
-    const [only, setOnly] = useState(null);
-    const sel = pin || hover;
-    const colorOf = (g) => ECO_COLOR.get(g) || "var(--brass)";
-    const active = sel ? ECO_BY_ID.get(sel) : null;
-    const near = sel ? ECO_NEAR.get(sel) : null;
-    const dimmed = (n) => only && n.g !== only || sel && n.id !== sel && !near.has(n.id);
-    return /* @__PURE__ */ React.createElement("details", { className: "eco-rail panel reveal", style: { animationDelay: "0.62s" } }, /* @__PURE__ */ React.createElement("summary", { className: "eco-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/pipe-junction.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "THE WORKS"), /* @__PURE__ */ React.createElement("span", { className: "eco-count font-mono-x" }, ECO_NODES.length, " PARTS \xB7 ", ECO_EDGES.length, " LINKS")), /* @__PURE__ */ React.createElement("div", { className: "eco-legend" }, ECO_GROUPS.map((g) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: g.id,
-        className: `eco-key ${only === g.id ? "on" : ""}`,
-        onClick: () => {
-          setOnly(only === g.id ? null : g.id);
-          setPin(null);
-          setHover(null);
-        }
-      },
-      /* @__PURE__ */ React.createElement("span", { className: "eco-dot", style: { background: g.color } }),
-      g.label
-    )), (only || sel) && /* @__PURE__ */ React.createElement("button", { className: "eco-key reset", onClick: () => {
-      setOnly(null);
-      setPin(null);
-      setHover(null);
-    } }, "Reset")), /* @__PURE__ */ React.createElement("div", { className: "eco-scroll" }, /* @__PURE__ */ React.createElement(
-      "svg",
-      {
-        className: "eco-svg",
-        viewBox: `0 0 ${ECO_W} ${ECO_H}`,
-        role: "img",
-        "aria-label": "Map of Brady's sites, repos, services and sources of truth, and how they connect"
-      },
-      /* @__PURE__ */ React.createElement("g", null, ECO_EDGES.map(([a, b], i) => {
-        const na = ECO_BY_ID.get(a), nb = ECO_BY_ID.get(b);
-        if (!na || !nb) return null;
-        const lit = sel && (a === sel || b === sel);
-        const off = only && na.g !== only && nb.g !== only || sel && !lit;
-        return /* @__PURE__ */ React.createElement(
-          "line",
-          {
-            key: i,
-            x1: na.x,
-            y1: na.y,
-            x2: nb.x,
-            y2: nb.y,
-            stroke: lit ? colorOf(active.g) : "var(--ember-brass-dark)",
-            strokeWidth: lit ? 1.8 : 1,
-            opacity: off ? 0.07 : lit ? 0.85 : 0.34
-          }
-        );
-      })),
-      /* @__PURE__ */ React.createElement("g", null, ECO_PLACED.map((n) => {
-        const core = n.id === "ember";
-        const r = core ? 17 : n.g === "business" ? 11 : 8;
-        const off = dimmed(n);
-        const c = colorOf(n.g);
-        return /* @__PURE__ */ React.createElement(
-          "g",
-          {
-            key: n.id,
-            className: "eco-node",
-            opacity: off ? 0.2 : 1,
-            onMouseEnter: () => setHover(n.id),
-            onMouseLeave: () => setHover((h) => h === n.id ? null : h),
-            onClick: () => setPin((q) => q === n.id ? null : n.id),
-            role: "button",
-            tabIndex: 0,
-            onFocus: () => setHover(n.id),
-            onBlur: () => setHover((h) => h === n.id ? null : h),
-            onKeyDown: (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setPin((q) => q === n.id ? null : n.id);
-              }
-            }
-          },
-          /* @__PURE__ */ React.createElement("title", null, `${n.label} \u2014 ${n.note}`),
-          /* @__PURE__ */ React.createElement("circle", { cx: n.x, cy: n.y, r: Math.max(r + 16, 26), fill: "transparent" }),
-          (core || n.id === sel) && /* @__PURE__ */ React.createElement("circle", { cx: n.x, cy: n.y, r: r + 9, fill: c, opacity: 0.14 }),
-          /* @__PURE__ */ React.createElement(
-            "circle",
-            {
-              cx: n.x,
-              cy: n.y,
-              r,
-              fill: "#100D0A",
-              stroke: c,
-              strokeWidth: n.id === sel ? 3 : core ? 2.5 : 1.6
-            }
-          ),
-          core && /* @__PURE__ */ React.createElement("circle", { cx: n.x, cy: n.y, r: r - 6, fill: c, opacity: 0.85 }),
-          /* @__PURE__ */ React.createElement(
-            "text",
-            {
-              x: n.x,
-              y: n.y + r + 13,
-              textAnchor: "middle",
-              className: core ? "eco-label core" : "eco-label",
-              fill: n.id === sel ? "var(--ink)" : core ? c : "var(--ink-dim)"
-            },
-            n.label
-          )
-        );
-      }))
-    )), /* @__PURE__ */ React.createElement("div", { className: "eco-detail" }, active ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "eco-detail-name", style: { color: colorOf(active.g) } }, active.label), /* @__PURE__ */ React.createElement("span", { className: "eco-detail-note" }, active.note), /* @__PURE__ */ React.createElement("span", { className: "eco-detail-meta font-mono-x" }, near.size, " ", near.size === 1 ? "LINK" : "LINKS"), pin === active.id && /* @__PURE__ */ React.createElement("button", { className: "eco-detail-open", onClick: () => setPin(null) }, "pinned \u2014 tap to release"), active.url && /* @__PURE__ */ React.createElement("a", { href: active.url, target: "_blank", rel: "noopener noreferrer", className: "eco-detail-open" }, "open \u2197")) : /* @__PURE__ */ React.createElement("span", { className: "eco-detail-note" }, "Hover or tap any part to trace what it touches. Tap a colour to isolate that layer.")));
-  }
   function Panel({ notch, title, count, countColor, children, delay, grow, scroll = true, codexCount, gauge }) {
     return /* @__PURE__ */ React.createElement("div", { className: `panel reveal flex flex-col px-5 py-4 ${grow ? "flex-1" : ""}`, style: { animationDelay: delay, minHeight: 0 } }, /* @__PURE__ */ React.createElement("span", { className: `notch ${notch}` }), /* @__PURE__ */ React.createElement("div", { className: "mb-2.5 flex items-center justify-between" }, /* @__PURE__ */ React.createElement("h3", { className: "font-display text-[11px] font-bold uppercase tracking-[0.2em]", style: { color: "var(--ink-dim)" } }, title), /* @__PURE__ */ React.createElement("span", { className: "flex items-center gap-2" }, gauge != null && /* @__PURE__ */ React.createElement("span", { className: "gauge-wrap", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/controls/gauge-face.svg`, alt: "" }), /* @__PURE__ */ React.createElement(
       "img",

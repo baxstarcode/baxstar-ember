@@ -1173,20 +1173,15 @@ function BrandMark({ tool, active, size = 22 }) {
   );
 }
 
-// Contextual action lever (Draft Reply / Task draft) — art per state from the
-// pack; status point pulses at 900ms during pending-review per motion-spec.
-function ContextLever({ side, label, state, onPull }) {
-  const img =
-    state === "active" ? "action-lever-active.svg"
-    : state === "idle" ? "action-lever-idle.svg"
-    : "action-lever-ready.svg"; // ready + pending-review share the ready art
+// Brass push-plates either side of the reactor (Brady, 2026-10-15): they replaced
+// the Draft Reply / Task Draft levers, whose jobs live on every call and email row.
+// Each runs an existing ACTIONS prompt into the chat thread — no second copy of it.
+function PromptPlate({ side, lines, running, disabled, onPress }) {
   return (
-    <button type="button" disabled={state === "idle" || state === "active"} onClick={onPull}
-      aria-label={`${label} for selected communication`}
-      className={`ctx-lever ${side} ${state}`}>
-      <img alt="" src={`${ASSETS}/svg/controls/${img}`} />
-      <span className={`lever-dot ${state}`} />
-      <span className="lever-label">{label}</span>
+    <button type="button" className={`prompt-plate ${side} ${running ? "running" : ""}`}
+      disabled={disabled} onClick={onPress} aria-label={lines.join(" ")}>
+      <span className="plate-lamp" aria-hidden="true" />
+      <span className="plate-label">{lines.map((l) => <span key={l}>{l}</span>)}</span>
     </button>
   );
 }
@@ -1205,6 +1200,7 @@ export default function BaxstarEmber() {
   // steampunk context actions — selected Calls/Inbox item feeds the two levers
   const [selectedComm, setSelectedComm] = useState(null); // { type:"vm"|"email", i }
   const [leverBusy, setLeverBusy] = useState(null);       // "draft" | "task" | null
+  const [promptRunning, setPromptRunning] = useState(null);  // which push-plate is running
   const [leverPending, setLeverPending] = useState(null); // pending-review pulse
   const [draftEdit, setDraftEdit] = useState(null);       // editable lever draft text
   const [draftCopied, setDraftCopied] = useState(false);
@@ -2230,25 +2226,18 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
   /* ---------- CONTEXT LEVERS: Draft Reply + Local Task Draft ---------- */
 
-  const commItem = selectedComm
-    ? (selectedComm.type === "vm" ? data.voicemails[selectedComm.i] : data.emails[selectedComm.i]) || null
-    : null;
 
-  function leverState(kind) {
-    if (leverBusy === kind) return "active";
-    if (!commItem) return "idle";
-    if (leverPending === kind) return "pending";
-    return "ready";
-  }
-
-  async function leverDraftReply() {
-    if (!commItem || leverBusy || thinking) return;
+  // Draft reply from a call or email row: the answer opens in the editable draft
+  // box (formerly the lever's job) and never sends.
+  async function draftReply(item, type, index) {
+    if (!item || leverBusy || thinking) return;
+    setSelectedComm({ type, i: index });
     setLeverPending(null); setDraftEdit(null); setTaskProposal(null);
     setLeverBusy("draft");
     try {
-      const prompt = selectedComm.type === "vm"
-        ? `Draft a reply text to ${commItem.from} on the ${commItem.line || "Fishing"} Quo line responding to: "${commItem.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`
-        : `Draft a reply to the email from ${commItem.from}: "${commItem.subject}". Match Baxstar voice. Show me the draft — don't send yet.`;
+      const prompt = type === "vm"
+        ? `Draft a reply text to ${item.from} on the ${item.line || "Fishing"} Quo line responding to: "${item.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`
+        : `Draft a reply to the email from ${item.from}: "${item.subject}". Match Baxstar voice. Show me the draft — don't send yet.`;
       const answer = await sendCommand(prompt);
       if (answer) { setDraftEdit(answer); setLeverPending("draft"); }
     } finally {
@@ -2272,9 +2261,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     setLeverPending("task");
   }
 
-  function leverCreateTask() {
-    if (commItem) openTaskDraft(commItem, selectedComm.type, selectedComm.i);
-  }
 
   function confirmTaskProposal() {
     if (!taskProposal?.title.trim()) return;
@@ -2304,13 +2290,22 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
   /* ---------- QUICK ACTIONS ---------- */
 
   const ACTIONS = [
-    { label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
-    { label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
-    { label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
+    { id: "miss", label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
+    { id: "triage", label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
+    { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
     // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
     // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
     // tool still covers manual pulls.
   ];
+
+  // The reactor's push-plates and the Inbox's Triage link run these exact prompts.
+  function runPrompt(id) {
+    const action = ACTIONS.find((a) => a.id === id);
+    if (!action || thinking) return;
+    setView("ops");
+    setPromptRunning(id);
+    Promise.resolve(sendCommand(action.prompt)).finally(() => setPromptRunning(null));
+  }
 
   /* ============================================================
      RENDER
@@ -2764,10 +2759,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            move the circular full version up and bigger"). The reactor is the crown now. */
         .core-host { overflow:hidden; }
         /* Lift the chamber's contents above the background gradients. z-index needs a
-           position, but this must not clobber children that place themselves —
-           .ctx-lever is absolute and carries its own z-index, and being forced to
-           relative dropped both levers into flow, on top of the greeting. */
-        .core-host > :not(.ctx-lever) { position:relative; z-index:1; }
+           position, but this must not clobber children that place themselves: give
+           any such child .core-abs. (The :not() also keeps this rule's specificity
+           where it has always been, above single-class rules like .notch.) */
+        .core-host > :not(.core-abs) { position:relative; z-index:1; }
 
         .orb-shell { position:absolute; inset:0; height:100%; width:100%; pointer-events:none; opacity:.94; }
 
@@ -2783,7 +2778,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .core-chamber .max-w-sm { max-width:100%; }
         .core-chamber .greet-row { margin-top:2px; max-width:100%; }
         .core-chamber .core-wrap { flex:none; }
-        .core-chamber.has-thread .reactor-stage { width:150px; height:150px; }
         .core-chamber.has-thread .greet-row { margin-top:2px; }
         .reactor-stage {
           position:relative; width:250px; height:250px;
@@ -3156,43 +3150,40 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .pipe-junction.pj-r { right:-12px; transform:scaleX(-1); }
         @media (min-width:980px){ .pipe-junction { display:block; } }
 
-        .ctx-lever { position:absolute; top:200px; transform:translateY(-50%); z-index:4;
-          display:none; flex-direction:column; align-items:center; gap:4px;
-          background:none; border:none; padding:0; cursor:pointer;
-          transition:filter 220ms var(--ember-ease-mechanical), transform 220ms var(--ember-ease-mechanical); }
-        @media (min-width:980px){ .ctx-lever { display:flex; } }
-        .has-thread .ctx-lever { top:160px; }
-        .ctx-lever.left { left:7px; } .ctx-lever.right { right:7px; }
-        .ctx-lever img {
-          width:clamp(48px,4.3vw,62px); height:auto; max-height:82px;
-          transform-origin:50% 82%; transition:filter 220ms var(--ember-ease-mechanical),transform 220ms var(--ember-ease-mechanical);
+        /* PUSH-PLATES — WHAT'D I MISS / BRIEF MY DAY either side of the reactor
+           (Brady, 2026-10-15; they replaced the Draft Reply / Task Draft levers).
+           Machined brass, engraved caps, an ember lamp that glows while its prompt
+           runs. They sit in the reactor's row, so they can never cover it. */
+        .core-row { display:flex; align-items:center; justify-content:center; gap:clamp(10px,2.2vw,34px); width:100%; }
+        .prompt-plate {
+          flex:none; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px;
+          width:clamp(74px,6.4vw,98px); min-height:clamp(78px,7vw,98px); padding:10px 6px 9px;
+          border:2px solid #6b4a26; border-radius:12px; cursor:pointer;
+          background:
+            radial-gradient(circle at 9px 9px,#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            radial-gradient(circle at calc(100% - 9px) 9px,#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            radial-gradient(circle at 9px calc(100% - 9px),#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            radial-gradient(circle at calc(100% - 9px) calc(100% - 9px),#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
+            linear-gradient(180deg,#3a2716 0%,#1c130b 46%,#0d0905 100%);
+          box-shadow:inset 0 1px 0 rgba(255,214,150,.28), inset 0 0 0 1px rgba(214,179,106,.22),
+            inset 0 -10px 16px rgba(0,0,0,.5), 0 8px 18px rgba(0,0,0,.6), 0 0 14px rgba(255,105,38,.08);
+          transition:transform 140ms var(--ember-ease-mechanical), filter 180ms, box-shadow 180ms;
         }
-        .ctx-lever:disabled { cursor:default; }
-        .ctx-lever:disabled img { opacity:.6; }
-        .ctx-lever:not(:disabled):hover { filter:brightness(1.15); transform:translateY(calc(-50% - 2px)); }
-        .ctx-lever:not(.idle) img { animation:leverAttention 5.8s var(--ember-ease-mechanical) infinite; }
-        .ctx-lever.active img { animation:contextLeverPull 720ms var(--ember-ease-mechanical) infinite alternate; }
-        @keyframes leverAttention {
-          0%,76%,100%{transform:rotate(0deg);}
-          82%{transform:rotate(-7deg);}
-          89%{transform:rotate(5deg);}
-          94%{transform:rotate(0deg);}
-        }
-        @keyframes contextLeverPull { to{transform:rotate(17deg) translateY(3px);} }
-        .lever-label {
-          order:-1; width:76px; padding:4px 3px; margin-bottom:-5px;
-          border:2px solid #5f4428; border-radius:5px; color:var(--ember-text-soft);
-          background:linear-gradient(180deg,#18110c,#070604);
-          box-shadow:inset 0 0 0 1px rgba(214,179,106,.18),0 5px 12px rgba(0,0,0,.55);
-          font-family:var(--ember-font-display); font-size:8px; font-weight:700;
-          line-height:1.15; letter-spacing:.06em; text-transform:uppercase; text-align:center;
-        }
-        .lever-dot { width:7px; height:7px; border-radius:50%; background:var(--ember-brass-dark); transition:background 220ms; }
-        .lever-dot.ready { background:var(--ember-brass-bright); box-shadow:0 0 6px rgba(214,179,106,.8); }
-        .lever-dot.active { background:var(--ember-active); box-shadow:0 0 8px rgba(255,77,50,.85); }
-        .lever-dot.pending { background:var(--ember-warning); box-shadow:0 0 8px rgba(255,177,59,.8);
-          animation:leverPulse 900ms ease-in-out infinite; }
-        @keyframes leverPulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+        .prompt-plate:hover:not(:disabled) { filter:brightness(1.16); box-shadow:inset 0 1px 0 rgba(255,214,150,.32),
+            inset 0 0 0 1px rgba(214,179,106,.4), inset 0 -10px 16px rgba(0,0,0,.5), 0 8px 18px rgba(0,0,0,.6), 0 0 18px rgba(255,105,38,.22); }
+        .prompt-plate:active:not(:disabled) { transform:translateY(2px); box-shadow:inset 0 3px 8px rgba(0,0,0,.7), inset 0 0 0 1px rgba(214,179,106,.3); }
+        .prompt-plate:focus-visible { outline:2px solid var(--ember-brass-bright); outline-offset:3px; }
+        .prompt-plate:disabled { cursor:default; opacity:.62; }
+        .prompt-plate.running { opacity:1; }
+        .plate-lamp { width:9px; height:9px; border-radius:50%;
+          background:radial-gradient(circle at 35% 35%,#ffb27a,#c3381c 60%,#5a1408);
+          box-shadow:0 0 6px rgba(255,77,50,.55), inset 0 -1px 2px rgba(0,0,0,.5); }
+        .prompt-plate.running .plate-lamp { animation:plateLamp 900ms ease-in-out infinite; }
+        @keyframes plateLamp { 0%,100% { box-shadow:0 0 5px rgba(255,77,50,.5); filter:brightness(.9); } 50% { box-shadow:0 0 14px rgba(255,122,69,.95); filter:brightness(1.35); } }
+        .plate-label { display:flex; flex-direction:column; align-items:center; gap:1px;
+          font-family:var(--ember-font-display); font-weight:700; font-size:clamp(10px,.8vw,12px); line-height:1.15;
+          letter-spacing:.1em; color:#f0d9a8; text-shadow:0 1px 0 #000, 0 0 8px rgba(255,150,70,.18); }
+        @media (prefers-reduced-motion:reduce) { .prompt-plate.running .plate-lamp { animation:none; } }
 
         .row-sel { cursor:pointer; transition:background 140ms, box-shadow 140ms, padding 140ms; }
         .row-sel:hover { background:rgba(214,179,106,.05); }
@@ -3317,6 +3308,88 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .core-chamber { padding-block:8px!important; }
           .tool-tile { min-height:50px; }
         }
+
+        /* ---------- ONE-SCREEN OPS (Brady, 2026-10-15) ----------
+           On a desktop-sized window the OPS view is exactly one viewport tall:
+           header, the three columns, YOUR TOOLS and the fixed dock all show at once,
+           and the panels scroll inside themselves instead of the page scrolling.
+           Measured before: 1440x900 ran to 1144px with YOUR TOOLS hidden under the
+           dock. Short or narrow windows keep the normal scrolling layout. */
+        .ops-error { margin:0 4px; color:#ff8074; font-size:12px; font-weight:600; line-height:1.4;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .core-wrap { width:100%; container-type:inline-size; }
+        .reactor-stage {
+          /* Height-led: everything else in the centre column is ~270px fixed. */
+          --r: clamp(140px, calc(100dvh - 630px), 330px);
+          width:min(var(--r), calc(100cqw - 2 * clamp(74px,6.4vw,98px) - 2 * clamp(10px,2.2vw,34px)));
+          height:auto; aspect-ratio:1;
+        }
+        .core-chamber.has-thread .reactor-stage { --r: clamp(96px, calc(100dvh - 760px), 170px); height:auto; }
+        @media (max-width:760px){
+          .prompt-plate { width:58px; min-height:70px; padding:8px 3px; gap:5px; }
+          .plate-label { font-size:9px; letter-spacing:.05em; }
+          .core-row { gap:6px; }
+          .reactor-stage { --r:240px; width:min(var(--r), calc(100cqw - 2 * 58px - 2 * 6px)); }
+        }
+        @media (min-width:1021px) and (min-height:640px){
+          .ember-shell.ops-fit { height:100dvh; min-height:0; overflow:hidden; }
+          .ops-fit .main-grid { flex:1 1 0; min-height:0; grid-template-rows:minmax(0,1fr); }
+          .ops-fit .ops-side, .ops-fit .ops-core { min-height:0; }
+          .ops-fit .ops-core { display:flex; flex-direction:column; }
+          .ops-fit .core-chamber { min-height:0; }
+          .ops-fit .home-thread { flex:1 1 0; height:auto; min-height:80px; }
+          .ops-fit .chat-composer, .ops-fit .chat-hint, .ops-fit .chat-controls { flex:none; }
+          .ops-fit .chat-hint { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+          /* Model and Effort share one row. */
+          .ops-fit .chat-controls { flex-wrap:nowrap; max-width:none; column-gap:12px; }
+          .ops-fit .chat-controls .codex { flex-wrap:nowrap; padding:1px 4px; gap:3px; }
+          .ops-fit .chat-controls .seg.sm { padding:4px 9px; font-size:10px; }
+          .ops-fit .chat-controls .fieldlabel { letter-spacing:.18em; }
+        }
+        /* A conversation is open: the thread gets the room. The reactor shrinks,
+           the push-plates become one-line pills, and the greeting and ENIGMA/SCOPE
+           rows step aside until the thread is cleared. */
+        @media (min-width:1021px) and (min-height:640px){
+          .ops-fit .core-chamber.has-thread .reactor-stage { --r: clamp(64px, calc(100dvh - 810px), 150px); }
+          .ops-fit .core-chamber.has-thread .greet-row,
+          .ops-fit .core-chamber.has-thread .core-wrap > .mt-2 { display:none; }
+          .ops-fit .core-chamber.has-thread .prompt-plate { flex-direction:row; width:auto; min-height:0; padding:7px 12px; gap:7px; }
+          .ops-fit .core-chamber.has-thread .plate-label { flex-direction:row; gap:4px; }
+          .ops-fit .core-chamber.has-thread .chat-composer .cmd-input { min-height:56px; }
+          .ops-fit .core-chamber.has-thread .home-thread { min-height:220px; }
+        }
+        /* Short laptop windows: the composer starts at two lines, not three. */
+        @media (min-width:1021px) and (min-height:640px) and (max-height:800px){
+          .ops-fit .chat-composer .cmd-input { min-height:56px; padding:9px 12px; }
+          .ops-fit .core-wrap > .mt-2 { margin-top:2px; }
+          .ops-fit .core-chamber { gap:6px!important; padding-top:6px!important; padding-bottom:8px!important; }
+        }
+        /* Narrower centre columns: the field labels give their room to the buttons
+           (the buttons still name themselves; the row stays one row). */
+        .ops-core { container-type:inline-size; }
+        @container (max-width:620px){
+          .ops-fit .chat-controls .fieldlabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+          .ops-fit .chat-controls { column-gap:8px; }
+          .ops-fit .chat-controls .seg.sm { padding:4px 7px; font-size:9.5px; }
+        }
+        /* YOUR TOOLS: one slim row with its label inline. */
+        .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }
+        .tools-rail .tools-head { flex:none; border:none; padding:0; margin:0; }
+        .tools-rail .tools-groups { flex:1; min-width:0; }
+        .tools-rail .tools-groups { display:flex; gap:7px; overflow-x:auto; scrollbar-width:thin; }
+        .tool-link { flex:1 0 auto; min-height:32px; padding:5px 10px; }
+        .tool-name { white-space:nowrap; overflow-wrap:normal; }
+        @media (pointer:coarse){ .tool-link { min-height:44px; } }
+        @media (max-width:1179px){ .tools-rail .tools-head::after { content:none; } }
+        /* Warm focus everywhere: the browser's default blue ring broke the warmth
+           law on the YOUR TOOLS links (Brady's screenshot, 2026-10-15). */
+        a:focus-visible, button:focus-visible, [role="button"]:focus-visible, summary:focus-visible {
+          outline:2px solid var(--ember-brass-bright); outline-offset:2px; }
+        a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline:none; }
+        /* Chat replies: 1pt smaller than the 15px they were (Brady, 2026-10-15). */
+        .chat-bubble { font-size:calc(15px - 1pt); }
+        /* The composer grows up to 192px (was 240px, -20%), then scrolls inside. */
+        .chat-composer .cmd-input { max-height:192px; }
       `}</style>
 
       {/* background layer (behind everything) */}
@@ -3365,7 +3438,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         ))}
       </div>
 
-      <div className={`ember-shell relative z-10 mx-auto flex flex-col ${bgActive ? "bg-on" : ""}`}>
+      <div className={`ember-shell relative z-10 mx-auto flex flex-col ${bgActive ? "bg-on" : ""} ${view === "ops" ? "ops-fit" : ""}`}>
 
         <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" aria-hidden="true" className="pipe-junction pj-l" />
         <img src={`${ASSETS}/svg/ornaments/pipe-junction.svg`} alt="" aria-hidden="true" className="pipe-junction pj-r" />
@@ -3459,12 +3532,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           )}
         </header>
 
-        {error && (
-          <div className="rounded-lg border px-4 py-2 text-xs font-semibold"
-            style={{ borderColor: "rgba(255,77,61,.5)", background: "rgba(255,77,61,.08)", color: "#ff8074" }}>
-            {error}
-          </div>
-        )}
+        {/* One slim line, not a boxed banner: the failure stays visible and complete
+            (hover or long-press shows all of it), it just stops costing 40px. */}
+        {error && <p className="ops-error" role="alert" title={error}>{error}</p>}
 
 
         {/* ================= OPS VIEW ================= */}
@@ -3491,7 +3561,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <div className="mt-1 text-xs" style={{ color: "var(--ink-dim)" }}>{v.note || "No voicemail."}</div>
                   )}
                   <div className="mt-2 flex gap-2">
-                    <button className="chip solid" onClick={(e) => { e.stopPropagation(); sendCommand(`Draft a reply text to ${v.from} on the ${v.line || "Fishing"} Quo line responding to: "${v.vm || "their missed call — apologize we missed them and ask how we can help"}". Premium-but-warm, BLUF, sign Brady @ Baxstar. Show me the draft — don't send yet.`); }}>
+                    <button className="chip solid" disabled={thinking || !!leverBusy} onClick={(e) => { e.stopPropagation(); draftReply(v, "vm", i); }}>
                       Draft reply
                     </button>
                     <button className="chip ghost task-draft-button" onClick={(e) => { e.stopPropagation(); openTaskDraft(v, "vm", i); }}>
@@ -3542,8 +3612,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   the class had nothing to draw until 2026-08-01. */}
               <span className="notch hot" />
 
-              <ContextLever side="left" label="Draft Reply" state={leverState("draft")} onPull={leverDraftReply} />
-              <ContextLever side="right" label="Task draft" state={leverState("task")} onPull={leverCreateTask} />
 
               <div className="greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center" style={{ animationDelay: "0.1s" }}>
                 <span className="greet-hi text-[15px] font-bold tracking-tight">
@@ -3561,6 +3629,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               </div>
 
               <div className="reveal core-wrap flex flex-col items-center" style={{ animationDelay: "0.35s" }}>
+                <div className="core-row">
+                <PromptPlate side="left" lines={["WHAT'D", "I MISS"]} running={thinking && promptRunning === "miss"}
+                  disabled={thinking} onPress={() => runPrompt("miss")} />
                 {coreMode === "enigma" ? (
                   <div className="reactor-stage" onClick={() => cmdInputRef.current?.focus()} role="button" aria-label="Focus the ask box">
                     <img src={`${ASSETS}/raster/reactor-bezel@2x.webp`} alt="" aria-hidden="true" className="reactor-bezel" />
@@ -3581,6 +3652,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <canvas ref={scopeRef} width="300" height="110" style={{ display: "block" }} />
                   </div>
                 )}
+                <PromptPlate side="right" lines={["BRIEF", "MY DAY"]} running={thinking && promptRunning === "brief"}
+                  disabled={thinking} onPress={() => runPrompt("brief")} />
+                </div>
 
                 {/* Status + the core's face selector. The old row carried five voice
                     controls; what is left is what a dashboard actually needs: is she
@@ -3653,7 +3727,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   {thinking ? "Stop" : "RUN"}
                 </button>
               </div>
-              <div id="chat-input-hint" className="chat-hint">Enter to send · Shift+Enter for a new line. Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled.</div>
+              <div id="chat-input-hint" className="chat-hint" title="Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled.">Enter to send · Shift+Enter for a new line · connectors are read-only; nothing is sent for you.</div>
 
               {/* Model + Effort live on the home page now — the codex wraps instead of
                   running off the right edge of a phone. */}
@@ -3750,8 +3824,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   onClick={() => setSelectedComm(selectedComm?.type === "email" && selectedComm.i === i ? null : { type: "email", i })}>
                   <div className="mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{m.subject}</div>
                   <div className="mt-2 flex gap-2">
-                    <button className="chip solid" onClick={(e) => { e.stopPropagation(); sendCommand(`Draft a reply to the email from ${m.from}: "${m.subject}". Match Baxstar voice. Show me the draft — don't send yet.`); }}>
+                    <button className="chip solid" disabled={thinking || !!leverBusy} onClick={(e) => { e.stopPropagation(); draftReply(m, "email", i); }}>
                       Draft reply
+                    </button>
+                    <button className="chip ghost task-draft-button" onClick={(e) => { e.stopPropagation(); openTaskDraft(m, "email", i); }}>
+                      Task draft
                     </button>
                   </div>
                 </Row>
@@ -3769,8 +3846,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         )}
 
         {/* Optional reference map. The operating dashboard keeps priority. */}
-        {view === "ops" && <EcoGraph />}
-
         {/* YOUR TOOLS sits at the FOOT of the dashboard — Brady's original spec, and
             it gives the workspace back the ~140px at the top of the page that the
             reactor, composer and Model/Effort controls need to fit one screen. */}
