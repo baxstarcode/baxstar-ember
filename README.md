@@ -16,8 +16,9 @@ physical voice tests remain pending; see `docs/CURRENT-STATE.md`.
 
 ## Current product
 
-- **OPS:** calls/voicemail, unread mail, calendar, manual revenue, quick actions,
-  readable chat, the tools rail, and the collapsed THE WORKS ecosystem map.
+- **OPS:** calls/voicemail, unread mail, calendar, manual revenue, readable chat with
+  WHAT'D I MISS / BRIEF MY DAY push-plates, Triage on the Inbox, and the tools row —
+  one screen on desktop. THE WORKS and the Knowledge Foundry open from the dock.
 - **Chat:** streaming replies, persisted context, Stop, Retry, Copy, Clear, keyboard
   controls, safe lightweight formatting, and explicit connector/error states.
 - **Mission Control:** browser-local project state and reviewable local task drafts.

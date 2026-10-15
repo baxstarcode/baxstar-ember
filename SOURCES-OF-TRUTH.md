@@ -118,6 +118,19 @@ of links to Brady's other properties.
   under Design law and is enforced by containment proof: outside each moving part's mask,
   consecutive frames are pixel-identical.
 
+- **Claude Code, 2026‑10‑15 — Ember improvement pass (Brady's handoff of that date):**
+  OPS fits one desktop screen (YOUR TOOLS no longer hides under the dock); chat text
+  1pt smaller, composer capped at 192px, Model + Effort on one row; models are the
+  newest per family (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1) with Low/Med/High/Xtra
+  effort always sent, a served-model stamp on every reply and visible refusals; brass
+  push-plates replace the levers; dock reorganised (Knowledge Graph overlay embedding the
+  Knowledge Foundry + THE WORKS, Google Drive plate, FareHarbor wheel); OPS sync is per
+  feed with per-connector header lights; the Worker allows the new models, `xhigh` and a
+  16000 token ceiling, and can keep rotated refresh tokens (optional `EMBER_TOKENS` KV).
+  Live state that prompted it, Brady's signed-in check 2026-10-15: gmail, calendar, gdrive
+  connected, quo offline; Google's AI-agent client setting already on. Brady's handoff
+  assigned this pass to Claude; Codex's PR #48 (iPhone Shortcut) is untouched.
+
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 

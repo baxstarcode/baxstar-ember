@@ -43,9 +43,13 @@ artifact is the rule that prevents source/build drift.
 
 ## Product behavior
 
-- **OPS** shows calls/voicemail, unread mail, schedule, manual revenue, quick actions,
-  a full chat thread, YOUR TOOLS, and the collapsed read-only THE WORKS relationship
-  map. Sync auto-runs once in the hosted app and remains manually refreshable.
+- **OPS** shows calls/voicemail, unread mail, schedule, manual revenue, a full chat
+  thread with the WHAT'D I MISS / BRIEF MY DAY push-plates either side of the reactor,
+  a "Triage Inbox ›" link on the Inbox, and the slim YOUR TOOLS row. On a desktop-sized
+  window it is exactly one screen tall (2026-10-15); panels scroll inside themselves.
+  Sync runs on every load and again when the tab returns after 15+ minutes, per feed:
+  a dead connector leaves only its own panel on the demo preview. THE WORKS moved into
+  the Knowledge Graph overlay (dock), beside the embedded Knowledge Foundry.
 - **Chat** streams and persists completed context. It supports Stop, Retry, Copy,
   Clear, Enter-to-send, Shift+Enter, useful error text, and connector-degraded truth.
   A stopped, failed, or truncated assistant turn is not reused as context.
@@ -153,11 +157,14 @@ compatibility or ship an intentional migration.
 - Warm brass, copper, gunmetal, candle, ember, and coal tones dominate. No blue or
   purple primary UI.
 - Cinzel remains the display face; readable controls and data remain live DOM.
-- The command dock is a CSS-built, fixed brass bar with six controls. The raster
-  console art is texture/reference inside the controls, not a stretched dock or page
-  background.
-- Three of the painted mechanisms move again (restored 2026-09-21): the Caption Studio
-  gear turns, its linkage lever throws on press, and the reactor core breathes. Nothing
+- The command dock is a CSS-built, fixed brass bar with six controls — since
+  2026-10-15: OPS · Caption Studio · Knowledge Graph · Google Drive · FareHarbor ·
+  Projects. The raster console art is texture/reference inside the controls, not a
+  stretched dock or page background.
+- Painted mechanisms that move (2026-09-21, extended 2026-10-15): the Caption Studio
+  gear turns and its linkage lever throws; the Knowledge Graph tile's core glows like a
+  furnace; the FareHarbor ship's wheel spins three turns, lands home and rests 5s; the
+  Google Drive tile's gauge face is replaced by an opaque engraved plate. Nothing
   is drawn over the artwork to achieve this — each moving part is either light that can
   only brighten it, or a masked copy of the artwork's own pixels that covers the still
   version rather than adding to it. A second outline of a painted mechanism is the one

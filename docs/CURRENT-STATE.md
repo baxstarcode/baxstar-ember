@@ -19,7 +19,9 @@ Ember is Brady Baxter's desktop-first AI command center for Baxstar Fishing and 
 Golf Simulator. It is one daily operating system, not a set of demos:
 
 - **OPS:** calls and voicemail, unread email, schedule, manual revenue, quick actions,
-  the YOUR TOOLS rail, and the collapsed THE WORKS ecosystem map.
+  the YOUR TOOLS row, and the WHAT'D I MISS / BRIEF MY DAY push-plates beside the
+  reactor; one screen tall on desktop. Dock: OPS · Caption Studio · Knowledge Graph
+  (overlay: Knowledge Foundry + THE WORKS) · Google Drive · FareHarbor · Projects.
 - **Chat:** a readable persisted Claude thread with streaming replies, Stop, Retry,
   Copy, Clear, keyboard controls, safe lightweight formatting, and explicit
   connector/error states.
@@ -131,6 +133,9 @@ quality, continuous connector availability, or a successful Drive-outbox write.
 
 ## Remaining gates
 
+0. (2026-10-15 release) Deploy the Worker before merging the UI that sends the new
+   model IDs, then send one message per model and confirm each served-model stamp; re-check
+   Quo's status (see `docs/KNOWN-ISSUES.md` §1a–1b).
 1. Run the data-free signed-in `/api/connectors/status` call through the Pages binding.
    Treat the earlier all-connected report, the verified live OPS sync, and the observed
    chat recovery as separate evidence rather than substitutes for this route check.
@@ -169,8 +174,8 @@ build from them.
   chat is read-only even when a prompt asks it to act.
 - Preserve frozen IDs, storage keys, business contexts, connector names/routing, and
   persisted shapes unless Brady explicitly changes them and a migration is supplied.
-- Preserve the warm steampunk identity and fixed CSS brass dock — including the three
-  restored tile animations (gear spin, lever throw, reactor breath) and the rule that no
+- Preserve the warm steampunk identity and fixed CSS brass dock — including the tile
+  animations (gear spin, lever throw, furnace glow, FareHarbor wheel) and the rule that no
   dock motion may draw a second outline of a painted mechanism. Fishing and golf are
   restrained engravings, not alternate themes.
 - Keep hosted chat useful when optional connectors fail, while never presenting

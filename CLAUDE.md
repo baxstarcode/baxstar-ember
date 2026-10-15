@@ -87,6 +87,17 @@ r~44 and the ball joint at r~46. A mask edge on bare plate is the requirement; a
 convenience, and assuming one is how you ship a moving artefact that every containment check
 still passes.
 
+2026-10-15: the dock became OPS · Caption Studio · Knowledge Graph · Google Drive · FareHarbor ·
+Projects (Brady). The quick-action prompts moved, not vanished: WHAT'D I MISS and BRIEF MY DAY
+are brass push-plates beside the reactor, Triage is a link on the Inbox. New motion obeys the
+same rule — the Knowledge Graph furnace is screen-blended light; the FareHarbor wheel is a masked
+copy of the painted wheel; the Drive tile is an opaque plate that replaces the gauge face whole.
+The wheel adds a third lesson: **a quiet boundary is still not enough — the disc's contents must
+also survive the turn.** Its lowest-scoring ring (r=74.5, 0.49% bright) carried a band of plate
+lit from the upper left, and turning it showed the disc as a moving crescent. The clip is r=70.5,
+just outside the rim, so the disc holds only the wheel; prove it on frames (outside mask+feather:
+0 changed pixels; rest frames identical to frame 0).
+
 ## Source-of-truth preflight
 
 For work that changes Ember code/config/live behavior, depends on a prior Ember decision,
