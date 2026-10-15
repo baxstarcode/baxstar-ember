@@ -369,7 +369,7 @@ for (const [label, upstream] of [
   check("a re-keyed secret wins over a token saved from the old one", sent[2] === "RT-new-consent");
 }
 {
-  // Saved token rejected -> one fallback to the pasted secret.
+  // Saved token rejected -> NO fallback to the pasted (retired) secret.
   const kv = new Map();
   const EMBER_TOKENS = { get: async (k) => (kv.has(k) ? JSON.parse(kv.get(k)) : null), put: async (k, v) => { kv.set(k, v); } };
   const sent = [];
@@ -383,7 +383,8 @@ for (const [label, upstream] of [
   kv.set("refresh:gmail", JSON.stringify({ base: fp, token: "RT-gone" }));
   await worker.fetch(post(chat({ mcp_servers: [{ name: "gmail" }] })), env, {}, { fetch: f, now: () => 90_000_000 });
   const upstream = JSON.parse(f.calls.find((c) => c.url.includes("anthropic")).body);
-  check("a dead saved token falls back once to the pasted secret", sent.join(",") === "RT-gone,RT-base-g" && upstream.mcp_servers[0].authorization_token === "AT-ok");
+  check("a dead saved token never re-presents the retired pasted secret", sent.join(",") === "RT-gone" && !(upstream.mcp_servers || []).some((s) => s.name === "gmail"),
+    "reuse of a rotated-out refresh token can revoke the whole grant");
 }
 
 // --- guarantees the earlier blocks established ----------------------------

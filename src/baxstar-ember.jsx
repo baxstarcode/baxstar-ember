@@ -559,8 +559,7 @@ async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, se
   // Thinking-capable models (Opus 5) bill their reasoning AND tool round-trips
   // against max_tokens. 1000 ran out before the first word of a tool-using
   // answer was written — reproduced live 2026-08-26: stop_reason max_tokens,
-  // four successful tool calls, zero text. 3000 leaves room under the Worker's
-  // 4096 cap.
+  // four successful tool calls, zero text.
   // 8000 by default (was 3000): the current models always think first, and
   // Caption Studio and the Drive librarian pass no budget of their own.
   const body = { model, max_tokens: maxTokens || 8000, messages };
@@ -2323,12 +2322,19 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
   ];
 
   // The reactor's push-plates and the Inbox's Triage link run these exact prompts.
+  // Triage also hands over the inbox Brady is looking at — but only when that
+  // panel is live; the demo preview must never be passed off as his email.
   function runPrompt(id) {
     const action = ACTIONS.find((a) => a.id === id);
     if (!action || thinking) return;
+    let prompt = action.prompt;
+    if (id === "triage" && feedLive.emails && data.emails.length) {
+      prompt += `\n\nThe Inbox panel currently shows (from the last live sync):\n${data.emails
+        .map((m) => `- ${m.from}${m.time ? ` (${m.time})` : ""}: ${m.subject}`).join("\n")}\nCheck Gmail for anything newer.`;
+    }
     setView("ops");
     setPromptRunning(id);
-    Promise.resolve(sendCommand(action.prompt)).finally(() => setPromptRunning(null));
+    Promise.resolve(sendCommand(prompt)).finally(() => setPromptRunning(null));
   }
 
   /* ============================================================
@@ -3235,6 +3241,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @keyframes dockDriveSheen { 0%, 55% { background-position:120% 0; } 100% { background-position:-120% 0; } }
 
         a.dock-control { text-decoration:none; }
+        /* Phones: the longer 2026-10-15 names (KNOWLEDGE GRAPH, FAREHARBOR) must fit a
+           ~58px tile without clipping a letter. */
+        @media (max-width:440px){ .dock-label { font-size:7.6px; letter-spacing:.01em; } }
+        @media (max-width:380px){ .dock-label { font-size:7.2px; letter-spacing:0; margin:0 -2px; width:calc(100% + 4px); } }
 
         /* Inbox heading link — runs the existing triage prompt into chat. */
         .panel-link { background:none; border:none; padding:0; cursor:pointer;
@@ -3432,7 +3442,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           border-image:url("${ASSETS}/svg/frames/quick-action-frame.svg") 16 / 8px stretch;
           background:rgba(10,9,7,.72); background-clip:padding-box; }
 
-        @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important;} .reveal{opacity:1;} }
+        @media (prefers-reduced-motion:reduce){ *, *::before, *::after {animation:none!important; transition:none!important;} .reveal{opacity:1;} }
         @media (max-height:820px) and (min-width:1021px) {
           .ember-shell { padding-top:18px; gap:10px; }
           .ember-header { min-height:48px; padding-block:6px; }
@@ -3447,8 +3457,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
            and the panels scroll inside themselves instead of the page scrolling.
            Measured before: 1440x900 ran to 1144px with YOUR TOOLS hidden under the
            dock. Short or narrow windows keep the normal scrolling layout. */
-        .ops-error { margin:0 4px; color:#ff8074; font-size:12px; font-weight:600; line-height:1.4;
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .ops-error { margin:0 4px; color:#ff8074; font-size:12px; font-weight:600; line-height:1.4; }
+        /* Truncate to one line only where a pointer can hover for the full text. */
+        @media (min-width:1021px) and (hover:hover){
+          .ops-error { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        }
         .core-wrap { width:100%; container-type:inline-size; }
         .reactor-stage {
           /* Height-led: everything else in the centre column is ~270px fixed. */
@@ -3473,10 +3486,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-fit .chat-composer, .ops-fit .chat-hint, .ops-fit .chat-controls { flex:none; }
           .ops-fit .chat-hint { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
           /* Model and Effort share one row. */
-          .ops-fit .chat-controls { flex-wrap:nowrap; max-width:none; column-gap:12px; }
+          .ops-fit .chat-controls { flex-wrap:nowrap; max-width:none; column-gap:8px; }
+          .ops-fit .chat-controls > div { gap:5px; }
           .ops-fit .chat-controls .codex { flex-wrap:nowrap; padding:1px 4px; gap:3px; }
           .ops-fit .chat-controls .seg.sm { padding:4px 9px; font-size:10px; }
-          .ops-fit .chat-controls .fieldlabel { letter-spacing:.18em; }
+          .ops-fit .chat-controls .fieldlabel { letter-spacing:.12em; }
         }
         /* A conversation is open: the thread gets the room. The reactor shrinks,
            the push-plates become one-line pills, and the greeting and ENIGMA/SCOPE
@@ -3488,8 +3502,22 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-fit .core-chamber.has-thread .prompt-plate { flex-direction:row; width:auto; min-height:0; padding:7px 12px; gap:7px; }
           .ops-fit .core-chamber.has-thread .plate-label { flex-direction:row; gap:4px; }
           .ops-fit .core-chamber.has-thread .chat-composer .cmd-input { min-height:56px; }
-          .ops-fit .core-chamber.has-thread .home-thread { min-height:220px; }
         }
+        /* No conversation open: the reactor row takes exactly the room the panel
+           has left once greeting, composer, hint and controls are placed, and the
+           reactor sizes itself to that room (container query units) rather than to
+           a guess from the window height. A guess overflowed at 1024x700 and
+           1100x640, where narrow columns wrap the controls onto two rows. */
+        @media (min-width:1021px) and (min-height:640px){
+          .ops-fit .core-chamber:not(.has-thread) .core-wrap { flex:1 1 0; min-height:0; container-type:size; justify-content:center; }
+          .ops-fit .core-chamber:not(.has-thread) .reactor-stage {
+            width:min(330px, calc(100cqw - 2 * clamp(74px,6.4vw,98px) - 2 * clamp(10px,2.2vw,34px)), calc(100cqh - 44px));
+          }
+          .ops-fit .core-chamber:not(.has-thread) .prompt-plate { min-height:min(clamp(78px,7vw,98px), calc(100cqh - 44px)); }
+        }
+        /* SCOPE shares the row with the push-plates, so it must be able to shrink. */
+        .core-row .scope-bezel { flex:0 1 auto; min-width:0; margin-top:6px; margin-bottom:6px; }
+        .core-row .scope-bezel canvas { width:100%; height:auto; }
         /* Short laptop windows: the composer starts at two lines, not three. */
         @media (min-width:1021px) and (min-height:640px) and (max-height:800px){
           .ops-fit .chat-composer .cmd-input { min-height:56px; padding:9px 12px; }
@@ -3499,10 +3527,21 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         /* Narrower centre columns: the field labels give their room to the buttons
            (the buttons still name themselves; the row stays one row). */
         .ops-core { container-type:inline-size; }
-        @container (max-width:620px){
+        @container (max-width:600px){
           .ops-fit .chat-controls .fieldlabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
           .ops-fit .chat-controls { column-gap:8px; }
           .ops-fit .chat-controls .seg.sm { padding:4px 7px; font-size:9.5px; }
+        }
+        @container (max-width:470px){
+          .ops-fit .chat-controls { column-gap:5px; }
+          .ops-fit .chat-controls .codex { padding:1px 2px; gap:2px; }
+          .ops-fit .chat-controls .seg.sm { padding:4px 5px; font-size:9px; }
+        }
+        .chat-controls > .chip { white-space:nowrap; }
+        /* Short windows with a conversation open: the hint line steps aside
+           (still announced to screen readers) so the thread keeps its room. */
+        @media (min-width:1021px) and (min-height:640px) and (max-height:799px){
+          .ops-fit .core-chamber.has-thread .chat-hint { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
         }
         /* YOUR TOOLS: one slim row with its label inline. */
         .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }
@@ -4674,9 +4713,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 destinations. Their prompts moved, not vanished — WHAT'D I MISS and BRIEF
                 MY DAY are the reactor's push-plates, Triage is a link on the Inbox. */}
             <button className={`dock-control ${graphOpen ? "active" : ""}`} onClick={() => setGraphOpen(true)}
-              aria-haspopup="dialog">
+              aria-haspopup="dialog" aria-label="Knowledge Graph">
               <span className="dock-art" style={{ "--panel-x": "242.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /><DockMech kind="furnace" /></span>
-              <span className="dock-label">Knowledge Graph</span>
+              <span className="dock-label">Knowl{"\u00AD"}edge Graph</span>
               <span className="dock-lamp" />
             </button>
             <a className="dock-control" href={DRIVE_URL} target="_blank" rel="noopener noreferrer" title="Open Google Drive in a new tab">
@@ -4686,7 +4725,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             </a>
             <a className="dock-control" href={FAREHARBOR_URL} target="_blank" rel="noopener noreferrer" title="Open the FareHarbor dashboard in a new tab">
               <span className="dock-art" style={{ "--panel-x": "442.857%" }}><img src={`${ASSETS}/raster/command-console@2x.webp`} alt="" aria-hidden="true" /><DockMech kind="wheel" /></span>
-              <span className="dock-label">FareHarbor</span>
+              <span className="dock-label">Fare<wbr />Harbor</span>
               <span className="dock-lamp" />
             </a>
             <button className={`dock-control ${view === "projects" ? "active" : ""}`} onClick={() => setView("projects")}>
@@ -4769,6 +4808,10 @@ function GraphOverlay({ open, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
+    // Everything behind the dialog goes inert: Tab cannot wander onto the dashboard
+    // and screen readers stay in the dialog.
+    const shell = document.querySelector(".ember-shell");
+    shell?.setAttribute("inert", "");
     closeRef.current?.focus();
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -4777,6 +4820,7 @@ function GraphOverlay({ open, onClose }) {
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflow;
+      shell?.removeAttribute("inert");
       previous?.focus?.();
     };
   }, [open, onClose]);
@@ -5066,7 +5110,7 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
     <div className={`panel reveal flex flex-col px-5 py-4 ${grow ? "flex-1" : ""}`} style={{ animationDelay: delay, minHeight: 0 }}>
       <span className={`notch ${notch}`} />
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="flex min-w-0 items-baseline gap-3">
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h3 className="font-display text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-dim)" }}>{title}</h3>
           {action}
         </span>

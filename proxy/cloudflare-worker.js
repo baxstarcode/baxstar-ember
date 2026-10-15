@@ -729,12 +729,11 @@ async function currentRefresh(connector, env) {
 async function accessTokenFor(connector, env, fetchImpl, now) {
   const current = await currentRefresh(connector, env);
   if (!current) return null;
-  const minted = await mintAccessToken(connector, current.refresh, current, env, fetchImpl, now);
-  // A saved token that stopped working falls back once to the pasted secret.
-  if (!minted && current.refresh !== current.base) {
-    return mintAccessToken(connector, current.base, { ...current, refresh: current.base }, env, fetchImpl, now);
-  }
-  return minted;
+  // Deliberately NO retry with the pasted secret when a saved token fails: once a
+  // provider has rotated, the pasted secret is a retired token, and presenting a
+  // retired refresh token is exactly what reuse detection treats as theft —
+  // it can revoke the whole grant. A failed refresh just drops the connector.
+  return mintAccessToken(connector, current.refresh, current, env, fetchImpl, now);
 }
 
 async function mintAccessToken(connector, refresh, current, env, fetchImpl, now) {

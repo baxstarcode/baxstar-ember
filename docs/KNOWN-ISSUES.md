@@ -168,6 +168,10 @@ provider availability from local mocks, secret names, or an HTTP 200 from anothe
 
 ## Expected behavior that is not a bug
 
+- In the Knowledge Graph overlay, Escape closes it unless focus is inside the embedded
+  Knowledge Foundry: browsers never pass keystrokes from a cross-origin frame to the page
+  around it. The ✕ button and a click or tap outside the sheet always close it.
+
 - Preview Pages hosts return 404 for `/api/*`; only the exact production hostname is
   allowed through the Pages Function. The static `pages.dev` production and preview
   aliases must still remain behind Cloudflare Access so application HTML is not public.

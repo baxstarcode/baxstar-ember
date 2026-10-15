@@ -181,7 +181,7 @@ try {
     for (const [locate, label, want] of [
       [() => page.locator(".prompt-plate.left"), "WHAT'D I MISS plate", /What did I miss\? Check missed calls/],
       [() => page.locator(".prompt-plate.right"), "BRIEF MY DAY plate", /Brief me on tomorrow/],
-      [() => page.getByRole("button", { name: "Triage Inbox ›" }), "Triage Inbox link", /Triage my unread Gmail/],
+      [() => page.getByRole("button", { name: "Triage Inbox ›" }), "Triage Inbox link (with the live inbox it shows)", /Triage my unread Gmail[\s\S]*LiveSyncProof/],
     ]) {
       const before = requests.length;
       await locate().click();
@@ -192,7 +192,7 @@ try {
     }
     const dock = page.locator(".console-dock");
     check(`${name} dock reads OPS · Caption Studio · Knowledge Graph · Google Drive · FareHarbor · Projects`,
-      (await dock.locator(".dock-label").allInnerTexts()).map((t) => t.trim().toUpperCase()).join("|") ===
+      (await dock.locator(".dock-label").allInnerTexts()).map((t) => t.replace(/\u00AD/g, "").trim().toUpperCase()).join("|") ===
       "OPS|CAPTION STUDIO|KNOWLEDGE GRAPH|GOOGLE DRIVE|FAREHARBOR|PROJECTS");
     check(`${name} Google Drive tile opens Drive in a new tab`,
       (await dock.getByRole("link", { name: /Google Drive/ }).getAttribute("href")) === "https://drive.google.com/" &&
@@ -210,6 +210,60 @@ try {
       path: path.join(SHOTS, `dashboard-${name.toLowerCase()}.png`),
       fullPage: true,
     });
+    await context.close();
+  }
+
+  {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    await page.route(/baxstar-knowledge-network\.pages\.dev/, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<p>foundry</p>" }));
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    console.log("\n===== GRAPH OVERLAY =====");
+    await page.locator(".console-dock").getByRole("button", { name: "Knowledge Graph", exact: true }).click();
+    await page.getByRole("dialog", { name: "Knowledge Graph" }).waitFor();
+    check("overlay makes the dashboard inert", await page.evaluate(() => document.querySelector(".ember-shell").hasAttribute("inert")));
+    for (let i = 0; i < 6; i++) await page.keyboard.press("Tab");
+    check("Tab stays inside the dialog", await page.evaluate(() => !!document.activeElement?.closest(".kg-overlay") || document.activeElement?.tagName === "IFRAME" || document.activeElement === document.body));
+    await page.mouse.click(8, 8);
+    check("clicking the backdrop closes it", await page.getByRole("dialog", { name: "Knowledge Graph" }).count() === 0);
+    check("closing restores the dashboard", await page.evaluate(() => !document.querySelector(".ember-shell").hasAttribute("inert")));
+    await context.close();
+  }
+
+  // Small laptop windows and SCOPE mode (final review, 2026-10-15): nothing spills
+  // out of the centre panel, nothing hides under the dock, the plates stay whole.
+  for (const [w, h] of [[1024, 700], [1100, 640], [1280, 720]]) {
+    const name = `${w}x${h}`;
+    const context = await browser.newContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    await page.route(`${ORIGIN}/api/messages`, (route) => route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ content: [{ type: "text", text: "noted" }] }) }));
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForSelector(".core-chamber");
+    const geo = () => page.evaluate(() => {
+      const r = (q) => document.querySelector(q)?.getBoundingClientRect();
+      const core = r(".core-chamber"), controls = r(".chat-controls"), tools = r(".tools-rail"), dock = r(".console-dock");
+      const L = r(".prompt-plate.left"), R = r(".prompt-plate.right"), face = r(".reactor-stage") || r(".scope-bezel");
+      return { scroll: document.documentElement.scrollHeight - innerHeight, controlsIn: controls.bottom <= core.bottom - 8,
+        toolsAboveDock: tools.bottom <= dock.top, platesWhole: L.left >= core.left + 10 && R.right <= core.right - 10,
+        platesClear: L.right <= face.left + 1 && R.left >= face.right - 1 };
+    });
+    console.log(`\n===== ${name} =====`);
+    for (const mode of ["ENIGMA", "SCOPE"]) {
+      await page.getByRole("button", { name: mode, exact: true }).click();
+      await page.waitForTimeout(150);
+      const g = await geo();
+      check(`${name} ${mode}: one screen, controls inside the panel, tools above the dock`, g.scroll <= 1 && g.controlsIn && g.toolsAboveDock, JSON.stringify(g));
+      check(`${name} ${mode}: push-plates whole and clear of the instrument`, g.platesWhole && g.platesClear, JSON.stringify(g));
+    }
+    await page.getByRole("button", { name: "ENIGMA", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ask Ember" }).fill(Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n"));
+    const typed = await geo();
+    check(`${name} typing 30 lines keeps Model/Effort in view`, typed.controlsIn && typed.scroll <= 1, JSON.stringify(typed));
     await context.close();
   }
 

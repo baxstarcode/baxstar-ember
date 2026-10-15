@@ -356,7 +356,7 @@ try {
       await check(`${name} Escape closes the graph and returns focus to the dock`, async () => {
         await page.keyboard.press('Escape');
         const gone = await page.getByRole('dialog', { name: 'Knowledge Graph' }).count() === 0;
-        const focused = await page.evaluate(() => document.activeElement?.textContent?.trim());
+        const focused = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent?.replace(/\u00AD/g, '').trim());
         return { pass: gone && /Knowledge Graph/.test(focused || ''), detail: `gone=${gone} focus=${focused}` };
       });
 
