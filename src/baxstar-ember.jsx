@@ -462,6 +462,60 @@ const BUILD_STAMP = "__EMBER_BUILD__".startsWith("__") ? "dev" : "__EMBER_BUILD_
 
 const API_ENDPOINT =
   (typeof window !== "undefined" && window.EMBER_API_PROXY) || "/api/messages";
+// The Worker's data-free credential check: it refreshes each connector's token but
+// never calls a tool or reads a record. Same-origin sibling of /api/messages.
+const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT)
+  ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status")
+  : "/api/connectors/status";
+
+// Each OPS feed and the one connector that fills it. Sync is per feed: a dead Quo
+// used to throw away perfectly good Gmail and Calendar results (reproduced live
+// 2026-10-15 — status showed gmail/calendar/gdrive connected, quo offline, and every
+// panel stayed on the demo preview).
+const OPS_FEEDS = [
+  { server: "quo",      key: "voicemails", label: "Quo",      what: "calls and voicemail" },
+  { server: "gmail",    key: "emails",     label: "Gmail",    what: "email" },
+  { server: "calendar", key: "events",     label: "Calendar", what: "schedule" },
+];
+const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
+// Returning to the tab re-syncs once the panels are older than this.
+const OPS_STALE_MS = 15 * 60 * 1000;
+
+// "connected" proves only that a token could be minted, not a full MCP handshake —
+// so it decides which connectors are worth asking for, and the tool results still
+// decide which panels may change. Unreachable route → null, and sync asks for all.
+async function fetchConnectorStatus() {
+  try {
+    const res = await fetch(STATUS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connectors: STATUS_CONNECTORS }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const c = data?.connectors;
+    if (!c || typeof c !== "object") return null;
+    return Object.fromEntries(STATUS_CONNECTORS.map((n) =>
+      [n, c[n] === "connected" ? "connected" : c[n] === "offline" ? "offline" : "unknown"]));
+  } catch (e) {
+    return null;
+  }
+}
+
+// Chat's connector warning names what was actually missing. The old blanket line
+// ("Live business data was not checked") appeared above a triage reply that listed
+// real Gmail on 2026-10-15: only Quo was down, Gmail and Calendar were read.
+function degradedChatNote(status) {
+  const off = status ? OPS_FEEDS.filter((f) => status[f.server] === "offline") : [];
+  if (off.length && off.length < OPS_FEEDS.length) {
+    return `${listNames(off.map((f) => f.label))} ${off.length === 1 ? "is" : "are"} offline — ${listNames(off.map((f) => f.what))} not checked in this reply.`;
+  }
+  return "Connectors unavailable — this reply uses conversation context only. Live business data was not checked.";
+}
+
+function listNames(names) {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
 
 function responseError(data, fallback) {
   return typeof data?.error === "string" ? data.error : data?.error?.message || data?.message || fallback;
@@ -662,7 +716,7 @@ function extractText(data) {
     .trim();
 }
 
-function verifiedConnectorResults(data, requiredNames) {
+function succeededConnectors(data) {
   const blocks = Array.isArray(data?.content) ? data.content : [];
   const calls = new Map();
   for (const block of blocks) {
@@ -677,7 +731,7 @@ function verifiedConnectorResults(data, requiredNames) {
     const server = calls.get(block.tool_use_id);
     if (server) succeeded.add(server);
   }
-  return requiredNames.every((name) => succeeded.has(name));
+  return succeeded;
 }
 
 function extractJSON(text) {
@@ -1142,7 +1196,14 @@ export default function BaxstarEmber() {
 
   // ---- OPS state ----
   const [data, setData] = useState(DEMO);
-  const [live, setLive] = useState(false);
+  // Per feed, because connectors fail independently. `live` = at least one real feed.
+  const [feedLive, setFeedLive] = useState({ voicemails: false, emails: false, events: false });
+  const live = feedLive.voicemails || feedLive.emails || feedLive.events;
+  const allLive = feedLive.voicemails && feedLive.emails && feedLive.events;
+  const [connStatus, setConnStatus] = useState(null);
+  const connStatusRef = useRef(null);
+  const [syncProblems, setSyncProblems] = useState([]);
+  const lastSyncRef = useRef(0);
   const [syncing, setSyncing] = useState(false);
   const [command, setCommand] = useState("");
   const [focused, setFocused] = useState(false);
@@ -1564,7 +1625,7 @@ export default function BaxstarEmber() {
         useTools: true, model: chatModel, effort: EFFORT[chatEffort]?.api,
         signal: request.controller.signal,
         onDelta: (content) => patchAssistant({ content }),
-        onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors("Connectors unavailable — this reply uses conversation context only. Live business data was not checked."); },
+        onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current)); },
       });
       if (!isCurrent()) return null;
       const answer = extractText(resp);
@@ -1633,57 +1694,99 @@ export default function BaxstarEmber() {
     if (syncing) return;
     setSyncing(true);
     setError("");
+    // Stamped at the attempt, so a fully offline round still retries on return.
+    lastSyncRef.current = Date.now();
     try {
+      const status = await fetchConnectorStatus();
+      connStatusRef.current = status;
+      setConnStatus(status);
+      // Ask only for connectors that can authorize. An unreachable status route
+      // asks for all three and lets the tool results decide.
+      const wanted = OPS_FEEDS.filter((f) => !status || status[f.server] !== "offline");
+      const offline = OPS_FEEDS.filter((f) => !wanted.includes(f));
+      const problems = offline.map((f) => ({ key: f.key, text: `${f.label} offline` }));
+      if (!wanted.length) {
+        setSyncProblems(problems);
+        throw new Error(`${listNames(offline.map((f) => f.label))} are offline; no feeds were replaced.`);
+      }
+
       // Computed here and passed verbatim: when the model picked its own dates
       // it guessed the wrong month and dragged in a quarter of call history.
       const now = new Date();
       const since48 = new Date(now.getTime() - 48 * 3600 * 1000).toISOString();
       const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
       const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+      const steps = {
+        voicemails: `Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) — pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.`,
+        emails: "Up to 5 unread Gmail messages from the last 24 hours.",
+        events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow) — pass these exact timestamps to the tool.`,
+      };
+      const shapes = {
+        voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
+        emails: '"emails":[{"from":"","time":"","subject":""}]',
+        events: '"events":[{"time":"","title":"","detail":""}]',
+      };
       const prompt = `${bradyContext()}
 
 Fetch, using your tools:
-1. Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) — pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.
-2. Up to 5 unread Gmail messages from the last 24 hours.
-3. Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow) — pass these exact timestamps to the tool.
+${wanted.map((f, i) => `${i + 1}. ${steps[f.key]}`).join("\n")}
 
 Use the ISO timestamps above verbatim — never compute or guess your own dates.
 
 Then respond with ONLY valid JSON — no markdown, no commentary:
-{"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}],"emails":[{"from":"","time":"","subject":""}],"events":[{"time":"","title":"","detail":""}]}`;
+{${wanted.map((f) => shapes[f.key]).join(",")}}`;
       // Three connector fetches + thinking + a full JSON payload: the default
       // budget starved this exact call into "Sync failed" every time on Opus 5
       // (reproduced live, then proven fixed at 4000 — 2026-08-26).
       // Haiku, deliberately: pulling three feeds into JSON is mechanical work,
       // and the fast model turns a 30-40s Opus sync into ~10s.
-      const resp = await callClaude([{ role: "user", content: prompt }], { useTools: true, maxTokens: 4000, model: "claude-haiku-4-5" });
-      // The Worker can deliberately fall back to connector-free chat when a
-      // provider is unavailable. That is useful for conversation, but it must
-      // never make invented/empty JSON look like a successful live-data sync.
-      if (resp._connectorsDegraded) {
-        throw new Error("Live connectors are unavailable; no feeds were replaced.");
-      }
-      if (!verifiedConnectorResults(resp, ["quo", "gmail", "calendar"])) {
-        throw new Error("Live sync did not verify successful results from Quo, Gmail, and Calendar; no feeds were replaced.");
-      }
-      const parsed = extractJSON(extractText(resp));
-      if (!["voicemails", "emails", "events"].every((key) => Array.isArray(parsed[key]))) {
-        throw new Error("Sync did not return all three feeds.");
-      }
-      setData({
-        voicemails: parsed.voicemails,
-        emails: parsed.emails,
-        events: parsed.events,
+      const resp = await callClaude([{ role: "user", content: prompt }], {
+        useTools: true, maxTokens: 4000, model: "claude-haiku-4-5",
+        servers: wanted.map((f) => ({ name: f.server })),
       });
-      setSelectedComm(null);
-      setLive(true);
+      // A panel changes only when ITS connector returned a successful tool result
+      // and the reply carries ITS array. The Worker can fall back to connector-free
+      // chat; that must never make invented or empty JSON look like live data.
+      const ok = succeededConnectors(resp);
+      let parsed = null;
+      try { parsed = extractJSON(extractText(resp)); } catch (e) { parsed = null; }
+      const landed = wanted.filter((f) => ok.has(f.server) && parsed && Array.isArray(parsed[f.key]));
+      const unverified = wanted.filter((f) => !landed.includes(f));
+      for (const f of unverified) problems.push({ key: f.key, text: `${f.label} unverified` });
+      setSyncProblems(problems);
+      if (landed.length) {
+        setData((d) => ({ ...d, ...Object.fromEntries(landed.map((f) => [f.key, parsed[f.key]])) }));
+        setFeedLive((prev) => ({ ...prev, ...Object.fromEntries(landed.map((f) => [f.key, true])) }));
+        setSelectedComm(null);
+      }
+      if (unverified.length) {
+        const names = listNames(unverified.map((f) => f.label));
+        throw new Error(landed.length
+          ? `Live sync did not verify successful results from ${names}; those panels were not replaced.`
+          : `Live sync did not verify successful results from ${names}; no feeds were replaced.`);
+      }
     } catch (e) {
-      const truth = live ? "Keeping the last synced data." : "Showing the demo preview; no live data was loaded.";
+      const truth = live ? "Panels keep their last synced data." : "Showing the demo preview; no live data was loaded.";
       setError(`${e?.message || "Sync failed."} ${truth}`);
     } finally {
       setSyncing(false);
     }
   }
+  const syncLiveRef = useRef(syncLive);
+  syncLiveRef.current = syncLive;
+
+  // Coming back to Ember after a while refreshes the panels by itself — Brady
+  // should never have to press SYNC to see current data. Same automation rule
+  // as the arrival sync below.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (typeof navigator !== "undefined" && navigator.webdriver && !window.__EMBER_AUTOSYNC_TEST) return;
+      if (lastSyncRef.current && Date.now() - lastSyncRef.current > OPS_STALE_MS) syncLiveRef.current();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   // OPS fills itself on arrival — Brady shouldn't need to know a SYNC button
   // exists for the panels to stop being demo furniture. One shot per page
@@ -2135,7 +2238,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       title: `${type === "vm" ? "Call back" : "Follow up with"} ${item.from}`,
       due: "",
       details: type === "vm" ? item.vm || item.note || "" : item.subject || "",
-      source: (!live ? "Demo preview — " : "") + (type === "vm" ? `call/voicemail from ${item.from}${item.line ? " (" + item.line + " line)" : ""}` : `email from ${item.from}: "${item.subject}"`),
+      source: (!feedLive[type === "vm" ? "voicemails" : "emails"] ? "Demo preview — " : "") + (type === "vm" ? `call/voicemail from ${item.from}${item.line ? " (" + item.line + " line)" : ""}` : `email from ${item.from}: "${item.subject}"`),
     });
     setLeverPending("task");
   }
@@ -2154,6 +2257,20 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       setTaskError(e.message || "Could not save the task on this device. Your draft is still here.");
     }
   }
+
+  /* ---------- OPS TRUTH LINE ----------
+     One short line, per feed: what is live, what is stale, what is still demo. */
+  const opsNote = (() => {
+    if (!live && !syncProblems.length) return "Demo preview · Sync to load current calls, email, and schedule.";
+    const why = (f) => syncProblems.find((p) => p.key === f.key);
+    const fresh = OPS_FEEDS.filter((f) => feedLive[f.key] && !why(f));
+    const rest = OPS_FEEDS.filter((f) => !fresh.includes(f)).map((f) => {
+      const w = why(f);
+      return `${f.what[0].toUpperCase()}${f.what.slice(1)}: ${feedLive[f.key] ? "last sync kept" : "demo preview"}${w ? ` (${w.text})` : ""}`;
+    });
+    if (!rest.length) return "";
+    return [fresh.length ? `Live: ${fresh.map((f) => f.what).join(", ")}` : null, ...rest].filter(Boolean).join(" · ");
+  })();
 
   /* ---------- QUICK ACTIONS ---------- */
 
@@ -3242,13 +3359,19 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           </div>
 
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
-            {["QUO", "GMAIL", "CALENDAR"].map((s) => (
-              <span key={s} className="conn-dots flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? "#54e08a" : "var(--ember-orange)", boxShadow: `0 0 8px ${live ? "#54e08a" : "var(--ember-orange)"}` }} />
-                {s}
-              </span>
-            ))}
-            <span className="hdr-clock" style={{ color: "var(--ink-faint)" }}>{live ? "LIVE" : "DEMO"} · {clock}</span>
+            {OPS_FEEDS.map((f) => {
+              // Offline wins over stale-but-real data: the light reports the connector now.
+              const state = connStatus?.[f.server] === "offline" ? "offline" : feedLive[f.key] ? "live" : "demo";
+              const dot = state === "live" ? "#54e08a" : state === "offline" ? "#ff4d3d" : "var(--ember-orange)";
+              return (
+                <span key={f.server} className="conn-dots flex items-center gap-1.5" data-connector={f.server} data-state={state}
+                  title={state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: offline — ${feedLive[f.key] ? "showing the last sync" : "demo preview"}` : `${f.label}: demo preview`}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot, boxShadow: `0 0 8px ${dot}` }} />
+                  {f.label.toUpperCase()}
+                </span>
+              );
+            })}
+            <span className="hdr-clock" style={{ color: "var(--ink-faint)" }}>{allLive ? "LIVE" : live ? "PARTIAL" : "DEMO"} · {clock}</span>
 
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
               className="header-control rounded-md border px-2 py-1 transition-colors"
@@ -3315,8 +3438,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
 
         {/* ================= OPS VIEW ================= */}
-        {view === "ops" && !live && (
-          <p className="ops-data-note" role="status">Demo preview · Sync to load current calls, email, and schedule.</p>
+        {view === "ops" && opsNote && (
+          <p className="ops-data-note" role="status">{opsNote}</p>
         )}
         {view === "ops" && (
         <div className="main-grid flex-1">

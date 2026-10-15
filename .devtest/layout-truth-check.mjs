@@ -148,6 +148,12 @@ try {
       if (isApi) {
         let body;
         try { body = request.postDataJSON(); } catch { body = null; }
+        // The data-free credential check OPS sync runs first (2026-10-15).
+        if (!external && new URL(request.url()).pathname === '/api/connectors/status') {
+          await route.fulfill({ status: 200, contentType: 'application/json',
+            body: JSON.stringify({ connectors: { quo: 'connected', gmail: 'connected', calendar: 'connected', gdrive: 'connected' } }) });
+          return;
+        }
         if (!Array.isArray(body?.messages)) {
           unexpectedApis.push(`${request.method()} ${request.url()}`);
           await route.fulfill({ status: 501, contentType: 'application/json', body: JSON.stringify({ error: 'Unrecognised API request in offline test' }) });

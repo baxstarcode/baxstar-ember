@@ -83,6 +83,11 @@ async function fixture({ legacy, storage = {}, syncData = { voicemails: [], emai
       const url = String(input?.url || input);
       let body;
       try { body = JSON.parse(init.body); } catch { body = null; }
+      // The data-free credential check OPS sync runs first (2026-10-15).
+      if (new URL(url, location.href).pathname === '/api/connectors/status' && init.method === 'POST') {
+        return new Response(JSON.stringify({ connectors: { quo: 'connected', gmail: 'connected', calendar: 'connected', gdrive: 'connected' } }),
+          { status: 200, headers: { 'content-type': 'application/json' } });
+      }
       if (!Array.isArray(body?.messages)) {
         if (new URL(url, location.href).origin === location.origin && (!init.method || init.method === 'GET')) return originalFetch(input, init);
         mock.unexpected.push({ url, method: init.method });

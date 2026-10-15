@@ -58,9 +58,17 @@ const check = (label, condition, extra = "") => {
   if (!condition) failures.push(label);
 };
 
-function verifiedSyncContent(text) {
+const ALL_CONNECTED = { quo: "connected", gmail: "connected", calendar: "connected", gdrive: "connected" };
+
+async function routeStatus(page, connectors) {
+  await page.route(`${ORIGIN}/api/connectors/status`, (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ connectors }),
+  }));
+}
+
+function verifiedSyncContent(text, servers = ["quo", "gmail", "calendar"]) {
   const content = [];
-  for (const [server, tool] of [["quo", "fetch-missed-calls"], ["gmail", "search_threads"], ["calendar", "list_events"]]) {
+  for (const [server, tool] of [["quo", "fetch-missed-calls"], ["gmail", "search_threads"], ["calendar", "list_events"]].filter(([s]) => servers.includes(s))) {
     const id = `mcp_${server}`;
     content.push({ type: "mcp_tool_use", id, name: tool, server_name: server, input: {} });
     content.push({ type: "mcp_tool_result", tool_use_id: id, is_error: false, content: [] });
@@ -93,6 +101,7 @@ try {
     });
 
     await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
     await page.route(`${ORIGIN}/api/messages`, async (route) => {
       const request = route.request();
       if (request.method() !== "POST") {
@@ -171,6 +180,62 @@ try {
       path: path.join(SHOTS, `dashboard-${name.toLowerCase()}.png`),
       fullPage: true,
     });
+    await context.close();
+  }
+
+  // One dead connector must not blank the others (live 2026-10-15: Quo offline,
+  // Gmail/Calendar/Drive connected, every panel stuck on the demo preview).
+  {
+    const name = "QUO OFFLINE";
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    const requests = [];
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, { ...ALL_CONNECTED, quo: "offline" });
+    await page.route(`${ORIGIN}/api/messages`, async (route) => {
+      const body = JSON.parse(route.request().postData() || "{}");
+      requests.push(body);
+      const isSync = /ONLY valid JSON/.test(route.request().postData() || "");
+      if (isSync) {
+        const text = JSON.stringify({
+          emails: [{ from: "PartialInboxProof", time: "1:01 PM", subject: "gmail still live" }],
+          events: [{ time: "3:00 PM", title: "PartialEventProof", detail: "" }],
+        });
+        await route.fulfill({ status: 200, contentType: "application/json",
+          body: JSON.stringify({ content: verifiedSyncContent(text, ["gmail", "calendar"]) }) });
+      } else {
+        await route.fulfill({ status: 200, contentType: "application/json",
+          headers: { "x-ember-connectors": "degraded" },
+          body: JSON.stringify({ content: [{ type: "text", text: "Inbox triaged." }] }) });
+      }
+    });
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForFunction(() => /PartialInboxProof/.test(document.body.innerText), null, { timeout: 10000 });
+    console.log(`\n===== ${name} =====`);
+    const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));
+    check(`${name} sync asks only for connectors that can authorize`,
+      JSON.stringify(syncRequest?.mcp_servers) === JSON.stringify([{ name: "gmail" }, { name: "calendar" }]),
+      JSON.stringify(syncRequest?.mcp_servers));
+    check(`${name} sync prompt never asks for Quo`, !/Quo inboxes/.test(JSON.stringify(syncRequest?.messages)));
+    const body = await page.locator("body").innerText();
+    check(`${name} Gmail and Calendar panels filled live`, /PartialInboxProof/.test(body) && /PartialEventProof/.test(body));
+    check(`${name} calls panel keeps the demo preview`, /\(701\) 555-0142/.test(body));
+    check(`${name} no red sync error`, !/did not verify|no feeds were replaced/i.test(body));
+    const note = await page.locator(".ops-data-note").innerText();
+    check(`${name} truth line names Quo offline`, /Calls and voicemail: demo preview \(Quo offline\)/.test(note), note);
+    check(`${name} header Quo light offline`, (await page.locator('[data-connector="quo"]').getAttribute("data-state")) === "offline");
+    check(`${name} header Gmail light live`, (await page.locator('[data-connector="gmail"]').getAttribute("data-state")) === "live");
+    check(`${name} header reads PARTIAL`, /PARTIAL ·/.test(await page.locator(".hdr-clock").innerText()));
+    const composer = page.getByRole("textbox", { name: "Ask Ember" });
+    await composer.fill("triage my inbox");
+    await composer.press("Enter");
+    await page.getByText("Inbox triaged.", { exact: true }).waitFor({ timeout: 10000 });
+    const chatNote = await page.locator(".chat-connectors").innerText();
+    check(`${name} chat warning names Quo, not a blanket claim`,
+      /Quo is offline — calls and voicemail not checked/.test(chatNote) && !/Live business data was not checked/.test(chatNote), chatNote);
+    check(`${name} no page errors`, errors.length === 0, errors.join(" | "));
     await context.close();
   }
 } finally {
