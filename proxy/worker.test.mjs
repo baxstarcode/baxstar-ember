@@ -387,6 +387,113 @@ for (const [label, upstream] of [
     "reuse of a rotated-out refresh token can revoke the whole grant");
 }
 
+// Rotation failure modes use a provider that retires each refresh token after
+// one use. A perfect Map cannot expose outages, stale reads, or overlapping calls.
+for (const scenario of ["read-failure", "stale-read", "write-failure", "write-failure-no-next-rotation", "parallel", "cold-read-failure", "malformed-store", "re-consent"]) {
+  let stored = null;
+  let stale = null;
+  let failRead = scenario === "cold-read-failure";
+  let failWrite = scenario.startsWith("write-failure");
+  let clock = 110_000_000;
+  let generation = 0;
+  let validRefresh = `fixture-${scenario}-original`;
+  const attempted = [];
+  const rejected = [];
+  const EMBER_TOKENS = {
+    get: async () => { if (failRead) throw new Error("fixture KV unavailable"); return scenario === "malformed-store" ? {} : stale || stored; },
+    put: async (_key, value) => { if (failWrite) throw new Error("fixture KV write unavailable"); stored = JSON.parse(value); },
+  };
+  const env = { ...baseEnv, MCP_REFRESH_QUO: validRefresh, QUO_CLIENT_ID: `fixture-${scenario}-client`, EMBER_TOKENS };
+  const f = stubFetch([
+    ["mcp.quo.com/.well-known", () => jsonRes({ token_endpoint: "https://mcp.quo.com/token" })],
+    ["mcp.quo.com/token", async (init) => {
+      const received = new URLSearchParams(init.body).get("refresh_token");
+      attempted.push(received);
+      // Yield so simultaneous status requests can reach the same retired grant.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (received !== validRefresh) { rejected.push(received); return jsonRes({ error: "invalid_grant" }, 400); }
+      if (scenario === "write-failure-no-next-rotation" && generation) return jsonRes({ access_token: "fixture-access-renewed", expires_in: 120 });
+      validRefresh = `fixture-${scenario}-rotated-${++generation}`;
+      return jsonRes({ access_token: `fixture-access-${generation}`, refresh_token: validRefresh, expires_in: 120 });
+    }],
+  ]);
+  const status = async (activeEnv = env) => {
+    const request = new Request(`${ORIGIN}/api/connectors/status`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify({ connectors: ["quo"] }) });
+    return (await (await worker.fetch(request, activeEnv, {}, { fetch: f, now: () => clock })).json()).connectors.quo;
+  };
+  if (scenario === "cold-read-failure" || scenario === "malformed-store") {
+    check(`${scenario}: stays offline without risking a retired secret`, await status() === "offline" && attempted.length === 0);
+    continue;
+  }
+  if (scenario === "parallel") {
+    const statuses = await Promise.all([status(), status(), status()]);
+    check("concurrent status requests share one refresh", statuses.every((s) => s === "connected") && attempted.length === 1 && !rejected.length);
+    continue;
+  }
+  check(`${scenario}: initial token is usable`, await status() === "connected");
+  if (scenario === "read-failure") failRead = true;
+  if (scenario === "stale-read") stale = stored;
+  clock += 1_000;
+  check(`${scenario}: valid cached access survives store trouble`, await status() === "connected" && attempted.length === 1);
+  if (scenario === "write-failure") {
+    failWrite = false;
+    await status();
+    check("failed rotation persistence is retried without a second OAuth call", stored?.token === validRefresh && attempted.length === 1);
+  }
+  clock += 200_000;
+  check(`${scenario}: expiry uses the latest refresh without replay`, await status() === "connected" && !rejected.length);
+  clock += 200_000;
+  check(`${scenario}: repeated expiry does not roll back to a stale KV value`, await status() === "connected" && !rejected.length);
+  if (scenario === "write-failure-no-next-rotation") {
+    failWrite = false;
+    const before = attempted.length;
+    await status();
+    check("unsaved rotation survives a later access-only refresh", stored?.token === validRefresh && attempted.length === before);
+  }
+  if (scenario === "re-consent") {
+    validRefresh = "fixture-re-consent-new-grant";
+    const updated = { ...env, MCP_REFRESH_QUO: validRefresh };
+    clock += 1_000;
+    const before = attempted.length;
+    check("new consent invalidates even a still-valid access cache", await status(updated) === "connected" && attempted.length === before + 1 && attempted.at(-1) === updated.MCP_REFRESH_QUO);
+  }
+}
+
+{
+  // A slower old-grant refresh must finish before new consent is persisted.
+  // Otherwise its delayed KV write can overwrite the replacement grant.
+  let saved;
+  let releaseOld;
+  let enteredOld;
+  const oldEntered = new Promise((resolve) => { enteredOld = resolve; });
+  const oldReleased = new Promise((resolve) => { releaseOld = resolve; });
+  const attempts = [];
+  const store = { get: async () => saved || null, put: async (_key, value) => { saved = JSON.parse(value); } };
+  const f = stubFetch([
+    ["mcp.quo.com/.well-known", () => jsonRes({ token_endpoint: "https://mcp.quo.com/token" })],
+    ["mcp.quo.com/token", async (init) => {
+      const token = new URLSearchParams(init.body).get("refresh_token");
+      attempts.push(token);
+      if (token === "fixture-overlap-old") { enteredOld(); await oldReleased; }
+      return jsonRes({ access_token: `access-${token}`, refresh_token: `rotated-${token}`, expires_in: 3600 });
+    }],
+  ]);
+  const status = async (base) => {
+    const req = new Request(`${ORIGIN}/api/connectors/status`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify({ connectors: ["quo"] }) });
+    return (await (await worker.fetch(req, { ...baseEnv, QUO_CLIENT_ID: "fixture-overlap-client", MCP_REFRESH_QUO: base, EMBER_TOKENS: store }, {}, { fetch: f, now: () => 120_000_000 })).json()).connectors.quo;
+  };
+  const oldRequest = status("fixture-overlap-old");
+  await oldEntered;
+  let newFinished = false;
+  const newRequest = status("fixture-overlap-new").then((state) => { newFinished = true; return state; });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  check("new consent waits for an in-flight old refresh", !newFinished);
+  releaseOld();
+  const states = await Promise.all([oldRequest, newRequest]);
+  check("overlapping re-consent keeps both requests usable", states.every((s) => s === "connected"));
+  check("overlapping re-consent leaves the new grant in KV", saved?.token === "rotated-fixture-overlap-new" && attempts.join(",") === "fixture-overlap-old,fixture-overlap-new");
+}
+
 // --- guarantees the earlier blocks established ----------------------------
 
 {

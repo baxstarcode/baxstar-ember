@@ -1251,10 +1251,11 @@ export default function BaxstarEmber() {
   // Per feed, because connectors fail independently. `live` = at least one real feed.
   const [feedLive, setFeedLive] = useState({ voicemails: false, emails: false, events: false });
   const live = feedLive.voicemails || feedLive.emails || feedLive.events;
-  const allLive = feedLive.voicemails && feedLive.emails && feedLive.events;
   const [connStatus, setConnStatus] = useState(null);
   const connStatusRef = useRef(null);
   const [syncProblems, setSyncProblems] = useState([]);
+  const freshFeeds = OPS_FEEDS.filter((f) => feedLive[f.key] && connStatus?.[f.server] !== "offline" && !syncProblems.some((p) => p.key === f.key));
+  const feedState = !live ? "DEMO" : freshFeeds.length === OPS_FEEDS.length ? "LIVE" : freshFeeds.length ? "PARTIAL" : "STALE";
   const lastSyncRef = useRef(0);
   const [syncing, setSyncing] = useState(false);
   const [command, setCommand] = useState("");
@@ -1758,6 +1759,8 @@ export default function BaxstarEmber() {
     setError("");
     // Stamped at the attempt, so a fully offline round still retries on return.
     lastSyncRef.current = Date.now();
+    let landed = [];
+    let problems = [];
     try {
       const status = await fetchConnectorStatus();
       connStatusRef.current = status;
@@ -1766,7 +1769,7 @@ export default function BaxstarEmber() {
       // asks for all three and lets the tool results decide.
       const wanted = OPS_FEEDS.filter((f) => !status || status[f.server] !== "offline");
       const offline = OPS_FEEDS.filter((f) => !wanted.includes(f));
-      const problems = offline.map((f) => ({ key: f.key, text: `${f.label} offline` }));
+      problems = offline.map((f) => ({ key: f.key, text: `${f.label} offline` }));
       if (!wanted.length) {
         setSyncProblems(problems);
         throw new Error(`${listNames(offline.map((f) => f.label))} are offline; no feeds were replaced.`);
@@ -1815,7 +1818,7 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
       const ok = succeededConnectors(resp);
       let parsed = null;
       try { parsed = extractJSON(extractText(resp)); } catch (e) { parsed = null; }
-      const landed = wanted.filter((f) => ok.has(f.server) && parsed && Array.isArray(parsed[f.key]));
+      landed = wanted.filter((f) => ok.has(f.server) && parsed && Array.isArray(parsed[f.key]));
       const unverified = wanted.filter((f) => !landed.includes(f));
       for (const f of unverified) problems.push({ key: f.key, text: `${f.label} unverified` });
       setSyncProblems(problems);
@@ -1831,7 +1834,19 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
           : `Live sync did not verify successful results from ${names}; no feeds were replaced.`);
       }
     } catch (e) {
-      const truth = live ? "Panels keep their last synced data." : "Showing the demo preview; no live data was loaded.";
+      // React state updates above have not changed this render's feedLive value.
+      // Describe the actual result of this attempt plus any older retained feeds.
+      const kept = OPS_FEEDS.filter((f) => feedLive[f.key] && !landed.includes(f));
+      const demo = OPS_FEEDS.filter((f) => !feedLive[f.key] && !landed.includes(f));
+      setSyncProblems(OPS_FEEDS.filter((f) => !landed.includes(f)).map((f) =>
+        problems.find((p) => p.key === f.key) || { key: f.key, text: `${f.label} unverified` }));
+      const truth = !landed.length && !kept.length
+        ? "Showing the demo preview; no live data was loaded."
+        : [
+            landed.length ? `Updated ${listNames(landed.map((f) => f.what))}.` : "",
+            kept.length ? `Keeping the last synced ${listNames(kept.map((f) => f.what))}.` : "",
+            demo.length ? `Demo preview remains for ${listNames(demo.map((f) => f.what))}.` : "",
+          ].filter(Boolean).join(" ");
       setError(`${e?.message || "Sync failed."} ${truth}`);
     } finally {
       setSyncing(false);
@@ -3679,17 +3694,17 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           <div className="font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider" style={{ color: "var(--ink-dim)" }}>
             {OPS_FEEDS.map((f) => {
               // Offline wins over stale-but-real data: the light reports the connector now.
-              const state = connStatus?.[f.server] === "offline" ? "offline" : feedLive[f.key] ? "live" : "demo";
+              const state = connStatus?.[f.server] === "offline" ? "offline" : !feedLive[f.key] ? "demo" : freshFeeds.includes(f) ? "live" : "stale";
               const dot = state === "live" ? "#54e08a" : state === "offline" ? "#ff4d3d" : "var(--ember-orange)";
               return (
                 <span key={f.server} className="conn-dots flex items-center gap-1.5" data-connector={f.server} data-state={state}
-                  title={state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: offline — ${feedLive[f.key] ? "showing the last sync" : "demo preview"}` : `${f.label}: demo preview`}>
+                  title={state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: offline — ${feedLive[f.key] ? "showing the last sync" : "demo preview"}` : state === "stale" ? `${f.label}: refresh unverified — showing the last sync` : `${f.label}: demo preview`}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot, boxShadow: `0 0 8px ${dot}` }} />
                   {f.label.toUpperCase()}
                 </span>
               );
             })}
-            <span className="hdr-clock" style={{ color: "var(--ink-faint)" }}>{allLive ? "LIVE" : live ? "PARTIAL" : "DEMO"} · {clock}</span>
+            <span className="hdr-clock" style={{ color: "var(--ink-faint)" }}>{feedState} · {clock}</span>
 
             <button onClick={() => setBgMenu(!bgMenu)} title="Background"
               className="header-control rounded-md border px-2 py-1 transition-colors"
@@ -3877,7 +3892,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                   <span className="font-mono-x text-[9.5px] tracking-[0.25em]"
                     style={{ color: thinking || syncing ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-                    {thinking ? "THINKING…" : syncing ? "SYNCING…" : live ? "LIVE" : "READY"}
+                    {thinking ? "THINKING…" : syncing ? "SYNCING…" : live ? feedState : "READY"}
                   </span>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>

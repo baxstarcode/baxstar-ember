@@ -150,6 +150,16 @@ of links to Brady's other properties.
   was not checked: the environment proxy refused the production hostname. Drive,
   Registry, and Relay were unavailable in this session and were not updated.
 
+- **Codex, 2026-10-16 — reliability continuation:** preserved cached access tokens
+  across KV read failures, retained rotated tokens after failed saves, retried
+  persistence, rejected unreadable/malformed cold storage, and serialized refreshes
+  and re-consent within a Worker isolate. The partial-sync error now describes which
+  feeds updated, stayed cached, or remain demo; failed refreshes also change LIVE
+  indicators to STALE. Added discriminating Worker and desktop/phone browser
+  regressions. Cloudflare KV remains eventually consistent across isolates; stronger
+  coordination and authenticated deployment verification are still open. No production
+  configuration, connector permissions, or model choices changed.
+
 ---
 
 ## Canonical files — the source of truth for each concern

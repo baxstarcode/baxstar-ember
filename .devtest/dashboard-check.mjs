@@ -48,7 +48,14 @@ function startStaticServer() {
 const { chromium } = await loadPlaywright();
 const server = await startStaticServer();
 const ORIGIN = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
+async function offlineContext(options) {
+  const context = await browser.newContext(options);
+  // Exercise the documented system-font fallback without depending on Google
+  // Fonts access. Keep all application console/network assertions enabled.
+  await context.route("https://fonts.googleapis.com/**", (route) => route.fulfill({ status: 200, contentType: "text/css", body: "" }));
+  return context;
+}
 const failures = [];
 let assertions = 0;
 
@@ -81,7 +88,7 @@ try {
   for (const [name, viewport] of [["DESKTOP", { width: 1440, height: 900 }], ["PHONE", { width: 393, height: 852 }]]) {
     const requests = [];
     let syncEvidence = true;
-    const context = await browser.newContext({
+    const context = await offlineContext({
       viewport,
       deviceScaleFactor: name === "PHONE" ? 3 : 1,
       serviceWorkers: "block",
@@ -214,7 +221,7 @@ try {
   }
 
   {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const context = await offlineContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
     const page = await context.newPage();
     await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
     await routeStatus(page, ALL_CONNECTED);
@@ -236,7 +243,7 @@ try {
   // out of the centre panel, nothing hides under the dock, the plates stay whole.
   for (const [w, h] of [[1024, 700], [1100, 640], [1280, 720]]) {
     const name = `${w}x${h}`;
-    const context = await browser.newContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
+    const context = await offlineContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
     const page = await context.newPage();
     await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
     await routeStatus(page, ALL_CONNECTED);
@@ -271,7 +278,7 @@ try {
   // Gmail/Calendar/Drive connected, every panel stuck on the demo preview).
   {
     const name = "QUO OFFLINE";
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const context = await offlineContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
     const page = await context.newPage();
     const requests = [];
     const errors = [];
@@ -320,6 +327,50 @@ try {
     check(`${name} chat warning names Quo, not a blanket claim`,
       /Quo is offline — calls and voicemail not checked/.test(chatNote) && !/Live business data was not checked/.test(chatNote), chatNote);
     check(`${name} no page errors`, errors.length === 0, errors.join(" | "));
+    await context.close();
+  }
+  // Truth must follow the feeds that actually landed, even on a first partial
+  // response and on later failed refreshes. No external request leaves the test.
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const context = await offlineContext({ viewport: { width, height }, deviceScaleFactor: 3, serviceWorkers: "block" });
+    const page = await context.newPage();
+    let outcome = "failed";
+    let allOffline = false;
+    await page.route(`${ORIGIN}/api/connectors/status`, (route) => route.fulfill({ json: {
+      connectors: Object.fromEntries(Object.keys(ALL_CONNECTED).map((key) => [key, allOffline ? "offline" : "connected"])),
+    } }));
+    await page.route(`${ORIGIN}/api/messages`, (route) => {
+      if (outcome === "failed") return route.fulfill({ status: 503, json: { error: "Fixture upstream unavailable" } });
+      const data = { emails: [{ from: "PartialTruthInbox", time: "Now", subject: "Verified email" }], voicemails: [], events: [] };
+      return route.fulfill({ json: { content: verifiedSyncContent(JSON.stringify(data), outcome === "partial" ? ["gmail"] : ["quo", "gmail", "calendar"]) } });
+    });
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    const sync = async () => {
+      await page.locator(".sync-control").click();
+      await page.waitForFunction(() => !document.querySelector(".sync-control").disabled);
+    };
+    const name = `${width} PARTIAL TRUTH`;
+    await sync();
+    check(`${name} initial total failure stays demo`, /no live data was loaded/.test(await page.locator(".ops-error").innerText()));
+    outcome = "partial";
+    await sync();
+    check(`${name} verified email renders`, await page.getByText("PartialTruthInbox", { exact: true }).count() === 1);
+    const partialError = await page.locator(".ops-error").innerText();
+    check(`${name} first partial error acknowledges the update`, /Updated email\./.test(partialError) && !/no live data was loaded/.test(partialError), partialError);
+    check(`${name} partial success is PARTIAL in the header`, /PARTIAL ·/.test(await page.locator(".hdr-clock").innerText()));
+    outcome = "failed";
+    await sync();
+    check(`${name} later failure preserves email and names it as retained`,
+      await page.getByText("PartialTruthInbox", { exact: true }).count() === 1 && /Keeping the last synced email\./.test(await page.locator(".ops-error").innerText()));
+    check(`${name} failed refresh labels previously live email stale`, /Email: last sync kept/.test(await page.locator(".ops-data-note").innerText()));
+    check(`${name} failed refresh removes the green live lamp`, await page.locator('[data-connector="gmail"]').getAttribute("data-state") === "stale" && /STALE ·/.test(await page.locator(".hdr-clock").innerText()));
+    outcome = "complete";
+    await sync();
+    check(`${name} full recovery clears the sync error`, await page.locator(".ops-error").count() === 0);
+    allOffline = true;
+    await sync();
+    check(`${name} all-offline keeps prior live data without claiming demo`, !/no live data was loaded|Demo preview remains/.test(await page.locator(".ops-error").innerText()));
+    check(`${name} offline connectors cannot leave the header LIVE`, /STALE ·/.test(await page.locator(".hdr-clock").innerText()));
     await context.close();
   }
 } finally {

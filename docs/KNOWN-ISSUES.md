@@ -58,10 +58,10 @@ syncs per feed, so Quo being down no longer blanks Inbox and Schedule.
 
 ## 1c. A token-store read failure replays a retired refresh token
 
-**Status: REPRODUCED LOCALLY — next backend priority (2026-10-16)**
+**Status: LOCAL REPAIR VERIFIED — distributed coordination remains open (2026-10-16)**
 
-`currentRefresh` catches `EMBER_TOKENS.get` failures and returns the original secret.
-After rotation, `tokenCache` holds the replacement refresh token, so that fallback
+Before the repair, `currentRefresh` caught `EMBER_TOKENS.get` failures and returned
+the original secret. After rotation, `tokenCache` held the replacement refresh token, so that fallback
 also misses the still-valid cached access token. The next request sends the retired
 secret to the provider. This contradicts the intended no-reuse protection and can
 drop Quo; revocation of a grant depends on the provider's reuse policy and was not
@@ -71,27 +71,40 @@ Reproduction used only synthetic fixtures: refresh Quo once, return a new refres
 token and an access token valid for 3600 seconds, save the rotation, then make the
 KV read throw 1 second later. The second status request sent the original token
 again; the fixture rejected it and status changed from connected to offline.
-The existing rotation tests use an immediately readable Map and miss this case.
+The original rotation tests used an immediately readable Map and missed this case.
 
-Repair must preserve known-valid cached authorization across store failures and
-avoid falling back to a possibly retired secret when rotation state is unreadable.
-Validate failed/stale reads, persistence failure, concurrent refreshes, and re-consent
-before treating KV-backed rotation as production-ready. No backend change was made
-in the command-plate design pass.
+The follow-up repair now checks a credential-bound access cache before reading KV,
+keeps the newest refresh token in memory even if persistence fails, retries failed
+saves, and refuses cold unreadable/malformed storage instead of using the original
+secret. It ignores tokens this isolate already knows were retired. Concurrent calls
+share one refresh; overlapping re-consent waits so an old request cannot overwrite
+the replacement grant. Regression coverage exercises these cases and fails against
+the previous Worker.
+
+This is an **isolate-local repair**, not global refresh serialization. Cloudflare's
+[KV consistency documentation](https://developers.cloudflare.com/kv/concepts/how-kv-works/#consistency)
+confirms stale values and cached negative lookups can survive across locations.
+Different or restarted isolates can still read an older token; a failed persistence
+write can also outlive the isolate holding the only newer copy. A strongly consistent
+refresh owner (for example, a Durable Object) is needed before claiming rotation is
+safe across all instances. No new binding was created or deployed in this pass.
 
 ## 1d. Partial first sync displays contradictory error text
 
-**Status: REPRODUCED LOCALLY (2026-10-16)**
+**Status: FIXED AND VERIFIED LOCALLY (2026-10-16)**
 
-On a first sync where Gmail returns verified results but Quo/Calendar do not,
-`syncLive` updates the email panel and `feedLive`, then throws for the other feeds.
-Its catch still reads the pre-request `live` value and appends "Showing the demo
-preview; no live data was loaded." The same screen correctly says "Live: email"
-and displays the returned email. A browser fixture reproduced both statements.
+Before the repair, on a first sync where Gmail returned verified results but
+Quo/Calendar did not, `syncLive` updated the email panel and `feedLive`, then threw
+for the other feeds. Its catch still read the pre-request `live` value and appended
+"Showing the demo preview; no live data was loaded." The same screen correctly said
+"Live: email" and displayed the returned email. A browser fixture reproduced both
+statements.
 
-Build the error summary from the feeds that actually landed and any retained live
-feeds, rather than the earlier render's aggregate flag. Preserve the verified email
-panel while clearly identifying the other feeds as unverified.
+The follow-up repair builds the summary from the feeds that actually landed,
+previously retained feeds, and remaining demo panels. Failed attempts mark retained
+feeds as stale in the note, connector lights, and header instead of leaving green
+LIVE indicators. Desktop and phone regressions cover first failure, partial success,
+later failure, complete recovery, and all-offline status after live data was loaded.
 
 ## 2. Desktop and iPhone microphone/speaker reliability is unproven
 

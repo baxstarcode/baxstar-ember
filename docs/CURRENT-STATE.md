@@ -2,6 +2,14 @@
 
 Last verified against the working repository on **2026-09-20**.
 
+**Local continuation, 2026-10-16:** branch `codex/ember-command-plate-light` contains
+the command-plate design refinement and subsequent connector/sync reliability
+repairs. Rotated tokens survive local KV failures and simultaneous requests within
+one Worker isolate; partial/failed syncs now distinguish updated, retained, and demo
+feeds, with STALE indicators after failures. These changes have not been deployed.
+Cross-isolate refresh coordination and authenticated production verification remain
+open. See `HANDOFF-CINEMATIC.md` and Known Issues §1c–1d for scope and restart steps.
+
 **Status:** the desktop revival is deployed. PR #43 merged to `main` at
 `add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit
 `063237de6bfc45eb562eb9dbd82a9eb8b651a6f8` is live through Pages deployment

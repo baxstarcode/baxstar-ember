@@ -694,6 +694,7 @@ async function oauthCallback(request, env, url, fetchImpl) {
 // requests. Keyed per connector; entries expire early so a token is never
 // handed out in its last few seconds of life.
 const tokenCache = new Map();
+const tokenRefreshes = new Map();
 
 // ROTATED REFRESH TOKENS (2026-10-15). Some providers hand back a NEW refresh token
 // on each refresh and retire the old one; Ember's Quo client is a public OAuth
@@ -703,31 +704,84 @@ const tokenCache = new Map();
 // With the optional EMBER_TOKENS KV binding, the newest token is kept there and
 // used first. Each saved token carries a fingerprint of the secret it descends
 // from, so when Brady re-keys (a new secret) the stale saved token is ignored.
-// Without the binding nothing changes. Free-tier KV: one write per rotation.
+// Without the binding, rotations survive only in the current isolate. KV writes
+// normally happen once per rotation; failed saves are retried. This local cache
+// and in-flight map do not serialize refreshes across different Worker isolates.
 async function secretFingerprint(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function currentRefresh(connector, env) {
-  const base = env["MCP_REFRESH_" + connector.toUpperCase()];
-  if (!base) return null;
+async function currentRefresh(connector, env, credentials, cached) {
+  const { base, key } = credentials;
   const store = env.EMBER_TOKENS;
-  if (!store || typeof store.get !== "function") return { refresh: base, base, store: null };
   const fp = await secretFingerprint(base);
+  const known = { refresh: cached?.refresh || base, base, key, store, fp, retired: cached?.retired || new Set(), needsSave: cached?.needsSave || false };
+  if (!store) return known;
+  if (typeof store.get !== "function") return cached ? known : null;
   try {
     const saved = await store.get("refresh:" + connector, "json");
-    if (saved && saved.base === fp && typeof saved.token === "string" && saved.token) {
-      return { refresh: saved.token, base, store, fp };
-    }
+    if (saved === null) return known;
+    if (!isRecord(saved) || typeof saved.base !== "string") return cached ? known : null;
+    if (saved.base !== fp) return known;
+    if (typeof saved.token !== "string" || !saved.token) return cached ? known : null;
+    // KV can return an older value after a write. Never roll this isolate back
+    // to a refresh token it has already seen retired.
+    if (known.retired.has(saved.token)) return known;
+    return { ...known, refresh: saved.token, needsSave: false };
   } catch {
-    // An unreadable store is the same as no store.
+    // A failed read does NOT establish that no rotation exists. Use only known
+    // local state; a cold isolate drops the connector rather than replaying base.
+    return cached ? known : null;
   }
-  return { refresh: base, base, store, fp };
+}
+
+async function persistRotation(connector, cached, store) {
+  if (!cached.needsSave || !store || typeof store.put !== "function") return;
+  try {
+    await store.put("refresh:" + connector, JSON.stringify({ base: cached.fp, token: cached.refresh }));
+    cached.needsSave = false;
+  } catch {
+    // Keep the newest token in memory and retry persistence on the next request.
+    // A failed write must never send us back to the retired refresh token.
+  }
 }
 
 async function accessTokenFor(connector, env, fetchImpl, now) {
-  const current = await currentRefresh(connector, env);
+  const base = env["MCP_REFRESH_" + connector.toUpperCase()];
+  if (!base) return null;
+  const google = CONNECTOR_PROVIDER[connector] === "google";
+  const key = await secretFingerprint(JSON.stringify([
+    base, google ? env.GOOGLE_CLIENT_ID : env.QUO_CLIENT_ID,
+    google ? env.GOOGLE_CLIENT_SECRET : null,
+  ]));
+  const pending = tokenRefreshes.get(connector);
+  if (pending) {
+    if (pending.key === key) return pending.promise;
+    // Serialize a re-consent with an older request too, so the old grant cannot
+    // overwrite the newly issued one when its slower refresh completes.
+    await pending.promise;
+    return accessTokenFor(connector, env, fetchImpl, now);
+  }
+  const operation = { key, promise: refreshAccessToken(connector, { base, key }, env, fetchImpl, now) };
+  tokenRefreshes.set(connector, operation);
+  try {
+    return await operation.promise;
+  } finally {
+    if (tokenRefreshes.get(connector) === operation) tokenRefreshes.delete(connector);
+  }
+}
+
+async function refreshAccessToken(connector, credentials, env, fetchImpl, now) {
+  const entry = tokenCache.get(connector);
+  const cached = entry?.key === credentials.key ? entry : null;
+  if (cached) {
+    await persistRotation(connector, cached, env.EMBER_TOKENS);
+    // Check the access cache before consulting KV. Storage trouble cannot turn
+    // a still-valid access token into an unnecessary OAuth refresh.
+    if (cached.exp > now) return cached.token;
+  }
+  const current = await currentRefresh(connector, env, credentials, cached);
   if (!current) return null;
   // Deliberately NO retry with the pasted secret when a saved token fails: once a
   // provider has rotated, the pasted secret is a retired token, and presenting a
@@ -737,10 +791,6 @@ async function accessTokenFor(connector, env, fetchImpl, now) {
 }
 
 async function mintAccessToken(connector, refresh, current, env, fetchImpl, now) {
-
-  const hit = tokenCache.get(connector);
-  if (hit && hit.exp > now && hit.refresh === refresh) return hit.token;
-
   const provider = CONNECTOR_PROVIDER[connector];
   let tokenUrl = GOOGLE_TOKEN_URL;
   let clientId = env.GOOGLE_CLIENT_ID;
@@ -772,21 +822,25 @@ async function mintAccessToken(connector, refresh, current, env, fetchImpl, now)
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.access_token) return null;
-    if (current.store && typeof data.refresh_token === "string" && data.refresh_token && data.refresh_token !== refresh) {
-      try {
-        await current.store.put("refresh:" + connector, JSON.stringify({ base: current.fp, token: data.refresh_token }));
-        refresh = data.refresh_token;
-      } catch {
-        // Losing the save costs one future refresh, never this request.
-      }
+    const retired = new Set(current.retired);
+    const rotated = typeof data.refresh_token === "string" && data.refresh_token && data.refresh_token !== refresh;
+    if (rotated) {
+      retired.add(refresh);
+      refresh = data.refresh_token;
     }
     const ttl = Math.max(30, Number(data.expires_in) || 3600);
-    tokenCache.set(connector, {
+    const cached = {
+      key: current.key,
+      fp: current.fp,
       token: data.access_token,
       // 60s early so a token can't expire mid-flight upstream.
       exp: now + (ttl - 60) * 1000,
       refresh,
-    });
+      retired,
+      needsSave: !!rotated || current.needsSave,
+    };
+    tokenCache.set(connector, cached);
+    await persistRotation(connector, cached, current.store);
     return data.access_token;
   } catch {
     return null; // a connector we can't authorize is dropped, not forwarded

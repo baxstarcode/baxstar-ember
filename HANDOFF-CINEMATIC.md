@@ -39,11 +39,26 @@ deployment verification remain outstanding; the environment cannot reach the liv
 hostname and has no Drive/Cloudflare connector. Registry and Relay write-back remain
 unavailable. The separate iPhone Shortcut PR #48 was inspected and left untouched.
 
-**Next priority:** repair the rotated-token fallback in `currentRefresh` before
-relying on `EMBER_TOKENS` for Quo recovery. A local fixture proved that one failed KV
-read replays the retired secret and loses a still-valid cached access token. Then
-confirm the deployed Worker/model compatibility and KV binding in an authenticated
-session. The partial-sync error text also needs correction; see Known Issues §1c–1d.
+**Reliability continuation, 2026-10-16:** the same branch now repairs the reproduced
+token-store fallback within one Worker isolate, coalesces concurrent refreshes, keeps
+and retries unsaved rotations, and serializes overlapping re-consent. The dashboard
+now reports updated, retained, and demo feeds accurately; failed refreshes show STALE
+instead of keeping a green LIVE lamp. Known Issues §1c–1d records the precise scope.
+
+Reliability validation: build/Pages staging passed; 233 Worker, 36 Pages gateway,
+27 outbox, 24 posting-time, 26 chat, 87 layout/truth, and 100 dashboard checks passed
+(533 total). Browser checks used system Chromium with `CHROME_PATH`; dashboard
+fixtures exercise the system-font fallback. The new Worker suite fails 15 checks
+against the previous implementation and passes all 233 against this repair.
+This is targeted local verification, not a completed release or live OAuth gate.
+
+**Next priority:** address refresh coordination across Worker instances, then verify
+the deployed Worker/model compatibility and token binding in an authenticated session.
+Cloudflare KV is eventually consistent; the local repair cannot guarantee safe
+rotation across restarted/different isolates. No production deployment or external
+connector write was performed. Ask Jev was checked again but is still unavailable
+through this session's tools. GitHub API access also remains unavailable; Git branch
+reads/pushes work.
 
 ## Source ownership
 
