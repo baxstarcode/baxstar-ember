@@ -2,6 +2,15 @@
 
 Last verified against the working repository on **2026-09-20**.
 
+**iPhone shortcut preparation (2026-10-06):** Brady requested both phone voice and
+Caption Studio, starting with “talking to ember.” The isolated native Shortcut and
+disabled-by-default `/api/voice` adapter are prepared on `codex/ember-iphone-shortcut`.
+See [`work/iphone-shortcut/README.md`](../work/iphone-shortcut/README.md) for offline
+evidence, the exact Access setup, Apple signing and the physical-device gate. This is
+not a production release: Cloudflare configuration, Apple import, actual dictation and
+audible playback remain unverified. No photo workflow is included yet. Registry
+ownership remains unclaimed after an automatic approval-review rejection.
+
 **Status:** the desktop revival is deployed. PR #43 merged to `main` at
 `add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit
 `063237de6bfc45eb562eb9dbd82a9eb8b651a6f8` is live through Pages deployment
