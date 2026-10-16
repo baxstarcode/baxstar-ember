@@ -151,6 +151,7 @@ for (const [name, provider] of [
   ["provider rejection", () => Response.json({ error: "invalid_grant" }, { status: 400 })],
   ["provider timeout", () => { throw new DOMException("fixture timeout", "TimeoutError"); }],
   ["malformed JSON", () => new Response("bad json")],
+  ["null payload", () => Response.json(null)],
   ["invalid token", () => Response.json({ access_token: "fixture-access", refresh_token: {} })],
   ["invalid expiry", () => Response.json({ access_token: "fixture-access", expires_in: -1 })],
 ]) {
@@ -194,6 +195,7 @@ for (const fault of ["missing-binding", "missing-seed", "binding-failure"]) {
     if (fault === "binding-failure") h.env.EMBER_TOKEN_COORDINATOR.get = () => { throw new Error("fixture unavailable"); };
     const status = await h.status();
     assert.equal(status.connectors.quo, "offline");
+    assert.equal(status.issues.quo, fault === "binding-failure" ? "temporarily_unavailable" : "setup_required");
     assert.equal(h.calls.length, 0);
     assert.doesNotMatch(JSON.stringify(status), /fixture-|refresh|secret/);
   });
@@ -232,4 +234,36 @@ test("malformed persisted state fails closed", async () => {
   h.records.set(keyFor("quo", h.env), { version: 1, phase: "ready", refresh: "fixture-unsafe" });
   assert.equal((await h.direct()).status, 503);
   assert.equal(h.calls.length, 0);
+});
+
+test("status distinguishes transient storage trouble from an ambiguous refresh", async () => {
+  const h = harness();
+  h.faults = { failRead: true };
+  assert.deepEqual((await h.status()).issues, { quo: "temporarily_unavailable" });
+  h.faults = {};
+  h.provider = () => { throw new Error("fixture provider lost reply"); };
+  assert.deepEqual((await h.status()).issues, { quo: "reconnect_required" });
+  h.restart();
+  assert.deepEqual((await h.status()).issues, { quo: "reconnect_required" });
+  assert.equal(h.calls.length, 1);
+});
+
+test("unknown coordinator error text cannot leak through status", async () => {
+  const h = harness();
+  h.env.EMBER_TOKEN_COORDINATOR.get = () => ({ fetch: async () => Response.json({ error: "fixture-secret-provider-detail" }, { status: 503 }) });
+  const status = await h.status();
+  assert.deepEqual(status.issues, { quo: "temporarily_unavailable" });
+  assert.doesNotMatch(JSON.stringify(status), /fixture-|secret|detail/);
+});
+
+test("a successful reconnect or explicit static fallback clears the issue", async () => {
+  const h = harness();
+  h.faults = { failRead: true };
+  assert.ok((await h.status()).issues.quo);
+  h.faults = {};
+  assert.equal((await h.status()).issues, undefined);
+  h.env.MCP_TOKEN_QUO = "fixture-static-access";
+  h.env.EMBER_TOKEN_COORDINATOR.get = () => { throw new Error("fixture binding unavailable"); };
+  assert.deepEqual((await h.status()).connectors, { quo: "connected" });
+  assert.equal((await h.status()).issues, undefined);
 });

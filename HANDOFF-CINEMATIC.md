@@ -1,6 +1,7 @@
 # Ember — Living Cinematic Handoff
 
-Checkpoint date: **2026-09-20**. This is the compact continuation brief for any
+Checkpoint date: **2026-10-16** (local branch; recorded production evidence is dated
+2026-09-20). This is the compact continuation brief for any
 builder entering Ember cold. Git history preserves the long design chronology; this
 file records what is load-bearing now.
 
@@ -34,9 +35,10 @@ mode is static, and compact chat pills omit the serial. No dependencies were add
 
 Verified locally: production build and Pages staging, 26/26 chat regressions,
 87/87 layout/truth checks, 17/17 focused pointer/keyboard/touch/reduced-motion checks,
-and desktop/phone screenshots at device scale factor 3. Full release-suite and live
-deployment verification remain outstanding; the environment cannot reach the live
-hostname and has no Drive/Cloudflare connector. Registry and Relay write-back remain
+and desktop/phone screenshots at device scale factor 3. The later full release-suite
+results are recorded below. Live deployment verification remains outstanding; the
+environment cannot reach the live hostname and has no Drive/Cloudflare connector.
+Registry and Relay write-back remain
 unavailable. The separate iPhone Shortcut PR #48 was inspected and left untouched.
 
 **Reliability continuation, 2026-10-16:** the same branch now repairs the reproduced
@@ -71,6 +73,15 @@ serials without changing label/geometry expectations. The complete release comma
 87 layout, 14 streaming/effort, 38 ecosystem, 36 UI, 46 Caption Studio, 22 voice-grace,
 and 24 voice-lab simulations. Wrangler 4.135.0 dry-run also passed. Physical device,
 live provider, and authenticated deployment checks remain separate and unverified.
+
+**Recovery guidance:** the next local pass adds fixed, privacy-safe status reasons
+for incomplete setup, new sign-in, and temporary unavailability. OPS keeps verified
+data and explains the next action; unknown provider text is discarded and successful
+sync clears old guidance. Desktop/phone checks cover the three reasons, retained email,
+unknown-code filtering, and recovery. No new external action or permission was added.
+The combined full release rerun passed **754 checks**: coordinator coverage is now
+27 and dashboard coverage 108, with all other counts above unchanged. The final
+Worker dry-run passed; desktop and phone recovery renders were inspected at 3× scale.
 
 **Next priority:** follow the fresh-consent cutover in `docs/DEPLOY.md`, then verify
 the deployed Worker/model compatibility and connectors in an authenticated session.

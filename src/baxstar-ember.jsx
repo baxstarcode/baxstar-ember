@@ -500,6 +500,11 @@ const OPS_FEEDS = [
   { server: "calendar", key: "events",     label: "Calendar", what: "schedule" },
 ];
 const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
+const CONNECTOR_ISSUE_TEXT = {
+  setup_required: "setup incomplete",
+  reconnect_required: "needs a new sign-in",
+  temporarily_unavailable: "temporarily unavailable — try Sync again",
+};
 // Returning to the tab re-syncs once the panels are older than this.
 const OPS_STALE_MS = 15 * 60 * 1000;
 
@@ -517,8 +522,12 @@ async function fetchConnectorStatus() {
     const data = await res.json();
     const c = data?.connectors;
     if (!c || typeof c !== "object") return null;
-    return Object.fromEntries(STATUS_CONNECTORS.map((n) =>
+    const connectors = Object.fromEntries(STATUS_CONNECTORS.map((n) =>
       [n, c[n] === "connected" ? "connected" : c[n] === "offline" ? "offline" : "unknown"]));
+    // Ignore unknown fields/reasons: raw provider errors never become UI copy.
+    const issues = Object.fromEntries(STATUS_CONNECTORS.filter((n) => connectors[n] === "offline" &&
+      Object.hasOwn(CONNECTOR_ISSUE_TEXT, data.issues?.[n])).map((n) => [n, data.issues[n]]));
+    return { connectors, issues };
   } catch (e) {
     return null;
   }
@@ -1762,14 +1771,15 @@ export default function BaxstarEmber() {
     let landed = [];
     let problems = [];
     try {
-      const status = await fetchConnectorStatus();
+      const check = await fetchConnectorStatus();
+      const status = check?.connectors || null;
       connStatusRef.current = status;
       setConnStatus(status);
       // Ask only for connectors that can authorize. An unreachable status route
       // asks for all three and lets the tool results decide.
       const wanted = OPS_FEEDS.filter((f) => !status || status[f.server] !== "offline");
       const offline = OPS_FEEDS.filter((f) => !wanted.includes(f));
-      problems = offline.map((f) => ({ key: f.key, text: `${f.label} offline` }));
+      problems = offline.map((f) => ({ key: f.key, text: `${f.label} ${CONNECTOR_ISSUE_TEXT[check?.issues[f.server]] || "offline"}` }));
       if (!wanted.length) {
         setSyncProblems(problems);
         throw new Error(`${listNames(offline.map((f) => f.label))} are offline; no feeds were replaced.`);

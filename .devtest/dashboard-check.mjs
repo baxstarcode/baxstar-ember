@@ -336,8 +336,10 @@ try {
     const page = await context.newPage();
     let outcome = "failed";
     let allOffline = false;
+    let issues = {};
     await page.route(`${ORIGIN}/api/connectors/status`, (route) => route.fulfill({ json: {
       connectors: Object.fromEntries(Object.keys(ALL_CONNECTED).map((key) => [key, allOffline ? "offline" : "connected"])),
+      issues,
     } }));
     await page.route(`${ORIGIN}/api/messages`, (route) => {
       if (outcome === "failed") return route.fulfill({ status: 503, json: { error: "Fixture upstream unavailable" } });
@@ -371,6 +373,20 @@ try {
     await sync();
     check(`${name} all-offline keeps prior live data without claiming demo`, !/no live data was loaded|Demo preview remains/.test(await page.locator(".ops-error").innerText()));
     check(`${name} offline connectors cannot leave the header LIVE`, /STALE ·/.test(await page.locator(".hdr-clock").innerText()));
+    issues = { quo: "reconnect_required", gmail: "setup_required", calendar: "temporarily_unavailable" };
+    await sync();
+    const recoveryNote = await page.locator(".ops-data-note").innerText();
+    check(`${name} distinguishes sign-in, setup, and retry guidance`,
+      /Quo needs a new sign-in/.test(recoveryNote) && /Gmail setup incomplete/.test(recoveryNote) && /Calendar temporarily unavailable — try Sync again/.test(recoveryNote));
+    check(`${name} recovery guidance preserves the verified email`, await page.getByText("PartialTruthInbox", { exact: true }).count() === 1);
+    await page.screenshot({ path: path.join(ROOT, ".devtest/ui-shots", `recovery-${width}.png`), fullPage: true });
+    issues = { quo: "fixture-private-provider-detail", gmail: "__proto__" };
+    await sync();
+    check(`${name} ignores unrecognized reason text`, !/fixture-private|__proto__/.test(await page.locator(".ops-data-note").innerText()));
+    allOffline = false;
+    issues = { quo: "reconnect_required" };
+    await sync();
+    check(`${name} full recovery clears outdated recovery guidance`, await page.locator(".ops-error").count() === 0 && !/needs a new sign-in/.test(await page.locator("body").innerText()));
     await context.close();
   }
 } finally {

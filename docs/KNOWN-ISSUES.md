@@ -119,6 +119,9 @@ previously retained feeds, and remaining demo panels. Failed attempts mark retai
 feeds as stale in the note, connector lights, and header instead of leaving green
 LIVE indicators. Desktop and phone regressions cover first failure, partial success,
 later failure, complete recovery, and all-offline status after live data was loaded.
+Offline notes also distinguish incomplete setup, a required new sign-in, and a
+temporary failure. Only fixed reason codes are rendered; successful sync removes
+stale recovery guidance without discarding the previously verified data.
 
 ## 2. Desktop and iPhone microphone/speaker reliability is unproven
 

@@ -778,7 +778,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-16 07:00Z".startsWith("__") ? "dev" : "2026-10-16 07:00Z";
+  const BUILD_STAMP = "2026-10-16 07:06Z".startsWith("__") ? "dev" : "2026-10-16 07:06Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -787,6 +787,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { server: "calendar", key: "events", label: "Calendar", what: "schedule" }
   ];
   const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
+  const CONNECTOR_ISSUE_TEXT = {
+    setup_required: "setup incomplete",
+    reconnect_required: "needs a new sign-in",
+    temporarily_unavailable: "temporarily unavailable \u2014 try Sync again"
+  };
   const OPS_STALE_MS = 15 * 60 * 1e3;
   async function fetchConnectorStatus() {
     try {
@@ -799,7 +804,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const data = await res.json();
       const c = data == null ? void 0 : data.connectors;
       if (!c || typeof c !== "object") return null;
-      return Object.fromEntries(STATUS_CONNECTORS.map((n) => [n, c[n] === "connected" ? "connected" : c[n] === "offline" ? "offline" : "unknown"]));
+      const connectors = Object.fromEntries(STATUS_CONNECTORS.map((n) => [n, c[n] === "connected" ? "connected" : c[n] === "offline" ? "offline" : "unknown"]));
+      const issues = Object.fromEntries(STATUS_CONNECTORS.filter((n) => {
+        var _a;
+        return connectors[n] === "offline" && Object.hasOwn(CONNECTOR_ISSUE_TEXT, (_a = data.issues) == null ? void 0 : _a[n]);
+      }).map((n) => [n, data.issues[n]]));
+      return { connectors, issues };
     } catch (e) {
       return null;
     }
@@ -1795,12 +1805,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       let landed = [];
       let problems = [];
       try {
-        const status = await fetchConnectorStatus();
+        const check = await fetchConnectorStatus();
+        const status = (check == null ? void 0 : check.connectors) || null;
         connStatusRef.current = status;
         setConnStatus(status);
         const wanted = OPS_FEEDS.filter((f) => !status || status[f.server] !== "offline");
         const offline = OPS_FEEDS.filter((f) => !wanted.includes(f));
-        problems = offline.map((f) => ({ key: f.key, text: `${f.label} offline` }));
+        problems = offline.map((f) => ({ key: f.key, text: `${f.label} ${CONNECTOR_ISSUE_TEXT[check == null ? void 0 : check.issues[f.server]] || "offline"}` }));
         if (!wanted.length) {
           setSyncProblems(problems);
           throw new Error(`${listNames(offline.map((f) => f.label))} are offline; no feeds were replaced.`);

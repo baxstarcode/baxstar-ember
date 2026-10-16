@@ -12,9 +12,11 @@ Partial/failed syncs distinguish updated, retained, and demo feeds, with STALE
 indicators after failures. These changes have not been deployed. The authenticated
 cutover and production verification remain open. See `docs/DEPLOY.md`,
 `HANDOFF-CINEMATIC.md`, and Known Issues §1c–1d for scope and restart steps.
+Offline notes now distinguish incomplete setup, a needed sign-in, and a temporary
+failure; they preserve verified data and discard unknown provider error text.
 
 **Current local validation:** full `test:release` passed with system Chromium:
-742 checks across all 14 suites, plus Wrangler 4.135.0 dry-run. This includes real
+754 checks across all 14 suites, plus Wrangler 4.135.0 dry-run. This includes real
 workerd/SQLite with synthetic providers, not live OAuth or physical-device proof.
 
 **Recorded production status (2026-09-20):** the desktop revival is deployed. PR #43 merged to `main` at
@@ -114,7 +116,7 @@ not a blanket guarantee that every connector is continuously available.
 ## Verified in this revival
 
 The historical September release matrix was green: **562/562 checks**. The October
-branch's complete 742-check matrix is recorded above and in `HANDOFF-CINEMATIC.md`.
+branch's complete 754-check matrix is recorded above and in `HANDOFF-CINEMATIC.md`.
 
 - production build and exact Pages staging payload;
 - Worker contract and security tests: 193/193;

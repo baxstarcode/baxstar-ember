@@ -154,6 +154,15 @@ If a durable grant reports offline after an ambiguous refresh, re-consent and re
 its coordinated seed secret; deleting its record or namespace would risk replaying
 the original token. Do not roll back to legacy refresh code or reuse its seeds after
 cutover. Keep the binding, migration history, and durable state during rollback.
+If a provider returns the same seed again, revoke Ember's old grant there and repeat
+consent to obtain a new grant; do not erase the stop marker to force a retry.
+
+The data-free status route may include an `issues` map for offline connectors:
+`setup_required`, `reconnect_required`, or `temporarily_unavailable`. The dashboard
+renders these as setup incomplete, needs a new sign-in, or try Sync again. Only those
+fixed codes leave the Worker; tokens, grant identities, and raw provider/storage errors
+remain private. Successful authorization clears the issue and a successful feed sync
+clears the stale note.
 
 Platform constraints verified from Cloudflare's
 [state API](https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile),

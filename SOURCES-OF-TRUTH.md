@@ -174,6 +174,14 @@ of links to Brady's other properties.
   No production deploy, consent, namespace provisioning, or external write occurred;
   Cloudflare/live-browser/Drive/Ask Jev capabilities are still unavailable here.
 
+- **Codex, 2026-10-16 — connection recovery guidance:** added a fixed status-reason
+  vocabulary and readable OPS guidance for setup, sign-in, and temporary failures.
+  Unknown error text is filtered at both the Worker and browser boundaries; status
+  does not expose credentials or grant identities. Retained data stays visible, and
+  healthy authorization/sync clears stale guidance. Added failure and desktop/phone
+  regressions; screenshots were rendered at device scale factor 3. The combined full
+  release rerun passed 754 checks across 14 suites, and Wrangler dry-run passed.
+
 ---
 
 ## Canonical files — the source of truth for each concern

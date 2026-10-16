@@ -870,20 +870,26 @@ async function coordinatedCredentials(connector, env) {
 }
 
 async function coordinatedAccessToken(connector, env) {
+  return (await coordinatedAuthorization(connector, env)).token;
+}
+
+async function coordinatedAuthorization(connector, env) {
   try {
     const grant = await coordinatedCredentials(connector, env);
     const namespace = env.EMBER_TOKEN_COORDINATOR;
-    if (!grant || !namespace) return null;
+    if (!grant || !namespace) return { token: null, reason: "setup_required" };
     const owner = namespace.get(namespace.idFromName(grant.key));
     const response = await owner.fetch("https://ember-token.internal/access", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ connector, key: grant.key }),
     });
-    if (!response.ok) return null;
     const data = await response.json();
-    return typeof data.token === "string" && data.token ? data.token : null;
+    if (response.ok && typeof data.token === "string" && data.token) return { token: data.token };
+    // Publish only a fixed vocabulary. Provider errors, grant identities, and
+    // storage details never cross the browser-facing status boundary.
+    return { token: null, reason: data?.error === "reconnect_required" ? "reconnect_required" : "temporarily_unavailable" };
   } catch {
-    return null;
+    return { token: null, reason: "temporarily_unavailable" };
   }
 }
 
@@ -953,12 +959,17 @@ export class EmberTokenCoordinator {
     // Commit BEFORE contacting the provider. OAuth and our database cannot form
     // one transaction; a lost reply must leave a durable stop, not an auto-retry.
     await storage.put("grant", { version: 1, key: grant.key, phase: "refreshing" });
-    const response = await boundedFetch(endpoint, {
-      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString(),
-    });
-    if (!response.ok) return this.reply({ error: "reconnect_required" }, 503);
-    const data = await response.json();
-    if (typeof data.access_token !== "string" || !data.access_token ||
+    let data;
+    try {
+      const response = await boundedFetch(endpoint, {
+        method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString(),
+      });
+      if (!response.ok) return this.reply({ error: "reconnect_required" }, 503);
+      data = await response.json();
+    } catch {
+      return this.reply({ error: "reconnect_required" }, 503);
+    }
+    if (!isRecord(data) || typeof data.access_token !== "string" || !data.access_token ||
         (data.refresh_token !== undefined && (typeof data.refresh_token !== "string" || !data.refresh_token))) {
       return this.reply({ error: "reconnect_required" }, 503);
     }
@@ -1031,11 +1042,15 @@ async function connectorStatus(body, env, cors, fetchImpl, now) {
     gdrive: env.MCP_TOKEN_GDRIVE,
   };
   const connectors = {};
+  const issues = {};
   for (const name of names) {
-    const token = (await accessTokenFor(name, env, fetchImpl, now)) || staticTokens[name];
+    const auth = usesTokenCoordinator(env) ? await coordinatedAuthorization(name, env)
+      : { token: await accessTokenFor(name, env, fetchImpl, now) };
+    const token = auth.token || staticTokens[name];
     connectors[name] = token ? "connected" : "offline";
+    if (!token && auth.reason) issues[name] = auth.reason;
   }
-  return json({ connectors }, 200, { ...cors, "Cache-Control": "no-store" });
+  return json({ connectors, ...(Object.keys(issues).length ? { issues } : {}) }, 200, { ...cors, "Cache-Control": "no-store" });
 }
 
 // --- /tts: Ember's natural voice ------------------------------------------
