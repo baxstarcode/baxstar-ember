@@ -12,11 +12,12 @@ product. Optimize for a reliable daily operating system, not a collection of dem
 
 ## Working preference
 
-Brady asks that builders use [Ask Jev](plugin://dev-7ce8bdbda558819191a84ba67dd5fa90@openai-curated-remote)
-when sensible. Check its available tools and skills, then use it thoughtfully and
-creatively where it can materially improve the work. Give it focused context and a
-clear purpose; evaluate its output against Ember's goals and constraints. If it is
-unavailable in the session, say so briefly and continue useful work.
+Brady explicitly welcomes routine use of [Ask Jev](plugin://dev-7ce8bdbda558819191a84ba67dd5fa90@openai-curated-remote).
+Use it for everyday work as well as thoughtful, creative exploration; it does not
+need an exceptional use case or separate permission for ordinary use. Check its
+available tools and skills, give it useful context, and evaluate its output against
+Ember's goals and constraints. If it is unavailable in the session, say so briefly
+and continue useful work.
 
 ## Canonical files
 
