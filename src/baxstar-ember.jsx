@@ -1237,6 +1237,8 @@ function PromptPlate({ side, lines, running, disabled, onPress }) {
 
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
+  const [missionVisited, setMissionVisited] = useState(false);
+  useEffect(() => { if (view === "mission") setMissionVisited(true); }, [view]);
   const [studioTool, setStudioTool] = useState("captions");
   // Bumped on every Caption Studio press; DockMech keys the lever rotor off it,
   // so each click restarts the throw animation from the top with no timers.
@@ -1254,6 +1256,8 @@ export default function BaxstarEmber() {
   const [taskProposal, setTaskProposal] = useState(null); // { title, source, due, details }
   const [taskFeedback, setTaskFeedback] = useState("");
   const [taskError, setTaskError] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
+  const taskSavingRef = useRef(false);
 
   // ---- OPS state ----
   const [data, setData] = useState(DEMO);
@@ -1350,23 +1354,29 @@ export default function BaxstarEmber() {
      waits for a booking-system connection that doesn't exist yet. */
   const [revToday, setRevToday] = useState(null); // { n: 450, d: "2026-08-15" }
   const localDay = () => new Date().toLocaleDateString("en-CA");
-  const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n));
+  const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n) && revToday.n >= 0 && revToday.n <= 999999.99);
   // In-page editor, not window.prompt: iOS suppresses native dialogs in
   // standalone (home-screen) mode, so the Set button silently did nothing on
   // Brady's phone — reported 2026-08-28 as "the revenue section doesn't work".
   const [revEdit, setRevEdit] = useState(null); // draft string while editing, else null
-  function editRevenue() { setRevEdit(revSet ? String(revToday.n) : ""); }
+  const [revError, setRevError] = useState("");
+  function editRevenue() { setRevError(""); setRevEdit(revSet ? String(revToday.n) : ""); }
   function commitRevenue(raw) {
+    const text = String(raw).trim();
+    // Parse the complete amount, never strip punctuation into a different number.
+    // Existing storage stays in dollars; integer cents avoid rounding user input.
+    const match = text.match(/^\$?(\d+|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/);
+    const cents = match ? Number(match[1].replace(/,/g, "")) * 100 + Number((match[2] || "").padEnd(2, "0")) : NaN;
+    if (text && (!Number.isSafeInteger(cents) || cents < 0 || cents > 99999999)) {
+      setRevError("Enter $0 to $999,999.99, with up to two decimal places.");
+      return;
+    }
+    setRevError("");
     setRevEdit(null);
-    const n = parseInt(String(raw).replace(/[^0-9]/g, ""), 10);
-    if (!String(raw).trim() || isNaN(n)) { setRevToday(null); return; }
-    setRevToday({ n, d: localDay() });
+    setRevToday(text ? { n: cents / 100, d: localDay() } : null);
   }
   // Odometer face: at least 5 digits so the tiles keep their instrument look.
-  const odoFmt = (n) => {
-    const s = String(n).padStart(5, "0");
-    return "$" + s.slice(0, -3) + "," + s.slice(-3);
-  };
+  const odoFmt = (n) => "$" + n.toLocaleString("en-US", { minimumIntegerDigits: 5, minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
 
   const chatEndRef = useRef(null);
   const chatThreadRef = useRef(null);
@@ -2327,14 +2337,17 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
   }
 
 
-  function confirmTaskProposal() {
-    if (!taskProposal?.title.trim()) return;
+  async function confirmTaskProposal() {
+    if (!taskProposal?.title.trim() || taskSavingRef.current) return;
+    taskSavingRef.current = true; setTaskSaving(true);
     try {
-      mcSaveTaskDraft(taskProposal);
+      await mcSaveTaskDraft(taskProposal);
       setTaskProposal(null); setLeverPending(null); setTaskError("");
       setTaskFeedback("Saved locally in Mission Control → Baxstar Ember; not sent to Quo.");
     } catch (e) {
       setTaskError(e.message || "Could not save the task on this device. Your draft is still here.");
+    } finally {
+      taskSavingRef.current = false; setTaskSaving(false);
     }
   }
 
@@ -2889,15 +2902,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .is-thinking .reactor-stage::after { animation-duration:2.1s; opacity:.9; }
         @keyframes reactorSpin { to { transform:rotate(360deg); } }
 
-        .odometer { display:flex; align-items:center; gap:4px; margin:2px 0 8px; }
+        .odometer { display:flex; align-items:center; gap:clamp(1px,.3vw,4px); margin:2px 0 8px; }
         .odo-cell {
-          min-width:29px; padding:6px 5px; border:1px solid #76502a; border-radius:4px;
+          min-width:0; flex:0 1 29px; padding:6px 2px; border:1px solid #76502a; border-radius:4px;
           color:#ffb15f; text-align:center; font-family:"SF Mono",ui-monospace,monospace;
           font-size:20px; line-height:1; text-shadow:0 0 8px rgba(255,92,25,.72);
           background:linear-gradient(180deg,#16100b 0 47%,#060504 49% 53%,#160f0a 55% 100%);
           box-shadow:inset 0 2px 5px #000,0 0 0 2px #21150c,0 5px 10px rgba(0,0,0,.5);
         }
-        .odo-cell.punct { min-width:14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
+        .odo-cell.punct { flex:0 0 14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
 
         /* ---------- COMMAND DOCK — pinned brass bar ----------
            Rebuilt 2026-08-01 per Brady: the photoreal command-console asset is retired
@@ -2928,6 +2941,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         @media (max-width:1020px){ .mc-grid { grid-template-columns:1fr; } }
         .mc-stack, .mc-grid .panel { min-width:0; width:100%; max-width:100%; }
         .mc-stack { display:flex; flex-direction:column; gap:12px; min-height:0; }
+        .mc-save-note { grid-column:1/-1; padding:10px 12px; border:1px solid var(--ember-panel-line); border-radius:9px; background:var(--ember-panel); color:var(--ink-dim); font-size:12px; }
+        .mc-save-note.problem { border-color:var(--brass); color:var(--candle); }
+        .mc-save-note button { min-height:44px; }
         .mc-input { border:1px solid var(--line); background:#0f0d0b; color:var(--candle);
           min-width:0; max-width:100%; border-radius:7px; padding:5px 8px; font-size:12px; caret-color:var(--brass); }
         .mc-input:focus { outline:none; border-color:var(--brass); box-shadow:0 0 0 3px rgba(176,141,87,.14); }
@@ -3804,7 +3820,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <button className="chip solid" disabled={thinking || !!leverBusy} onClick={(e) => { e.stopPropagation(); draftReply(v, "vm", i); }}>
                       Draft reply
                     </button>
-                    <button className="chip ghost task-draft-button" onClick={(e) => { e.stopPropagation(); openTaskDraft(v, "vm", i); }}>
+                    <button className="chip ghost task-draft-button" disabled={taskSaving} onClick={(e) => { e.stopPropagation(); openTaskDraft(v, "vm", i); }}>
                       Task draft
                     </button>
                   </div>
@@ -3824,20 +3840,23 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         autoFocus
-                        inputMode="numeric"
+                        inputMode="decimal"
                         placeholder="dollars"
                         value={revEdit}
-                        onChange={(e) => setRevEdit(e.target.value)}
+                        onChange={(e) => { setRevEdit(e.target.value); setRevError(""); }}
                         onKeyDown={(e) => { if (e.key === "Enter") commitRevenue(revEdit); if (e.key === "Escape") setRevEdit(null); }}
                         className="cmd-input w-24 rounded-lg px-2 py-1 text-[12px]"
                         style={{ background: "#120c0c", color: "var(--ink)" }}
                         aria-label="Today's revenue in dollars"
+                        aria-invalid={!!revError}
+                        aria-describedby={revError ? "revenue-error" : "revenue-hint"}
                       />
                       <button className="chip solid" onClick={() => commitRevenue(revEdit)}>Save</button>
                       <button className="chip ghost" onClick={() => setRevEdit(null)}>Cancel</button>
                     </div>
                   )}
-                  {revEdit !== null && <div className="mt-1 text-[10px]" style={{ color: "var(--ink-faint)" }}>Numbers only — save empty to clear.</div>}
+                  {revEdit !== null && <div id="revenue-hint" className="mt-1 text-[10px]" style={{ color: "var(--ink-faint)" }}>Dollars and cents, e.g. 450.50 — save empty to clear.</div>}
+                  {revEdit !== null && revError && <div id="revenue-error" role="alert" className="mt-1 text-xs" style={{ color: "#ffb4aa" }}>{revError}</div>}
                 </div>
               </Row>
             </Panel>
@@ -4024,7 +4043,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               {taskError && <div className="task-error w-full text-xs" role="alert" style={{ color: "#ffb4aa" }}>{taskError}</div>}
               {/* Local reviewable task draft. General chat has no write-capable tools. */}
               {taskProposal && (
-                <div className="task-proposal w-full max-w-sm rounded-xl border px-4 py-3"
+                <fieldset disabled={taskSaving} className="task-proposal w-full max-w-sm rounded-xl border px-4 py-3"
                   style={{ borderColor: "rgba(255,177,59,.5)", background: "rgba(255,177,59,.05)" }}>
                   <div className="mb-2 flex items-center justify-between">
                     <span className="font-mono-x text-[9px] tracking-[0.25em]" style={{ color: "var(--ember-warning)" }}>TASK DRAFT — LOCAL ONLY</span>
@@ -4048,7 +4067,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <button className="chip solid" disabled={!taskProposal.title.trim()} onClick={confirmTaskProposal}>Save locally</button>
                     <button className="chip ghost" onClick={() => { setTaskProposal(null); setLeverPending(null); setTaskError(""); }}>Discard</button>
                   </div>
-                </div>
+                </fieldset>
               )}
 
             </div>
@@ -4068,7 +4087,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <button className="chip solid" disabled={thinking || !!leverBusy} onClick={(e) => { e.stopPropagation(); draftReply(m, "email", i); }}>
                       Draft reply
                     </button>
-                    <button className="chip ghost task-draft-button" onClick={(e) => { e.stopPropagation(); openTaskDraft(m, "email", i); }}>
+                    <button className="chip ghost task-draft-button" disabled={taskSaving} onClick={(e) => { e.stopPropagation(); openTaskDraft(m, "email", i); }}>
                       Task draft
                     </button>
                   </div>
@@ -4698,7 +4717,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             <button className={`seg sm ${view === "mission" ? "on" : ""}`} onClick={() => setView("mission")}>MISSION CONTROL</button>
           </div>
         )}
-        {view === "mission" && <MissionControl />}
+        {/* Keep unsaved edits alive while using the other tools. */}
+        {(view === "mission" || missionVisited) && <MissionControl active={view === "mission"} onActivate={() => setView("mission")} />}
 
         {view === "projects" && (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -5223,7 +5243,7 @@ function Odometer({ value }) {
   return (
     <div className="odometer" aria-label={`Today's revenue ${value}`}>
       {String(value).split("").map((char, i) => (
-        <span key={`${char}-${i}`} className={`odo-cell ${char === "," ? "punct" : ""}`}>{char}</span>
+        <span key={`${char}-${i}`} className={`odo-cell ${char === "," || char === "." ? "punct" : ""}`}>{char}</span>
       ))}
     </div>
   );
@@ -5278,57 +5298,177 @@ function mcDefaults() {
   };
 }
 
-function mcSaveTaskDraft(draft) {
-  let record;
+// Validate fields that the board renders, preserving unknown metadata. Missing
+// optional lists in older records are supported; malformed lists are never reset.
+function mcNormalize(record) {
+  const object = (v) => v && typeof v === "object" && !Array.isArray(v);
+  const fail = () => { throw new Error("Saved Mission Control data is unreadable. Nothing was overwritten; your task draft is still here."); };
+  const textFields = (v, fields) => fields.forEach((k) => { if (v[k] != null && typeof v[k] !== "string") fail(); });
+  const numbers = (v, fields) => fields.forEach((k) => {
+    if (v[k] != null && !(typeof v[k] === "number" || typeof v[k] === "string")) fail();
+    if (v[k] != null && !Number.isFinite(Number(v[k]))) fail();
+  });
+  const list = (items, normalize) => {
+    if (items == null) return [];
+    if (!Array.isArray(items)) fail();
+    const ids = new Set();
+    return items.map((v) => {
+      if (!object(v) || !(typeof v.id === "string" && v.id || typeof v.id === "number" && Number.isFinite(v.id)) || ids.has(String(v.id))) fail();
+      ids.add(String(v.id));
+      return normalize(v);
+    });
+  };
+  const task = (v) => {
+    textFields(v, ["text", "due", "details", "source"]);
+    if (v.done != null && typeof v.done !== "boolean") fail();
+    return { ...v, text: v.text ?? "", done: v.done ?? false };
+  };
+  if (!object(record) || !Array.isArray(record.projects)) fail();
+  if (record.zap != null && !object(record.zap)) fail();
+  const zap = record.zap ?? mcDefaults().zap;
+  numbers(zap, ["used", "allowance", "dayOfCycle", "daysInCycle"]);
+  const projects = list(record.projects, (p) => {
+    textFields(p, ["name", "next", "status"]);
+    numbers(p, ["pct", "sessions", "hours"]);
+    return { ...p, name: p.name ?? "", next: p.next ?? "", tasks: list(p.tasks, task), links: list(p.links, (l) => {
+      textFields(l, ["label", "url"]);
+      return { ...l, label: l.label ?? "", url: l.url ?? "" };
+    }) };
+  });
+  return { ...record, zap, projects, decisions: list(record.decisions, task) };
+}
+
+function mcRead() {
   try {
     const raw = window.localStorage.getItem(MC_KEY);
-    record = raw === null ? mcDefaults() : JSON.parse(raw);
+    return { raw, record: raw === null ? mcDefaults() : mcNormalize(JSON.parse(raw)) };
   } catch {
     throw new Error("Cannot read saved Mission Control data. Nothing was overwritten; your task draft is still here.");
   }
-  if (!record || typeof record !== "object" || !Array.isArray(record.projects)) {
-    throw new Error("Saved Mission Control data is unreadable. Nothing was overwritten; your task draft is still here.");
-  }
-  const projects = [...record.projects];
-  let index = projects.findIndex((p) => typeof p?.name === "string" && p.name.trim().toLowerCase() === "baxstar ember");
-  if (index < 0) {
-    index = projects.length;
-    projects.push({ ...mcDefaults().projects[0], tasks: [] });
-  }
-  const project = projects[index];
-  if (project.tasks != null && !Array.isArray(project.tasks)) throw new Error("The Baxstar Ember task list is unreadable. Nothing was overwritten.");
-  const tasks = project.tasks || [];
-  // A draft carries one ID through review and save, making double clicks harmless.
-  if (tasks.some((task) => task.id === draft.id)) return;
-  projects[index] = {
-    ...project, updated: mcToday(),
-    tasks: [...tasks, { id: draft.id, text: draft.title.trim(), done: false, due: draft.due.trim(), details: draft.details.trim(), source: draft.source, localOnly: true }],
-  };
-  const next = { ...record, projects };
-  if (!lsSet(MC_KEY, next)) throw new Error("Could not save locally. Check this browser's storage; your task draft is still here.");
-  window.dispatchEvent(new CustomEvent(MC_CHANGED));
 }
 
-function MissionControl() {
-  const [init] = useState(() => (typeof window !== "undefined" && lsGet(MC_KEY, null)) || mcDefaults());
-  const [zap, setZap] = useState(init.zap || mcDefaults().zap);
-  const [projects, setProjects] = useState(init.projects || []);
-  const [decisions, setDecisions] = useState(init.decisions || []);
+// Both local writers use one origin-wide lock where supported. The synchronous
+// fallback still checks the saved snapshot before replacing a board.
+const mcWriteLock = (write) => navigator.locks?.request ? navigator.locks.request(MC_KEY, write) : Promise.resolve().then(write);
+
+async function mcSaveTaskDraft(draft) {
+  return mcWriteLock(() => {
+    const { record } = mcRead();
+    const projects = [...record.projects];
+    let index = projects.findIndex((p) => typeof p?.name === "string" && p.name.trim().toLowerCase() === "baxstar ember");
+    if (index < 0) {
+      index = projects.length;
+      projects.push({ ...mcDefaults().projects[0], tasks: [] });
+    }
+    const project = projects[index];
+    const tasks = project.tasks;
+    // A draft carries one ID through review and save, making double clicks harmless.
+    if (tasks.some((task) => task.id === draft.id)) return;
+    projects[index] = {
+      ...project, updated: mcToday(),
+      tasks: [...tasks, { id: draft.id, text: draft.title.trim(), done: false, due: draft.due.trim(), details: draft.details.trim(), source: draft.source, localOnly: true }],
+    };
+    const next = { ...record, projects };
+    if (!lsSet(MC_KEY, next)) throw new Error("Could not save locally. Check this browser's storage; your task draft is still here.");
+    window.dispatchEvent(new CustomEvent(MC_CHANGED));
+  });
+}
+
+function MissionControl({ active, onActivate }) {
+  const [state, setState] = useState(() => {
+    try { return { ...mcRead(), dirty: false, problem: "" }; }
+    catch { return { raw: null, record: null, dirty: false, problem: "read" }; }
+  });
+  const stateRef = useRef(state);
+  const [confirmLoad, setConfirmLoad] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const [openRows, setOpenRows] = useState({});
-  useEffect(() => { lsSet(MC_KEY, { ...lsGet(MC_KEY, {}), zap, projects, decisions }); }, [zap, projects, decisions]);
+  const update = (next) => { stateRef.current = next; setState(next); };
+  const loadSaved = () => {
+    try { update({ ...mcRead(), dirty: false, problem: "" }); setConfirmLoad(false); setDownloadError(""); }
+    catch { update({ ...stateRef.current, problem: "read" }); }
+  };
+  const save = async () => {
+    try {
+      await mcWriteLock(() => {
+        // Read inside the lock, using the latest draft if typing queued more edits.
+        const current = stateRef.current;
+        if (!current.dirty || !current.record || current.problem === "conflict") return;
+        const raw = window.localStorage.getItem(MC_KEY);
+        if (raw !== current.raw) { update({ ...current, problem: "conflict" }); return; }
+        const nextRaw = JSON.stringify(current.record);
+        window.localStorage.setItem(MC_KEY, nextRaw);
+        update({ ...current, raw: nextRaw, dirty: false, problem: "" });
+      });
+    } catch { update({ ...stateRef.current, problem: "save" }); }
+  };
+  const change = (key, fn) => {
+    const current = stateRef.current;
+    if (!current.record) return;
+    update({ ...current, record: { ...current.record, [key]: fn(current.record[key]) }, dirty: true });
+    void save();
+  };
+  const setZap = (fn) => change("zap", fn);
+  const setProjects = (fn) => change("projects", fn);
+  const setDecisions = (fn) => change("decisions", fn);
+  const download = () => {
+    try {
+      const content = stateRef.current.dirty ? JSON.stringify(stateRef.current.record, null, 2) : window.localStorage.getItem(MC_KEY);
+      if (content === null) throw new Error("No saved data");
+      const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `ember-mission-${mcToday()}.json`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setDownloadError("");
+    } catch { setDownloadError("Could not download a copy. Keep this tab open and try again."); }
+  };
   useEffect(() => {
     const refresh = (event) => {
-      if (event.type === "storage" && event.key !== MC_KEY) return;
-      const saved = lsGet(MC_KEY, null);
-      if (!saved || !Array.isArray(saved.projects)) return;
-      setProjects(saved.projects);
-      setZap(saved.zap || mcDefaults().zap);
-      setDecisions(Array.isArray(saved.decisions) ? saved.decisions : []);
+      if (event.type === "storage" && (event.key !== MC_KEY && event.key !== null || event.storageArea && event.storageArea !== window.localStorage)) return;
+      const current = stateRef.current;
+      if (!current.dirty) { loadSaved(); return; }
+      try {
+        if (window.localStorage.getItem(MC_KEY) !== current.raw) update({ ...current, problem: "conflict" });
+      } catch { update({ ...current, problem: "read" }); }
+    };
+    const warnUnsaved = (event) => {
+      if (!stateRef.current.dirty) return;
+      event.preventDefault(); event.returnValue = "";
     };
     window.addEventListener(MC_CHANGED, refresh);
     window.addEventListener("storage", refresh);
-    return () => { window.removeEventListener(MC_CHANGED, refresh); window.removeEventListener("storage", refresh); };
+    window.addEventListener("beforeunload", warnUnsaved);
+    return () => {
+      window.removeEventListener(MC_CHANGED, refresh); window.removeEventListener("storage", refresh);
+      window.removeEventListener("beforeunload", warnUnsaved);
+    };
   }, []);
+
+  const notice = <div className={`mc-save-note ${state.problem ? "problem" : ""}`}>
+    <p role={state.problem ? "alert" : "status"}>
+      {state.problem === "read" ? `Cannot read saved Mission Control data. Nothing was overwritten.${state.dirty ? " Your unsaved edits are still in this tab." : " Try reading again or download the saved data for recovery."}` :
+       state.problem === "conflict" ? "Saved data changed in another tab or tool. Your unsaved edits are still here; neither version was overwritten." :
+       state.problem === "save" ? "Could not save on this device. Your edits are only in this tab. Keep it open, retry saving, or download a copy." :
+       state.dirty ? "Saving on this device…" : state.raw === null ? "Starter board · edits save on this device." : "Saved on this device."}
+    </p>
+    {state.problem && <div className="mt-2 flex flex-wrap gap-2">
+      {state.dirty && state.problem !== "conflict" && <button className="chip solid" onClick={save}>Retry save</button>}
+      {!state.dirty && <button className="chip solid" onClick={loadSaved}>Try reading again</button>}
+      <button className="chip ghost" onClick={download}>{state.dirty ? "Download my edits" : "Download saved data"}</button>
+      {state.dirty && <button className="chip ghost" onClick={() => setConfirmLoad(true)}>Load saved version</button>}
+    </div>}
+    {confirmLoad && state.dirty && <div className="mt-2">
+      <p>Loading the saved version will discard your unsaved edits in this tab. Download them first if you want to keep a copy.</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button className="chip solid" onClick={loadSaved}>Discard my edits and load</button>
+        <button className="chip ghost" onClick={() => setConfirmLoad(false)}>Keep editing</button>
+      </div>
+    </div>}
+    {downloadError && <p role="alert" className="mt-2">{downloadError}</p>}
+  </div>;
+  if (!state.record) return <div className="mc-grid flex-1" style={{ display: active ? undefined : "none" }}>{notice}</div>;
+  const { zap, projects, decisions } = state.record;
 
   // --- Zapier meter math ---
   const used = mcNum(zap.used), allowance = mcNum(zap.allowance);
@@ -5385,8 +5525,10 @@ function MissionControl() {
 
   const statusClass = (s) => ({ active: "mc-st-active", blocked: "mc-st-blocked", parked: "mc-st-parked", frozen: "mc-st-frozen" }[s] || "mc-st-active");
 
-  return (
-    <div className="mc-grid flex-1" style={{ minHeight: 0 }}>
+  return (<>
+    {!active && state.dirty && <div className="mc-save-note problem" role="status">Mission Control has unsaved edits in this tab. <button className="chip ghost" onClick={onActivate}>Review unsaved edits</button></div>}
+    <div className="mc-grid flex-1" style={{ minHeight: 0, display: active ? undefined : "none" }}>
+      {notice}
       {/* LEFT — meter + projects */}
       <div className="mc-stack" style={{ minHeight: 0 }}>
         <Panel notch="cool" title="Zapier Task Meter" count={!hasUsage ? "NOT RECORDED" : pacingOver ? "PACING OVER" : "ON PACE"}
@@ -5420,7 +5562,7 @@ function MissionControl() {
               return (
                 <div key={p.id} className={`mc-row ${p.status}`}>
                   <div className="mc-project-head flex items-center gap-2">
-                    <input className="mc-input flex-1" value={p.name} onChange={(e) => updProject(p.id, { name: e.target.value })} />
+                    <input aria-label="Project name" className="mc-input flex-1" value={p.name} onChange={(e) => updProject(p.id, { name: e.target.value })} />
                     {/* The name stays editable, so the link lives beside it -- one tap
                         reopens every page this project needs to pick back up. */}
                     <button className="mc-status mc-resume" onClick={() => resumeProject(p)}
@@ -5529,6 +5671,6 @@ function MissionControl() {
           </div>
         </Panel>
       </div>
-    </div>
+    </div></>
   );
 }

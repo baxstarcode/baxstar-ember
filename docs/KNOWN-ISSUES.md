@@ -1,8 +1,8 @@
 # Ember — Known Issues and Deliberate Limits
 
-Last reconciled with the working repository on **2026-09-20**. This is the active
-ledger, not the historical chronology; Git history and the Ember Handoff Log preserve
-the closed issue record.
+Last updated from the working repository on **2026-10-16**. Recorded production
+verification remains dated 2026-09-20 unless stated otherwise. This is the active
+ledger; Git history and the Ember Handoff Log preserve the closed issue record.
 
 ## 1. Final connector-status and Drive-outbox checks remain
 
@@ -182,6 +182,22 @@ Mission Control lives in browser `localStorage`; local tasks do not sync to Quo 
 another device. The Projects bars are maintained in the source `PROJECTS` constant.
 Both views are useful, but neither is a durable shared project database.
 
+**Local preservation repair (2026-10-16, awaiting deployment):** opening the board
+used to overwrite unreadable saved JSON with defaults. It now validates the saved
+record and writes only after an edit. Read errors leave the original bytes intact;
+write failures retain the draft across tool switches and offer retry/download.
+Loading another saved version requires an explicit discard, and a failed recovery
+read keeps the draft. Missing optional lists in older records remain supported;
+unknown root/project/task metadata is preserved.
+
+Board edits and reviewed OPS tasks share an origin-wide Web Lock where supported.
+A changed saved snapshot leaves the competing board draft available for download
+or review instead of overwriting it. Browsers without Web Locks still compare the
+snapshot, but simultaneous writes there are not atomic. Old app versions and other
+scripts that bypass the lock can also race. This is browser-local protection, not
+cross-device sync. Browser termination can still lose an unsaved in-memory draft;
+the leave warning is best effort, so download the copy when storage is failing.
+
 Do not silently add a backend or turn local task drafts into external actions. Brady
 must choose the shared owner and migration path first.
 
@@ -192,6 +208,15 @@ must choose the shared owner and migration path first.
 Today's revenue persists on the device but is entered by hand. No verified booking or
 accounting source is wired to Ember. The app must never invent a revenue value or imply
 that manual revenue is synced.
+
+**Entry repair (2026-10-16, awaiting deployment):** the old parser changed `$12.50`
+to `$1,250` and `-100` to `$100`. Entry now validates the complete amount, accepts
+optional dollar/comma formatting and up to two decimal places, and preserves cents
+in the existing `{ n, d }` dollar/date shape. Invalid input keeps both the previous
+amount and the open editor; empty input explicitly clears it. The supported entry
+range is $0–$999,999.99. Desktop/phone checks cover formatting, invalid input,
+reload, clearing, and instrument fit. Previously mis-entered amounts cannot be
+reconstructed from the saved number and need manual correction.
 
 ## 7. Caption publishing still has an external review boundary
 

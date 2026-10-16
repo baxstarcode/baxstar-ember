@@ -83,6 +83,28 @@ The combined full release rerun passed **754 checks**: coordinator coverage is n
 27 and dashboard coverage 108, with all other counts above unchanged. The final
 Worker dry-run passed; desktop and phone recovery renders were inspected at 3× scale.
 
+**Local data preservation:** the next continuation reproduced two browser defects:
+`$12.50` became `$1,250`, and simply opening Mission Control replaced malformed
+saved JSON with defaults. Revenue now accepts validated dollars/cents, retains
+invalid drafts without changing the old amount, and fits the odometer at desktop
+and phone widths. The stored dollar/date shape is unchanged.
+
+Mission Control now validates before rendering, never saves on mount, and retains
+unknown metadata and older optional-list formats. Quota/read failures get visible
+recovery controls, exact local downloads, and a best-effort leave warning. Unsaved
+edits survive switching tools. Board and OPS task writes share a Web Lock; a newer
+saved snapshot creates a recoverable conflict instead of replacing it. Explicit
+discard is required before loading the other saved version. No backend or external
+task write was added. See Known Issues §5–6 for the remaining browser/local limits.
+The new `test:local-state` suite is part of the release command.
+The final `CHROME_PATH=/usr/bin/chromium npm run test:release` passed **771 checks
+across 15 suites**, including 17 new local-state scenarios. Browser checks covered
+desktop/phone entry, quota/read failures, exact downloads, navigation/reload,
+malformed and older records, two-tab contention, the shared OPS task lock, storage
+clear, and the no-Web-Locks fallback. Desktop and phone renders were inspected.
+Worker/config are unchanged from the prior successful dry-run. Live production and
+physical-device checks remain outstanding.
+
 **Next priority:** follow the fresh-consent cutover in `docs/DEPLOY.md`, then verify
 the deployed Worker/model compatibility and connectors in an authenticated session.
 No production deployment or external connector write was performed. Cloudflare

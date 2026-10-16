@@ -778,7 +778,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-16 07:06Z".startsWith("__") ? "dev" : "2026-10-16 07:06Z";
+  const BUILD_STAMP = "2026-10-16 08:10Z".startsWith("__") ? "dev" : "2026-10-16 08:10Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1325,6 +1325,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   function BaxstarEmber() {
     var _a, _b, _c, _d, _e, _f;
     const [view, setView] = useState("ops");
+    const [missionVisited, setMissionVisited] = useState(false);
+    useEffect(() => {
+      if (view === "mission") setMissionVisited(true);
+    }, [view]);
     const [studioTool, setStudioTool] = useState("captions");
     const [leverPull, setLeverPull] = useState(0);
     const [selectedComm, setSelectedComm] = useState(null);
@@ -1338,6 +1342,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [taskProposal, setTaskProposal] = useState(null);
     const [taskFeedback, setTaskFeedback] = useState("");
     const [taskError, setTaskError] = useState("");
+    const [taskSaving, setTaskSaving] = useState(false);
+    const taskSavingRef = useRef(false);
     const [data, setData] = useState(DEMO);
     const [feedLive, setFeedLive] = useState({ voicemails: false, emails: false, events: false });
     const live = feedLive.voicemails || feedLive.emails || feedLive.events;
@@ -1413,24 +1419,26 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }, []);
     const [revToday, setRevToday] = useState(null);
     const localDay = () => (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA");
-    const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n));
+    const revSet = !!(revToday && revToday.d === localDay() && Number.isFinite(revToday.n) && revToday.n >= 0 && revToday.n <= 999999.99);
     const [revEdit, setRevEdit] = useState(null);
+    const [revError, setRevError] = useState("");
     function editRevenue() {
+      setRevError("");
       setRevEdit(revSet ? String(revToday.n) : "");
     }
     function commitRevenue(raw) {
-      setRevEdit(null);
-      const n = parseInt(String(raw).replace(/[^0-9]/g, ""), 10);
-      if (!String(raw).trim() || isNaN(n)) {
-        setRevToday(null);
+      const text = String(raw).trim();
+      const match = text.match(/^\$?(\d+|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/);
+      const cents = match ? Number(match[1].replace(/,/g, "")) * 100 + Number((match[2] || "").padEnd(2, "0")) : NaN;
+      if (text && (!Number.isSafeInteger(cents) || cents < 0 || cents > 99999999)) {
+        setRevError("Enter $0 to $999,999.99, with up to two decimal places.");
         return;
       }
-      setRevToday({ n, d: localDay() });
+      setRevError("");
+      setRevEdit(null);
+      setRevToday(text ? { n: cents / 100, d: localDay() } : null);
     }
-    const odoFmt = (n) => {
-      const s = String(n).padStart(5, "0");
-      return "$" + s.slice(0, -3) + "," + s.slice(-3);
-    };
+    const odoFmt = (n) => "$" + n.toLocaleString("en-US", { minimumIntegerDigits: 5, minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
     const chatEndRef = useRef(null);
     const chatThreadRef = useRef(null);
     const chatPinnedRef = useRef(true);
@@ -2273,16 +2281,21 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       });
       setLeverPending("task");
     }
-    function confirmTaskProposal() {
-      if (!(taskProposal == null ? void 0 : taskProposal.title.trim())) return;
+    async function confirmTaskProposal() {
+      if (!(taskProposal == null ? void 0 : taskProposal.title.trim()) || taskSavingRef.current) return;
+      taskSavingRef.current = true;
+      setTaskSaving(true);
       try {
-        mcSaveTaskDraft(taskProposal);
+        await mcSaveTaskDraft(taskProposal);
         setTaskProposal(null);
         setLeverPending(null);
         setTaskError("");
         setTaskFeedback("Saved locally in Mission Control \u2192 Baxstar Ember; not sent to Quo.");
       } catch (e) {
         setTaskError(e.message || "Could not save the task on this device. Your draft is still here.");
+      } finally {
+        taskSavingRef.current = false;
+        setTaskSaving(false);
       }
     }
     const opsNote = (() => {
@@ -2822,15 +2835,15 @@ Check Gmail for anything newer.`;
         .is-thinking .reactor-stage::after { animation-duration:2.1s; opacity:.9; }
         @keyframes reactorSpin { to { transform:rotate(360deg); } }
 
-        .odometer { display:flex; align-items:center; gap:4px; margin:2px 0 8px; }
+        .odometer { display:flex; align-items:center; gap:clamp(1px,.3vw,4px); margin:2px 0 8px; }
         .odo-cell {
-          min-width:29px; padding:6px 5px; border:1px solid #76502a; border-radius:4px;
+          min-width:0; flex:0 1 29px; padding:6px 2px; border:1px solid #76502a; border-radius:4px;
           color:#ffb15f; text-align:center; font-family:"SF Mono",ui-monospace,monospace;
           font-size:20px; line-height:1; text-shadow:0 0 8px rgba(255,92,25,.72);
           background:linear-gradient(180deg,#16100b 0 47%,#060504 49% 53%,#160f0a 55% 100%);
           box-shadow:inset 0 2px 5px #000,0 0 0 2px #21150c,0 5px 10px rgba(0,0,0,.5);
         }
-        .odo-cell.punct { min-width:14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
+        .odo-cell.punct { flex:0 0 14px; padding-inline:1px; border-color:transparent; background:none; box-shadow:none; }
 
         /* ---------- COMMAND DOCK \u2014 pinned brass bar ----------
            Rebuilt 2026-08-01 per Brady: the photoreal command-console asset is retired
@@ -2861,6 +2874,9 @@ Check Gmail for anything newer.`;
         @media (max-width:1020px){ .mc-grid { grid-template-columns:1fr; } }
         .mc-stack, .mc-grid .panel { min-width:0; width:100%; max-width:100%; }
         .mc-stack { display:flex; flex-direction:column; gap:12px; min-height:0; }
+        .mc-save-note { grid-column:1/-1; padding:10px 12px; border:1px solid var(--ember-panel-line); border-radius:9px; background:var(--ember-panel); color:var(--ink-dim); font-size:12px; }
+        .mc-save-note.problem { border-color:var(--brass); color:var(--candle); }
+        .mc-save-note button { min-height:44px; }
         .mc-input { border:1px solid var(--line); background:#0f0d0b; color:var(--candle);
           min-width:0; max-width:100%; border-radius:7px; padding:5px 8px; font-size:12px; caret-color:var(--brass); }
         .mc-input:focus { outline:none; border-color:var(--brass); box-shadow:0 0 0 3px rgba(176,141,87,.14); }
@@ -3716,7 +3732,7 @@ Check Gmail for anything newer.`;
       /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", disabled: thinking || !!leverBusy, onClick: (e) => {
         e.stopPropagation();
         draftReply(v, "vm", i);
-      } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", onClick: (e) => {
+      } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", disabled: taskSaving, onClick: (e) => {
         e.stopPropagation();
         openTaskDraft(v, "vm", i);
       } }, "Task draft"))
@@ -3724,19 +3740,24 @@ Check Gmail for anything newer.`;
       "input",
       {
         autoFocus: true,
-        inputMode: "numeric",
+        inputMode: "decimal",
         placeholder: "dollars",
         value: revEdit,
-        onChange: (e) => setRevEdit(e.target.value),
+        onChange: (e) => {
+          setRevEdit(e.target.value);
+          setRevError("");
+        },
         onKeyDown: (e) => {
           if (e.key === "Enter") commitRevenue(revEdit);
           if (e.key === "Escape") setRevEdit(null);
         },
         className: "cmd-input w-24 rounded-lg px-2 py-1 text-[12px]",
         style: { background: "#120c0c", color: "var(--ink)" },
-        "aria-label": "Today's revenue in dollars"
+        "aria-label": "Today's revenue in dollars",
+        "aria-invalid": !!revError,
+        "aria-describedby": revError ? "revenue-error" : "revenue-hint"
       }
-    ), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => commitRevenue(revEdit) }, "Save"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setRevEdit(null) }, "Cancel")), revEdit !== null && /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[10px]", style: { color: "var(--ink-faint)" } }, "Numbers only \u2014 save empty to clear."))))), /* @__PURE__ */ React.createElement("div", { className: "ops-core flex min-h-0 flex-col" }, /* @__PURE__ */ React.createElement("div", { className: `core-chamber panel core-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}` }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center", style: { animationDelay: "0.1s" } }, /* @__PURE__ */ React.createElement("span", { className: "greet-hi text-[15px] font-bold tracking-tight" }, dayPart, ",", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } }, "Brady.")), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
+    ), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => commitRevenue(revEdit) }, "Save"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setRevEdit(null) }, "Cancel")), revEdit !== null && /* @__PURE__ */ React.createElement("div", { id: "revenue-hint", className: "mt-1 text-[10px]", style: { color: "var(--ink-faint)" } }, "Dollars and cents, e.g. 450.50 \u2014 save empty to clear."), revEdit !== null && revError && /* @__PURE__ */ React.createElement("div", { id: "revenue-error", role: "alert", className: "mt-1 text-xs", style: { color: "#ffb4aa" } }, revError))))), /* @__PURE__ */ React.createElement("div", { className: "ops-core flex min-h-0 flex-col" }, /* @__PURE__ */ React.createElement("div", { className: `core-chamber panel core-host relative flex flex-1 flex-col items-center justify-center ${chatMsgs.length ? "has-thread" : ""} ${thinking || syncing ? "is-thinking" : ""}` }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "greet-row reveal flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center", style: { animationDelay: "0.1s" } }, /* @__PURE__ */ React.createElement("span", { className: "greet-hi text-[15px] font-bold tracking-tight" }, dayPart, ",", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange),var(--ember-dark))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } }, "Brady.")), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
       var _a2;
       return (_a2 = callsColRef.current) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "start" });
     } }, data.voicemails.length, " ", /* @__PURE__ */ React.createElement("span", { className: "greet-long" }, "voicemails"), /* @__PURE__ */ React.createElement("span", { className: "greet-short" }, "vm"), " \u2193"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
@@ -3881,8 +3902,9 @@ Check Gmail for anything newer.`;
         setLeverPending(null);
       } }, "Discard"))
     ), taskFeedback && /* @__PURE__ */ React.createElement("div", { className: "task-feedback w-full text-xs", role: "status", style: { color: "var(--ember-brass-bright)" } }, taskFeedback, " ", /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setView("mission") }, "View in Mission Control")), taskError && /* @__PURE__ */ React.createElement("div", { className: "task-error w-full text-xs", role: "alert", style: { color: "#ffb4aa" } }, taskError), taskProposal && /* @__PURE__ */ React.createElement(
-      "div",
+      "fieldset",
       {
+        disabled: taskSaving,
         className: "task-proposal w-full max-w-sm rounded-xl border px-4 py-3",
         style: { borderColor: "rgba(255,177,59,.5)", background: "rgba(255,177,59,.05)" }
       },
@@ -3965,7 +3987,7 @@ Check Gmail for anything newer.`;
         /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", disabled: thinking || !!leverBusy, onClick: (e) => {
           e.stopPropagation();
           draftReply(m, "email", i);
-        } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", onClick: (e) => {
+        } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", disabled: taskSaving, onClick: (e) => {
           e.stopPropagation();
           openTaskDraft(m, "email", i);
         } }, "Task draft"))
@@ -4460,7 +4482,7 @@ Check Gmail for anything newer.`;
       },
       !ghFile ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center" }, /* @__PURE__ */ React.createElement("div", { className: "opacity-50" }, /* @__PURE__ */ React.createElement(EmberIcon, { name: "github", size: 30, strokeWidth: 1.25 })), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[12px]", style: { color: "var(--ink-faint)" } }, "Pick a repo, browse to a file, read it here.")) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "code-view flex-1" }, ghFile.content), /* @__PURE__ */ React.createElement("div", { className: "mt-3 flex gap-3" }, /* @__PURE__ */ React.createElement("button", { className: "big primary flex-1 justify-center", onClick: () => navigator.clipboard.writeText(ghFile.content).catch(() => {
       }) }, "Copy Contents"), ghFile.htmlUrl && /* @__PURE__ */ React.createElement("button", { className: "big", onClick: () => window.open(ghFile.htmlUrl, "_blank", "noopener") }, "Open on GitHub \u2197")))
-    )), studioTool === "snippets" && /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Snippets", count: `${SNIPPETS.length} SAVED`, countColor: "var(--brass)", delay: "0.1s", grow: true }, SNIPPETS.map((s, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: s.title }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[12px] leading-relaxed", style: { color: "var(--ink-dim)" } }, s.text), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => copySnippet(i, s.text) }, copiedSnippet === i ? "COPIED \u2713" : "Copy"))))))), (view === "projects" || view === "mission") && /* @__PURE__ */ React.createElement("div", { className: "flex justify-center gap-2" }, /* @__PURE__ */ React.createElement("button", { className: `seg sm ${view === "projects" ? "on" : ""}`, onClick: () => setView("projects") }, "QUICK BARS"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${view === "mission" ? "on" : ""}`, onClick: () => setView("mission") }, "MISSION CONTROL")), view === "mission" && /* @__PURE__ */ React.createElement(MissionControl, null), view === "projects" && /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Project Status", count: `UPDATED ${PROJECTS_META.updated}`, countColor: "var(--brass)", delay: "0.1s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "proj-meta font-mono-x" }, /* @__PURE__ */ React.createElement("span", null, "ZAPIER TASKS\xA0", /* @__PURE__ */ React.createElement("b", { style: { color: PROJECTS_META.zapierTasks.used == null ? "var(--ink-faint)" : "var(--ember-amber)" } }, PROJECTS_META.zapierTasks.used == null ? "not recorded" : PROJECTS_META.zapierTasks.used), "\xA0/ ", PROJECTS_META.zapierTasks.cap, " mo"), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, PROJECTS_META.zapierTasks.note)), PROJECTS.map((group) => /* @__PURE__ */ React.createElement("div", { key: group.cat, className: "mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "proj-cat font-display" }, group.cat), group.items.map((pr) => /* @__PURE__ */ React.createElement("div", { key: pr.name, className: "proj-row" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, pr.links && pr.links.length ? /* @__PURE__ */ React.createElement(
+    )), studioTool === "snippets" && /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Snippets", count: `${SNIPPETS.length} SAVED`, countColor: "var(--brass)", delay: "0.1s", grow: true }, SNIPPETS.map((s, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: s.title }, /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[12px] leading-relaxed", style: { color: "var(--ink-dim)" } }, s.text), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: () => copySnippet(i, s.text) }, copiedSnippet === i ? "COPIED \u2713" : "Copy"))))))), (view === "projects" || view === "mission") && /* @__PURE__ */ React.createElement("div", { className: "flex justify-center gap-2" }, /* @__PURE__ */ React.createElement("button", { className: `seg sm ${view === "projects" ? "on" : ""}`, onClick: () => setView("projects") }, "QUICK BARS"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${view === "mission" ? "on" : ""}`, onClick: () => setView("mission") }, "MISSION CONTROL")), (view === "mission" || missionVisited) && /* @__PURE__ */ React.createElement(MissionControl, { active: view === "mission", onActivate: () => setView("mission") }), view === "projects" && /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Project Status", count: `UPDATED ${PROJECTS_META.updated}`, countColor: "var(--brass)", delay: "0.1s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "proj-meta font-mono-x" }, /* @__PURE__ */ React.createElement("span", null, "ZAPIER TASKS\xA0", /* @__PURE__ */ React.createElement("b", { style: { color: PROJECTS_META.zapierTasks.used == null ? "var(--ink-faint)" : "var(--ember-amber)" } }, PROJECTS_META.zapierTasks.used == null ? "not recorded" : PROJECTS_META.zapierTasks.used), "\xA0/ ", PROJECTS_META.zapierTasks.cap, " mo"), /* @__PURE__ */ React.createElement("span", { style: { color: "var(--ink-faint)" } }, PROJECTS_META.zapierTasks.note)), PROJECTS.map((group) => /* @__PURE__ */ React.createElement("div", { key: group.cat, className: "mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "proj-cat font-display" }, group.cat), group.items.map((pr) => /* @__PURE__ */ React.createElement("div", { key: pr.name, className: "proj-row" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, pr.links && pr.links.length ? /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "proj-name-link text-[13px] font-semibold",
@@ -4793,7 +4815,7 @@ Check Gmail for anything newer.`;
     );
   }
   function Odometer({ value }) {
-    return /* @__PURE__ */ React.createElement("div", { className: "odometer", "aria-label": `Today's revenue ${value}` }, String(value).split("").map((char, i) => /* @__PURE__ */ React.createElement("span", { key: `${char}-${i}`, className: `odo-cell ${char === "," ? "punct" : ""}` }, char)));
+    return /* @__PURE__ */ React.createElement("div", { className: "odometer", "aria-label": `Today's revenue ${value}` }, String(value).split("").map((char, i) => /* @__PURE__ */ React.createElement("span", { key: `${char}-${i}`, className: `odo-cell ${char === "," || char === "." ? "punct" : ""}` }, char)));
   }
   const MC_KEY = "ember-mc";
   const MC_CHANGED = "ember:mc-updated";
@@ -4886,61 +4908,185 @@ Check Gmail for anything newer.`;
       ]
     };
   }
-  function mcSaveTaskDraft(draft) {
-    let record;
+  function mcNormalize(record) {
+    var _a;
+    const object = (v) => v && typeof v === "object" && !Array.isArray(v);
+    const fail = () => {
+      throw new Error("Saved Mission Control data is unreadable. Nothing was overwritten; your task draft is still here.");
+    };
+    const textFields = (v, fields) => fields.forEach((k) => {
+      if (v[k] != null && typeof v[k] !== "string") fail();
+    });
+    const numbers = (v, fields) => fields.forEach((k) => {
+      if (v[k] != null && !(typeof v[k] === "number" || typeof v[k] === "string")) fail();
+      if (v[k] != null && !Number.isFinite(Number(v[k]))) fail();
+    });
+    const list = (items, normalize) => {
+      if (items == null) return [];
+      if (!Array.isArray(items)) fail();
+      const ids = /* @__PURE__ */ new Set();
+      return items.map((v) => {
+        if (!object(v) || !(typeof v.id === "string" && v.id || typeof v.id === "number" && Number.isFinite(v.id)) || ids.has(String(v.id))) fail();
+        ids.add(String(v.id));
+        return normalize(v);
+      });
+    };
+    const task = (v) => {
+      var _a2, _b;
+      textFields(v, ["text", "due", "details", "source"]);
+      if (v.done != null && typeof v.done !== "boolean") fail();
+      return { ...v, text: (_a2 = v.text) != null ? _a2 : "", done: (_b = v.done) != null ? _b : false };
+    };
+    if (!object(record) || !Array.isArray(record.projects)) fail();
+    if (record.zap != null && !object(record.zap)) fail();
+    const zap = (_a = record.zap) != null ? _a : mcDefaults().zap;
+    numbers(zap, ["used", "allowance", "dayOfCycle", "daysInCycle"]);
+    const projects = list(record.projects, (p) => {
+      var _a2, _b;
+      textFields(p, ["name", "next", "status"]);
+      numbers(p, ["pct", "sessions", "hours"]);
+      return { ...p, name: (_a2 = p.name) != null ? _a2 : "", next: (_b = p.next) != null ? _b : "", tasks: list(p.tasks, task), links: list(p.links, (l) => {
+        var _a3, _b2;
+        textFields(l, ["label", "url"]);
+        return { ...l, label: (_a3 = l.label) != null ? _a3 : "", url: (_b2 = l.url) != null ? _b2 : "" };
+      }) };
+    });
+    return { ...record, zap, projects, decisions: list(record.decisions, task) };
+  }
+  function mcRead() {
     try {
       const raw = window.localStorage.getItem(MC_KEY);
-      record = raw === null ? mcDefaults() : JSON.parse(raw);
+      return { raw, record: raw === null ? mcDefaults() : mcNormalize(JSON.parse(raw)) };
     } catch {
       throw new Error("Cannot read saved Mission Control data. Nothing was overwritten; your task draft is still here.");
     }
-    if (!record || typeof record !== "object" || !Array.isArray(record.projects)) {
-      throw new Error("Saved Mission Control data is unreadable. Nothing was overwritten; your task draft is still here.");
-    }
-    const projects = [...record.projects];
-    let index = projects.findIndex((p) => typeof (p == null ? void 0 : p.name) === "string" && p.name.trim().toLowerCase() === "baxstar ember");
-    if (index < 0) {
-      index = projects.length;
-      projects.push({ ...mcDefaults().projects[0], tasks: [] });
-    }
-    const project = projects[index];
-    if (project.tasks != null && !Array.isArray(project.tasks)) throw new Error("The Baxstar Ember task list is unreadable. Nothing was overwritten.");
-    const tasks = project.tasks || [];
-    if (tasks.some((task) => task.id === draft.id)) return;
-    projects[index] = {
-      ...project,
-      updated: mcToday(),
-      tasks: [...tasks, { id: draft.id, text: draft.title.trim(), done: false, due: draft.due.trim(), details: draft.details.trim(), source: draft.source, localOnly: true }]
-    };
-    const next = { ...record, projects };
-    if (!lsSet(MC_KEY, next)) throw new Error("Could not save locally. Check this browser's storage; your task draft is still here.");
-    window.dispatchEvent(new CustomEvent(MC_CHANGED));
   }
-  function MissionControl() {
-    const [init] = useState(() => typeof window !== "undefined" && lsGet(MC_KEY, null) || mcDefaults());
-    const [zap, setZap] = useState(init.zap || mcDefaults().zap);
-    const [projects, setProjects] = useState(init.projects || []);
-    const [decisions, setDecisions] = useState(init.decisions || []);
+  const mcWriteLock = (write) => {
+    var _a;
+    return ((_a = navigator.locks) == null ? void 0 : _a.request) ? navigator.locks.request(MC_KEY, write) : Promise.resolve().then(write);
+  };
+  async function mcSaveTaskDraft(draft) {
+    return mcWriteLock(() => {
+      const { record } = mcRead();
+      const projects = [...record.projects];
+      let index = projects.findIndex((p) => typeof (p == null ? void 0 : p.name) === "string" && p.name.trim().toLowerCase() === "baxstar ember");
+      if (index < 0) {
+        index = projects.length;
+        projects.push({ ...mcDefaults().projects[0], tasks: [] });
+      }
+      const project = projects[index];
+      const tasks = project.tasks;
+      if (tasks.some((task) => task.id === draft.id)) return;
+      projects[index] = {
+        ...project,
+        updated: mcToday(),
+        tasks: [...tasks, { id: draft.id, text: draft.title.trim(), done: false, due: draft.due.trim(), details: draft.details.trim(), source: draft.source, localOnly: true }]
+      };
+      const next = { ...record, projects };
+      if (!lsSet(MC_KEY, next)) throw new Error("Could not save locally. Check this browser's storage; your task draft is still here.");
+      window.dispatchEvent(new CustomEvent(MC_CHANGED));
+    });
+  }
+  function MissionControl({ active, onActivate }) {
+    const [state, setState] = useState(() => {
+      try {
+        return { ...mcRead(), dirty: false, problem: "" };
+      } catch {
+        return { raw: null, record: null, dirty: false, problem: "read" };
+      }
+    });
+    const stateRef = useRef(state);
+    const [confirmLoad, setConfirmLoad] = useState(false);
+    const [downloadError, setDownloadError] = useState("");
     const [openRows, setOpenRows] = useState({});
-    useEffect(() => {
-      lsSet(MC_KEY, { ...lsGet(MC_KEY, {}), zap, projects, decisions });
-    }, [zap, projects, decisions]);
+    const update = (next) => {
+      stateRef.current = next;
+      setState(next);
+    };
+    const loadSaved = () => {
+      try {
+        update({ ...mcRead(), dirty: false, problem: "" });
+        setConfirmLoad(false);
+        setDownloadError("");
+      } catch {
+        update({ ...stateRef.current, problem: "read" });
+      }
+    };
+    const save = async () => {
+      try {
+        await mcWriteLock(() => {
+          const current = stateRef.current;
+          if (!current.dirty || !current.record || current.problem === "conflict") return;
+          const raw = window.localStorage.getItem(MC_KEY);
+          if (raw !== current.raw) {
+            update({ ...current, problem: "conflict" });
+            return;
+          }
+          const nextRaw = JSON.stringify(current.record);
+          window.localStorage.setItem(MC_KEY, nextRaw);
+          update({ ...current, raw: nextRaw, dirty: false, problem: "" });
+        });
+      } catch {
+        update({ ...stateRef.current, problem: "save" });
+      }
+    };
+    const change = (key, fn) => {
+      const current = stateRef.current;
+      if (!current.record) return;
+      update({ ...current, record: { ...current.record, [key]: fn(current.record[key]) }, dirty: true });
+      void save();
+    };
+    const setZap = (fn) => change("zap", fn);
+    const setProjects = (fn) => change("projects", fn);
+    const setDecisions = (fn) => change("decisions", fn);
+    const download = () => {
+      try {
+        const content = stateRef.current.dirty ? JSON.stringify(stateRef.current.record, null, 2) : window.localStorage.getItem(MC_KEY);
+        if (content === null) throw new Error("No saved data");
+        const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ember-mission-${mcToday()}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1e3);
+        setDownloadError("");
+      } catch {
+        setDownloadError("Could not download a copy. Keep this tab open and try again.");
+      }
+    };
     useEffect(() => {
       const refresh = (event) => {
-        if (event.type === "storage" && event.key !== MC_KEY) return;
-        const saved = lsGet(MC_KEY, null);
-        if (!saved || !Array.isArray(saved.projects)) return;
-        setProjects(saved.projects);
-        setZap(saved.zap || mcDefaults().zap);
-        setDecisions(Array.isArray(saved.decisions) ? saved.decisions : []);
+        if (event.type === "storage" && (event.key !== MC_KEY && event.key !== null || event.storageArea && event.storageArea !== window.localStorage)) return;
+        const current = stateRef.current;
+        if (!current.dirty) {
+          loadSaved();
+          return;
+        }
+        try {
+          if (window.localStorage.getItem(MC_KEY) !== current.raw) update({ ...current, problem: "conflict" });
+        } catch {
+          update({ ...current, problem: "read" });
+        }
+      };
+      const warnUnsaved = (event) => {
+        if (!stateRef.current.dirty) return;
+        event.preventDefault();
+        event.returnValue = "";
       };
       window.addEventListener(MC_CHANGED, refresh);
       window.addEventListener("storage", refresh);
+      window.addEventListener("beforeunload", warnUnsaved);
       return () => {
         window.removeEventListener(MC_CHANGED, refresh);
         window.removeEventListener("storage", refresh);
+        window.removeEventListener("beforeunload", warnUnsaved);
       };
     }, []);
+    const notice = /* @__PURE__ */ React.createElement("div", { className: `mc-save-note ${state.problem ? "problem" : ""}` }, /* @__PURE__ */ React.createElement("p", { role: state.problem ? "alert" : "status" }, state.problem === "read" ? `Cannot read saved Mission Control data. Nothing was overwritten.${state.dirty ? " Your unsaved edits are still in this tab." : " Try reading again or download the saved data for recovery."}` : state.problem === "conflict" ? "Saved data changed in another tab or tool. Your unsaved edits are still here; neither version was overwritten." : state.problem === "save" ? "Could not save on this device. Your edits are only in this tab. Keep it open, retry saving, or download a copy." : state.dirty ? "Saving on this device\u2026" : state.raw === null ? "Starter board \xB7 edits save on this device." : "Saved on this device."), state.problem && /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap gap-2" }, state.dirty && state.problem !== "conflict" && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: save }, "Retry save"), !state.dirty && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: loadSaved }, "Try reading again"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: download }, state.dirty ? "Download my edits" : "Download saved data"), state.dirty && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setConfirmLoad(true) }, "Load saved version")), confirmLoad && state.dirty && /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("p", null, "Loading the saved version will discard your unsaved edits in this tab. Download them first if you want to keep a copy."), /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex flex-wrap gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: loadSaved }, "Discard my edits and load"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => setConfirmLoad(false) }, "Keep editing"))), downloadError && /* @__PURE__ */ React.createElement("p", { role: "alert", className: "mt-2" }, downloadError));
+    if (!state.record) return /* @__PURE__ */ React.createElement("div", { className: "mc-grid flex-1", style: { display: active ? void 0 : "none" } }, notice);
+    const { zap, projects, decisions } = state.record;
     const used = mcNum(zap.used), allowance = mcNum(zap.allowance);
     const hasUsage = zap.used != null && String(zap.used).trim() !== "" && Number.isFinite(Number(zap.used));
     const dayOfCycle = mcNum(zap.dayOfCycle), daysInCycle = mcNum(zap.daysInCycle);
@@ -4980,7 +5126,7 @@ Check Gmail for anything newer.`;
     const updDecision = (id, patch) => setDecisions((d) => d.map((x) => x.id === id ? { ...x, ...patch } : x));
     const delDecision = (id) => setDecisions((d) => d.filter((x) => x.id !== id));
     const statusClass = (s) => ({ active: "mc-st-active", blocked: "mc-st-blocked", parked: "mc-st-parked", frozen: "mc-st-frozen" })[s] || "mc-st-active";
-    return /* @__PURE__ */ React.createElement("div", { className: "mc-grid flex-1", style: { minHeight: 0 } }, /* @__PURE__ */ React.createElement("div", { className: "mc-stack", style: { minHeight: 0 } }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, !active && state.dirty && /* @__PURE__ */ React.createElement("div", { className: "mc-save-note problem", role: "status" }, "Mission Control has unsaved edits in this tab. ", /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: onActivate }, "Review unsaved edits")), /* @__PURE__ */ React.createElement("div", { className: "mc-grid flex-1", style: { minHeight: 0, display: active ? void 0 : "none" } }, notice, /* @__PURE__ */ React.createElement("div", { className: "mc-stack", style: { minHeight: 0 } }, /* @__PURE__ */ React.createElement(
       Panel,
       {
         notch: "cool",
@@ -5009,7 +5155,7 @@ Check Gmail for anything newer.`;
       /* @__PURE__ */ React.createElement("p", { className: "mt-2 text-[11px]", style: { color: "var(--ink-dim)" } }, "Entered on this device \xB7 check Zapier for current usage.")
     ), /* @__PURE__ */ React.createElement(Panel, { notch: "hot", title: "Projects", count: `${projects.length} TRACKED`, countColor: "var(--brass)", delay: "0.12s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2.5" }, projects.map((p) => {
       const pct = Math.max(0, Math.min(100, mcNum(p.pct)));
-      return /* @__PURE__ */ React.createElement("div", { key: p.id, className: `mc-row ${p.status}` }, /* @__PURE__ */ React.createElement("div", { className: "mc-project-head flex items-center gap-2" }, /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", value: p.name, onChange: (e) => updProject(p.id, { name: e.target.value }) }), /* @__PURE__ */ React.createElement(
+      return /* @__PURE__ */ React.createElement("div", { key: p.id, className: `mc-row ${p.status}` }, /* @__PURE__ */ React.createElement("div", { className: "mc-project-head flex items-center gap-2" }, /* @__PURE__ */ React.createElement("input", { "aria-label": "Project name", className: "mc-input flex-1", value: p.name, onChange: (e) => updProject(p.id, { name: e.target.value }) }), /* @__PURE__ */ React.createElement(
         "button",
         {
           className: "mc-status mc-resume",
@@ -5045,7 +5191,7 @@ Check Gmail for anything newer.`;
           onChange: (e) => updLink(p.id, l.id, { url: e.target.value })
         }
       ), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delLink(p.id, l.id), title: "remove page" }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini", onClick: () => addLink(p.id) }, "+ page")), openRows[p.id] && /* @__PURE__ */ React.createElement("div", { className: "mt-2 rounded-lg p-2", style: { background: "#0e0c0b", border: "1px solid var(--ember-panel-line)" } }, p.tasks.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, "data-task-id": t.id }, /* @__PURE__ */ React.createElement("div", { className: `mc-check ${t.done ? "done" : ""}` }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", "aria-label": `Complete ${t.text}`, checked: t.done, onChange: (e) => updTask(p.id, t.id, { done: e.target.checked }) }), /* @__PURE__ */ React.createElement("input", { "aria-label": "Task name", className: "mc-input flex-1", style: { background: "transparent", border: "none" }, value: t.text, onChange: (e) => updTask(p.id, t.id, { text: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: "mc-x", "aria-label": `Remove ${t.text}`, onClick: () => delTask(p.id, t.id) }, "\xD7")), (t.localOnly || t.due || t.details || t.source) && /* @__PURE__ */ React.createElement("div", { className: "mb-2 pl-6 text-[11px] whitespace-pre-wrap", style: { color: "var(--ink-dim)" } }, t.localOnly && /* @__PURE__ */ React.createElement("div", null, "Local task \xB7 not sent to Quo"), t.due && /* @__PURE__ */ React.createElement("div", null, "Due: ", t.due), t.details && /* @__PURE__ */ React.createElement("div", null, t.details), t.source && /* @__PURE__ */ React.createElement("div", null, "Source: ", t.source)))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini mt-1", onClick: () => addTask(p.id) }, "+ task")));
-    }), /* @__PURE__ */ React.createElement("button", { className: "mc-mini", style: { alignSelf: "flex-start" }, onClick: addProject }, "+ project")))), /* @__PURE__ */ React.createElement("div", { className: "mc-stack", style: { minHeight: 0 } }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Rollups", count: "LOCAL ESTIMATES", countColor: "var(--ember-orange)", delay: "0.08s", scroll: false }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Total hours left"), /* @__PURE__ */ React.createElement("span", { className: "v" }, totalHours)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Total sessions"), /* @__PURE__ */ React.createElement("span", { className: "v" }, totalSessions)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Avg complete"), /* @__PURE__ */ React.createElement("span", { className: "v" }, avgPct, "%")), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Effort on revenue"), /* @__PURE__ */ React.createElement("span", { className: `v ${revEffortPct < 50 ? "warn" : "ok"}` }, revEffortPct, "%"))), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[10px] leading-relaxed", style: { color: "var(--ink-faint)" } }, revEffortPct < 50 ? "Under half of remaining effort is on revenue projects \u2014 worth a rebalance." : "Most remaining effort is pointed at revenue. Good.")), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Decision Queue", count: `${decisions.filter((d) => !d.done).length} OPEN`, countColor: "var(--brass)", delay: "0.16s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, decisions.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, className: `mc-check ${d.done ? "done" : ""}` }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: d.done, onChange: (e) => updDecision(d.id, { done: e.target.checked }) }), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", style: { background: "transparent", border: "none" }, value: d.text, onChange: (e) => updDecision(d.id, { text: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delDecision(d.id) }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini mt-1", style: { alignSelf: "flex-start" }, onClick: addDecision }, "+ decision")))));
+    }), /* @__PURE__ */ React.createElement("button", { className: "mc-mini", style: { alignSelf: "flex-start" }, onClick: addProject }, "+ project")))), /* @__PURE__ */ React.createElement("div", { className: "mc-stack", style: { minHeight: 0 } }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Rollups", count: "LOCAL ESTIMATES", countColor: "var(--ember-orange)", delay: "0.08s", scroll: false }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Total hours left"), /* @__PURE__ */ React.createElement("span", { className: "v" }, totalHours)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Total sessions"), /* @__PURE__ */ React.createElement("span", { className: "v" }, totalSessions)), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Avg complete"), /* @__PURE__ */ React.createElement("span", { className: "v" }, avgPct, "%")), /* @__PURE__ */ React.createElement("div", { className: "mc-metric" }, /* @__PURE__ */ React.createElement("span", { className: "k" }, "Effort on revenue"), /* @__PURE__ */ React.createElement("span", { className: `v ${revEffortPct < 50 ? "warn" : "ok"}` }, revEffortPct, "%"))), /* @__PURE__ */ React.createElement("div", { className: "mt-2 text-[10px] leading-relaxed", style: { color: "var(--ink-faint)" } }, revEffortPct < 50 ? "Under half of remaining effort is on revenue projects \u2014 worth a rebalance." : "Most remaining effort is pointed at revenue. Good.")), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Decision Queue", count: `${decisions.filter((d) => !d.done).length} OPEN`, countColor: "var(--brass)", delay: "0.16s", grow: true }, /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-1" }, decisions.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, className: `mc-check ${d.done ? "done" : ""}` }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: d.done, onChange: (e) => updDecision(d.id, { done: e.target.checked }) }), /* @__PURE__ */ React.createElement("input", { className: "mc-input flex-1", style: { background: "transparent", border: "none" }, value: d.text, onChange: (e) => updDecision(d.id, { text: e.target.value }) }), /* @__PURE__ */ React.createElement("button", { className: "mc-x", onClick: () => delDecision(d.id) }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "mc-mini mt-1", style: { alignSelf: "flex-start" }, onClick: addDecision }, "+ decision"))))));
   }
   ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(BaxstarEmber));
 })();

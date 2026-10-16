@@ -14,10 +14,16 @@ cutover and production verification remain open. See `docs/DEPLOY.md`,
 `HANDOFF-CINEMATIC.md`, and Known Issues §1c–1d for scope and restart steps.
 Offline notes now distinguish incomplete setup, a needed sign-in, and a temporary
 failure; they preserve verified data and discard unknown provider error text.
+The latest continuation also repairs manual revenue parsing and Mission Control's
+local persistence. Money entry preserves cents; unreadable boards are never reset
+on mount. Failed or conflicting saves retain the draft across tool switches with
+retry/download controls. Board edits and reviewed OPS tasks share a Web Lock where
+supported. These local protections do not add cross-device sync or external writes.
 
 **Current local validation:** full `test:release` passed with system Chromium:
-754 checks across all 14 suites, plus Wrangler 4.135.0 dry-run. This includes real
-workerd/SQLite with synthetic providers, not live OAuth or physical-device proof.
+771 checks across all 15 suites, including 17 local-state regressions. The unchanged
+Worker/config also passed Wrangler 4.135.0 dry-run at the prior checkpoint. This
+includes real workerd/SQLite with synthetic providers, not live OAuth or physical-device proof.
 
 **Recorded production status (2026-09-20):** the desktop revival is deployed. PR #43 merged to `main` at
 `add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit

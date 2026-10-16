@@ -182,6 +182,19 @@ of links to Brady's other properties.
   regressions; screenshots were rendered at device scale factor 3. The combined full
   release rerun passed 754 checks across 14 suites, and Wrangler dry-run passed.
 
+- **Codex, 2026-10-16 — local data preservation:** reproduced money-entry corruption
+  and Mission Control's destructive mount save. Revenue now validates full dollar/
+  cent amounts and preserves invalid drafts. Mission Control validates saved records,
+  writes only after edits, keeps unsaved changes across tools, offers retry/download
+  recovery, and requires explicit discard before loading a competing saved version.
+  Both board and reviewed OPS task writes share a Web Lock; snapshot conflicts retain
+  the losing draft. Existing keys, dollar/date shapes, and unknown metadata remain.
+  Added offline browser regression coverage to the release command. These are local
+  protections; no external task, database, or deployment action was performed.
+  The full release command passed 771 checks across 15 suites, including 17 local
+  preservation scenarios; desktop and phone screenshots were inspected. Production
+  rollout still requires the existing Worker/model/fresh-consent gates.
+
 ---
 
 ## Canonical files — the source of truth for each concern
