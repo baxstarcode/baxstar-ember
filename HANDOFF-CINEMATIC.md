@@ -5,6 +5,83 @@ Checkpoint date: **2026-10-16** (local branch; recorded production evidence is d
 builder entering Ember cold. Git history preserves the long design chronology; this
 file records what is load-bearing now.
 
+## New Codex chat entry point — 2026-10-16
+
+Brady explicitly requested this handoff after confusion about which AI last worked
+on a **booking app**. The work verified in this conversation is **Ember**. Brady
+believes “Claw” may have been the booking-app builder, rather than Codex, but that
+attribution was **not confirmed**. The booking app's repository, latest commit, and
+handoff were not identified. Do not equate it with Ember, Pontoon check-in, or another
+project merely because those products are mentioned here. Establish its identity
+and provenance from the available records before changing booking-app code.
+
+### Exact repository checkpoint
+
+- Repository: `baxstarcode/baxstar-ember`.
+- Branch: `codex/ember-command-plate-light`.
+- Latest implementation commit: `34b659153cc0f96d6cc814cdfa2f27201febd274`
+  (`Preserve Mission Control drafts and validate revenue amounts`).
+- Local and remote branch matched, with a clean tree, immediately before this
+  documentation-only handoff update. Remote `main` was
+  `af8d6ba9d00742957a7a2f40214fcf8fdf5565ca`; re-check remote state on entry.
+- The overnight branch work is pushed, but **has not been deployed or merged**.
+  Older production evidence in this file must not be represented as proof of this
+  branch's deployment.
+
+### What is already completed
+
+The branch contains restrained command-button material/lighting details, durable
+OAuth refresh ownership, honest partial/stale sync and connection recovery guidance,
+correct dollar/cent entry, and Mission Control protections against unreadable data,
+failed saves, and competing tabs. Unsaved board edits survive tool switches and
+offer retry/download recovery. Details and limitations are recorded below and in
+`docs/KNOWN-ISSUES.md`; do not rebuild these features from scratch.
+
+At implementation commit `34b6591`,
+`CHROME_PATH=/usr/bin/chromium npm run test:release` passed **771 checks across 15
+suites**. Desktop/phone screenshots were inspected. The unchanged Worker/config
+passed Wrangler 4.135.0 dry-run at the preceding checkpoint. Live OAuth, authenticated
+deployment, physical microphone/speaker behavior, and the controlled Drive-outbox
+write are still separate, unfinished gates.
+
+### Ask Jev and available access
+
+Brady explicitly authorizes routine, thoughtful use of Ask Jev. His most recent
+plugin reference is
+[Ask Jev](plugin://dev-7ce8bdbda558819191a84ba67dd5fa90@created-by-me-remote/).
+After that reference was attached, this session's tool catalog still exposed no
+Jev tools or tool-search capability. **No Jev call was made.** This establishes a
+session capability gap, not a broken Jev account. Re-check available tools in the
+new chat and, if callable, verify with one useful read-only call. Starting a new
+chat was suggested as troubleshooting, not a confirmed repair.
+
+Git read/push worked. Cloudflare credentials, an authenticated live browser, Drive,
+Registry, and Relay write-back were unavailable; GitHub API access was also blocked.
+Do not infer that these limits still apply in a new environment: inspect available
+capabilities. Do not claim external handoff records were updated by this session.
+
+### Resume order and working agreement
+
+1. Read `AGENTS.md`, `docs/CURRENT-STATE.md`, this file, `SOURCES-OF-TRUTH.md`,
+   `docs/KNOWN-ISSUES.md`, and `docs/DEPLOY.md`; inspect the branch and worktree.
+2. Check Ask Jev's actual callable tools. If the intended work is the booking app,
+   locate its canonical repo/handoff and verify the last builder. If available
+   evidence cannot identify it, ask Brady for its repo or handoff link instead of
+   guessing or creating a duplicate build.
+3. For Ember, the next release priority is the authenticated Worker/model/token
+   coordinator rollout in `docs/DEPLOY.md`. Fresh consent uses the coordinated
+   Google/Quo seed secrets; do not import uncertain legacy refresh tokens or KV.
+   Deploy/verify the compatible Worker before releasing the UI through Pages.
+   **Do not merge this branch just because the offline tests passed.**
+4. Reuse existing authorization for ordinary work and verified commits/pushes.
+   Brady asked for sustained independent progress and dislikes repeated permission
+   questions. His authorization does not establish that tools or credentials exist,
+   and it does not replace the documented release checks.
+5. Preserve the warm steampunk identity, frozen IDs/storage keys, and review before
+   external actions. Edit canonical source, regenerate outputs, and never put
+   secrets in client files, Git, or logs. Voice integration still needs its physical
+   gate. Continue useful local work if an external dependency remains unavailable.
+
 ## Mission and status
 
 Ember is Brady Baxter's desktop-first AI command center for Baxstar Fishing and Lakes
