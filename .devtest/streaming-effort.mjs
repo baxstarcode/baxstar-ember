@@ -32,6 +32,11 @@ function startStaticServer(requests) {
   const rootPrefix = `${path.resolve(ROOT)}${path.sep}`;
   const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(new URL(req.url || "/", "http://ember.test").pathname);
+    if (pathname === "/api/connectors/status") {
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
+        connectors: { quo: "connected", gmail: "connected", calendar: "connected", gdrive: "connected" } }));
+      return;
+    }
     if (pathname === "/api/messages") {
       if (req.method !== "POST") {
         res.writeHead(405, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "POST required" }));
@@ -47,7 +52,9 @@ function startStaticServer(requests) {
         model: body.model,
         stream: body.stream === true,
         effort: body.output_config?.effort,
+        maxTokens: body.max_tokens,
         sync: isSync,
+        refuse: /REFUSE_ME/.test(raw),
       });
       if (isSync) {
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -60,14 +67,20 @@ function startStaticServer(requests) {
         return;
       }
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
+      const refuse = /REFUSE_ME/.test(raw);
       const frames = [
+        `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: body.model } })}\n\n`,
+        ...(refuse ? [
+          `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "refusal" } })}\n\n`,
+          'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ] : []),
         'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
         ...["Two ", "bookings ", "today, ", "Brady."].map((text) =>
           `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } })}\n\n`),
         'event: message_stop\ndata: {"type":"message_stop"}\n\n',
       ];
-      for (const frame of frames) {
-        await new Promise((resolve) => setTimeout(resolve, 120));
+      for (const frame of refuse ? frames.slice(0, 3) : frames) {
+        await new Promise((resolve) => setTimeout(resolve, refuse ? 10 : 120));
         res.write(frame);
       }
       res.end();
@@ -140,6 +153,38 @@ try {
   check("auto-sync fires without a button press", !!syncRequest);
   check("auto-sync uses the fast model", /haiku/.test(syncRequest?.model || ""));
   check("plain-JSON sync replaces demo panels", liveVoicemail > 0 && liveMail > 0);
+  check("auto-sync runs Haiku 5.5 at low effort", syncRequest?.model === "claude-haiku-5-5" && syncRequest?.effort === "low");
+  check("reply stamped with the model that served it",
+    /claude-opus-5-5/.test(await page.locator('[data-role="assistant"] .chat-served').first().innerText().catch(() => "")));
+
+  // Every model × effort pair sends exactly what the buttons say.
+  const MODEL_IDS = { Haiku: "claude-haiku-5-5", Sonnet: "claude-sonnet-5-5", Opus: "claude-opus-5-5", Fable: "claude-fable-5-1" };
+  const EFFORTS = { Low: ["low", 4000], Med: ["medium", 8000], High: ["high", 12000], Xtra: ["xhigh", 16000] };
+  const mismatches = [];
+  for (const [label, id] of Object.entries(MODEL_IDS)) {
+    for (const [effortLabel, [api, budget]] of Object.entries(EFFORTS)) {
+      await page.locator(".chat-controls button", { hasText: new RegExp(`^${label}$`) }).click();
+      await page.locator(".chat-controls button", { hasText: new RegExp(`^${effortLabel}$`) }).click();
+      const before = requests.filter((r) => !r.sync).length;
+      await composer.fill(`pair ${label} ${effortLabel}`);
+      await composer.press("Enter");
+      await page.waitForFunction(() => !document.querySelector('[data-status="streaming"]'), null, { timeout: 10000 });
+      const sent = requests.filter((r) => !r.sync)[before];
+      if (!sent || sent.model !== id || sent.effort !== api || sent.maxTokens !== budget) {
+        mismatches.push(`${label}/${effortLabel} -> ${sent?.model}/${sent?.effort}/${sent?.maxTokens}`);
+      }
+    }
+  }
+  check("all 16 model x effort pairs send the exact model, effort and budget", mismatches.length === 0, mismatches.join(" | "));
+
+  // A refusal is shown as one; nothing is retried on another model.
+  const beforeRefusal = requests.filter((r) => !r.sync).length;
+  await composer.fill("REFUSE_ME please");
+  await composer.press("Enter");
+  await page.locator(".chat-error").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  check("refusal is reported, not hidden", /declined this request/.test(await page.locator(".chat-error").innerText()));
+  check("refusal triggers no automatic retry", requests.filter((r) => !r.sync).length === beforeRefusal + 1);
   check("no uncaught page errors", pageErrors.length === 0, pageErrors.join(" | "));
 } finally {
   await context.close();

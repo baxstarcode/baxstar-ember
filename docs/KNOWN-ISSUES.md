@@ -32,6 +32,30 @@ Still required:
 The staged order remains the required procedure for future releases; see
 `docs/DEPLOY.md`.
 
+## 1a. The model update needs the Worker deployed before the UI ships
+
+**Status: OPEN — release sequencing (2026-10-15)**
+
+The UI now sends `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`,
+`claude-fable-5-1` with effort up to `xhigh` and budgets up to 16000 tokens. The
+deployed Worker refuses all three. Deploy the Worker from this release FIRST (it still
+accepts the old IDs, so the live page keeps working), confirm chat, then merge so Pages
+ships the UI. After that, one message per model must show its served-model stamp; until
+then live model access is **PROVISIONAL** (it is verified only against Anthropic's model
+reference and intercepted tests). Remove the old IDs from `ALLOWED_MODELS` afterwards.
+
+## 1b. Quo is offline
+
+**Status: OPEN (2026-10-15)**
+
+Brady's signed-in `/api/connectors/status`: gmail, calendar, gdrive connected; quo
+offline. Quo's account had run out of credits around the same time and was topped up
+that afternoon — re-check status before anything else. If it is still offline, the
+likeliest cause (unverified) is refresh-token rotation: Ember's Quo client is public and
+the Worker used to discard a rotated token. Create the `EMBER_TOKENS` KV binding
+(`proxy/wrangler.toml`), deploy, then re-consent once at `/oauth/start?p=quo`. OPS now
+syncs per feed, so Quo being down no longer blanks Inbox and Schedule.
+
 ## 2. Desktop and iPhone microphone/speaker reliability is unproven
 
 **Status: PROVISIONAL — Brady's physical gate required**
@@ -143,6 +167,10 @@ live provider reads, not uninterrupted availability of all four providers. Run t
 provider availability from local mocks, secret names, or an HTTP 200 from another route.
 
 ## Expected behavior that is not a bug
+
+- In the Knowledge Graph overlay, Escape closes it unless focus is inside the embedded
+  Knowledge Foundry: browsers never pass keystrokes from a cross-origin frame to the page
+  around it. The ✕ button and a click or tap outside the sheet always close it.
 
 - Preview Pages hosts return 404 for `/api/*`; only the exact production hostname is
   allowed through the Pages Function. The static `pages.dev` production and preview

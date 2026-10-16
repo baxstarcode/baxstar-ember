@@ -58,9 +58,17 @@ const check = (label, condition, extra = "") => {
   if (!condition) failures.push(label);
 };
 
-function verifiedSyncContent(text) {
+const ALL_CONNECTED = { quo: "connected", gmail: "connected", calendar: "connected", gdrive: "connected" };
+
+async function routeStatus(page, connectors) {
+  await page.route(`${ORIGIN}/api/connectors/status`, (route) => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({ connectors }),
+  }));
+}
+
+function verifiedSyncContent(text, servers = ["quo", "gmail", "calendar"]) {
   const content = [];
-  for (const [server, tool] of [["quo", "fetch-missed-calls"], ["gmail", "search_threads"], ["calendar", "list_events"]]) {
+  for (const [server, tool] of [["quo", "fetch-missed-calls"], ["gmail", "search_threads"], ["calendar", "list_events"]].filter(([s]) => servers.includes(s))) {
     const id = `mcp_${server}`;
     content.push({ type: "mcp_tool_use", id, name: tool, server_name: server, input: {} });
     content.push({ type: "mcp_tool_result", tool_use_id: id, is_error: false, content: [] });
@@ -93,6 +101,7 @@ try {
     });
 
     await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
     await page.route(`${ORIGIN}/api/messages`, async (route) => {
       const request = route.request();
       if (request.method() !== "POST") {
@@ -134,7 +143,8 @@ try {
     check(`${name} no skull ornament`, await page.locator(".skull-arch").count() === 0);
     check(`${name} core chamber present`, await page.locator(".core-host").count() > 0);
     const reactor = await page.locator(".reactor-stage").first().boundingBox();
-    check(`${name} reactor ~250px`, !!reactor && Math.abs(reactor.height - 250) <= 2, reactor ? `${Math.round(reactor.height)}px` : "missing");
+    check(`${name} reactor sized to the screen`, !!reactor && reactor.height >= (name === "PHONE" ? 160 : 240) && reactor.height <= 330,
+      reactor ? `${Math.round(reactor.height)}px` : "missing");
     check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
     check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));
     const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));
@@ -167,10 +177,149 @@ try {
     check(`${name} chat uses same-origin messages POST`, !!chatRequest);
     check(`${name} no voice-mode text in the prompt`, !!chatRequest && !/spoken aloud|Spoken output/i.test(JSON.stringify(chatRequest.messages)));
 
+    // The push-plates and the Inbox link run the existing prompts — no copies.
+    for (const [locate, label, want] of [
+      [() => page.locator(".prompt-plate.left"), "WHAT'D I MISS plate", /What did I miss\? Check missed calls/],
+      [() => page.locator(".prompt-plate.right"), "BRIEF MY DAY plate", /Brief me on tomorrow/],
+      [() => page.getByRole("button", { name: "Triage Inbox ›" }), "Triage Inbox link (with the live inbox it shows)", /Triage my unread Gmail[\s\S]*LiveSyncProof/],
+    ]) {
+      const before = requests.length;
+      await locate().click();
+      await page.waitForFunction((n) => !document.querySelector('[data-status="streaming"]') && true, before, { timeout: 10000 });
+      await page.waitForTimeout(300);
+      const sent = requests.slice(before).find((r) => !/ONLY valid JSON/.test(JSON.stringify(r.messages)));
+      check(`${name} ${label} runs its existing prompt`, !!sent && want.test(JSON.stringify(sent.messages)));
+    }
+    const dock = page.locator(".console-dock");
+    check(`${name} dock reads OPS · Caption Studio · Knowledge Graph · Google Drive · FareHarbor · Projects`,
+      (await dock.locator(".dock-label").allInnerTexts()).map((t) => t.replace(/\u00AD/g, "").trim().toUpperCase()).join("|") ===
+      "OPS|CAPTION STUDIO|KNOWLEDGE GRAPH|GOOGLE DRIVE|FAREHARBOR|PROJECTS");
+    check(`${name} Google Drive tile opens Drive in a new tab`,
+      (await dock.getByRole("link", { name: /Google Drive/ }).getAttribute("href")) === "https://drive.google.com/" &&
+      (await dock.getByRole("link", { name: /Google Drive/ }).getAttribute("target")) === "_blank");
+    check(`${name} FareHarbor tile opens the Baxstar dashboard`,
+      (await dock.getByRole("link", { name: /FareHarbor/ }).getAttribute("href")) === "https://fareharbor.com/baxstarfishing/dashboard/");
+    check(`${name} Caption Studio gear still turns`, await page.evaluate(() =>
+      document.getAnimations().some((a) => a.animationName === "dockGearSpin" && a.playState === "running")));
+    check(`${name} FareHarbor wheel and furnace animate`, await page.evaluate(() => {
+      const names = document.getAnimations().map((a) => a.animationName);
+      return names.includes("dockWheelCycle") && names.includes("dockFurnaceSwell") && names.includes("dockFurnaceFlicker");
+    }));
+
     await page.screenshot({
       path: path.join(SHOTS, `dashboard-${name.toLowerCase()}.png`),
       fullPage: true,
     });
+    await context.close();
+  }
+
+  {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    await page.route(/baxstar-knowledge-network\.pages\.dev/, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<p>foundry</p>" }));
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    console.log("\n===== GRAPH OVERLAY =====");
+    await page.locator(".console-dock").getByRole("button", { name: "Knowledge Graph", exact: true }).click();
+    await page.getByRole("dialog", { name: "Knowledge Graph" }).waitFor();
+    check("overlay makes the dashboard inert", await page.evaluate(() => document.querySelector(".ember-shell").hasAttribute("inert")));
+    for (let i = 0; i < 6; i++) await page.keyboard.press("Tab");
+    check("Tab stays inside the dialog", await page.evaluate(() => !!document.activeElement?.closest(".kg-overlay") || document.activeElement?.tagName === "IFRAME" || document.activeElement === document.body));
+    await page.mouse.click(8, 8);
+    check("clicking the backdrop closes it", await page.getByRole("dialog", { name: "Knowledge Graph" }).count() === 0);
+    check("closing restores the dashboard", await page.evaluate(() => !document.querySelector(".ember-shell").hasAttribute("inert")));
+    await context.close();
+  }
+
+  // Small laptop windows and SCOPE mode (final review, 2026-10-15): nothing spills
+  // out of the centre panel, nothing hides under the dock, the plates stay whole.
+  for (const [w, h] of [[1024, 700], [1100, 640], [1280, 720]]) {
+    const name = `${w}x${h}`;
+    const context = await browser.newContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    await page.route(`${ORIGIN}/api/messages`, (route) => route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ content: [{ type: "text", text: "noted" }] }) }));
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForSelector(".core-chamber");
+    const geo = () => page.evaluate(() => {
+      const r = (q) => document.querySelector(q)?.getBoundingClientRect();
+      const core = r(".core-chamber"), controls = r(".chat-controls"), tools = r(".tools-rail"), dock = r(".console-dock");
+      const L = r(".prompt-plate.left"), R = r(".prompt-plate.right"), face = r(".reactor-stage") || r(".scope-bezel");
+      return { scroll: document.documentElement.scrollHeight - innerHeight, controlsIn: controls.bottom <= core.bottom - 8,
+        toolsAboveDock: tools.bottom <= dock.top, platesWhole: L.left >= core.left + 10 && R.right <= core.right - 10,
+        platesClear: L.right <= face.left + 1 && R.left >= face.right - 1 };
+    });
+    console.log(`\n===== ${name} =====`);
+    for (const mode of ["ENIGMA", "SCOPE"]) {
+      await page.getByRole("button", { name: mode, exact: true }).click();
+      await page.waitForTimeout(150);
+      const g = await geo();
+      check(`${name} ${mode}: one screen, controls inside the panel, tools above the dock`, g.scroll <= 1 && g.controlsIn && g.toolsAboveDock, JSON.stringify(g));
+      check(`${name} ${mode}: push-plates whole and clear of the instrument`, g.platesWhole && g.platesClear, JSON.stringify(g));
+    }
+    await page.getByRole("button", { name: "ENIGMA", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ask Ember" }).fill(Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n"));
+    const typed = await geo();
+    check(`${name} typing 30 lines keeps Model/Effort in view`, typed.controlsIn && typed.scroll <= 1, JSON.stringify(typed));
+    await context.close();
+  }
+
+  // One dead connector must not blank the others (live 2026-10-15: Quo offline,
+  // Gmail/Calendar/Drive connected, every panel stuck on the demo preview).
+  {
+    const name = "QUO OFFLINE";
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    const requests = [];
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, { ...ALL_CONNECTED, quo: "offline" });
+    await page.route(`${ORIGIN}/api/messages`, async (route) => {
+      const body = JSON.parse(route.request().postData() || "{}");
+      requests.push(body);
+      const isSync = /ONLY valid JSON/.test(route.request().postData() || "");
+      if (isSync) {
+        const text = JSON.stringify({
+          emails: [{ from: "PartialInboxProof", time: "1:01 PM", subject: "gmail still live" }],
+          events: [{ time: "3:00 PM", title: "PartialEventProof", detail: "" }],
+        });
+        await route.fulfill({ status: 200, contentType: "application/json",
+          body: JSON.stringify({ content: verifiedSyncContent(text, ["gmail", "calendar"]) }) });
+      } else {
+        await route.fulfill({ status: 200, contentType: "application/json",
+          headers: { "x-ember-connectors": "degraded" },
+          body: JSON.stringify({ content: [{ type: "text", text: "Inbox triaged." }] }) });
+      }
+    });
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForFunction(() => /PartialInboxProof/.test(document.body.innerText), null, { timeout: 10000 });
+    console.log(`\n===== ${name} =====`);
+    const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));
+    check(`${name} sync asks only for connectors that can authorize`,
+      JSON.stringify(syncRequest?.mcp_servers) === JSON.stringify([{ name: "gmail" }, { name: "calendar" }]),
+      JSON.stringify(syncRequest?.mcp_servers));
+    check(`${name} sync prompt never asks for Quo`, !/Quo inboxes/.test(JSON.stringify(syncRequest?.messages)));
+    const body = await page.locator("body").innerText();
+    check(`${name} Gmail and Calendar panels filled live`, /PartialInboxProof/.test(body) && /PartialEventProof/.test(body));
+    check(`${name} calls panel keeps the demo preview`, /\(701\) 555-0142/.test(body));
+    check(`${name} no red sync error`, !/did not verify|no feeds were replaced/i.test(body));
+    const note = await page.locator(".ops-data-note").innerText();
+    check(`${name} truth line names Quo offline`, /Calls and voicemail: demo preview \(Quo offline\)/.test(note), note);
+    check(`${name} header Quo light offline`, (await page.locator('[data-connector="quo"]').getAttribute("data-state")) === "offline");
+    check(`${name} header Gmail light live`, (await page.locator('[data-connector="gmail"]').getAttribute("data-state")) === "live");
+    check(`${name} header reads PARTIAL`, /PARTIAL ·/.test(await page.locator(".hdr-clock").innerText()));
+    const composer = page.getByRole("textbox", { name: "Ask Ember" });
+    await composer.fill("triage my inbox");
+    await composer.press("Enter");
+    await page.getByText("Inbox triaged.", { exact: true }).waitFor({ timeout: 10000 });
+    const chatNote = await page.locator(".chat-connectors").innerText();
+    check(`${name} chat warning names Quo, not a blanket claim`,
+      /Quo is offline — calls and voicemail not checked/.test(chatNote) && !/Live business data was not checked/.test(chatNote), chatNote);
+    check(`${name} no page errors`, errors.length === 0, errors.join(" | "));
     await context.close();
   }
 } finally {

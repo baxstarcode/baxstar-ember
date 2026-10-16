@@ -145,7 +145,16 @@ async function run(label, viewport) {
   });
   check(`${label}: reactor crown replaces the skull arch`, crown && crown.skulls === 0 &&
     crown.display !== "none" && crown.visibility !== "hidden" &&
-    Math.abs(crown.w - 250) <= 2 && Math.abs(crown.h - 250) <= 2, JSON.stringify(crown));
+    // Sized by the viewport since 2026-10-15 (bigger on tall screens), always round.
+    crown.w >= (mobile ? 160 : 240) && crown.w <= 330 && Math.abs(crown.w - crown.h) <= 2, JSON.stringify(crown));
+  const plates = await page.evaluate(() => {
+    const r = document.querySelector(".reactor-stage").getBoundingClientRect();
+    const [l, rt] = [...document.querySelectorAll(".prompt-plate")].map((p) => p.getBoundingClientRect());
+    return { ok: !!l && !!rt && l.right <= r.left && rt.left >= r.right && l.width >= 44 && l.height >= 44,
+      labels: [...document.querySelectorAll(".prompt-plate")].map((p) => p.innerText.replace(/\s+/g, " ").trim()) };
+  });
+  check(`${label}: WHAT'D I MISS left and BRIEF MY DAY right of the reactor, clear of it`,
+    plates.ok && plates.labels[0] === "WHAT'D I MISS" && plates.labels[1] === "BRIEF MY DAY", JSON.stringify(plates));
 
   if (mobile) {
     // Chamber is the first OPS element

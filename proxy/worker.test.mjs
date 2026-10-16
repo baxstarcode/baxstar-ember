@@ -341,6 +341,52 @@ for (const [label, upstream] of [
   check("a refreshed token beats a stale static one", upstream.mcp_servers[0].authorization_token === "AT-fresh");
 }
 
+// --- rotated refresh tokens are kept (optional EMBER_TOKENS KV) -------------
+{
+  const kv = new Map();
+  const EMBER_TOKENS = { get: async (k, type) => (kv.has(k) ? (type === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null), put: async (k, v) => { kv.set(k, v); } };
+  let clock = 50_000_000;
+  const sent = [];
+  let issue = 1;
+  const f = stubFetch([
+    ["mcp.quo.com/.well-known", () => jsonRes({ token_endpoint: "https://mcp.quo.com/token" })],
+    ["mcp.quo.com/token", (init) => { const rt = new URLSearchParams(init.body).get("refresh_token"); sent.push(rt);
+      return jsonRes({ access_token: `AT-${issue}`, refresh_token: `RT-rotated-${issue++}`, expires_in: 120 }); }],
+    ["api.anthropic.com", jsonRes({ ok: true })],
+  ]);
+  const env = { ...baseEnv, MCP_REFRESH_QUO: "RT-pasted", QUO_CLIENT_ID: "quo-client", EMBER_TOKENS };
+  const req = () => worker.fetch(post(chat({ mcp_servers: [{ name: "quo" }] })), env, {}, { fetch: f, now: () => clock });
+  await req();
+  check("first refresh uses the pasted secret", sent[0] === "RT-pasted");
+  check("a rotated refresh token is saved", JSON.parse(kv.get("refresh:quo")).token === "RT-rotated-1");
+  check("the saved token never stores the pasted secret itself", !kv.get("refresh:quo").includes("RT-pasted"));
+  clock += 200_000;
+  await req();
+  check("next refresh uses the rotated token, not the retired one", sent[1] === "RT-rotated-1", JSON.stringify(sent));
+  const reKeyed = { ...env, MCP_REFRESH_QUO: "RT-new-consent" };
+  clock += 200_000;
+  await worker.fetch(post(chat({ mcp_servers: [{ name: "quo" }] })), reKeyed, {}, { fetch: f, now: () => clock });
+  check("a re-keyed secret wins over a token saved from the old one", sent[2] === "RT-new-consent");
+}
+{
+  // Saved token rejected -> NO fallback to the pasted (retired) secret.
+  const kv = new Map();
+  const EMBER_TOKENS = { get: async (k) => (kv.has(k) ? JSON.parse(kv.get(k)) : null), put: async (k, v) => { kv.set(k, v); } };
+  const sent = [];
+  const f = stubFetch([
+    ["oauth2.googleapis.com/token", (init) => { const rt = new URLSearchParams(init.body).get("refresh_token"); sent.push(rt);
+      return rt === "RT-gone" ? jsonRes({ error: "invalid_grant" }, 400) : jsonRes({ access_token: "AT-ok", expires_in: 3600 }); }],
+    ["api.anthropic.com", jsonRes({ ok: true })],
+  ]);
+  const env = { ...baseEnv, MCP_REFRESH_GMAIL: "RT-base-g", EMBER_TOKENS };
+  const fp = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("RT-base-g")))].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+  kv.set("refresh:gmail", JSON.stringify({ base: fp, token: "RT-gone" }));
+  await worker.fetch(post(chat({ mcp_servers: [{ name: "gmail" }] })), env, {}, { fetch: f, now: () => 90_000_000 });
+  const upstream = JSON.parse(f.calls.find((c) => c.url.includes("anthropic")).body);
+  check("a dead saved token never re-presents the retired pasted secret", sent.join(",") === "RT-gone" && !(upstream.mcp_servers || []).some((s) => s.name === "gmail"),
+    "reuse of a rotated-out refresh token can revoke the whole grant");
+}
+
 // --- guarantees the earlier blocks established ----------------------------
 
 {
@@ -707,7 +753,21 @@ for (const degraded of [false, true]) {
 {
   const f = stubFetch([["api.anthropic.com", jsonRes({ ok: true })]]);
   await worker.fetch(post(chat({ max_tokens: 999999 })), baseEnv, {}, { fetch: f });
-  check("max_tokens cap still holds", JSON.parse(f.calls[0].body).max_tokens === 4096);
+  check("max_tokens cap still holds", JSON.parse(f.calls[0].body).max_tokens === 16000);
+}
+
+for (const model of ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"]) {
+  const f = stubFetch([["api.anthropic.com", jsonRes({ ok: true })]]);
+  const res = await worker.fetch(post(chat({ model, output_config: { effort: "xhigh" } })), baseEnv, {}, { fetch: f });
+  const sent = f.calls[0] ? JSON.parse(f.calls[0].body) : {};
+  check(`${model} accepted with xhigh effort forwarded`,
+    res.status === 200 && sent.model === model && sent.output_config?.effort === "xhigh");
+}
+
+{
+  const f = stubFetch([["api.anthropic.com", jsonRes({ ok: true })]]);
+  const res = await worker.fetch(post(chat({ output_config: { effort: "turbo" } })), baseEnv, {}, { fetch: f });
+  check("unknown effort level still refused", res.status === 400 && f.calls.length === 0);
 }
 
 {

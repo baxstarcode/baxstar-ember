@@ -148,6 +148,12 @@ try {
       if (isApi) {
         let body;
         try { body = request.postDataJSON(); } catch { body = null; }
+        // The data-free credential check OPS sync runs first (2026-10-15).
+        if (!external && new URL(request.url()).pathname === '/api/connectors/status') {
+          await route.fulfill({ status: 200, contentType: 'application/json',
+            body: JSON.stringify({ connectors: { quo: 'connected', gmail: 'connected', calendar: 'connected', gdrive: 'connected' } }) });
+          return;
+        }
         if (!Array.isArray(body?.messages)) {
           unexpectedApis.push(`${request.method()} ${request.url()}`);
           await route.fulfill({ status: 501, contentType: 'application/json', body: JSON.stringify({ error: 'Unrecognised API request in offline test' }) });
@@ -202,13 +208,9 @@ try {
       });
       await check(`${name} no initial horizontal overflow`, () => noOverflow(page));
 
-      await check(`${name} THE WORKS starts compact and collapsed`, async () => {
-        const state = await page.locator('.eco-rail').evaluate((rail) => ({
-          native: rail.tagName === 'DETAILS', open: rail.open,
-          summary: Boolean(rail.querySelector(':scope > summary')),
-          height: rail.getBoundingClientRect().height,
-        }));
-        return { pass: state.native && state.summary && state.open === false && state.height <= 120, detail: JSON.stringify(state) };
+      await check(`${name} THE WORKS is off the OPS page (it lives in the Knowledge Graph overlay)`, async () => {
+        const count = await page.locator('.eco-rail').count();
+        return { pass: count === 0, detail: `${count} on page` };
       });
 
       await check(`${name} successful empty sync reaches all three panels`, async () => {
@@ -338,9 +340,12 @@ try {
         return { pass: seen.size === 11, detail: `${seen.size}/11 links became visible and hit-testable` };
       });
 
-      await check(`${name} THE WORKS opens with 39 parts and 60 links`, async () => {
-        const rail = page.locator('details.eco-rail');
-        await rail.locator(':scope > summary').click();
+      await check(`${name} Knowledge Graph overlay opens THE WORKS with 39 parts and 60 links`, async () => {
+        await page.locator('.console-dock').getByRole('button', { name: 'Knowledge Graph', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Knowledge Graph' });
+        await dialog.waitFor({ state: 'visible' });
+        await dialog.getByRole('tab', { name: 'The Works' }).click();
+        const rail = dialog.locator('details.eco-rail');
         const open = await rail.evaluate((element) => element.open);
         const nodes = await rail.locator('.eco-node').count(), edges = await rail.locator('.eco-svg line').count();
         const svg = await rail.locator('.eco-svg').boundingBox();
@@ -348,6 +353,12 @@ try {
       });
       await check(`${name} no horizontal overflow with graph open`, () => noOverflow(page));
       await snapshot(page, `${name}-graph`);
+      await check(`${name} Escape closes the graph and returns focus to the dock`, async () => {
+        await page.keyboard.press('Escape');
+        const gone = await page.getByRole('dialog', { name: 'Knowledge Graph' }).count() === 0;
+        const focused = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent?.replace(/\u00AD/g, '').trim());
+        return { pass: gone && /Knowledge Graph/.test(focused || ''), detail: `gone=${gone} focus=${focused}` };
+      });
 
       const missionOpen = await check(`${name} fresh Mission Control opens`, async () => {
         await page.locator('.console-dock').getByRole('button', { name: 'Projects', exact: true }).click();

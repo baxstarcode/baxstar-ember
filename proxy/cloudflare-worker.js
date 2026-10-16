@@ -115,7 +115,14 @@ const POST_ROUTES = new Map([
 // Ember's selectable models — keep in sync with MODELS in src/baxstar-ember.jsx.
 // Anything else is refused so a leaked endpoint can't be repurposed into a
 // general-purpose model proxy.
+// The four current IDs are what the app sends. The previous five stay accepted only
+// so the deployed page keeps working between this Worker deploy and the Pages
+// release that switches models; remove them once that release is live.
 const ALLOWED_MODELS = new Set([
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+  "claude-fable-5-1",
   "claude-haiku-4-5",
   "claude-sonnet-4-6",
   "claude-opus-4-8",
@@ -123,7 +130,11 @@ const ALLOWED_MODELS = new Set([
   "claude-fable-5",
 ]);
 
-const MAX_TOKENS_CAP = 4096;
+// The current models always think before answering and that thinking counts
+// against max_tokens; at Xtra (xhigh) effort 4096 could end before the first
+// word. Billing follows tokens actually used, not this ceiling.
+const MAX_TOKENS_CAP = 16000;
+const ALLOWED_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const MAX_BODY_BYTES = 5 * 1024 * 1024; // Ember sends resized image b64 in captions
 
 function allowedOrigins(env) {
@@ -225,7 +236,7 @@ function validateMessagesBody(body) {
     throw new RequestInputError("mcp_servers must contain canonical connector names.");
   }
   if (body.output_config !== undefined && (!isRecord(body.output_config) ||
-      (body.output_config.effort !== undefined && !["low", "medium", "high", "max"].includes(body.output_config.effort)))) {
+      (body.output_config.effort !== undefined && !ALLOWED_EFFORTS.includes(body.output_config.effort)))) {
     throw new RequestInputError("Invalid output_config.");
   }
 }
@@ -684,9 +695,48 @@ async function oauthCallback(request, env, url, fetchImpl) {
 // handed out in its last few seconds of life.
 const tokenCache = new Map();
 
+// ROTATED REFRESH TOKENS (2026-10-15). Some providers hand back a NEW refresh token
+// on each refresh and retire the old one; Ember's Quo client is a public OAuth
+// client, the kind that rule is written for. The secret Brady pasted can't be
+// rewritten by this Worker (by design, see the callback page), so a rotated token
+// used to be thrown away and the connector died at the next refresh.
+// With the optional EMBER_TOKENS KV binding, the newest token is kept there and
+// used first. Each saved token carries a fingerprint of the secret it descends
+// from, so when Brady re-keys (a new secret) the stale saved token is ignored.
+// Without the binding nothing changes. Free-tier KV: one write per rotation.
+async function secretFingerprint(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].slice(0, 12).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function currentRefresh(connector, env) {
+  const base = env["MCP_REFRESH_" + connector.toUpperCase()];
+  if (!base) return null;
+  const store = env.EMBER_TOKENS;
+  if (!store || typeof store.get !== "function") return { refresh: base, base, store: null };
+  const fp = await secretFingerprint(base);
+  try {
+    const saved = await store.get("refresh:" + connector, "json");
+    if (saved && saved.base === fp && typeof saved.token === "string" && saved.token) {
+      return { refresh: saved.token, base, store, fp };
+    }
+  } catch {
+    // An unreadable store is the same as no store.
+  }
+  return { refresh: base, base, store, fp };
+}
+
 async function accessTokenFor(connector, env, fetchImpl, now) {
-  const refresh = env["MCP_REFRESH_" + connector.toUpperCase()];
-  if (!refresh) return null;
+  const current = await currentRefresh(connector, env);
+  if (!current) return null;
+  // Deliberately NO retry with the pasted secret when a saved token fails: once a
+  // provider has rotated, the pasted secret is a retired token, and presenting a
+  // retired refresh token is exactly what reuse detection treats as theft —
+  // it can revoke the whole grant. A failed refresh just drops the connector.
+  return mintAccessToken(connector, current.refresh, current, env, fetchImpl, now);
+}
+
+async function mintAccessToken(connector, refresh, current, env, fetchImpl, now) {
 
   const hit = tokenCache.get(connector);
   if (hit && hit.exp > now && hit.refresh === refresh) return hit.token;
@@ -722,6 +772,14 @@ async function accessTokenFor(connector, env, fetchImpl, now) {
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.access_token) return null;
+    if (current.store && typeof data.refresh_token === "string" && data.refresh_token && data.refresh_token !== refresh) {
+      try {
+        await current.store.put("refresh:" + connector, JSON.stringify({ base: current.fp, token: data.refresh_token }));
+        refresh = data.refresh_token;
+      } catch {
+        // Losing the save costs one future refresh, never this request.
+      }
+    }
     const ttl = Math.max(30, Number(data.expires_in) || 3600);
     tokenCache.set(connector, {
       token: data.access_token,

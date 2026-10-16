@@ -63,12 +63,20 @@ for (const [name,vp] of [['DESKTOP',{width:1440,height:1000}],['PHONE',{width:39
   console.log(`\n===== ${name} =====`);
   ok(`${name} no console/page errors`, errs.length===0, errs.slice(0,2).join(' | '));
 
-  const rail = p.locator('.eco-rail');
+  // Since 2026-10-15 THE WORKS lives in the Knowledge Graph overlay (dock tile),
+  // second tab after the embedded Knowledge Foundry. It opens expanded there.
+  await p.locator('.console-dock').getByRole('button', { name: 'Knowledge Graph', exact: true }).click();
+  const dialog = p.getByRole('dialog', { name: 'Knowledge Graph' });
+  await dialog.waitFor({ state: 'visible' });
+  ok(`${name} overlay embeds the Knowledge Foundry first`,
+    (await dialog.locator('iframe.kg-frame').getAttribute('src')) === 'https://baxstar-knowledge-network.pages.dev/');
+  const backdrop = await p.evaluate(() => getComputedStyle(document.querySelector('.kg-overlay')).backgroundColor);
+  ok(`${name} backdrop is black at 50%`, /rgba\(0, 0, 0, 0\.5\)/.test(backdrop), backdrop);
+  const close = await dialog.getByRole('button', { name: 'Close Knowledge Graph' }).boundingBox();
+  ok(`${name} close button is at least 44px`, !!close && close.width >= 44 && close.height >= 44);
+  await dialog.getByRole('tab', { name: 'The Works' }).click();
+  const rail = dialog.locator('.eco-rail');
   ok(`${name} graph panel present`, await rail.count()===1);
-  // THE WORKS is intentionally compact on first load. Open it before testing
-  // the graph itself so this suite exercises the interactive surface rather
-  // than treating the collapsed product default as missing content.
-  await rail.locator(':scope > summary').click();
   await p.waitForTimeout(250);
 
   const nodes = await p.locator('.eco-node').count();

@@ -109,6 +109,19 @@ Required/used secrets and variables stay in Cloudflare, never Git:
 Static `MCP_TOKEN_*` values remain compatibility fallbacks in source but short-lived
 refresh-token minting is the intended production path.
 
+Optional binding `EMBER_TOKENS` (Workers KV, free tier): when present, a refresh token a
+provider rotates is saved there and used next, fingerprinted to the pasted secret so a
+re-key always wins. Create it once with
+`npx wrangler@4.135.0 kv namespace create EMBER_TOKENS --config proxy/wrangler.toml` and
+uncomment the block at the end of `proxy/wrangler.toml`. The namespace then holds a live
+refresh credential: bind it to this Worker only, never to another Worker or a public tool.
+Concurrent refreshes from two isolates inside KV's propagation window can still present one
+token twice; with a strictly rotating provider that can revoke the grant (re-consent fixes it).
+
+Model releases go Worker first: the Worker's `ALLOWED_MODELS` must accept a model before
+the Pages build that sends it is merged (2026-10-15: the four newest IDs, old IDs kept
+for the cut-over).
+
 ## Build and local verification
 
 Install dependencies once, then build both the canonical HTML and exact Pages payload:
