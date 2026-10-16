@@ -10,6 +10,14 @@ Ember is Brady Baxter's personal AI command center for Baxstar Fishing and Lakes
 Golf Simulator. Treat OPS, Mission Control, Studio, and voice as surfaces of one
 product. Optimize for a reliable daily operating system, not a collection of demos.
 
+## Working preference
+
+Brady asks that builders use [Ask Jev](plugin://dev-7ce8bdbda558819191a84ba67dd5fa90@openai-curated-remote)
+when sensible. Check its available tools and skills, then use it thoughtfully and
+creatively where it can materially improve the work. Give it focused context and a
+clear purpose; evaluate its output against Ember's goals and constraints. If it is
+unavailable in the session, say so briefly and continue useful work.
+
 ## Canonical files
 
 - Edit `src/baxstar-ember.jsx` for application behavior and appearance.
