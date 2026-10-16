@@ -134,6 +134,22 @@ of links to Brady's other properties.
 > If a later tool changes application logic, it must update this file and
 > `HANDOFF-CINEMATIC.md` so provenance stays accurate.
 
+- **Codex, 2026-10-16 — local review and command-plate detail:** reviewed PR #49
+  at `af8d6ba`, reproduced the token-store fallback and partial-sync wording defects
+  recorded in `docs/KNOWN-ISSUES.md`, and added a restrained material interaction to
+  the two existing command plates. Engraved serials, asymmetric corners, pointer-lit
+  brass, and an ignition hairline preserve the controls' geometry and original
+  prompts. Keyboard focus receives equivalent illumination; touch does not track,
+  reduced-motion mode remains static, and serials hide in the compact chat layout.
+  Research: [Codrops Magnetic Buttons](https://github.com/codrops/MagneticButtons)
+  for expressive interaction, adapted without moving hit targets or adding a library;
+  [W3C Media Queries 5](https://drafts.csswg.org/mediaqueries-5/#prefers-reduced-motion)
+  for reduced-motion behavior. Implementation is original; no demo code/assets copied.
+  Branch: `codex/ember-command-plate-light`. Local build, 26 chat regressions, 87
+  layout/truth checks, and 17 focused interaction checks passed. Production deployment
+  was not checked: the environment proxy refused the production hostname. Drive,
+  Registry, and Relay were unavailable in this session and were not updated.
+
 ---
 
 ## Canonical files — the source of truth for each concern

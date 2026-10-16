@@ -23,6 +23,28 @@ and physical test before integration.
 Repository: `baxstarcode/baxstar-ember` (private). Production target:
 `https://ember.baxstarfishing.com`, behind Cloudflare Access.
 
+### Local continuation — 2026-10-16
+
+Brady requested a review of the latest work plus a small, researched design risk.
+`codex/ember-command-plate-light`, based on PR #49 / `af8d6ba`, adds pointer-lit
+brass, engraved serials, asymmetric corners, and a short ignition accent to the
+existing WHAT'D I MISS / BRIEF MY DAY plates. Their hit targets, prompts, and routes
+are preserved. Keyboard focus gets the accent, touch stays stable, reduced-motion
+mode is static, and compact chat pills omit the serial. No dependencies were added.
+
+Verified locally: production build and Pages staging, 26/26 chat regressions,
+87/87 layout/truth checks, 17/17 focused pointer/keyboard/touch/reduced-motion checks,
+and desktop/phone screenshots at device scale factor 3. Full release-suite and live
+deployment verification remain outstanding; the environment cannot reach the live
+hostname and has no Drive/Cloudflare connector. Registry and Relay write-back remain
+unavailable. The separate iPhone Shortcut PR #48 was inspected and left untouched.
+
+**Next priority:** repair the rotated-token fallback in `currentRefresh` before
+relying on `EMBER_TOKENS` for Quo recovery. A local fixture proved that one failed KV
+read replays the retired secret and loses a still-valid cached access token. Then
+confirm the deployed Worker/model compatibility and KV binding in an authenticated
+session. The partial-sync error text also needs correction; see Known Issues §1c–1d.
+
 ## Source ownership
 
 | Concern | Canonical owner |

@@ -56,6 +56,43 @@ the Worker used to discard a rotated token. Create the `EMBER_TOKENS` KV binding
 (`proxy/wrangler.toml`), deploy, then re-consent once at `/oauth/start?p=quo`. OPS now
 syncs per feed, so Quo being down no longer blanks Inbox and Schedule.
 
+## 1c. A token-store read failure replays a retired refresh token
+
+**Status: REPRODUCED LOCALLY — next backend priority (2026-10-16)**
+
+`currentRefresh` catches `EMBER_TOKENS.get` failures and returns the original secret.
+After rotation, `tokenCache` holds the replacement refresh token, so that fallback
+also misses the still-valid cached access token. The next request sends the retired
+secret to the provider. This contradicts the intended no-reuse protection and can
+drop Quo; revocation of a grant depends on the provider's reuse policy and was not
+tested live.
+
+Reproduction used only synthetic fixtures: refresh Quo once, return a new refresh
+token and an access token valid for 3600 seconds, save the rotation, then make the
+KV read throw 1 second later. The second status request sent the original token
+again; the fixture rejected it and status changed from connected to offline.
+The existing rotation tests use an immediately readable Map and miss this case.
+
+Repair must preserve known-valid cached authorization across store failures and
+avoid falling back to a possibly retired secret when rotation state is unreadable.
+Validate failed/stale reads, persistence failure, concurrent refreshes, and re-consent
+before treating KV-backed rotation as production-ready. No backend change was made
+in the command-plate design pass.
+
+## 1d. Partial first sync displays contradictory error text
+
+**Status: REPRODUCED LOCALLY (2026-10-16)**
+
+On a first sync where Gmail returns verified results but Quo/Calendar do not,
+`syncLive` updates the email panel and `feedLive`, then throws for the other feeds.
+Its catch still reads the pre-request `live` value and appends "Showing the demo
+preview; no live data was loaded." The same screen correctly says "Live: email"
+and displays the returned email. A browser fixture reproduced both statements.
+
+Build the error summary from the feeds that actually landed and any retained live
+feeds, rather than the earlier render's aggregate flag. Preserve the verified email
+panel while clearly identifying the other feeds as unverified.
+
 ## 2. Desktop and iPhone microphone/speaker reliability is unproven
 
 **Status: PROVISIONAL — Brady's physical gate required**

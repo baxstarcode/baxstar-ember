@@ -1196,9 +1196,26 @@ function BrandMark({ tool, active, size = 22 }) {
 // the Draft Reply / Task Draft levers, whose jobs live on every call and email row.
 // Each runs an existing ACTIONS prompt into the chat thread — no second copy of it.
 function PromptPlate({ side, lines, running, disabled, onPress }) {
+  // Light follows the pointer; the brass control and its hit target stay put.
+  // Touch and reduced-motion users get the same finish without pointer tracking.
+  const resetLight = (event) => {
+    event.currentTarget.style.removeProperty("--plate-x");
+    event.currentTarget.style.removeProperty("--plate-y");
+  };
+  const trackLight = (event) => {
+    if (disabled || event.pointerType === "touch" ||
+        !window.matchMedia("(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)").matches) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const percent = (value) => `${Math.min(100, Math.max(0, value)).toFixed(1)}%`;
+    event.currentTarget.style.setProperty("--plate-x", percent((event.clientX - rect.left) / rect.width * 100));
+    event.currentTarget.style.setProperty("--plate-y", percent((event.clientY - rect.top) / rect.height * 100));
+  };
   return (
     <button type="button" className={`prompt-plate ${side} ${running ? "running" : ""}`}
-      disabled={disabled} onClick={onPress} aria-label={lines.join(" ")}>
+      disabled={disabled} onClick={onPress} aria-label={lines.join(" ")}
+      onPointerMove={trackLight} onPointerLeave={resetLight} onPointerCancel={resetLight} onFocus={resetLight}>
+      <span className="plate-index" aria-hidden="true">{side === "left" ? "01" : "02"}</span>
       <span className="plate-lamp" aria-hidden="true" />
       <span className="plate-label">{lines.map((l) => <span key={l}>{l}</span>)}</span>
     </button>
@@ -3300,7 +3317,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .prompt-plate {
           flex:none; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px;
           width:clamp(74px,6.4vw,98px); min-height:clamp(78px,7vw,98px); padding:10px 6px 9px;
-          border:2px solid #6b4a26; border-radius:12px; cursor:pointer;
+          border:2px solid #6b4a26; border-radius:3px 12px 3px 12px; cursor:pointer; isolation:isolate;
           background:
             radial-gradient(circle at 9px 9px,#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
             radial-gradient(circle at calc(100% - 9px) 9px,#c2924e 0 1.4px,#3a2718 2.2px 3.6px,transparent 4px),
@@ -3310,6 +3327,28 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           box-shadow:inset 0 1px 0 rgba(255,214,150,.28), inset 0 0 0 1px rgba(214,179,106,.22),
             inset 0 -10px 16px rgba(0,0,0,.5), 0 8px 18px rgba(0,0,0,.6), 0 0 14px rgba(255,105,38,.08);
           transition:transform 140ms var(--ember-ease-mechanical), filter 180ms, box-shadow 180ms;
+        }
+        /* An etched serial and a moving reflection make these feel like bespoke
+           instruments. Only light moves; no copied mechanism or shifting target. */
+        .prompt-plate::before {
+          content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:-1;
+          background:radial-gradient(ellipse at var(--plate-x,50%) var(--plate-y,24%),
+            rgba(255,200,112,.52), rgba(196,108,37,.12) 48%, transparent 76%);
+          mix-blend-mode:screen; opacity:.22; transition:opacity 220ms var(--ember-ease-mechanical);
+        }
+        .prompt-plate::after {
+          content:""; position:absolute; left:22%; right:22%; bottom:5px; height:1px; pointer-events:none;
+          background:#ffbd6b; box-shadow:0 0 7px rgba(255,122,69,.7);
+          opacity:.35; transform:scaleX(.28);
+          transition:transform 260ms var(--ember-ease-mechanical), opacity 180ms;
+        }
+        .plate-index { position:absolute; top:5px; left:0; right:0; font-family:ui-monospace,monospace;
+          font-size:7px; line-height:1; letter-spacing:.16em; color:#c6a271; pointer-events:none; }
+        .prompt-plate:focus-visible::before, .prompt-plate.running::before { opacity:.85; }
+        .prompt-plate:focus-visible::after, .prompt-plate.running::after { opacity:1; transform:scaleX(1); }
+        @media (hover:hover) and (pointer:fine) {
+          .prompt-plate:hover:not(:disabled)::before { opacity:1; }
+          .prompt-plate:hover:not(:disabled)::after { opacity:1; transform:scaleX(1); }
         }
         .prompt-plate:hover:not(:disabled) { filter:brightness(1.16); box-shadow:inset 0 1px 0 rgba(255,214,150,.32),
             inset 0 0 0 1px rgba(214,179,106,.4), inset 0 -10px 16px rgba(0,0,0,.5), 0 8px 18px rgba(0,0,0,.6), 0 0 18px rgba(255,105,38,.22); }
@@ -3325,7 +3364,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .plate-label { display:flex; flex-direction:column; align-items:center; gap:1px;
           font-family:var(--ember-font-display); font-weight:700; font-size:clamp(10px,.8vw,12px); line-height:1.15;
           letter-spacing:.1em; color:#f0d9a8; text-shadow:0 1px 0 #000, 0 0 8px rgba(255,150,70,.18); }
-        @media (prefers-reduced-motion:reduce) { .prompt-plate.running .plate-lamp { animation:none; } }
+        @media (prefers-reduced-motion:reduce) {
+          .prompt-plate.running .plate-lamp { animation:none; }
+          .prompt-plate { --plate-x:50%!important; --plate-y:24%!important; }
+          .prompt-plate:active:not(:disabled) { transform:none; }
+        }
 
         .row-sel { cursor:pointer; transition:background 140ms, box-shadow 140ms, padding 140ms; }
         .row-sel:hover { background:rgba(214,179,106,.05); }
@@ -3500,6 +3543,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-fit .core-chamber.has-thread .greet-row,
           .ops-fit .core-chamber.has-thread .core-wrap > .mt-2 { display:none; }
           .ops-fit .core-chamber.has-thread .prompt-plate { flex-direction:row; width:auto; min-height:0; padding:7px 12px; gap:7px; }
+          .ops-fit .core-chamber.has-thread .plate-index { display:none; }
           .ops-fit .core-chamber.has-thread .plate-label { flex-direction:row; gap:4px; }
           .ops-fit .core-chamber.has-thread .chat-composer .cmd-input { min-height:56px; }
         }
