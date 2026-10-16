@@ -160,6 +160,20 @@ of links to Brady's other properties.
   coordination and authenticated deployment verification are still open. No production
   configuration, connector permissions, or model choices changed.
 
+- **Codex, 2026-10-16 — authorized overnight continuation:** added a SQLite Durable
+  Object per OAuth grant, shared by separate Worker instances and Google's 3 connectors.
+  Refresh intent and replacement state are persisted to prevent replay after an
+  ambiguous provider outcome or restart. Fresh-consent seed secrets separate the
+  coordinated path from uncertain legacy/KV state; missing coordinator configuration
+  cannot activate legacy refresh. Added 23 unit/failure and actual workerd/SQLite tests,
+  a pinned development-only Miniflare dependency, and the binding/migration config.
+  Wrangler dry-run accepted the config. All browser harnesses accept `CHROME_PATH`;
+  updated command-plate assertions distinguish decorative serials from command labels.
+  The full release command passed 742 checks across all 14 suites using system Chromium.
+  See `docs/DEPLOY.md` for platform sources, consent cutover, and rollback restrictions.
+  No production deploy, consent, namespace provisioning, or external write occurred;
+  Cloudflare/live-browser/Drive/Ask Jev capabilities are still unavailable here.
+
 ---
 
 ## Canonical files — the source of truth for each concern

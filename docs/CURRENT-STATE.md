@@ -1,16 +1,23 @@
 # Ember — Current State
 
-Last verified against the working repository on **2026-09-20**.
+Latest local continuation: **2026-10-16**. Production evidence below remains dated
+2026-09-20 unless explicitly stated otherwise.
 
 **Local continuation, 2026-10-16:** branch `codex/ember-command-plate-light` contains
 the command-plate design refinement and subsequent connector/sync reliability
-repairs. Rotated tokens survive local KV failures and simultaneous requests within
-one Worker isolate; partial/failed syncs now distinguish updated, retained, and demo
-feeds, with STALE indicators after failures. These changes have not been deployed.
-Cross-isolate refresh coordination and authenticated production verification remain
-open. See `HANDOFF-CINEMATIC.md` and Known Issues §1c–1d for scope and restart steps.
+repairs. A SQLite Durable Object now coordinates refreshes across Worker instances,
+persists rotations, and prevents replay after ambiguous refreshes or restarts. The
+new coordinated seed secrets require fresh consent; legacy KV is not imported.
+Partial/failed syncs distinguish updated, retained, and demo feeds, with STALE
+indicators after failures. These changes have not been deployed. The authenticated
+cutover and production verification remain open. See `docs/DEPLOY.md`,
+`HANDOFF-CINEMATIC.md`, and Known Issues §1c–1d for scope and restart steps.
 
-**Status:** the desktop revival is deployed. PR #43 merged to `main` at
+**Current local validation:** full `test:release` passed with system Chromium:
+742 checks across all 14 suites, plus Wrangler 4.135.0 dry-run. This includes real
+workerd/SQLite with synthetic providers, not live OAuth or physical-device proof.
+
+**Recorded production status (2026-09-20):** the desktop revival is deployed. PR #43 merged to `main` at
 `add4a8c28c17f70b3463d5ad786833f5e5a7880a`; release commit
 `063237de6bfc45eb562eb9dbd82a9eb8b651a6f8` is live through Pages deployment
 `1f56234b-f359-43f2-ba38-c839d2e6b415`. The same-origin gateway, Worker host gate,
@@ -84,6 +91,9 @@ Authenticated browser
 - The Worker owns secrets, provider destinations, model/body limits, OAuth, TTS, the
   private Drive-outbox destination, and the server-controlled connector tool allowlist.
   Browser-supplied destinations, tokens, tools, and tool configuration are discarded.
+- The local branch adds the private `EMBER_TOKEN_COORDINATOR` binding. Each grant
+  has one SQLite Durable Object; Google's 3 connectors share an owner. The namespace
+  and fresh-consent secrets have not been provisioned by this session.
 - Ordinary chat can read the approved Quo, Gmail, and Calendar tools. The separate
   Drive librarian can search and read approved Drive data. Neither can send messages,
   create external tasks, alter mail/calendar data, or write Drive files.
@@ -103,7 +113,8 @@ not a blanket guarantee that every connector is continuously available.
 
 ## Verified in this revival
 
-The latest recorded local release matrix is green: **562/562 checks**.
+The historical September release matrix was green: **562/562 checks**. The October
+branch's complete 742-check matrix is recorded above and in `HANDOFF-CINEMATIC.md`.
 
 - production build and exact Pages staging payload;
 - Worker contract and security tests: 193/193;
@@ -143,7 +154,8 @@ quality, continuous connector availability, or a successful Drive-outbox write.
 
 0. (2026-10-15 release) Deploy the Worker before merging the UI that sends the new
    model IDs, then send one message per model and confirm each served-model stamp; re-check
-   Quo's status (see `docs/KNOWN-ISSUES.md` §1a–1b).
+   Quo's status (see `docs/KNOWN-ISSUES.md` §1a–1b). This branch also requires the durable
+   owner/fresh-consent cutover in `docs/DEPLOY.md`; do not copy legacy refresh secrets.
 1. Run the data-free signed-in `/api/connectors/status` call through the Pages binding.
    Treat the earlier all-connected report, the verified live OPS sync, and the observed
    chat recovery as separate evidence rather than substitutes for this route check.

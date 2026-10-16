@@ -43,7 +43,7 @@ const ORIGIN = `http://127.0.0.1:${server.address().port}`;
 
 const { chromium } = await loadPlaywright();
 const PRE='/opt/pw-browsers/chromium';
-const b = await chromium.launch(fs.existsSync(PRE)?{executablePath:PRE}:{});
+const b = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : fs.existsSync(PRE)?{executablePath:PRE}:{});
 const OUT = process.env.ECO_SHOT_DIR ? process.env.ECO_SHOT_DIR : '/tmp/';
 const fails=[];
 const ok=(l,c,x='')=>{console.log(`${c?'PASS':'FAIL'} — ${l}${x?' :: '+x:''}`); if(!c)fails.push(l);};

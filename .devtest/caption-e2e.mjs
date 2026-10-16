@@ -102,7 +102,8 @@ const reply = (text) => ({
 const PREINSTALLED = "/opt/pw-browsers/chromium";
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch(
-  (await import("fs")).existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {}
+  process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } :
+    (await import("fs")).existsSync(PREINSTALLED) ? { executablePath: PREINSTALLED } : {}
 );
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await ctx.newPage();

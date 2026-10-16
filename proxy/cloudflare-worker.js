@@ -19,9 +19,11 @@
  * Quo / Gmail / Calendar / Drive connectors will not.
  *
  * Two ways to hold connector credentials, checked in this order:
- *   1. MCP_REFRESH_GMAIL / _CALENDAR / _GDRIVE / _QUO — refresh tokens. The Worker
- *      trades one for a short-lived access token per request (cached in-isolate).
- *      Get these by visiting /oauth/start?p=google and /oauth/start?p=quo.
+ *   1. Coordinated mode: MCP_COORDINATED_REFRESH_GOOGLE / _QUO seed a private
+ *      SQLite Durable Object that owns refreshes across Worker isolates. Use
+ *      fresh consent via /oauth/start?p=google and /oauth/start?p=quo.
+ *      Legacy configurations retain MCP_REFRESH_GMAIL / _CALENDAR / _GDRIVE /
+ *      _QUO with an isolate-local cache; see docs/DEPLOY.md before migrating.
  *   2. MCP_TOKEN_QUO / _GMAIL / _CALENDAR / _GDRIVE — static access tokens. Simpler,
  *      but they expire and chat silently drops to demo data when they do.
  *
@@ -666,9 +668,9 @@ async function oauthCallback(request, env, url, fetchImpl) {
     );
   }
 
-  const names = isGoogle
-    ? ["MCP_REFRESH_GMAIL", "MCP_REFRESH_CALENDAR", "MCP_REFRESH_GDRIVE"]
-    : ["MCP_REFRESH_QUO"];
+  const names = usesTokenCoordinator(env)
+    ? [isGoogle ? "MCP_COORDINATED_REFRESH_GOOGLE" : "MCP_COORDINATED_REFRESH_QUO"]
+    : isGoogle ? ["MCP_REFRESH_GMAIL", "MCP_REFRESH_CALENDAR", "MCP_REFRESH_GDRIVE"] : ["MCP_REFRESH_QUO"];
   const clientNote =
     !isGoogle && saved.c && !env.QUO_CLIENT_ID
       ? `<li>Also add <code>QUO_CLIENT_ID</code> = <span class="tok">${htmlEscape(saved.c)}</span> so it does not register a new client each time.</li>`
@@ -748,6 +750,9 @@ async function persistRotation(connector, cached, store) {
 }
 
 async function accessTokenFor(connector, env, fetchImpl, now) {
+  // Once coordinated mode is selected, never fall back to the old secret/KV
+  // refresh path: another isolate may already have consumed that grant.
+  if (usesTokenCoordinator(env)) return coordinatedAccessToken(connector, env);
   const base = env["MCP_REFRESH_" + connector.toUpperCase()];
   if (!base) return null;
   const google = CONNECTOR_PROVIDER[connector] === "google";
@@ -844,6 +849,131 @@ async function mintAccessToken(connector, refresh, current, env, fetchImpl, now)
     return data.access_token;
   } catch {
     return null; // a connector we can't authorize is dropped, not forwarded
+  }
+}
+
+const usesTokenCoordinator = (env) => env.TOKEN_COORDINATOR_REQUIRED === "true" || !!env.EMBER_TOKEN_COORDINATOR;
+
+async function coordinatedCredentials(connector, env) {
+  const provider = CONNECTOR_PROVIDER[connector];
+  if (provider !== "google" && provider !== "quo") return null;
+  const google = provider === "google";
+  // Separate seed secrets make migration explicit. Legacy secrets/KV may already
+  // be retired and are never automatically adopted into a new durable owner.
+  const refresh = env[google ? "MCP_COORDINATED_REFRESH_GOOGLE" : "MCP_COORDINATED_REFRESH_QUO"];
+  const clientId = google ? env.GOOGLE_CLIENT_ID : env.QUO_CLIENT_ID;
+  if (!refresh || !clientId) return null;
+  // Google connectors share a grant. Client-secret rotation does not create a new
+  // owner; fresh user consent (a different refresh seed) does.
+  const key = await sha256b64url(JSON.stringify([provider, clientId, refresh]));
+  return { key, provider, refresh, clientId, clientSecret: google ? env.GOOGLE_CLIENT_SECRET : null };
+}
+
+async function coordinatedAccessToken(connector, env) {
+  try {
+    const grant = await coordinatedCredentials(connector, env);
+    const namespace = env.EMBER_TOKEN_COORDINATOR;
+    if (!grant || !namespace) return null;
+    const owner = namespace.get(namespace.idFromName(grant.key));
+    const response = await owner.fetch("https://ember-token.internal/access", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connector, key: grant.key }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.token === "string" && data.token ? data.token : null;
+  } catch {
+    return null;
+  }
+}
+
+// A single SQLite-backed Durable Object owns each OAuth grant. It is reachable
+// only through this Worker's private binding, never a public HTTP route. No token
+// appears in a URL, log, status response, or client payload.
+export class EmberTokenCoordinator {
+  constructor(ctx, env, deps = {}) {
+    this.ctx = ctx;
+    this.env = env;
+    this.fetchImpl = deps.fetch || ((url, init) => fetch(url, init));
+    this.now = deps.now || Date.now;
+    this.unsaved = null;
+  }
+
+  reply(body, status = 200) {
+    return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+  }
+
+  async fetch(request) {
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/access") return this.reply({ error: "not_found" }, 404);
+    let body, grant;
+    try {
+      // Only the connector name and opaque grant identity travel over the binding.
+      const raw = await request.text();
+      if (raw.length > 1024) return this.reply({ error: "invalid_request" }, 400);
+      body = JSON.parse(raw);
+      grant = await coordinatedCredentials(body?.connector, this.env);
+      if (!grant || body.key !== grant.key || this.ctx.id.toString() !== this.env.EMBER_TOKEN_COORDINATOR.idFromName(grant.key).toString()) {
+        return this.reply({ error: "invalid_grant_owner" }, 403);
+      }
+    } catch {
+      return this.reply({ error: "invalid_request" }, 400);
+    }
+    // Storage input gates alone do not serialize the external OAuth fetch. Hold
+    // this object through the bounded call and final durable write as well.
+    return this.ctx.blockConcurrencyWhile(async () => {
+      try { return await this.access(grant); }
+      catch { return this.reply({ error: "temporarily_unavailable" }, 503); }
+    });
+  }
+
+  async access(grant) {
+    const storage = this.ctx.storage;
+    if (this.unsaved) {
+      await storage.put("grant", this.unsaved);
+      this.unsaved = null;
+    }
+    let record = await storage.get("grant");
+    if (record !== undefined && (!isRecord(record) || record.version !== 1 || record.key !== grant.key || record.phase !== "ready" || typeof record.refresh !== "string" || !record.refresh)) {
+      // Includes a durable in-flight marker left by a crashed/ambiguous refresh.
+      // Neither a retry nor an object restart may reuse that possibly spent token.
+      return this.reply({ error: "reconnect_required" }, 503);
+    }
+    if (!record) record = { version: 1, key: grant.key, phase: "ready", refresh: grant.refresh };
+    if (typeof record.token === "string" && record.token && Number.isFinite(record.expiresAt) && record.expiresAt > this.now()) {
+      return this.reply({ token: record.token });
+    }
+
+    // Discovery is safe to retry and occurs BEFORE recording refresh intent.
+    // workerd supports manual/follow, not redirect:error. Every caller below
+    // rejects non-2xx responses; a redirect must never forward credentials.
+    const boundedFetch = (url, init = {}) => this.fetchImpl(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(8000) });
+    const endpoint = grant.provider === "google" ? GOOGLE_TOKEN_URL : (await quoConfig(this.env, boundedFetch)).token;
+    const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: record.refresh, client_id: grant.clientId });
+    if (grant.clientSecret) form.set("client_secret", grant.clientSecret);
+    // Commit BEFORE contacting the provider. OAuth and our database cannot form
+    // one transaction; a lost reply must leave a durable stop, not an auto-retry.
+    await storage.put("grant", { version: 1, key: grant.key, phase: "refreshing" });
+    const response = await boundedFetch(endpoint, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString(),
+    });
+    if (!response.ok) return this.reply({ error: "reconnect_required" }, 503);
+    const data = await response.json();
+    if (typeof data.access_token !== "string" || !data.access_token ||
+        (data.refresh_token !== undefined && (typeof data.refresh_token !== "string" || !data.refresh_token))) {
+      return this.reply({ error: "reconnect_required" }, 503);
+    }
+    const ttl = data.expires_in === undefined ? 3600 : Number(data.expires_in);
+    if (!Number.isFinite(ttl) || ttl <= 0) return this.reply({ error: "reconnect_required" }, 503);
+    this.unsaved = {
+      version: 1, key: grant.key, phase: "ready",
+      refresh: data.refresh_token || record.refresh, token: data.access_token,
+      expiresAt: this.now() + Math.max(0, ttl - 60) * 1000,
+    };
+    // A failed final save can be retried by this instance without another OAuth
+    // call. If it dies first, the durable marker forces fresh consent instead.
+    await storage.put("grant", this.unsaved);
+    this.unsaved = null;
+    return this.reply({ token: data.access_token });
   }
 }
 

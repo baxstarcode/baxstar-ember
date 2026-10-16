@@ -99,8 +99,8 @@ intentionally denied by the Function's exact-host rule even though the binding e
 Required/used secrets and variables stay in Cloudflare, never Git:
 
 - `ANTHROPIC_API_KEY`
-- `MCP_REFRESH_QUO`, `QUO_CLIENT_ID`
-- `MCP_REFRESH_GMAIL`, `MCP_REFRESH_CALENDAR`, `MCP_REFRESH_GDRIVE`
+- `MCP_COORDINATED_REFRESH_QUO`, `QUO_CLIENT_ID`
+- `MCP_COORDINATED_REFRESH_GOOGLE` (one fresh grant shared by Gmail, Calendar, Drive)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - `OAUTH_REDIRECT_URI`, `OAUTH_STATE_SECRET`
 - `OUTBOX_URL` (server-only Apps Script capability URL)
@@ -109,14 +109,60 @@ Required/used secrets and variables stay in Cloudflare, never Git:
 Static `MCP_TOKEN_*` values remain compatibility fallbacks in source but short-lived
 refresh-token minting is the intended production path.
 
-Optional binding `EMBER_TOKENS` (Workers KV, free tier): when present, a refresh token a
-provider rotates is saved there and used next, fingerprinted to the pasted secret so a
-re-key always wins. Create it once with
-`npx wrangler@4.135.0 kv namespace create EMBER_TOKENS --config proxy/wrangler.toml` and
-uncomment the block at the end of `proxy/wrangler.toml`. The namespace then holds a live
-refresh credential: bind it to this Worker only, never to another Worker or a public tool.
-Concurrent refreshes from two isolates inside KV's propagation window can still present one
-token twice; with a strictly rotating provider that can revoke the grant (re-consent fixes it).
+### Durable token owner — rollout pending (2026-10-16)
+
+`proxy/wrangler.toml` now declares `EMBER_TOKEN_COORDINATOR`, a SQLite-backed
+`EmberTokenCoordinator` Durable Object, and migration `ember-token-coordinator-v1`.
+`TOKEN_COORDINATOR_REQUIRED = "true"` prevents a missing/broken binding from falling
+back to legacy refreshes. One object owns each provider/client/consent grant; Google's
+three connectors share that object. Changing the Google client secret retains the
+owner; fresh consent creates a new owner. Bind this namespace only to Ember.
+
+The owner stores access and refresh tokens server-side, serializes refreshes, and
+commits a refresh-intent marker before calling the provider. It saves the replacement
+before returning access. If the provider reply is lost, malformed, rejected, or times
+out, the marker prevents token reuse after a restart. A failed final save can be
+retried while the same object retains the response; if that object is lost first,
+fresh consent is required. OAuth and local storage cannot form one atomic transaction.
+This deliberately favors reconnecting over replaying a possibly spent token.
+
+Do not copy old `MCP_REFRESH_*` values or KV records into the new seed secrets. They
+may already be retired. The old isolate-local/KV path remains only for configurations
+that have neither the binding nor the required-mode variable; it is not the rollout
+target. Existing `MCP_TOKEN_*` static access tokens remain explicit compatibility
+fallbacks, but cannot refresh a grant.
+
+Cut over with an authenticated Cloudflare operator:
+
+1. Record the active Worker version/bindings and verify the Access-protected Pages
+   gateway and connector-free chat. Use a full Worker deployment, not a gradual split
+   between legacy and coordinated refresh code. Preserve existing API/OAuth secrets.
+2. Deploy the coordinator configuration before the Pages UI release. Until fresh
+   seed secrets exist, refreshed connectors report offline; ordinary chat still works.
+   Do not disable required mode to hide that expected setup state.
+3. Complete fresh Google and Quo consent via the registered `/oauth/start` routes.
+   Store the returned values only in the encrypted secrets named by the callback:
+   `MCP_COORDINATED_REFRESH_GOOGLE` and `MCP_COORDINATED_REFRESH_QUO`. Preserve/set
+   the matching client IDs. Do not share these grants with the legacy path or another
+   application. Revoke superseded grants as appropriate; never paste tokens into chat.
+4. Through the authenticated Pages binding, check data-free connector status, one
+   approved read per provider, and model compatibility. Repeat status after access
+   expiry and after a Worker redeploy to verify persistent ownership on the real account.
+   Record states and timings only. Then complete the Pages/model rollout below.
+
+If a durable grant reports offline after an ambiguous refresh, re-consent and replace
+its coordinated seed secret; deleting its record or namespace would risk replaying
+the original token. Do not roll back to legacy refresh code or reuse its seeds after
+cutover. Keep the binding, migration history, and durable state during rollback.
+
+Platform constraints verified from Cloudflare's
+[state API](https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile),
+[SQLite migrations](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/),
+and [pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/):
+SQLite Durable Objects are available on Workers Free, subject to daily limits.
+Provider calls are bounded at 8 seconds each, below the concurrency guard's 30-second
+deadline. Local workerd/SQLite tests and Wrangler dry-run passed; account provisioning,
+fresh consent, live provider behavior, and deployment remain unverified.
 
 Model releases go Worker first: the Worker's `ALLOWED_MODELS` must accept a model before
 the Pages build that sends it is merged (2026-10-15: the four newest IDs, old IDs kept
@@ -145,9 +191,16 @@ npm run test:release
 ```
 
 This rebuilds and stages the exact Pages payload, then runs all current Worker, Pages,
-Apps Script, posting-time, chat, dashboard, layout, streaming, Caption Studio, and
+Apps Script, coordinated-token workerd/SQLite, posting-time, chat, dashboard, layout, streaming, Caption Studio, and
 voice-probe contracts. Do not convert an obsolete expectation into product behavior;
 update the harness when a deliberate contract change is verified.
+
+For a managed environment with system Chromium, run
+`CHROME_PATH=/usr/bin/chromium npm run test:release`. All browser harnesses honor the
+explicit path; CI keeps its pinned Playwright Chromium and branded Chrome defaults.
+The voice suite mocks recognition/playback. Neither browser selection proves physical
+microphone or speaker behavior. Miniflare is a pinned development-only dependency;
+the coordinator adds no browser dependency and makes no live provider calls in tests.
 
 `./start-ember.sh` remains the fast Python UI preview. It uses same-origin API paths;
 the static Python server cannot relay those requests. Use intercepted local tests
@@ -312,13 +365,11 @@ The canonical Worker destinations are:
 
 ### Google
 
-One Google consent can supply the three Google refresh secrets. Start it at the
-Worker's registered `/oauth/start?p=google` route, complete the signed PKCE flow, and
-store the refresh token as each of:
-
-- `MCP_REFRESH_GMAIL`
-- `MCP_REFRESH_CALENDAR`
-- `MCP_REFRESH_GDRIVE`
+One fresh Google consent supplies `MCP_COORDINATED_REFRESH_GOOGLE` for all three
+Google connectors. Start at the Worker's registered `/oauth/start?p=google` route,
+complete the signed PKCE flow, and store the returned token as that encrypted secret.
+The callback names the legacy three `MCP_REFRESH_*` secrets only when coordinated
+mode is absent; do not use that legacy configuration for this rollout.
 
 Future consent asks for Gmail read, Calendar list/event/free-busy read, and Drive read.
 Existing refresh grants created with the former broad scopes are not retroactively
@@ -328,7 +379,7 @@ Until then, the Worker's read-only tool allowlist is the active write barrier.
 ### Quo
 
 Start `/oauth/start?p=quo`, approve Ember, and store the returned values as encrypted
-`MCP_REFRESH_QUO` and `QUO_CLIENT_ID`. Quo consent requests only
+`MCP_COORDINATED_REFRESH_QUO` and `QUO_CLIENT_ID`. Quo consent requests only
 `read:conversations read:account`. Contact reads are omitted because Quo currently
 bundles them with a write-capable contact scope.
 
@@ -367,8 +418,10 @@ Desktop results do not satisfy this separate gate.
 
 - If the static app or Pages Function fails, roll Pages back to the last known-good
   production deployment.
-- If the Worker host gate breaks the service binding or OAuth, use Cloudflare Worker
-  version rollback, then diagnose the mismatch before redeploying.
+- If the Worker host gate breaks the service binding or OAuth, use a known-good
+  coordinator-capable Worker version after token cutover. Preserve durable state and
+  the binding; returning to legacy refresh code can replay retired tokens. Diagnose
+  the mismatch before redeploying.
 - Do not restore public direct API access as a permanent workaround. Roll back the
   paired release or fix the internal binding.
 - Do not disable `workers.dev` while it remains the registered OAuth callback. Migrate

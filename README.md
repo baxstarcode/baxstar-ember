@@ -126,11 +126,17 @@ action path needs separate permissions, validated arguments, and explicit human 
 npm run test:release
 ```
 
-That command rebuilds and stages the deploy payload, then runs the Worker, Pages
-gateway, Apps Script contract, posting-time, chat, dashboard, layout, streaming,
+That command rebuilds and stages the deploy payload, then runs the Worker, durable
+token-owner workerd/SQLite, Pages gateway, Apps Script contract, posting-time, chat, dashboard, layout, streaming,
 ecosystem, UI, Caption Studio, and voice-probe suites. Browser suites intercept model
 and external calls. The voice-probe suite simulates browser events; it does not prove a
 real microphone, Chrome speech service, audio decoder, or speaker.
+
+All browser suites accept `CHROME_PATH=/usr/bin/chromium` when a managed environment
+provides system Chromium. This does not replace the physical voice/device gates.
+The durable token owner uses fresh-consent seeds and requires the staged cutover in
+[`docs/DEPLOY.md`](docs/DEPLOY.md#durable-token-owner--rollout-pending-2026-10-16)
+before deployment; it never imports old KV tokens automatically.
 
 ## Non-negotiables
 

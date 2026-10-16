@@ -52,13 +52,33 @@ fixtures exercise the system-font fallback. The new Worker suite fails 15 checks
 against the previous implementation and passes all 233 against this repair.
 This is targeted local verification, not a completed release or live OAuth gate.
 
-**Next priority:** address refresh coordination across Worker instances, then verify
-the deployed Worker/model compatibility and token binding in an authenticated session.
-Cloudflare KV is eventually consistent; the local repair cannot guarantee safe
-rotation across restarted/different isolates. No production deployment or external
-connector write was performed. Ask Jev was checked again but is still unavailable
-through this session's tools. GitHub API access also remains unavailable; Git branch
-reads/pushes work.
+**Overnight continuation, 2026-10-16:** Brady authorized continued independent building.
+The branch now adds a SQLite Durable Object per OAuth grant. Two independent caller
+Workers share a serialized owner, including Google's 3 connectors. State survives a
+full runtime restart. A durable intent marker prevents replay if a refresh's outcome
+is lost; same-instance failed saves can retry without contacting the provider again.
+Fresh consent uses new `MCP_COORDINATED_REFRESH_GOOGLE` / `_QUO` encrypted seed secrets;
+old KV state and legacy secrets are not imported. Wrangler config includes the binding,
+SQLite migration, and required-mode guard. All 23 new failure/runtime tests passed.
+
+Miniflare is a pinned development-only dependency. Cloudflare's actual workerd runtime
+caught an unsupported `redirect:error` option; the implementation uses manual redirects
+and rejects non-success responses. The test harnesses now consistently honor
+`CHROME_PATH`, and command-plate assertions account for the decorative aria-hidden
+serials without changing label/geometry expectations. The complete release command
+`CHROME_PATH=/usr/bin/chromium npm run test:release` passed: **742 checks** across
+239 Worker, 23 coordinator, 36 Pages, 27 outbox, 24 posting-time, 26 chat, 100 dashboard,
+87 layout, 14 streaming/effort, 38 ecosystem, 36 UI, 46 Caption Studio, 22 voice-grace,
+and 24 voice-lab simulations. Wrangler 4.135.0 dry-run also passed. Physical device,
+live provider, and authenticated deployment checks remain separate and unverified.
+
+**Next priority:** follow the fresh-consent cutover in `docs/DEPLOY.md`, then verify
+the deployed Worker/model compatibility and connectors in an authenticated session.
+No production deployment or external connector write was performed. Cloudflare
+credentials and a signed-in live browser remain unavailable here. Ask Jev was checked
+again but is still unavailable through this session's tools. GitHub API access also
+remains unavailable; Git branch reads/pushes work. Drive, Registry, and Relay write-back
+remain unavailable; this repository checkpoint is the exact outstanding handoff entry.
 
 ## Source ownership
 

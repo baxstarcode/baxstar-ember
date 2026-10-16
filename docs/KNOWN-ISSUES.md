@@ -38,7 +38,7 @@ The staged order remains the required procedure for future releases; see
 
 The UI now sends `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`,
 `claude-fable-5-1` with effort up to `xhigh` and budgets up to 16000 tokens. The
-deployed Worker refuses all three. Deploy the Worker from this release FIRST (it still
+deployed Worker refuses those new IDs. Deploy the Worker from this release FIRST (it still
 accepts the old IDs, so the live page keeps working), confirm chat, then merge so Pages
 ships the UI. After that, one message per model must show its served-model stamp; until
 then live model access is **PROVISIONAL** (it is verified only against Anthropic's model
@@ -52,13 +52,14 @@ Brady's signed-in `/api/connectors/status`: gmail, calendar, gdrive connected; q
 offline. Quo's account had run out of credits around the same time and was topped up
 that afternoon — re-check status before anything else. If it is still offline, the
 likeliest cause (unverified) is refresh-token rotation: Ember's Quo client is public and
-the Worker used to discard a rotated token. Create the `EMBER_TOKENS` KV binding
-(`proxy/wrangler.toml`), deploy, then re-consent once at `/oauth/start?p=quo`. OPS now
-syncs per feed, so Quo being down no longer blanks Inbox and Schedule.
+the Worker used to discard a rotated token. The branch now includes a durable refresh
+owner; follow the fresh-consent cutover in `docs/DEPLOY.md`, then re-check the live
+account. Creating KV alone is insufficient for safe coordination across instances.
+OPS syncs per feed, so Quo being down no longer blanks Inbox and Schedule.
 
 ## 1c. A token-store read failure replays a retired refresh token
 
-**Status: LOCAL REPAIR VERIFIED — distributed coordination remains open (2026-10-16)**
+**Status: COORDINATED REPAIR VERIFIED LOCALLY — rollout/consent pending (2026-10-16)**
 
 Before the repair, `currentRefresh` caught `EMBER_TOKENS.get` failures and returned
 the original secret. After rotation, `tokenCache` held the replacement refresh token, so that fallback
@@ -81,13 +82,26 @@ share one refresh; overlapping re-consent waits so an old request cannot overwri
 the replacement grant. Regression coverage exercises these cases and fails against
 the previous Worker.
 
-This is an **isolate-local repair**, not global refresh serialization. Cloudflare's
+The first repair was **isolate-local**, not global refresh serialization. Cloudflare's
 [KV consistency documentation](https://developers.cloudflare.com/kv/concepts/how-kv-works/#consistency)
 confirms stale values and cached negative lookups can survive across locations.
-Different or restarted isolates can still read an older token; a failed persistence
-write can also outlive the isolate holding the only newer copy. A strongly consistent
-refresh owner (for example, a Durable Object) is needed before claiming rotation is
-safe across all instances. No new binding was created or deployed in this pass.
+Different or restarted isolates on that legacy path can still read an older token;
+a failed persistence write can also outlive the isolate holding the only newer copy.
+
+The next continuation adds `EmberTokenCoordinator`, a SQLite Durable Object per grant,
+and routes all coordinated refreshes through it. Separate Workers now share one owner;
+Google's three connectors share one grant. New seed secrets require fresh consent
+instead of importing uncertain KV state. Storage persists an intent marker before
+OAuth and the replacement before access is returned. Lost responses and interrupted
+saves cannot cause an automatic replay after restart; they may require re-consent.
+
+Verified with synthetic providers in real workerd/SQLite: overlapping caller Workers,
+expiry, persistent access after full runtime restart, Google sharing, an ambiguous
+refresh surviving restart, and recovery with fresh consent. Failure injection also
+covers unavailable storage/binding, failed final writes, malformed state/responses,
+timeouts, and wrong-owner requests. Wrangler accepted the binding/migration in a dry
+run. No remote namespace was created, no consent was performed, and live rollout is
+still unverified. See `docs/DEPLOY.md` for cutover and rollback requirements.
 
 ## 1d. Partial first sync displays contradictory error text
 

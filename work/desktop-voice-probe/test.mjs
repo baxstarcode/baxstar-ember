@@ -132,7 +132,11 @@ async function healthy(s) {
 }
 
 try {
-  browser = await playwright.chromium.launch({ channel: "chrome", headless: true });
+  // Automated recognition/playback are mocked here. An explicit Chromium path
+  // makes those offline checks portable; it does not replace the real Chrome gate.
+  browser = await playwright.chromium.launch(process.env.CHROME_PATH
+    ? { executablePath: process.env.CHROME_PATH, headless: true }
+    : { channel: "chrome", headless: true });
   const s = await session();
   assert.equal(await s.page.evaluate(() => window.__mock.starts), 0);
   assert.equal(s.requests.length, 0);

@@ -29,12 +29,16 @@ ALLOWED_ORIGINS = "https://ember.baxstarfishing.com"
 # this to the authenticated custom hostname only after both Google and Quo have
 # that exact redirect registered, then add an explicit /oauth/* Worker route.
 OAUTH_REDIRECT_URI = "https://ember-claude-proxy.brady-9d1.workers.dev/oauth/callback"
+# Never replay legacy secrets if this binding is missing or temporarily down.
+TOKEN_COORDINATOR_REQUIRED = "true"
 
 # Secrets are NOT set here — they would end up in git.
 # Set them with: npx wrangler secret put <NAME>
 #   ANTHROPIC_API_KEY     (required)
-#   MCP_REFRESH_QUO       (optional, preferred)
-#   QUO_CLIENT_ID         (required with MCP_REFRESH_QUO)
+#   MCP_REFRESH_QUO       (legacy configurations only; not used in required mode)
+#   MCP_COORDINATED_REFRESH_QUO     (fresh Quo consent for the durable owner)
+#   MCP_COORDINATED_REFRESH_GOOGLE  (fresh Google consent, shared by 3 connectors)
+#   QUO_CLIENT_ID         (required for Quo consent/refresh)
 #   MCP_TOKEN_QUO         (optional static fallback)
 #   MCP_TOKEN_GMAIL       (optional)
 #   MCP_TOKEN_CALENDAR    (optional)
@@ -42,12 +46,13 @@ OAUTH_REDIRECT_URI = "https://ember-claude-proxy.brady-9d1.workers.dev/oauth/cal
 #   OUTBOX_URL            (required for Caption Studio publish)
 #   OUTBOX_TOKEN          (optional; matches Apps Script shared token)
 
-# Optional: keep rotated OAuth refresh tokens (Quo's public client may rotate them
-# on every refresh; without this the pasted secret dies at the next refresh).
-# Free-tier Workers KV, one write per rotation. To enable, once:
-#   npx wrangler@4.135.0 kv namespace create EMBER_TOKENS --config proxy/wrangler.toml
-# then uncomment the block below with the id it prints, and deploy. The Worker
-# works unchanged without it.
-# [[kv_namespaces]]
-# binding = "EMBER_TOKENS"
-# id = "<id printed by the command above>"
+# One strongly consistent owner per grant, including Google's shared grant.
+# SQLite Durable Objects are available on Workers Free. See docs/DEPLOY.md for
+# the fresh-consent cutover. Existing KV/legacy refresh secrets are NOT imported.
+[[durable_objects.bindings]]
+name = "EMBER_TOKEN_COORDINATOR"
+class_name = "EmberTokenCoordinator"
+
+[[migrations]]
+tag = "ember-token-coordinator-v1"
+new_sqlite_classes = ["EmberTokenCoordinator"]

@@ -37,7 +37,7 @@ await new Promise((r) => server.listen(0, r));
 const ORIGIN = `http://127.0.0.1:${server.address().port}`;
 
 const { chromium } = await loadPlaywright();
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 
 async function run(label, viewport) {
   const ctx = await browser.newContext({ viewport });
@@ -151,10 +151,13 @@ async function run(label, viewport) {
     const r = document.querySelector(".reactor-stage").getBoundingClientRect();
     const [l, rt] = [...document.querySelectorAll(".prompt-plate")].map((p) => p.getBoundingClientRect());
     return { ok: !!l && !!rt && l.right <= r.left && rt.left >= r.right && l.width >= 44 && l.height >= 44,
-      labels: [...document.querySelectorAll(".prompt-plate")].map((p) => p.innerText.replace(/\s+/g, " ").trim()) };
+      // Engraved serials are decoration. Assert the actual command label and
+      // accessibility separation without folding aria-hidden art into the name.
+      labels: [...document.querySelectorAll(".prompt-plate .plate-label")].map((p) => p.innerText.replace(/\s+/g, " ").trim()),
+      decorativeSerials: [...document.querySelectorAll(".prompt-plate .plate-index")].every((p) => p.getAttribute("aria-hidden") === "true") };
   });
   check(`${label}: WHAT'D I MISS left and BRIEF MY DAY right of the reactor, clear of it`,
-    plates.ok && plates.labels[0] === "WHAT'D I MISS" && plates.labels[1] === "BRIEF MY DAY", JSON.stringify(plates));
+    plates.ok && plates.decorativeSerials && plates.labels[0] === "WHAT'D I MISS" && plates.labels[1] === "BRIEF MY DAY", JSON.stringify(plates));
 
   if (mobile) {
     // Chamber is the first OPS element

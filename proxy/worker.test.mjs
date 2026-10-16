@@ -172,6 +172,23 @@ async function startAndCookie(provider, env = baseEnv, f = stubFetch([])) {
   check("success page names all three Google secrets", html.includes("MCP_REFRESH_GMAIL") && html.includes("MCP_REFRESH_CALENDAR") && html.includes("MCP_REFRESH_GDRIVE"));
 }
 
+for (const provider of ["google", "quo"]) {
+  const env = { ...baseEnv, TOKEN_COORDINATOR_REQUIRED: "true", QUO_CLIENT_ID: "fixture-coordinator-client" };
+  const f = stubFetch([
+    [".well-known", () => jsonRes({ token_endpoint: "https://mcp.quo.com/token", authorization_endpoint: "https://mcp.quo.com/authorize" })],
+    ["/token", () => jsonRes({ refresh_token: "fixture-new-consent", access_token: "fixture-access" })],
+  ]);
+  const { cookie, state } = await startAndCookie(provider, env, f);
+  const res = await worker.fetch(
+    new Request(`https://proxy.example.workers.dev/oauth/callback?code=fixture&state=${state}`, { headers: { Cookie: cookie } }),
+    env, {}, { fetch: f }
+  );
+  const html = await res.text();
+  check(`${provider} coordinated consent names the new seed secret`, res.status === 200 && html.includes(`MCP_COORDINATED_REFRESH_${provider.toUpperCase()}`));
+  check(`${provider} coordinated consent does not instruct reuse of a legacy secret`, !/MCP_REFRESH_(?:QUO|GMAIL|CALENDAR|GDRIVE)/.test(html));
+  check(`${provider} coordinated consent stays private and uncached`, res.headers.get("Cache-Control") === "no-store");
+}
+
 {
   const { cookie } = await startAndCookie("google");
   const f = stubFetch([["token", jsonRes({ refresh_token: "should-not-happen" })]]);
