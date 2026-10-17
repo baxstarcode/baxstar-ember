@@ -107,9 +107,13 @@ function readOnlyToolset(name) {
   };
 }
 
+import { handleVoice } from "./voice.mjs";
+
 const POST_ROUTES = new Map([
   ["/api/messages", "messages"],
   ["/api/tts", "tts"],
+  ["/api/voice/transcribe", "voice-transcribe"],
+  ["/api/voice/speak", "voice-speak"],
   ["/api/connectors/status", "connectors"],
   ["/api/outbox", "outbox"],
 ]);
@@ -178,8 +182,8 @@ class RequestInputError extends Error {
 
 // Count the actual bytes as they arrive, including requests without a truthful
 // Content-Length. The limit bounds buffering before JSON.parse, not after it.
-async function readJsonBody(request, allowEmpty = false) {
-  if (Number(request.headers.get("Content-Length")) > MAX_BODY_BYTES) {
+async function readJsonBody(request, allowEmpty = false, maxBytes = MAX_BODY_BYTES) {
+  if (Number(request.headers.get("Content-Length")) > maxBytes) {
     throw new RequestInputError("Request too large.", 413);
   }
   let raw = "";
@@ -192,7 +196,7 @@ async function readJsonBody(request, allowEmpty = false) {
         const { done, value } = await reader.read();
         if (done) break;
         bytes += value.byteLength;
-        if (bytes > MAX_BODY_BYTES) {
+        if (bytes > maxBytes) {
           await reader.cancel().catch(() => {});
           throw new RequestInputError("Request too large.", 413);
         }
@@ -1271,11 +1275,13 @@ export default {
       return json({ error: "Origin not allowed." }, 403, cors);
     }
     let body;
-    try { body = await readJsonBody(request, route === "connectors"); }
+    try { body = await readJsonBody(request, route === "connectors",
+      route === "voice-transcribe" ? 3 * 1024 * 1024 : route === "voice-speak" ? 16 * 1024 : MAX_BODY_BYTES); }
     catch (error) {
       return json({ error: error instanceof RequestInputError ? error.message : "Could not read request body." },
         error instanceof RequestInputError ? error.status : 400, cors);
     }
+    if (route.startsWith("voice-")) return handleVoice(route, body, env, cors, request.signal);
     // The natural voice needs no Anthropic key — routed after the origin gate
     // but before the key check, so a voice-only misconfiguration still speaks.
     if (route === "tts") {

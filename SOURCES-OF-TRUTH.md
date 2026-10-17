@@ -256,3 +256,11 @@ of links to Brady's other properties.
   `work/desktop-voice-probe/`.
 - Any `baxstar-ember-repo*.zip` in `~/Downloads` — pre-retheme snapshots.
 - The tmp preview-harness scratch files — regenerated, never canonical.
+
+## Recorded voice continuation — 2026-10-17
+
+`docs/VOICE-REBUILD.md` owns recovered voice provenance, Claude's relayed findings,
+branch reconciliation, the new browser/Worker contract, physical iPhone/CarPlay gates,
+and native-app decision. Source owners: `EmberVoice` in `src/baxstar-ember.jsx`,
+`proxy/voice.mjs`, the existing Worker router and Pages gateway. This is a preview;
+legacy `/api/tts`, production secrets and the booking app were not changed.

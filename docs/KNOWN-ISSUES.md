@@ -6,6 +6,15 @@ ledger; Git history and the Ember Handoff Log preserve the closed issue record.
 
 ## 0. Alternative preview and voice verification boundaries
 
+**Recorded voice update (2026-10-17):** Brady authorized a new explicit recording
+preview behind the orange mouth. It can record and play locally on preview hosts;
+it never auto-arms and does not use SpeechRecognition. Official transcription/speech
+adapters are implemented but disabled until the AI binding and existing production
+rollout are ready. iPhone 17 Pro/iOS 27.0.1 (reported) with wireless GMC CarPlay still
+needs physical proof. See `docs/VOICE-REBUILD.md`; the legacy probe below is a separate
+historical path, not the only permitted experiment.
+
+
 **Status: PREVIEW ONLY — production and physical-device gates still open**
 
 `codex/ember-brass-pressure-alt` preserves the original branch while adding Brady's
@@ -328,6 +337,7 @@ provider availability from local mocks, secret names, or an HTTP 200 from anothe
 - Vercel is not an active deployment alternative. The checked-in adapter is historical
   only; Cloudflare Pages + Worker is the supported production path.
 - The old standalone `voice/` rigs and blanket “restore voice” notes are historical.
-  Only the isolated desktop probe can advance voice now.
+  The explicit recorded-voice preview and older isolated probe have separate physical
+  gates; see `docs/VOICE-REBUILD.md`.
 - `baxstar-ember.pages.dev` is not the production origin. The custom Access-protected
   hostname is `ember.baxstarfishing.com`.

@@ -1296,6 +1296,249 @@ const ALTERNATIVE_CSS = `
   }
 `;
 
+/* ---------- VOICE: bounded recorded turns; legacy provenance in docs/VOICE-REBUILD.md ---------- */
+function EmberVoice({ onClose, onSend, chatBusy }) {
+  const [state, setState] = useState({ phase: "idle", note: "Tap Record, then Finish when you are done." });
+  const [text, setText] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [recorded, setRecorded] = useState(false);
+  const [audioKind, setAudioKind] = useState("");
+  const audioRef = useRef(null), dialogRef = useRef(null), sendRef = useRef(onSend);
+  sendRef.current = onSend;
+  const control = useRef({ epoch: 0, live: true, stream: null, recorder: null, request: null, timers: [], url: "", blob: null, events: [] });
+  const preview = location.hostname !== "ember.baxstarfishing.com";
+  const capable = window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && !!window.MediaRecorder;
+  const busy = ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(state.phase);
+  function mark(event) { const c = control.current; c.events.push({ event, ms: Math.round(performance.now()) }); if (c.events.length > 160) c.events.shift(); }
+  function show(phase, note) { control.current.phase = phase; if (control.current.live) setState({ phase, note }); }
+  function sessionType(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
+  function restoreSession() { sessionType(control.current.originalSession || "auto"); }
+  function release() {
+    const c = control.current;
+    c.stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
+    c.stream = null;
+    mark("tracks-stopped");
+    restoreSession();
+  }
+  function clearPlayback() {
+    const c = control.current, audio = audioRef.current;
+    if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
+    if (c.url) URL.revokeObjectURL(c.url);
+    c.url = "";
+    if (c.live) setAudioKind("");
+    restoreSession();
+  }
+  function cancel(note = "Stopped. Tap Record when you are ready.") {
+    const c = control.current;
+    c.epoch++; c.request?.abort(); c.request = null;
+    c.timers.forEach(clearTimeout); c.timers = [];
+    const recorder = c.recorder; c.recorder = null;
+    if (recorder) { recorder.ondataavailable = recorder.onstop = recorder.onerror = null; try { if (recorder.state !== "inactive") recorder.stop(); } catch {} }
+    release(); clearPlayback(); mark("cancel"); show("idle", note);
+  }
+  async function play(blob, kind) {
+    clearPlayback();
+    const c = control.current, epoch = c.epoch, audio = audioRef.current;
+    if (!audio || !c.live) return;
+    c.url = URL.createObjectURL(blob); audio.src = c.url; setAudioKind(kind);
+    sessionType("playback");
+    try { await audio.play(); if (c.live && c.epoch === epoch) show("playing", kind === "recording" ? "Listen for your recording through the speaker you expect." : "Ember is speaking. Your microphone is off."); }
+    catch { if (c.live && c.epoch === epoch) { mark("play-needs-tap"); restoreSession(); show("ready", "Audio is ready. Tap Play on the audio player below."); } }
+  }
+  async function request(path, body) {
+    const c = control.current;
+    if (preview) throw new Error("This preview supports recording checks. Live voice needs the production rollout.");
+    const controller = new AbortController(); c.request = controller;
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const response = await fetch(path, { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal,
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error(response.status === 503 || response.status === 404 ? "Voice service is not enabled yet. Your recording and text are still here."
+        : response.status === 401 || response.status === 403 ? "Sign in to Ember again, then retry this turn."
+        : response.status === 422 ? "No usable speech was found. Try a shorter recording."
+        : "Voice service could not finish this turn. Nothing was retried automatically.");
+      const type = response.headers.get("content-type") || "";
+      if (path.endsWith("transcribe")) {
+        if (!type.includes("application/json")) throw new Error("Sign in to Ember again, then retry this turn.");
+        const data = await response.json();
+        if (typeof data.text !== "string" || !data.text.trim() || data.text.length > 2000) throw new Error("No usable transcript was returned. Try another recording.");
+        return data.text;
+      }
+      if (!type.startsWith("audio/")) throw new Error("The speech service returned no playable audio. Your reply is still visible.");
+      const blob = await response.blob();
+      if (!blob.size || blob.size > 2 * 1024 * 1024) throw new Error("The speech service returned invalid audio. Your reply is still visible.");
+      return blob;
+    } finally { clearTimeout(timer); if (c.request === controller) c.request = null; }
+  }
+  async function transcribe(blob = control.current.blob) {
+    if (!blob || preview || ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(control.current.phase)) return;
+    const c = control.current, epoch = ++c.epoch;
+    clearPlayback(); show("transcribing", "Turning your recording into text…"); mark("transcribe-start");
+    try {
+      const buffer = new Uint8Array(await blob.arrayBuffer());
+      if (!c.live || c.epoch !== epoch) return;
+      let binary = ""; for (let i = 0; i < buffer.length; i += 8192) binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
+      const transcript = await request("/api/voice/transcribe", { audio: btoa(binary), mime: blob.type });
+      if (!c.live || c.epoch !== epoch) return;
+      setText(transcript); mark("transcribe-complete"); show("ready", "Check your words, then Send to Ember.");
+    } catch (error) { if (c.live && c.epoch === epoch) { mark("transcribe-failed"); show("ready", error.name === "AbortError" ? "Transcription timed out. Tap Transcribe to retry when ready." : error.message); } }
+  }
+  function finish() {
+    const c = control.current, recorder = c.recorder;
+    if (!recorder || recorder.state !== "recording") return;
+    c.timers.forEach(clearTimeout); c.timers = [];
+    show("finishing", "Finishing your recording. Microphone off."); mark("finish");
+    try { recorder.stop(); } catch { cancel("Recording could not finish. Tap Record to try again."); return; }
+    release();
+    c.timers.push(setTimeout(() => { if (c.recorder === recorder) cancel("The recorder did not finish. Try a new recording."); }, 4000));
+  }
+  async function record() {
+    const c = control.current;
+    if (!capable || c.stream || c.recorder || c.request || ["permission", "finishing", "transcribing", "thinking", "preparing"].includes(c.phase)) return;
+    cancel(); const epoch = c.epoch;
+    show("permission", "Allow microphone access if your browser asks."); mark("permission-request");
+    const timeout = setTimeout(() => { if (c.epoch === epoch) cancel("Microphone permission is still pending. Check the browser prompt, then tap Record again."); }, 15000);
+    c.timers.push(timeout);
+    try {
+      sessionType("play-and-record");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      clearTimeout(timeout);
+      if (!c.live || c.epoch !== epoch) { stream.getTracks().forEach(track => track.stop()); return; }
+      c.stream = stream;
+      const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find(type => MediaRecorder.isTypeSupported(type));
+      if (!mime) throw new Error("format");
+      const recorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+      c.recorder = recorder;
+      const chunks = []; let size = 0;
+      recorder.ondataavailable = event => {
+        if (c.epoch !== epoch || !event.data?.size) return;
+        size += event.data.size;
+        if (size > 2 * 1024 * 1024) { cancel("Recording reached its size limit. Try a shorter question."); return; }
+        chunks.push(event.data);
+      };
+      recorder.onerror = () => { if (c.epoch === epoch) cancel("Recording was interrupted. Tap Record to try again."); };
+      recorder.onstop = () => {
+        if (!c.live || c.epoch !== epoch) return;
+        c.timers.forEach(clearTimeout); c.timers = []; c.recorder = null; release();
+        if (!size) { show("idle", "No audio was recorded. Tap Record to try again."); return; }
+        c.blob = new Blob(chunks, { type: recorder.mimeType || mime }); c.mime = c.blob.type;
+        setRecorded(true); mark("recording-ready");
+        show("ready", preview ? "Recording ready. Play it back and check the actual microphone indicator is off." : "Recording ready. Play it back or Transcribe it to talk to Ember.");
+      };
+      stream.getAudioTracks().forEach(track => { track.onended = () => { if (c.epoch === epoch) cancel("The microphone disconnected. Reconnect it, then tap Record."); }; });
+      recorder.start(250); c.blob = null; c.replyAudio = null; setRecorded(false); setText(""); setAnswer("");
+      mark("recording-start"); show("recording", "Listening. Tap Finish when you are done. Maximum 40 seconds.");
+      c.timers.push(setTimeout(finish, 40000));
+    } catch (error) {
+      if (!c.live || c.epoch !== epoch) return;
+      const note = error.name === "NotAllowedError" ? "Microphone access was denied. Allow it in this browser’s site settings, then tap Record. No Shortcut is required."
+        : error.name === "NotFoundError" ? "No microphone was found. Check your audio connection, then try again."
+        : error.name === "NotReadableError" ? "The microphone is busy or unavailable. End the other recording or call, then try again."
+        : "This browser could not start a supported recording. Try Safari or use the text box.";
+      cancel(note); mark("recording-failed");
+    }
+  }
+  async function prepareReply(result, epoch) {
+    const c = control.current;
+    show("preparing", "Preparing Ember’s voice…");
+    const audio = c.replyAudio || await request("/api/voice/speak", { text: result });
+    if (!c.live || c.epoch !== epoch) return;
+    c.replyAudio = audio; mark("speech-ready"); await play(audio, "reply");
+  }
+  async function readReply() {
+    const c = control.current;
+    if (!answer || answer.length > 2000 || preview || ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(c.phase)) return;
+    clearPlayback(); const epoch = ++c.epoch;
+    try { await prepareReply(answer, epoch); }
+    catch (error) { if (c.live && c.epoch === epoch) show("ready", error.name === "AbortError" ? "Speech took too long. Your reply is still here." : error.message); }
+  }
+  async function send() {
+    if (chatBusy || preview || !text.trim() || ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(control.current.phase)) return;
+    const c = control.current, epoch = ++c.epoch;
+    clearPlayback(); c.replyAudio = null; setAnswer(""); show("thinking", "Ember is thinking…"); mark("chat-start");
+    const controller = new AbortController(); c.request = controller;
+    const chatTimer = setTimeout(() => controller.abort(), 45000);
+    try {
+      const result = await sendRef.current(text.trim(), { voiceSignal: controller.signal });
+      clearTimeout(chatTimer);
+      if (!c.live || c.epoch !== epoch) return;
+      if (!result) { show("ready", controller.signal.aborted ? "Ember took too long. Your words are still here; retry when ready." : "The reply did not finish. Your words are still here; check the chat message before retrying."); return; }
+      setAnswer(result); mark("chat-complete");
+      if (result.length > 2000) { show("ready", "This reply is too long to read aloud in one turn. It is saved in chat; ask Ember for a shorter answer."); return; }
+      await prepareReply(result, epoch);
+    } catch (error) { if (c.live && c.epoch === epoch) { mark("reply-audio-failed"); show("ready", error.name === "AbortError" ? "Voice took too long. Your reply remains in chat." : error.message); } }
+    finally { clearTimeout(chatTimer); if (c.request === controller) c.request = null; }
+  }
+  async function copyReport() {
+    const c = control.current, epoch = c.epoch;
+    const report = JSON.stringify({ feature: "ember-recorded-voice-v1", verification: "PROVISIONAL — events do not prove audibility or hardware routing", browser: navigator.userAgent, origin: location.origin, preview, recordingType: c.mime || null, events: c.events }, null, 2);
+    try { await navigator.clipboard.writeText(report); if (c.live && c.epoch === epoch) show(c.phase, "Test report copied. It contains device details and events, without recordings or conversation text."); }
+    catch { if (c.live && c.epoch === epoch) show(c.phase, "Clipboard access was blocked. Describe what you heard and which step failed in this chat."); }
+  }
+  useEffect(() => {
+    const c = control.current; c.originalSession = navigator.audioSession?.type || "auto";
+    const previous = document.activeElement, shell = document.querySelector(".ember-shell");
+    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+    shell?.setAttribute("inert", ""); dialogRef.current?.focus();
+    const hidden = () => { if (document.hidden) cancel("Paused when Ember left the screen. Tap Record to start again."); };
+    const exit = () => cancel("Paused. Tap Record to start again.");
+    const interrupted = () => { if (navigator.audioSession?.state === "interrupted") cancel("Audio was interrupted. Finish the call or alert, then tap Record."); };
+    document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit);
+    navigator.audioSession?.addEventListener?.("statechange", interrupted);
+    return () => {
+      c.live = false; cancel(); c.blob = null; c.replyAudio = null;
+      document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit);
+      navigator.audioSession?.removeEventListener?.("statechange", interrupted);
+      shell?.removeAttribute("inert"); document.body.style.overflow = overflow; previous?.focus?.();
+    };
+  }, []);
+  function keys(event) {
+    if (event.key === "Escape") { event.preventDefault(); onClose(); }
+    if (event.key === "Tab") {
+      const items = [...dialogRef.current.querySelectorAll('button:not(:disabled),textarea:not(:disabled),audio[controls],a[href]')].filter(el => el.getClientRects().length);
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+  }
+  return <div className="voice-overlay" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <section ref={dialogRef} className="voice-console" role="dialog" aria-modal="true" aria-label="Talk to Ember" tabIndex={-1} onKeyDown={keys}>
+      <style>{`
+        .voice-overlay{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:18px;background:#050403d9;backdrop-filter:blur(9px)}
+        .voice-console{width:min(600px,100%);max-height:calc(100dvh - 36px);overflow:auto;border:1px solid #b18a4c;border-radius:22px;background:radial-gradient(ellipse at top,#3e2018 0,transparent 55%),#100d0b;box-shadow:0 24px 100px #000, inset 0 0 0 4px #6d4d281f;color:#f6ebde;padding:24px}
+        .voice-console header{display:flex;justify-content:space-between;align-items:center;gap:16px}.voice-console h2{font:700 25px Cinzel,serif;margin:4px 0}.voice-console p{font-size:14px;line-height:1.6;margin:12px 0;color:#e4d5c2}
+        .voice-console small{color:#deb76f;letter-spacing:.14em;font-size:10px}.voice-console button{min-height:46px;padding:10px 17px;border:1px solid #b5874b;border-radius:10px;background:linear-gradient(#33241a,#19110d);color:#f9ead6;font-weight:700;box-shadow:inset 0 1px #e4c18b40,0 3px #060403;cursor:pointer}
+        .voice-console button:active:not(:disabled){box-shadow:inset 0 3px 7px #000;transform:translateY(2px)}.voice-console button:disabled{opacity:.42;cursor:default}.voice-console .voice-main{background:linear-gradient(#ed7955,#9c321f);border-color:#ffad7e;color:white}
+        .voice-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}.voice-console textarea{width:100%;min-height:100px;resize:vertical;background:#070605;border:1px solid #876437;border-radius:10px;padding:12px;font-size:16px;color:#fff3e2}.voice-console label{display:block;margin:18px 0 8px;font-size:13px;font-weight:600}.voice-console audio{width:100%;margin:8px 0;color-scheme:dark}.voice-console audio:not([src]){display:none}
+        .voice-status{display:flex;align-items:center;gap:10px;padding:13px 15px;margin-top:18px;border:1px solid #8f623b80;border-radius:12px;background:#090706}.voice-led{width:10px;height:10px;border-radius:50%;background:#947c58;flex-shrink:0}.voice-status[data-phase="recording"] .voice-led{background:#ff7146;box-shadow:0 0 18px #ff6422;animation:voice-breathe 1.1s ease-in-out infinite}.voice-status span:last-child{font-size:14px;line-height:1.5}.voice-answer{white-space:pre-wrap;border-left:2px solid #e77d55;padding-left:14px;max-height:180px;overflow:auto}.voice-preview{border-left:2px solid #bc9356;padding-left:12px}
+        @keyframes voice-breathe{50%{opacity:.45}}@media(prefers-reduced-motion:reduce){.voice-led{animation:none!important}.voice-console button:active{transform:none!important}}@media(max-width:480px){.voice-overlay{padding:10px}.voice-console{padding:18px;max-height:calc(100dvh - 20px)}.voice-actions button{flex:1 1 auto}}
+      `}</style>
+      <header><div><small>EMBER · VOICE PREVIEW</small><h2>Talk to Ember</h2></div><button onClick={onClose} aria-label="Close voice">✕</button></header>
+      {preview && <p className="voice-preview">Try your microphone and speaker here. Conversation and spoken AI replies will unlock after the production voice rollout.</p>}
+      <p>One turn at a time. Record → Finish → Transcribe → Send. Your microphone stays off while Ember replies.</p>
+      {!capable && <p role="alert">Recording needs an HTTPS page and a browser that supports microphone recording. You can still type in Ember’s chat.</p>}
+      <div className="voice-status" data-phase={state.phase} role="status"><span className="voice-led" aria-hidden="true"/><span>{state.note}</span></div>
+      <div className="voice-actions">
+        {state.phase === "recording" ? <button className="voice-main" onClick={finish}>Finish recording</button> : <button className="voice-main" disabled={!capable || busy || chatBusy} onClick={record}>Record</button>}
+        <button onClick={() => cancel()} disabled={state.phase === "idle" && !audioKind}>Stop everything</button>
+        <button disabled={!recorded || busy} onClick={() => play(control.current.blob, "recording")}>Play my recording</button>
+      </div>
+      <audio ref={audioRef} controls playsInline preload="none" aria-label={audioKind === "recording" ? "Your recording" : "Ember reply"}
+        onPlay={() => { sessionType("playback"); mark("player-play"); show("playing", "Playing audio. Your microphone is off."); }}
+        onPause={() => { if (control.current.phase === "playing") { restoreSession(); show("ready", "Playback paused. Your microphone is off."); } }}
+        onEnded={() => { restoreSession(); mark("player-ended"); show("ready", "Playback ended. Tap Record for another turn."); }}
+        onError={() => { restoreSession(); mark("player-error"); show("ready", "Audio could not play. Your recording or reply is still available."); }}/>
+      <div className="voice-actions"><button disabled={!recorded || busy || preview} onClick={() => transcribe()}>Transcribe</button></div>
+      <label htmlFor="voice-words">Your words</label><textarea id="voice-words" value={text} maxLength={2000} disabled={busy || preview} onChange={event => setText(event.target.value)} placeholder="Your transcript appears here for a quick check."/>
+      <div className="voice-actions"><button className="voice-main" disabled={busy || chatBusy || preview || !text.trim()} onClick={send}>Send to Ember</button></div>
+      {answer && <p className="voice-answer">{answer}</p>}
+      {answer && <div className="voice-actions"><button disabled={busy || preview || answer.length > 2000} onClick={readReply}>Read reply</button></div>}
+      <p>Recordings stay in this tab until you choose Transcribe. Transcription and speech use Cloudflare AI; sent words and replies join your regular Ember conversation. Closing this panel discards the recording.</p>
+      <details><summary>iPhone & truck check</summary><p>Start in Safari. No Shortcut is needed. While parked, connect CarPlay, record a harmless sentence, finish, and play it back. Check which microphone and speaker actually work. Repeat five times, then try an interruption. This preview does not promise background use or a CarPlay dashboard button.</p><button onClick={copyReport} disabled={busy}>Copy test report</button><p>Device and event details only; no recording, transcript, or reply is included.</p></details>
+    </section>
+  </div>;
+}
+
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
   const [missionVisited, setMissionVisited] = useState(false);
@@ -1388,6 +1631,7 @@ export default function BaxstarEmber() {
   const [leanCaption, setLeanCaption] = useState(false);
 
   // ---- CLAUDE CHAT state (the thread lives on the OPS home page) ----
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
@@ -1721,9 +1965,9 @@ export default function BaxstarEmber() {
 
   /* ---------- OPS: COMMAND PIPELINE ---------- */
 
-  async function sendCommand(text, { retryId } = {}) {
+  async function sendCommand(text, { retryId, voiceSignal } = {}) {
     // Ref guard is synchronous: two clicks in one render cannot launch two requests.
-    if (activeChatRef.current || !chatReady) return null;
+    if (activeChatRef.current || !chatReady || voiceSignal?.aborted) return null;
     const current = chatMsgsRef.current;
     const lastUser = [...current].reverse().find((m) => m.role === "user");
     const retryIndex = retryId ? current.findIndex((m) => m.id === retryId && m.role === "user") : -1;
@@ -1735,6 +1979,8 @@ export default function BaxstarEmber() {
     const assistantId = chatId();
     const request = { controller: new AbortController(), assistantId };
     activeChatRef.current = request;
+    const cancelVoice = () => { if (activeChatRef.current === request) stopChat(); };
+    voiceSignal?.addEventListener("abort", cancelVoice, { once: true });
     const isCurrent = () => activeChatRef.current === request;
     const patchAssistant = (patch) => {
       if (isCurrent()) updateChat((items) => items.map((m) => m.id === assistantId ? { ...m, ...patch } : m));
@@ -1750,7 +1996,7 @@ export default function BaxstarEmber() {
     if (!retryId) setCommand("");
     try {
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
@@ -1791,6 +2037,7 @@ export default function BaxstarEmber() {
       }
       return null;
     } finally {
+      voiceSignal?.removeEventListener("abort", cancelVoice);
       if (isCurrent()) { activeChatRef.current = null; setThinking(false); }
     }
   }
@@ -3707,6 +3954,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       `}</style>
       <style>{ALTERNATIVE_CSS}</style>
       <style>{FOUNDRY_CSS}</style>
+      {voiceOpen && <EmberVoice onClose={() => setVoiceOpen(false)} onSend={sendCommand} chatBusy={thinking || !chatReady} />}
 
       {/* background layer (behind everything) */}
       {bgActive && (
@@ -3952,7 +4200,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <PromptPlate side="left" lines={["WHAT'D", "I MISS"]} running={thinking && promptRunning === "miss"}
                   disabled={thinking} onPress={() => runPrompt("miss")} />
                 {coreMode === "enigma" ? (
-                  <div className="reactor-stage" onClick={() => cmdInputRef.current?.focus()} role="button" aria-label="Focus the ask box">
+                  <div className="reactor-stage" onClick={() => setVoiceOpen(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setVoiceOpen(true); } }} tabIndex={0} role="button" aria-label="Talk to Ember" aria-haspopup="dialog">
                     <img src={`${ASSETS}/raster/reactor-bezel@2x.webp`} alt="" aria-hidden="true" className="reactor-bezel" />
                     <div className="reactor-core-orb">
                       <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
@@ -3963,7 +4211,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     </div>
                   </div>
                 ) : (
-                  <div className="scope-bezel mx-auto my-6" onClick={() => cmdInputRef.current?.focus()} role="button" aria-label="Focus the ask box">
+                  <div className="scope-bezel mx-auto my-6" onClick={() => setVoiceOpen(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setVoiceOpen(true); } }} tabIndex={0} role="button" aria-label="Talk to Ember" aria-haspopup="dialog">
                     <span className="scope-screw" style={{ top: "5px", left: "6px" }} />
                     <span className="scope-screw" style={{ top: "5px", right: "6px" }} />
                     <span className="scope-screw" style={{ bottom: "5px", left: "6px" }} />

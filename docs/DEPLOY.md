@@ -1,5 +1,12 @@
 # Deploying Ember
 
+**Voice preview addition (2026-10-17):** the branch adds exact
+`/api/voice/transcribe` and `/api/voice/speak` routes, disabled until explicitly
+configured. Follow `docs/VOICE-REBUILD.md` for the AI binding, activation, single-writer
+check, and real-device/provider proof. This does not replace the staged rollout below
+or enable preview API access. No live Worker/secrets were changed for the preview.
+
+
 Last reconciled with source on **2026-09-20**.
 
 **Release status:** the revived boundary is live. PR #43 merged to `main` at

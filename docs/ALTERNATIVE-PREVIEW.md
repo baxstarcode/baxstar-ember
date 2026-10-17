@@ -1,5 +1,14 @@
 # Ember alternative — brass controls and Foundry atlas
 
+**Recorded voice continuation (2026-10-17):** the orange mouth now opens an explicit
+record/playback test. The original six-item dock and graph are preserved. See
+`docs/VOICE-REBUILD.md` for prior-code provenance, new official speech adapters,
+iPhone/wireless CarPlay test instructions, and native-app tradeoffs. Preview hosts
+remain recording-only; live voice still needs backend activation and physical proof.
+The latest build follows https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev/;
+`9dddb9ec` preserves the preceding visual checkpoint. No live Worker/secrets changed.
+
+
 Checkpoint: 2026-10-17 UTC. Branch: `codex/ember-brass-pressure-alt`.
 Base: preserved handoff `108d444549231f971ab6db8af81e5d413133e35b` on
 `codex/ember-command-plate-light`. This is a separately requested visual preview,

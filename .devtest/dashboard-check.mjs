@@ -142,9 +142,8 @@ try {
     const body = (await page.locator("body").innerText()).toUpperCase();
     const banned = ["TAP TO TALK", "VOICE MODE", "VOICE ON", "HER VOICE", "HEAR IT", "TAP TO HEAR", "EMBER, AWAKE", "MIC ARMED", "MIC RELEASED", "LISTENING", "SPEAKING"];
     const found = banned.filter((text) => body.includes(text));
-    check(`${name} zero voice controls in UI`, found.length === 0, found.join(","));
-    const microphones = await page.locator('[aria-label*="Voice"], [aria-label*="mic" i], [title*="Talk" i]').count();
-    check(`${name} no mic/voice controls in DOM`, microphones === 0);
+    check(`${name} no legacy wake/armed voice controls`, found.length === 0, found.join(","));
+    check(`${name} voice requires the explicit mouth entry`, await page.getByRole('button', { name: 'Talk to Ember', exact: true }).count() === 1 && await page.locator('.voice-console').count() === 0);
 
     // The brass skull arch was removed 2026-09-22; the reactor is the crown now.
     check(`${name} no skull ornament`, await page.locator(".skull-arch").count() === 0);

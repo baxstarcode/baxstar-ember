@@ -1,5 +1,13 @@
 # Ember — Living Cinematic Handoff
 
+**Latest voice continuation (2026-10-17):** read `docs/VOICE-REBUILD.md` before voice
+work. Brady authorized an explicit recording experiment behind the orange mouth.
+Preview supports local record/playback; new official speech adapters are implemented
+but disabled/unreleased. Claude confirmed no hidden working mobile version. Physical
+iPhone/CarPlay and the existing production rollout remain open. The original pinned
+dock and visual checkpoint are preserved. No live Worker/secrets changed.
+
+
 Checkpoint date: **2026-10-17 UTC** (alternative branch; recorded production evidence is dated
 2026-09-20). This is the compact continuation brief for any
 builder entering Ember cold. Git history preserves the long design chronology; this
@@ -38,7 +46,8 @@ duplicate Source map tab. The overlay now contains Foundry and The Works only;
 the original graph link is archived in `docs/ALTERNATIVE-PREVIEW.md`. The Works and
 the pinned dock remain unchanged. The latest preview follows the branch alias
 https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev.
-Voice improvements stay in the isolated lab with an entry beside Enigma/Scope.
+The older voice lab remains beside Enigma/Scope; the new mouth recording preview is
+documented in `docs/VOICE-REBUILD.md`.
 Physical Mac/iPhone gates and the staged production rollout still apply.
 
 Read `docs/ALTERNATIVE-PREVIEW.md` for exact provenance, validation, preview links,
@@ -401,7 +410,8 @@ compatibility or ship an intentional migration.
 
 ## Voice boundary
 
-The main application has no microphone or voice controls. The isolated desktop probe
+The new user-authorized mouth panel provides an explicit recording experiment; see
+`docs/VOICE-REBUILD.md`. Production voice remains unproven. The isolated desktop probe
 uses explicit user gestures and sends no connectors. It must pass startup, five
 recognition turns, mic release, five text replies, five audible neural replies,
 cancellation, tab-return, and permission-denial recovery on Brady's actual Mac.

@@ -3,6 +3,17 @@
 Latest local continuation: **2026-10-17 UTC**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.
 
+**Voice continuation, 2026-10-17:** the orange mouth now opens an explicit recorded-
+voice preview. Opening Ember/panel never arms the mic. Preview hosts permit local
+record/playback only. The new production path records with MediaRecorder, releases
+capture, transcribes through official Workers AI, reviews/sends into ordinary chat,
+and requests official speech output. It does not use browser SpeechRecognition or
+replace legacy `/api/tts`. New speech routes remain disabled pending an AI binding,
+activation, existing backend rollout and actual provider/device proof. No live Worker
+or secrets changed. See `docs/VOICE-REBUILD.md` for recovered code, Claude's corroborating
+handoff, branch reconciliation, iPhone 17 Pro/iOS 27.0.1 (reported) test plan, and native
+app tradeoffs. This preview is not proven hands-free voice or a production release.
+
 **Alternative visual continuation:** `codex/ember-brass-pressure-alt` starts at the
 saved handoff `108d444`; `codex/ember-command-plate-light` and its working design are
 preserved. Brady supplied Argon HTML and asked for vivid warm colors, outlined/tactile
@@ -118,7 +129,8 @@ booking-system source is chosen.
 
 ## Voice policy
 
-The former phone/wake-word stack is not part of the application. Brady's latest voice
+The former phone/wake-word stack is not part of the application. The new explicit
+recording preview is a separate user-authorized experiment; see `docs/VOICE-REBUILD.md`. Brady's latest voice
 direction, recorded in the Ember Handoff Log and Agent Relay on 2026-09-20, calls for
 excellent desktop voice and chat and prefers reliable iPhone voice if feasible. The
 historical removal is release history, not a permanent product prohibition.
@@ -151,7 +163,8 @@ Authenticated browser
 
 - Pages builds `main` with `npm run build:pages` and publishes only `dist/`.
 - `functions/api/[[path]].js` accepts the exact production hostname, the exact paths
-  `/api/messages`, `/api/tts`, `/api/connectors/status`, and `/api/outbox`, and only
+  `/api/messages`, `/api/tts`, `/api/connectors/status`, `/api/outbox`,
+  `/api/voice/transcribe`, and `/api/voice/speak`, and only
   POST/OPTIONS. Preview and lookalike hosts are denied.
 - The Worker owns secrets, provider destinations, model/body limits, OAuth, TTS, the
   private Drive-outbox destination, and the server-controlled connector tool allowlist.

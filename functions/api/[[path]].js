@@ -3,6 +3,8 @@ const PRODUCTION_HOSTNAME = "ember.baxstarfishing.com";
 const ALLOWED_PATHS = new Set([
   "/api/messages",
   "/api/tts",
+  "/api/voice/transcribe",
+  "/api/voice/speak",
   "/api/connectors/status",
   "/api/outbox",
 ]);
