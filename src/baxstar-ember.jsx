@@ -32,8 +32,6 @@ const DRIVE_SERVER = { name: "gdrive" };
 // Drive opens in Brady's own signed-in browser — no new sign-in system.
 const DRIVE_URL = "https://drive.google.com/";
 const FAREHARBOR_URL = "https://fareharbor.com/baxstarfishing/dashboard/";
-// The Knowledge Foundry: baxstarcode/baxstar-knowledge-network, Cloudflare Pages.
-const FOUNDRY_URL = "https://baxstar-knowledge-network.pages.dev/";
 
 const HANDOFF_DOC_URL = "https://docs.google.com/document/d/1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns/edit";
 
@@ -3386,14 +3384,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .kg-head { display:flex; align-items:center; gap:14px; padding:10px 12px 10px 18px; flex:none;
           border-bottom:1px solid var(--ember-panel-line); }
         .kg-title { font-size:13px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--ember-text-soft); }
-        .kg-open { margin-left:auto; font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--ember-brass-bright); }
         .kg-close { margin-left:auto; width:44px; height:44px; flex:none; border-radius:10px; cursor:pointer;
           border:1px solid #8a6230; color:#ffe1b0; font-size:18px; line-height:1;
           background:linear-gradient(180deg,#3a2716,#140d07); box-shadow:inset 0 1px 0 rgba(255,214,150,.25); }
-        .kg-open + .kg-close { margin-left:0; }
         .kg-close:hover { filter:brightness(1.2); border-color:var(--ember-brass-bright); }
         .kg-body { position:relative; flex:1; min-height:0; }
-        .kg-frame { display:block; width:100%; height:100%; border:0; background:#080605; }
         .kg-works { height:100%; overflow:auto; padding:10px; }
         .kg-works .eco-rail { margin:0; }
         .kg-works .reveal { opacity:1; animation:none; }
@@ -4953,7 +4948,7 @@ function DrivePlate() {
 
 /* KNOWLEDGE GRAPH overlay. The alternative uses Brady's supplied Argon
    Universal Responsive Modal v2 presentation for the local Foundry atlas.
-   The Works and the original external source map remain separate tabs.
+   The Works remains a separate tab; the original graph is archived in the docs.
    Escape, close, or the backdrop closes it; focus returns to the existing dock. */
 // The 20 subjects and 34 relationships come from Brady's pasted Argon reference.
 // This is an illustrative source map, not live telemetry or a second source of
@@ -5353,7 +5348,7 @@ const FOUNDRY_CSS = `
   .fa-counts { margin-left:auto; display:flex; align-items:center; gap:14px; padding:6px 10px; border:1px solid #d9a75a29; border-radius:6px; background:#0a0705cc; white-space:nowrap; font:9px ui-monospace,monospace; letter-spacing:.05em; color:#c6b29a; }
   .fa-counts b { font-size:13px; color:#fe7d67; margin-right:4px; }
   .ember-alt .kg-close { margin-left:0; border-radius:6px; }
-  .ember-alt .kg-open { margin-left:auto; }
+  .ember-alt .kg-title + .kg-close { margin-left:auto; }
   .fa-control { position:relative; top:0; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid #9e7339; border-radius:6px; padding:7px 11px; min-height:34px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; }
   .ember-alt :is(.fa-atlas,.kg-head) .fa-control { background:linear-gradient(180deg,#261b12,#140e09); color:#f5eadc; box-shadow:inset 0 1px 0 #ffd7962e,0 2px 5px #0009; }
   .ember-alt :is(.fa-atlas,.kg-head) .fa-control.on { background:linear-gradient(180deg,#ff8b73,#e0533c)!important; border-color:#ffa796; color:#fff; box-shadow:0 0 12px #fe7d6766,inset 0 1px 0 #fff6; }
@@ -5433,7 +5428,6 @@ const FOUNDRY_CSS = `
     .kg-title small { display:none; }
     .ember-alt .kg-close { grid-column:2; grid-row:1; justify-self:end; }
     .fa-motion { grid-column:1 / -1; grid-row:2; justify-self:end; margin-left:0; min-height:44px; font-size:10px; }
-    .ember-alt .kg-open { grid-column:1; grid-row:3; margin-left:0; }
     .fa-filters { left:12px; right:12px; top:10px; flex-wrap:wrap; gap:6px; }
     .fa-search { flex:0 0 135px; min-width:0; }
     .fa-search input { min-height:44px; font-size:12px; }
@@ -5691,17 +5685,13 @@ function GraphOverlay({ open, onClose }) {
           <div className="codex kg-tabs" role="tablist" aria-label="Graph">
             <button role="tab" aria-selected={tab === "foundry"} className={`seg sm ${tab === "foundry" ? "on" : ""}`} onClick={() => setTab("foundry")}>Foundry</button>
             <button role="tab" aria-selected={tab === "works"} className={`seg sm ${tab === "works" ? "on" : ""}`} onClick={() => setTab("works")}>The Works</button>
-            <button role="tab" aria-selected={tab === "source"} className={`seg sm ${tab === "source" ? "on" : ""}`} onClick={() => setTab("source")}>Source map</button>
           </div>
           <span className="kg-title font-display"><small>BAXSTAR EMBER · SOURCE ATLAS</small><span>Knowledge <em>{tab === "foundry" ? "Foundry" : "Graph"}</em></span></span>
           {tab === "foundry" && <><div className="fa-counts"><span><b>{FOUNDRY_NODES.length}</b> NODES</span><span><b>{FOUNDRY_LINKS.length}</b> CONDUITS</span><span><b>{FOUNDRY_DOMAINS.length}</b> DOMAINS</span></div><button className="fa-control fa-motion" aria-pressed={motion&&!reduced} disabled={reduced} onClick={() => setMotion((v) => !v)}><span className="fa-led" aria-hidden="true"/>{reduced ? "Motion reduced" : motion ? "Pause motion" : "Resume motion"}</button></>}
-          {tab === "source" && <a className="kg-open" href={FOUNDRY_URL} target="_blank" rel="noopener noreferrer">Open full page ↗</a>}
           <button ref={closeRef} type="button" className="kg-close" onClick={onClose} aria-label="Close Knowledge Graph">✕</button>
         </div>
         <div className="kg-body">
-          {tab === "foundry" ? <FoundryAtlas motion={motion} reduced={reduced} /> : tab === "source"
-            ? <iframe className="kg-frame" src={FOUNDRY_URL} title="Baxstar Knowledge Foundry" referrerPolicy="no-referrer"
-                sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" />
+          {tab === "foundry" ? <FoundryAtlas motion={motion} reduced={reduced} />
             : <div className="kg-works"><EcoGraph defaultOpen /></div>}
         </div>
       </div>

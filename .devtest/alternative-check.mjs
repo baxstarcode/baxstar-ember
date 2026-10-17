@@ -138,8 +138,7 @@ try {
       await cdp.detach();
       await dialog.getByRole('button', { name: 'Reset map', exact: true }).click();
     }
-    await dialog.getByRole('tab', { name: 'Source map', exact: true }).click();
-    check(`${name}: original source map remains accessible`, (await dialog.locator('.kg-frame').getAttribute('src')) === 'https://baxstar-knowledge-network.pages.dev/');
+    check(`${name}: graph offers only Foundry and The Works`, (await dialog.getByRole('tab').allTextContents()).join('|') === 'Foundry|The Works');
     await dialog.getByRole('tab', { name: 'The Works', exact: true }).click();
     check(`${name}: the existing ecosystem graph remains intact`, await dialog.locator('.eco-node').count() === 39 && await dialog.locator('.eco-svg line').count() === 60);
     await page.keyboard.press('Escape');

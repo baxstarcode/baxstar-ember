@@ -8,12 +8,12 @@ not a production replacement or a change to the booking app.
 ## Review the design
 
 - Original preview: https://5b56930b.baxstar-ember.pages.dev
-- Current alternative with Argon v2: **https://1cd6c549.baxstar-ember.pages.dev**
+- Latest alternative (updates with this branch): **https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev**
+- Argon v2 checkpoint before the Source map tab was removed: https://1cd6c549.baxstar-ember.pages.dev
 - Earlier alternative, before the complete v2 graph: https://3ee28ad7.baxstar-ember.pages.dev
-- Branch alias: https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev
 - Production remains https://ember.baxstarfishing.com and has not received this branch.
 
-**Current v2 checkpoint:** implementation commit
+**Published v2 checkpoint before the tab cleanup:** implementation commit
 `9096488a41273e43991106d903d01bbe2e4bad21`, deployment
 `1cd6c549-a673-4764-a8b0-55b98a8e9a3e`. Cloudflare's authenticated API confirms
 queue, initialize, clone, build, and deploy all succeeded in the **preview** environment
@@ -39,19 +39,22 @@ Brady's second, complete Argon upload: its exact 20 node positions, 34 connectio
 coral/brass palette, glass filter bar, rotating rings, molten router, and moving
 particles. Source details sit in a desktop inspector or a collapsible phone drawer.
 Search, domain filters, source selection, drag/pinch/wheel/keyboard navigation,
-reset, motion pause, and system reduced motion work locally. The existing Works
-graph and external source map remain available as tabs. Relationships and movement
+reset, motion pause, and system reduced motion work locally. At Brady's request,
+the overlay now offers only **Foundry** and **The Works**. The duplicate Source map
+tab and its embedded external page were removed. Relationships and movement
 are illustrative; they do not report live traffic.
+
+Archived original graph: https://baxstar-knowledge-network.pages.dev/. This reference
+remains available through the docs; it is not needed to power the new Foundry.
 
 The v2 continuation changes only the graph section of the application. The dock,
 skull, dashboard, voice lab, persistence, API gateway, and Worker are unchanged.
 Preview publication for this continuation is recorded above.
 
-Brady reported that the earlier preview showed labels without graphics or styling.
-That live-browser symptom remains unverified: the workspace can inspect deployment
-metadata but its proxy cannot retrieve the preview HTML. Local built HTML renders
-with styling and assets. Do not claim the user's viewing issue is fixed merely
-because the Cloudflare build succeeds.
+Brady signed into preview `1cd6c549`, reported that it looks good, and supplied a
+screenshot showing the styled graph overlay. The earlier labels-only symptom was
+not present in that review. This is user-provided browser evidence; the workspace
+still cannot fetch the preview HTML through its proxy.
 
 ## Supplied reference
 
@@ -93,6 +96,11 @@ Brady's device. iPhone has a separate opt-in gate. Simulated events do not estab
 physical reliability. See `work/desktop-voice-probe/README.md`.
 
 ## Verification
+
+**Source map tab cleanup:** production build and 25-file Pages staging passed;
+the existing alternative and ecosystem suites passed **162/162 checks**. The
+two-tab header was inspected on desktop and phone at device scale factor 3.
+The earlier full-release/concurrent-save limitation below remains unchanged.
 
 **Complete v2 graph continuation:** build and exact 25-file Pages staging passed.
 The focused browser matrix passed **285/285 checks**: alternative interactions

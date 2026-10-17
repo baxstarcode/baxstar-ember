@@ -41,6 +41,12 @@ of links to Brady's other properties.
 
 ## Provenance — who did what
 
+- **Codex, 2026-10-17 UTC — graph navigation cleanup:** after reviewing the styled
+  preview, Brady requested removal of the Source map tab. Its iframe and unused
+  source URL/styles are removed from the application; the original graph URL is
+  preserved in `docs/ALTERNATIVE-PREVIEW.md`. Foundry and The Works remain, and the
+  pinned dock and original version are preserved.
+
 - **Codex, 2026-10-17 UTC — complete Argon graph integration:** Brady supplied a
   second `Pasted text.txt`, **Universal Responsive Modal v2** (47,783 bytes; SHA-256
   `f7c486e6f4af38d48839e83531bca63e390d7705e970d4071c91b2e6390d2420`).

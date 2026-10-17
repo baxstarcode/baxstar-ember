@@ -12,8 +12,10 @@ skull and pinned six-item dock. The alternative adds that finish and an interact
 v2** upload now supplies the graph's exact node layout, coral/brass finish, glass
 filters, rotating rings, and moving particles. Desktop source details become a
 collapsible phone drawer. Search, domain filters, drag/pinch/wheel/keyboard zoom,
-motion pause, reduced motion, and phone source selection work locally. The existing Works
-graph and external source map remain separate tabs. The atlas describes reference
+motion pause, reduced motion, and phone source selection work locally. Brady then
+requested removal of the duplicate Source map tab: the overlay now offers Foundry
+and The Works, with the original graph linked only in `docs/ALTERNATIVE-PREVIEW.md`.
+The atlas describes reference
 relationships; it does not represent live data flow or change another application's
 repository. See `docs/ALTERNATIVE-PREVIEW.md` for provenance and the release checkpoint.
 
@@ -30,9 +32,10 @@ All application source outside the graph section is unchanged. The full release
 matrix was not rerun; the concurrent-save blocker remains open. See the alternative
 preview document for upload provenance. Implementation `9096488` is pushed and
 published at **https://1cd6c549.baxstar-ember.pages.dev**; all Cloudflare preview stages
-succeeded at 2026-10-17 18:39:18 UTC. Brady's report of a
-preview showing labels without styling has not been reproduced in his browser;
-local rendering and successful deployment metadata do not establish its resolution.
+succeeded at 2026-10-17 18:39:18 UTC. Brady subsequently signed into that preview,
+reported that it looks good, and provided a styled screenshot. The latest preview
+follows https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev; the immutable
+`1cd6c549` checkpoint retains the old third tab.
 
 The dashboard now links to the isolated Voice Lab. Adjustable phrase grace, manual
 Finish, Escape cancellation, transcript copy, and state-driven instrument lighting
@@ -98,7 +101,7 @@ Golf Simulator. It is one daily operating system, not a set of demos:
 - **OPS:** calls and voicemail, unread email, schedule, manual revenue, quick actions,
   the YOUR TOOLS row, and the WHAT'D I MISS / BRIEF MY DAY push-plates beside the
   reactor; one screen tall on desktop. Dock: OPS · Caption Studio · Knowledge Graph
-  (alternative overlay: Foundry + The Works + Source map) · Google Drive · FareHarbor · Projects.
+  (alternative overlay: Foundry + The Works) · Google Drive · FareHarbor · Projects.
 - **Chat:** a readable persisted Claude thread with streaming replies, Stop, Retry,
   Copy, Clear, keyboard controls, safe lightweight formatting, and explicit
   connector/error states.

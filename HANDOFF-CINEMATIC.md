@@ -29,12 +29,15 @@ It retains neutral descriptions, keyboard access, source links, and the original
 dock; it corrects header clipping and gesture coordinate scaling. Only the graph
 section of application source changes. Focused validation: **285/285** checks;
 desktop, phone, narrow phone, and landscape renders inspected. This does not close
-the existing production/concurrent-save gates or verify Brady's earlier report of
-unstyled preview content in his browser. Current implementation `9096488` is pushed;
+the existing production/concurrent-save gates. Graph implementation `9096488` is pushed;
 preview **https://1cd6c549.baxstar-ember.pages.dev** succeeded through all Cloudflare
 stages at 2026-10-17 18:39:18 UTC (deployment
 `1cd6c549-a673-4764-a8b0-55b98a8e9a3e`). See the preview document for details.
-The original graph is still accessible under Source map, and The Works is unchanged.
+Brady reviewed the preview, said it looks good, and then requested removal of the
+duplicate Source map tab. The overlay now contains Foundry and The Works only;
+the original graph link is archived in `docs/ALTERNATIVE-PREVIEW.md`. The Works and
+the pinned dock remain unchanged. The latest preview follows the branch alias
+https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev.
 Voice improvements stay in the isolated lab with an entry beside Enigma/Scope.
 Physical Mac/iPhone gates and the staged production rollout still apply.
 
