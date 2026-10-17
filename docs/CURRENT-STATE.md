@@ -1,7 +1,41 @@
 # Ember — Current State
 
-Latest local continuation: **2026-10-16**. Production evidence below remains dated
+Latest local continuation: **2026-10-17 UTC**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.
+
+**Alternative visual continuation:** `codex/ember-brass-pressure-alt` starts at the
+saved handoff `108d444`; `codex/ember-command-plate-light` and its working design are
+preserved. Brady supplied Argon HTML and asked for vivid warm colors, outlined/tactile
+buttons, brighter text, and its knowledge graph, while explicitly retaining the large
+skull and pinned six-item dock. The alternative adds that finish and an interactive
+20-node/34-link Foundry atlas. Search, domain filters, node details, pan/zoom, motion
+pause, reduced motion, and phone source selection work locally. The existing Works
+graph and external source map remain separate tabs. The atlas describes reference
+relationships; it does not represent live data flow or change another application's
+repository. See `docs/ALTERNATIVE-PREVIEW.md` for provenance and the release checkpoint.
+
+The dashboard now links to the isolated Voice Lab. Adjustable phrase grace, manual
+Finish, Escape cancellation, transcript copy, and state-driven instrument lighting
+are implemented there. Pages previews allow microphone/transcript testing only;
+their gateway deliberately cannot send chat or TTS requests. Physical voice and the
+Worker/model/fresh-consent production rollout remain open gates.
+
+**Access rechecked, 2026-10-17 UTC:** the environment's Cloudflare API token verifies
+as active, and authenticated reads confirm the Ember Worker and Pages project in
+account `9d1afb55bb78592212916ec0244bd8e4`. The preserved original branch already has
+a successful Pages **preview**, `https://5b56930b.baxstar-ember.pages.dev` at `108d444`.
+That is distinct from a production release. The Worker still serves version
+`6110e34c-2363-41c5-a5f6-fab751ecb717` from October 16; the coordinator binding/new
+consent seeds are absent. This session has no signed-in production browser, and its
+network proxy cannot render the preview host. Ask Jev, Drive, Registry, and Relay
+tools remain unavailable. No production or booking-app changes were made.
+
+**Newly reproduced release blocker:** full alternative validation exposed a stale
+cross-tab localStorage read in the existing simultaneous-board-edit test. It also
+reproduces against preserved `108d444`. Web Locks alone did not prevent the second
+tab from replacing the first edit; see Known Issues §5. The persistence code is
+unchanged in the visual alternative. Do not treat a later passing rerun as a repair
+or release production until the regression is resolved.
 
 **Local continuation, 2026-10-16:** branch `codex/ember-command-plate-light` contains
 the command-plate design refinement and subsequent connector/sync reliability
@@ -20,7 +54,7 @@ on mount. Failed or conflicting saves retain the draft across tool switches with
 retry/download controls. Board edits and reviewed OPS tasks share a Web Lock where
 supported. These local protections do not add cross-device sync or external writes.
 
-**Current local validation:** full `test:release` passed with system Chromium:
+**Preserved baseline validation:** full `test:release` passed with system Chromium:
 771 checks across all 15 suites, including 17 local-state regressions. The unchanged
 Worker/config also passed Wrangler 4.135.0 dry-run at the prior checkpoint. This
 includes real workerd/SQLite with synthetic providers, not live OAuth or physical-device proof.
@@ -44,7 +78,7 @@ Golf Simulator. It is one daily operating system, not a set of demos:
 - **OPS:** calls and voicemail, unread email, schedule, manual revenue, quick actions,
   the YOUR TOOLS row, and the WHAT'D I MISS / BRIEF MY DAY push-plates beside the
   reactor; one screen tall on desktop. Dock: OPS · Caption Studio · Knowledge Graph
-  (overlay: Knowledge Foundry + THE WORKS) · Google Drive · FareHarbor · Projects.
+  (alternative overlay: Foundry + The Works + Source map) · Google Drive · FareHarbor · Projects.
 - **Chat:** a readable persisted Claude thread with streaming replies, Stop, Retry,
   Copy, Clear, keyboard controls, safe lightweight formatting, and explicit
   connector/error states.
@@ -121,8 +155,9 @@ not a blanket guarantee that every connector is continuously available.
 
 ## Verified in this revival
 
-The historical September release matrix was green: **562/562 checks**. The October
-branch's complete 754-check matrix is recorded above and in `HANDOFF-CINEMATIC.md`.
+The historical September release matrix was green: **562/562 checks**. The preserved
+October branch's complete 771-check matrix is recorded above and in
+`HANDOFF-CINEMATIC.md`; alternative validation is in `docs/ALTERNATIVE-PREVIEW.md`.
 
 - production build and exact Pages staging payload;
 - Worker contract and security tests: 193/193;

@@ -1,9 +1,43 @@
 # Ember — Living Cinematic Handoff
 
-Checkpoint date: **2026-10-16** (local branch; recorded production evidence is dated
+Checkpoint date: **2026-10-17 UTC** (alternative branch; recorded production evidence is dated
 2026-09-20). This is the compact continuation brief for any
 builder entering Ember cold. Git history preserves the long design chronology; this
 file records what is load-bearing now.
+
+## Latest entry point — alternative visual preview, 2026-10-17 UTC
+
+Continue `codex/ember-brass-pressure-alt`, branched from handoff `108d444`, for
+Brady's requested Argon-inspired alternative. The original
+`codex/ember-command-plate-light` remains preserved. **Do not replace the pinned
+OPS / Caption Studio / Knowledge Graph / Google Drive / FareHarbor / Projects dock.**
+Its artwork, arrangement, and existing mechanical animations remain intact; only
+press feedback is added. The larger skull is retained too.
+
+Brady's pasted Argon HTML supplies the brass outlines, warmer vivid controls, and
+20-node/34-link orbital reference map. The paste ends mid-script; Codex implemented
+working React interactions instead of copying the prototype's fake sync/task actions.
+The original graph is still accessible under Source map, and The Works is unchanged.
+Voice improvements stay in the isolated lab with an entry beside Enigma/Scope.
+Physical Mac/iPhone gates and the staged production rollout still apply.
+
+Read `docs/ALTERNATIVE-PREVIEW.md` for exact provenance, validation, preview links,
+and remaining work. It supersedes the older capability statements below: Cloudflare
+API authentication now works, and the original branch was already auto-published as
+a preview at `https://5b56930b.baxstar-ember.pages.dev`. Production has not received
+the coordinator/UI release. There is still no authenticated browser tool, Ask Jev,
+Drive, Registry, or Relay access in this session. The separate booking app remains
+untouched; the meaning of Brady's “Claw” attribution is still unconfirmed. Earlier
+onboarding notes identify `baxstarcode/baxstar-booking-app` and its dated
+`docs/HANDOFF_TO_CLAUDE_2026-10-14.md` at `eb3091ddf556f927f964a876df5f9fa3a13706ba`.
+Those are recorded prior read-only findings, not a fresh booking-app audit in this
+visual continuation. Recheck that project's current handoff before any future work.
+
+Full validation also reopened the simultaneous Mission Control save issue: the
+second tab can read stale localStorage even inside a Web Lock and replace the first
+edit. The same regression reproduced against preserved `108d444`. See Known Issues
+§5; the visual alternative does not change persistence code. This is an additional
+production-release blocker, not a reason to report a retry as a clean release pass.
 
 ## New Codex chat entry point — 2026-10-16
 

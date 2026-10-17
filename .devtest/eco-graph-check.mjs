@@ -64,11 +64,13 @@ for (const [name,vp] of [['DESKTOP',{width:1440,height:1000}],['PHONE',{width:39
   ok(`${name} no console/page errors`, errs.length===0, errs.slice(0,2).join(' | '));
 
   // Since 2026-10-15 THE WORKS lives in the Knowledge Graph overlay (dock tile),
-  // second tab after the embedded Knowledge Foundry. It opens expanded there.
+  // second tab after the local Foundry atlas. The original source map is retained.
   await p.locator('.console-dock').getByRole('button', { name: 'Knowledge Graph', exact: true }).click();
   const dialog = p.getByRole('dialog', { name: 'Knowledge Graph' });
   await dialog.waitFor({ state: 'visible' });
-  ok(`${name} overlay embeds the Knowledge Foundry first`,
+  ok(`${name} overlay opens the local Foundry atlas first`, await dialog.locator('.fa-node').count() === 20);
+  await dialog.getByRole('tab', { name: 'Source map' }).click();
+  ok(`${name} original Knowledge Foundry is still available`,
     (await dialog.locator('iframe.kg-frame').getAttribute('src')) === 'https://baxstar-knowledge-network.pages.dev/');
   const backdrop = await p.evaluate(() => getComputedStyle(document.querySelector('.kg-overlay')).backgroundColor);
   ok(`${name} backdrop is black at 50%`, /rgba\(0, 0, 0, 0\.5\)/.test(backdrop), backdrop);

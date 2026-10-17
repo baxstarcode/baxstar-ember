@@ -23,11 +23,12 @@
     "test:voice-probe": "npm run test:voice-grace && node work/desktop-voice-probe/test.mjs",
     "test:caption": "node .devtest/caption-e2e.mjs",
     "test:core": "npm run test:worker && npm run test:tokens && npm run test:pages && npm run test:outbox && npm run test:posttime",
-    "test:browser": "npm run test:chat && npm run test:dashboard && npm run test:local-state && npm run test:layout && npm run test:streaming && npm run test:ecosystem && npm run test:ui && npm run test:caption",
+    "test:browser": "npm run test:chat && npm run test:dashboard && npm run test:local-state && npm run test:layout && npm run test:streaming && npm run test:ecosystem && npm run test:ui && npm run test:alternative && npm run test:caption",
     "test": "npm run test:core && npm run test:browser && npm run test:voice-probe",
     "test:release": "npm run build:pages && npm test",
     "test:sponsors": "node scripts/check-sponsor-drift.mjs",
-    "test:local-state": "node .devtest/local-state-check.mjs"
+    "test:local-state": "node .devtest/local-state-check.mjs",
+    "test:alternative": "node .devtest/alternative-check.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",

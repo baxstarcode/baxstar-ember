@@ -6,15 +6,21 @@
   <meta name="color-scheme" content="dark">
   <title>Ember · Voice reliability lab</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./probe.js?v=c2fd5fbe"></script>
+  <script type="module" src="./probe.js?v=brass-alt-1"></script>
 </head>
 <body>
   <main>
     <header>
-      <p class="eyebrow">EMBER / ISOLATED EXPERIMENT</p>
+      <div class="lab-heading"><p class="eyebrow">EMBER / VOICE WORKSHOP</p><a href="/">Back to Ember</a></div>
       <h1>Voice reliability lab</h1>
-      <p>Desktop Chrome first; iPhone Safari is an optional experiment. Physical microphone and speaker behavior is <strong>PROVISIONAL</strong> until you test it.</p>
+      <p>Talk. Review your words. Send. Play the reply.</p>
+      <p class="hint">Desktop Chrome first; iPhone Safari is an optional experiment. The real microphone and speaker still need your test.</p>
     </header>
+    <div id="preview-notice" class="preview-notice" hidden>
+      <strong>Microphone-only preview</strong>
+      <p>You can test dictation and copy your words here. AI replies and neural audio require Ember’s signed-in live site.</p>
+      <a href="https://ember.baxstarfishing.com/work/desktop-voice-probe/" target="_blank" rel="noopener noreferrer">Open the live voice lab ↗</a>
+    </div>
     <section class="capabilities" aria-label="Capabilities">
       <p id="capability">Checking browser…</p>
       <p id="permission">Microphone permission: not requested.</p>
@@ -25,6 +31,10 @@
       </div>
     </section>
     <section aria-label="Microphone">
+      <div id="voice-instrument" class="voice-instrument" data-mic-phase="off" data-playback="off" aria-hidden="true">
+        <div class="voice-dial"><span class="voice-coal"></span></div>
+        <div><span class="eyebrow">Explicit voice</span><p>One turn at a time.</p><small>The microphone opens only when you press Talk.</small></div>
+      </div>
       <div class="controls">
         <button id="talk" class="primary" disabled>Talk</button>
         <button id="cancel" disabled>Cancel / stop all</button>
@@ -32,12 +42,21 @@
       </div>
       <button id="confirm-release" hidden>I checked: the device’s mic indicator is off</button>
       <p class="hint">The mic opens only when you tap Talk. The browser may send speech to its recognition provider. No wake word or automatic restart. Use a harmless test sentence.</p>
+      <label class="pause-control" for="pause-window">After a finished phrase
+        <select id="pause-window">
+          <option value="750">Wait 0.75 seconds</option>
+          <option value="1600">Give me 1.6 seconds</option>
+          <option value="0">I’ll press Finish talking</option>
+        </select>
+      </label>
+      <p class="hint">If short pauses cut you off, choose more time or finish manually. The browser may still end recognition itself. Escape stops the current turn.</p>
       <p class="interim"><span>Interim transcript</span><output id="interim" aria-live="polite">—</output></p>
       <label for="transcript">Final transcript / editable test message</label>
       <textarea id="transcript" rows="3" maxlength="1000" placeholder="Say: Give me one sentence of encouragement. Or type here to test the proxy without a mic."></textarea>
       <label class="check"><input id="stream-reply" type="checkbox" checked> Stream reply</label>
       <div class="controls">
         <button id="send" disabled>Send transcript</button>
+        <button id="copy-transcript" disabled>Copy transcript</button>
         <span id="request-state" class="state" role="status">Not sent</span>
       </div>
       <p class="hint">Send makes one short AI request. This probe has no business connectors or external action tools.</p>
@@ -89,7 +108,7 @@
       <summary>Event log</summary>
       <pre id="events"></pre>
     </details>
-    <footer>Isolated experiment · not integrated into the dashboard · no saved transcript · browser events do not prove audibility or physical mic release</footer>
+    <footer>Isolated voice workshop · transcript stays on this page until you Send or Copy · browser events do not prove audibility or physical mic release</footer>
   </main>
 </body>
 </html>

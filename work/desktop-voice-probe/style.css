@@ -38,3 +38,35 @@ select { display: block; width: 100%; max-width: 400px; font: inherit; color: in
 #report-panel { margin-top: 20px; }
 #report { font: .8rem/1.5 ui-monospace, monospace; }
 @media (max-width: 500px) { main { padding: 24px 14px; } section { padding: 16px; } }
+
+/* The workshop belongs to the same warm brass instrument as the dashboard. */
+:root { color:#fff4e7; background:#080604; }
+body { background:radial-gradient(ellipse at 50% 15%,#71370e24,transparent 65%),#080604; }
+main { max-width:920px; }
+section { background:linear-gradient(180deg,#1b140d,#100c08); border-color:#93672f; border-radius:10px; box-shadow:inset 0 0 0 2px #0b0704,inset 0 0 0 3px #a976362c,0 12px 30px #0008; }
+.lab-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+a { color:#f5c88a; text-underline-offset:3px; }
+h1 { font-family:Georgia,serif; letter-spacing:.02em; }
+button { position:relative; top:0; color:#fff1de; background:linear-gradient(180deg,#302821,#17110d); border:1px solid #b18449; box-shadow:0 3px 0 #060402,inset 0 1px 0 #ffe4b832,0 5px 12px #0007; transition:top 90ms,box-shadow 90ms,border-color 160ms; }
+button.primary { color:white; background:linear-gradient(180deg,#cf4814,#802304); border-color:#ffa464; box-shadow:0 3px 0 #471800,0 0 20px #dc4f1244,inset 0 1px 0 #ffddba70; }
+button:hover:not(:disabled) { border-color:#ffd299; }
+button:active:not(:disabled) { top:3px; box-shadow:inset 0 3px 7px #000c,0 1px 2px #000; }
+.state,.hint,footer,pre { color:#cdbba2; }
+textarea,select { background:#090604; border-color:#8c5e24; color:#fff4e7; }
+.interim span { color:#d2af7b; }
+#message { border-color:#dbaa65; background:#25190d; }
+#message[data-error="true"] { background:#35190f; }
+.pause-control { margin-top:20px; font-size:.9rem; color:#e8d4b6; }
+.pause-control select { margin-top:7px; }
+.preview-notice { border:1px solid #b18449; border-radius:8px; padding:16px 20px; margin-top:24px; background:#241809; font-size:.9rem; }
+.preview-notice strong { color:#ffcb83; }
+.voice-instrument { display:flex; align-items:center; gap:24px; margin:4px 0 24px; }
+.voice-instrument p { font-family:Georgia,serif; font-size:1.5rem; margin:5px 0; }
+.voice-instrument small { display:block; font-size:.8rem; color:#cdbba2; }
+.voice-dial { position:relative; flex:none; width:104px; height:104px; border-radius:50%; border:3px solid #b18449; box-shadow:0 0 0 4px #0a0604,0 0 0 5px #79532a,inset 0 0 0 5px #1d130b,inset 0 0 0 6px #8d6135,0 10px 20px #000b; background:repeating-conic-gradient(from -2deg,#a87a3c 0 1deg,transparent 1deg 15deg),#16100a; }
+.voice-coal { position:absolute; inset:22px; border-radius:50%; border:2px solid #e4b56d; background:radial-gradient(circle at 42% 38%,#d88632,#652507 60%,#180a04); box-shadow:inset 0 0 10px #0009; transition:box-shadow 180ms; }
+.voice-instrument[data-mic-phase="listening"] .voice-coal { background:radial-gradient(circle at 42% 38%,#fff0b9,#f78827 45%,#923208 80%); animation:voiceHeat 2.4s ease-in-out infinite alternate; }
+.voice-instrument[data-playback="playing"] .voice-coal { background:radial-gradient(circle at 42% 38%,#fff2d7,#dcb266 48%,#713e18); animation:voiceHeat 3s ease-in-out infinite alternate; }
+@keyframes voiceHeat { from { box-shadow:0 0 12px #ff8b2455; } to { box-shadow:0 0 30px #ff8b2499; } }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } button:active:not(:disabled) { top:0; } }
+@media (max-width:500px) { .voice-instrument { gap:18px; } .voice-instrument p { font-size:1.2rem; } .voice-dial { width:84px; height:84px; } .voice-coal { inset:18px; } }

@@ -1,8 +1,32 @@
 # Ember — Known Issues and Deliberate Limits
 
-Last updated from the working repository on **2026-10-16**. Recorded production
+Last updated from the working repository on **2026-10-17 UTC**. Recorded production
 verification remains dated 2026-09-20 unless stated otherwise. This is the active
 ledger; Git history and the Ember Handoff Log preserve the closed issue record.
+
+## 0. Alternative preview and voice verification boundaries
+
+**Status: PREVIEW ONLY — production and physical-device gates still open**
+
+`codex/ember-brass-pressure-alt` preserves the original branch while adding Brady's
+requested button finish and Foundry graph. See `docs/ALTERNATIVE-PREVIEW.md` for its
+validation and deployment checkpoint. Cloudflare API authentication now works;
+the historical lack of a token is resolved. The session still lacks a signed-in
+browser, and preview HTML requests are blocked by its network proxy, so successful
+Cloudflare deployment metadata is separate from a live browser/device check.
+
+The production-only Pages gateway denies preview chat/TTS. The preview Voice Lab
+therefore explicitly offers recognition and transcript copying with Send/Play
+disabled, and links to the existing live lab. Adjustable pauses and explicit Finish
+cannot override a browser's own recognition ending. A real Mac microphone/speaker
+test is still required before dashboard voice integration; mocked speech and audio
+events are not that proof. The alternative is not a shortcut around §1a–1d's
+Worker/model/coordinator/fresh-consent sequence.
+
+The supplied graph is a reference map, not a live inventory. Descriptions do not
+claim that its booking, data, or communication systems are connected. Only known
+source links are offered. Editing this map does not identify or change the separate
+booking application's repository.
 
 ## 1. Final connector-status and Drive-outbox checks remain
 
@@ -191,12 +215,30 @@ read keeps the draft. Missing optional lists in older records remain supported;
 unknown root/project/task metadata is preserved.
 
 Board edits and reviewed OPS tasks share an origin-wide Web Lock where supported.
-A changed saved snapshot leaves the competing board draft available for download
-or review instead of overwriting it. Browsers without Web Locks still compare the
-snapshot, but simultaneous writes there are not atomic. Old app versions and other
-scripts that bypass the lock can also race. This is browser-local protection, not
-cross-device sync. Browser termination can still lose an unsaved in-memory draft;
+The code compares the saved snapshot before writing, but **a stale cross-tab read
+can defeat that check even with Web Locks** (see the reproduced case below).
+Browsers without Web Locks also lack atomic simultaneous writes. Old app versions
+and other scripts that bypass the lock can race. This is browser-local protection,
+not cross-device sync. Browser termination can still lose an unsaved in-memory draft;
 the leave warning is best effort, so download the copy when storage is failing.
+
+**Reopened, 2026-10-17 UTC — production-release blocker:** the existing
+`simultaneous board edits serialize and preserve the losing tab as a recoverable draft`
+browser test failed during alternative validation. Two tabs queue edits behind one
+held `ember-mc` lock. After release, the first writes its edit; the second acquires
+the lock but reads the old localStorage snapshot and writes its own edit about 1 ms
+later. Both tabs then show the second edit as saved, so the first draft is lost.
+Instrumented synthetic fixtures confirmed the stale read. The identical test also
+failed against preserved source at `108d444` (second repeated baseline attempt),
+establishing that this is not a new visual/voice logic change. The earlier 771-pass
+run did not establish reliable cross-tab atomicity.
+
+The alternative leaves the board persistence implementation untouched and is a
+visual preview only. Use one Mission Control editing tab until this is repaired.
+Do not rerun until green and call the race fixed, add an arbitrary sleep, or weaken
+the regression. A repair must establish a reliable shared revision/transaction
+boundary and preserve both drafts in the stale-read case, while retaining existing
+stored records and export/recovery behavior.
 
 Do not silently add a backend or turn local task drafts into external actions. Brady
 must choose the shared owner and migration path first.

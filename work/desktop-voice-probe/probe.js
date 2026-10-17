@@ -6,6 +6,9 @@ const MODEL = "claude-sonnet-4-6";
 const VOICE = "en-US-JennyNeural";
 // Extra patience after the browser finalizes a phrase, not a native VAD setting.
 const END_OF_SPEECH_GRACE_MS = 750;
+// A Pages preview intentionally cannot call the production-only API gateway.
+// Recognition and copying remain available without weakening that boundary.
+const PREVIEW_HOST = /(^|\.)baxstar-ember\.pages\.dev$/i.test(location.hostname || "");
 const $ = (id) => document.getElementById(id);
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
@@ -37,6 +40,11 @@ let releaseTimer = null;
 function audioSupported() { return typeof HTMLMediaElement !== "undefined"; }
 function ready() { return transportReady && (!mobile || mobileOptIn); }
 function speechReady() { return ready() && Boolean(Recognition); }
+function apiReady() { return ready() && !PREVIEW_HOST; }
+function selectedGraceMs() {
+  const selected = $("pause-window").value;
+  return selected === "0" ? 0 : selected === "1600" ? 1600 : END_OF_SPEECH_GRACE_MS;
+}
 function elapsed() { return Math.round(performance.now() - sessionClock); }
 
 function clearEndSpeechGrace(reason = "") {
@@ -50,14 +58,16 @@ function clearEndSpeechGrace(reason = "") {
 function scheduleEndSpeechGrace(rec) {
   clearEndSpeechGrace();
   if (recognition !== rec || micPhase !== "listening") return;
+  const graceMs = selectedGraceMs();
+  if (!graceMs) return; // Explicit Finish only; never restart a browser-ended session.
   const sequence = endSpeechSequence;
-  mark("end-of-speech-grace-started", `${END_OF_SPEECH_GRACE_MS}ms`);
+  mark("end-of-speech-grace-started", `${graceMs}ms`);
   endSpeechTimer = setTimeout(() => {
     if (sequence !== endSpeechSequence || recognition !== rec || micPhase !== "listening") return;
     endSpeechTimer = null;
-    mark("end-of-speech-grace-elapsed", `${END_OF_SPEECH_GRACE_MS}ms`);
+    mark("end-of-speech-grace-elapsed", `${graceMs}ms`);
     finishTalking();
-  }, END_OF_SPEECH_GRACE_MS);
+  }, graceMs);
 }
 
 function mark(name, detail = "") {
@@ -85,7 +95,7 @@ function report() {
     startedAt: sessionStarted,
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext,
       recognitionAPI: Boolean(Recognition), playbackAPI: playbackReady, mobileDetected: mobile,
-      mobileOptIn, endOfSpeechGraceMs: END_OF_SPEECH_GRACE_MS, deviceNotes: $("device-notes").value.trim().slice(0, 500) },
+      mobileOptIn, endOfSpeechGraceMs: selectedGraceMs(), previewHost: PREVIEW_HOST, deviceNotes: $("device-notes").value.trim().slice(0, 500) },
     privacy: "No transcript, reply text, audio, credentials, or business data included. Review your device notes before sharing.",
     turns, events,
   };
@@ -105,8 +115,11 @@ function controls() {
   const busy = Boolean(request) || micPhase !== "off";
   $("talk").disabled = !speechReady() || Boolean(request) || ["stopping", "releasing", "unconfirmed"].includes(micPhase);
   $("talk").textContent = micPhase === "starting" ? "Cancel mic start" : micPhase === "listening" ? "Finish talking" : "Talk";
-  $("send").disabled = !ready() || busy || !$("transcript").value.trim();
-  $("play").disabled = !ready() || !playbackReady || busy || !replyComplete;
+  $("send").disabled = !apiReady() || busy || !$("transcript").value.trim();
+  $("play").disabled = !apiReady() || !playbackReady || busy || !replyComplete;
+  $("copy-transcript").disabled = busy || !$("transcript").value.trim();
+  $("pause-window").disabled = busy;
+  $("voice-instrument").dataset.micPhase = micPhase;
   $("transcript").disabled = busy;
   $("stream-reply").disabled = busy;
   $("cancel").disabled = !busy && !audioUrl;
@@ -131,6 +144,7 @@ function clearAudio() {
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audioUrl = "";
   $("audio-state").textContent = "Audio off";
+  $("voice-instrument").dataset.playback = "off";
 }
 
 function releasedMic(rec, manual = false) {
@@ -239,7 +253,9 @@ function startTalking() {
     mark("recognition-started");
     $("permission").textContent = "Microphone permission: recognition started.";
     micState("listening", "Listening");
-    message("Speak naturally. After a final phrase, the lab waits an extra 0.75 seconds for you to continue. Finish talking ends immediately.");
+    const graceMs = selectedGraceMs();
+    message(graceMs ? `Speak naturally. After a final phrase, the lab waits ${graceMs / 1000} seconds for you to continue. Finish talking ends immediately.`
+      : "Speak naturally. Press Finish talking when you are done. The browser may still end recognition itself.");
     micTimer = setTimeout(finishTalking, 30000);
   };
   // Activity events can arrive before a new transcript. Do not cut off a speaker
@@ -287,7 +303,7 @@ function startTalking() {
     releasedMic(rec);
     $("interim").textContent = "—";
     message($("transcript").value.trim()
-      ? "Review the final transcript, then click Send transcript."
+      ? PREVIEW_HOST ? "Review your words, then Copy transcript. AI replies are available in the live voice lab." : "Review the final transcript, then click Send transcript."
       : "Recognition ended without a final transcript. Nothing was sent; click Talk to retry.");
   };
   micState("starting", "Requesting microphone…");
@@ -356,7 +372,7 @@ async function readReply(response, onText) {
 
 async function sendTranscript() {
   const transcript = $("transcript").value.trim().slice(0, 1000);
-  if (!ready() || micPhase !== "off" || recognition || request || !transcript) return;
+  if (!apiReady() || micPhase !== "off" || recognition || request || !transcript) return;
   if (!turn || "text-sent" in turn.marks) beginTurn("typed-or-resubmitted");
   const stream = $("stream-reply").checked;
   mark("text-sent", stream ? "streaming" : "non-streaming");
@@ -417,7 +433,7 @@ async function sendTranscript() {
 }
 
 async function playResponse() {
-  if (!ready() || !playbackReady || micPhase !== "off" || recognition || request || !replyComplete) return;
+  if (!apiReady() || !playbackReady || micPhase !== "off" || recognition || request || !replyComplete) return;
   mark("tts-requested");
   clearAudio();
   const token = ++generation;
@@ -447,6 +463,7 @@ async function playResponse() {
     audio.onplaying = () => {
       if (token !== generation) return;
       $("audio-state").textContent = "Playing — confirm you can hear it";
+      $("voice-instrument").dataset.playback = "playing";
       message("The browser reports playback. Confirm the voice is audible through your actual speaker.");
       mark("audio-playing");
       log("Audio element fired playing (audibility not verified).");
@@ -454,6 +471,7 @@ async function playResponse() {
     audio.onended = () => {
       if (token !== generation) return;
       $("audio-state").textContent = "Playback ended — mic stays off";
+      $("voice-instrument").dataset.playback = "off";
       mark("audio-ended");
       log("Audio element fired ended.");
     };
@@ -461,11 +479,13 @@ async function playResponse() {
       if (token === generation && !audio.ended) {
         mark("audio-paused");
         $("audio-state").textContent = "Audio paused — mic stays off";
+        $("voice-instrument").dataset.playback = "off";
       }
     };
     audio.onerror = () => {
       if (token !== generation) return;
       $("audio-state").textContent = "Audio playback error";
+      $("voice-instrument").dataset.playback = "off";
       mark("audio-error");
       message("The browser could not decode or play the neural audio. Text is still available.", true);
     };
@@ -503,6 +523,19 @@ $("cancel").addEventListener("click", () => stopAll());
 $("send").addEventListener("click", sendTranscript);
 $("play").addEventListener("click", playResponse);
 $("transcript").addEventListener("input", controls);
+$("copy-transcript").addEventListener("click", async () => {
+  if (micPhase !== "off" || request || !$("transcript").value.trim()) return;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+    await navigator.clipboard.writeText($("transcript").value.trim());
+    message("Transcript copied. Nothing was sent to Ember or a business connector.");
+  } catch {
+    $("transcript").focus(); $("transcript").select();
+    message("Your words are selected. Use your device’s Copy command.");
+  }
+});
+$("pause-window").addEventListener("change", () => { if (micPhase === "off") mark("pause-setting", `${selectedGraceMs()}ms`); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); stopAll(); } });
 $("confirm-release").addEventListener("click", () => {
   if (micPhase !== "unconfirmed" || !recognition) return;
   releasedMic(recognition, true);
@@ -564,6 +597,7 @@ function updateCapability() {
   if (!playbackReady) $("capability").textContent += " Required audio playback APIs are unavailable.";
 }
 $("mobile-experiment").hidden = !mobile;
+$("preview-notice").hidden = !PREVIEW_HOST;
 updateCapability();
 $("connection").textContent = `Messages: ${MESSAGE_ENDPOINT} · Voice: ${TTS_ENDPOINT} · Model: ${MODEL} · Origin: ${location.origin}`;
 // The Permissions API only reads existing state; it never prompts or captures audio.

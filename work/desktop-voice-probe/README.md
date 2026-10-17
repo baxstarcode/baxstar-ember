@@ -1,8 +1,9 @@
 # Ember voice reliability lab
 
-An isolated, one-turn experiment. Nothing imports this folder into Ember, and it
-does not change the production app, build, Worker, saved preferences, or business
-data. Desktop Chrome is the first target; iPhone Safari is an **opt-in experiment**,
+An isolated, one-turn experiment. The alternative dashboard links here with
+**Voice Lab**; it does not import microphone code into the dashboard or change the
+Worker, saved preferences, or business data. Desktop Chrome is the first target;
+iPhone Safari is an **opt-in experiment**,
 not a permanently excluded platform and not yet supported production voice. The
 main dashboard stays voice-free pending physical proof. No full-duplex conversation,
 wake word, automatic restart, or production voice restoration is implied.
@@ -13,13 +14,17 @@ recognition and neural `/tts` contracts, plus the current app’s JSON/SSE reque
 format. On production it uses Access-protected same-origin `/api/messages` and
 `/api/tts`; API credentials remain in the bound Worker.
 
-## End-of-speech grace: 750 ms
+## End-of-speech grace: adjustable, default 750 ms
 
-`END_OF_SPEECH_GRACE_MS` in `probe.js` adds 750 ms after a finalized phrase,
+`END_OF_SPEECH_GRACE_MS` in `probe.js` defaults to 750 ms after a finalized phrase,
 while the same recognition session remains open (`continuous = true`). Resumed
 sound/speech activity cancels the pending stop before the next words arrive.
 New recognition results also cancel it. A fresh all-final result starts a new full
 window; a final result mixed with any interim result never starts a cutoff.
+The pause selector also offers 1600 ms or explicit Finish only. It locks during
+capture/requests; the 30-second cap applies even in manual mode. Escape cancels the
+current turn. The brass instrument responds to actual capture/playback state,
+not simulated microphone levels.
 
 Manual Finish and Cancel do not wait for this grace. The existing 30-second turn
 cap and microphone-release gates are unchanged. Send and Play remain explicit;
@@ -33,6 +38,16 @@ Retest pauses and resumed speech on the actual Mac after deployment. Automated m
 do not prove that the physical early-cutoff issue is resolved.
 
 Reference: [Web Speech API recognition interface and events](https://webaudio.github.io/web-speech-api/#speechreco-section).
+
+## Alternative preview
+
+On `*.baxstar-ember.pages.dev`, the lab supports recognition, editing, and explicit
+**Copy transcript**. Send and Play are disabled at both the UI and request boundary,
+because the existing Pages gateway accepts only the production hostname. A visible
+notice links to the authenticated live lab; that destination still runs its deployed
+version until the separate production rollout. Preview microphone testing cannot
+count as a complete five-turn pass. Neither preview mode nor copying contacts a
+business connector.
 
 ## Physical test: Mac first, then optional iPhone Safari
 
@@ -68,9 +83,10 @@ UI/permission diagnostics only, open Terminal and run:
    if recognition is unavailable or blocked.
 5. Say “Give me one sentence of encouragement.” Interim words should appear while
    you speak, then a final transcript. After a finalized phrase the lab allows an
-   extra **750 ms** for continuation before requesting stop. Also test a brief pause
+   extra **750 ms** by default for continuation before requesting stop. Also test a brief pause
    followed by more speech: the whole phrase should survive. **Finish talking** ends
-   immediately. Verify the actual device microphone indicator turns off.
+   immediately. Test the longer/manual setting if useful. Verify the actual device
+   microphone indicator turns off.
 6. Review/correct the final transcript and click **Send transcript**. Expect a
    short text response and a `Complete` status. One request uses Sonnet 4.6 with
    a 300-token cap. This incurs ordinary API usage. No connectors or tools are sent.
@@ -156,7 +172,8 @@ If a request fails, the UI reports HTTP, CORS/network, empty/truncated response,
 or timeout. Use the production URL for the pass; do not change Worker secrets or its
 allowlist to hide a failure. Requests time out at 45 seconds, TTS at 15 seconds,
 microphone startup at 15 seconds, and a listening turn requests stop at 30 seconds.
-A finalized phrase requests stop after the additional 750 ms grace described above.
+A finalized phrase requests stop after the selected grace described above, except
+in explicit-Finish mode.
 Stop waits three seconds before abort; abort waits three seconds before the manual
 release gate. Background suspension can delay JavaScript timers.
 
@@ -177,9 +194,11 @@ npm run test:voice-grace
 ```
 
 It executes the real `probe.js` in a simulated DOM with a deterministic clock.
-The 22 checks cover the exact 749/750 ms boundary, resumed speech/sound, cumulative
+The timing checks cover the exact 749/750 ms boundary, resumed speech/sound, cumulative
 results, unfinished interim text, stale callbacks, immediate Finish/Cancel, tab/page
 exit, native end, errors, opt-in, report privacy, and the unchanged release/time caps.
+They also cover the 1600 ms/manual settings, invalid-setting fallback, and the
+preview's request guard.
 `test:voice-probe` runs these checks before the existing browser suite.
 
 On this Mac, Codex’s bundled runtime is also available without installing packages:

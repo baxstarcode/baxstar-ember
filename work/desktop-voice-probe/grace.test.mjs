@@ -6,7 +6,7 @@ import vm from 'node:vm';
 
 const source = readFileSync(process.env.EMBER_VOICE_PROBE_SOURCE || new URL('./probe.js', import.meta.url), 'utf8');
 
-function session({ mobile = false } = {}) {
+function session({ mobile = false, preview = false } = {}) {
   let now = 0;
   let nextTimer = 0;
   const timers = new Map();
@@ -34,7 +34,7 @@ function session({ mobile = false } = {}) {
     addEventListener: (name, fn) => documentEvents.set(name, fn) };
   const sandbox = {
     document, navigator: { userAgent: mobile ? 'iPhone' : 'Chrome desktop', platform: mobile ? 'iPhone' : 'Linux', maxTouchPoints: 0 },
-    location: { origin: 'https://example.test' }, isSecureContext: true,
+    location: { origin: 'https://example.test', hostname: preview ? 'review.baxstar-ember.pages.dev' : 'example.test' }, isSecureContext: true,
     SpeechRecognition: mobile ? undefined : Recognition,
     webkitSpeechRecognition: mobile ? Recognition : undefined,
     HTMLMediaElement: class {}, URL, AbortController, Date,
@@ -207,4 +207,38 @@ test('starting-phase manual Finish cancels permission/start without waiting for 
   const s = session(); s.run('startTalking()'); const rec = s.instances.at(-1);
   s.run('finishTalking()'); assert.equal(s.calls.aborts, 1); assert.equal(s.calls.stops, 0);
   rec.onend(); assert.equal(s.run('micPhase'), 'off');
+});
+
+test('longer pause waits for 1600 ms and still stops exactly once', () => {
+  const s = session(); s.element('pause-window').value = '1600';
+  const rec = s.begin(); phrase(s, rec); s.tick(1599);
+  assert.equal(s.calls.stops, 0); assert.equal(s.element('pause-window').disabled, true);
+  s.tick(1); assert.equal(s.calls.stops, 1); rec.onend();
+  assert.equal(s.element('pause-window').disabled, false);
+  assert.equal(s.run('report()').environment.endOfSpeechGraceMs, 1600);
+});
+
+test('manual finish mode keeps the turn open after a final phrase without restarting it', () => {
+  const s = session(); s.element('pause-window').value = '0';
+  const rec = s.begin(); phrase(s, rec); s.tick(2500); assert.equal(s.calls.stops, 0);
+  s.run('finishTalking()'); assert.equal(s.calls.stops, 1); rec.onend(); s.tick(5000);
+  assert.equal(s.calls.starts, 1); assert.equal(s.element('send').disabled, false);
+});
+
+test('manual finish mode retains the bounded 30-second turn cap', () => {
+  const s = session(); s.element('pause-window').value = '0';
+  const rec = s.begin(); phrase(s, rec); s.tick(30000); assert.equal(s.calls.stops, 1);
+});
+
+test('preview can dictate and copy but cannot call protected APIs even directly', async () => {
+  const s = session({ preview: true }); const rec = s.begin(); phrase(s, rec); s.tick(750); rec.onend();
+  assert.equal(s.element('preview-notice').hidden, false);
+  assert.equal(s.element('copy-transcript').disabled, false); assert.equal(s.element('send').disabled, true);
+  await s.run('sendTranscript()'); await s.run('playResponse()'); assert.equal(s.calls.fetches, 0);
+  assert.equal(s.run('report()').environment.previewHost, true);
+});
+
+test('invalid pause choices fall back to the original bounded grace', () => {
+  const s = session(); s.element('pause-window').value = 'Infinity';
+  const rec = s.begin(); phrase(s, rec); s.tick(750); assert.equal(s.calls.stops, 1);
 });

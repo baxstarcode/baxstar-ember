@@ -1235,6 +1235,69 @@ function PromptPlate({ side, lines, running, disabled, onPress }) {
    MAIN COMPONENT
    ============================================================ */
 
+// Alternative finish from Brady's supplied Argon HTML. The original dock's
+// artwork, crop geometry, destinations and idle animation rules stay intact.
+const ALTERNATIVE_CSS = `
+  .ember-alt {
+    --ink:#fff8ef; --ink-dim:#d2c4b0; --ink-faint:#b4a28b;
+    --ember-text:#fff8ef; --ember-text-soft:#eee2ce;
+    --ember-text-muted:#d2c4b0; --ember-text-dim:#b4a28b;
+    --line:rgba(200,146,70,.42); --line-hot:rgba(229,179,104,.8);
+    --button-rim:#a5793d; --button-edge:#e5b368;
+    --button-face:linear-gradient(180deg,#302821 0%,#1b1510 55%,#100c09 100%);
+    --button-raised:0 3px 0 #080503,0 6px 12px #0009,inset 0 1px 0 #f9d9a833;
+    --button-sunk:0 0 0 #080503,0 1px 3px #000b,inset 0 3px 7px #000b,inset 0 -1px 0 #e5b36838;
+  }
+  .ember-alt :is(.chip,.seg,.toggle-chip,.hbtn,.tool-link,.proj-chip,.fa-control) {
+    position:relative; top:0; border:1px solid var(--button-rim); color:var(--ink);
+    background:var(--button-face); box-shadow:var(--button-raised); text-shadow:0 1px 2px #000b;
+    transition:top 90ms ease,box-shadow 90ms ease,border-color 160ms,color 160ms,background 160ms;
+  }
+  .ember-alt :is(.chip.solid,.seg.on,.toggle-chip.on,.fa-control.on),
+  .ember-alt .chat-run,.ember-alt .header-control.sync-control {
+    background:linear-gradient(180deg,#cf4814 0%,#ab3409 55%,#802304 100%)!important;
+    border:1px solid #ff9b62; border-bottom-color:#6c2409; color:#fff;
+    box-shadow:0 3px 0 #471800,0 6px 13px #000b,0 0 14px #dc4f1238,inset 0 1px 0 #ffe2c45c;
+    text-shadow:0 1px 2px #0009;
+  }
+  .ember-alt :is(.tool-link,.tool-tile) { border-color:#b18449; }
+  .ember-alt .tool-link { border-radius:6px; isolation:isolate; }
+  .ember-alt .tool-link::after { content:""; position:absolute; inset:3px; border:1px solid #e5b36824; border-radius:3px; pointer-events:none; }
+  .ember-alt .tools-groups { padding-block:2px 5px; }
+  .ember-alt .tool-name { color:#fff8ef; }
+  .ember-alt .tool-tile { box-shadow:var(--button-raised); background:var(--button-face); background-clip:padding-box; }
+  .ember-alt .tool-tile.on { transform:none; filter:none; color:#fff; box-shadow:var(--button-sunk),0 0 12px #e9722433; }
+  .ember-alt .tool-tile::after { border-color:#e5b36870; }
+  .ember-alt .header-control { border-color:var(--button-rim)!important; background:var(--button-face)!important; }
+  .ember-alt :is(.header-control,.chat-run,.prompt-plate,.tool-tile,.big,.tab,.kg-close) { position:relative; top:0; transition:top 90ms,box-shadow 90ms,border-color 160ms; }
+  .ember-alt .prompt-plate { border-color:#af8142; }
+  .ember-alt .plate-label { color:#fff0d6; }
+  .ember-alt .plate-index { color:#e7c792; }
+  .ember-alt .seg { transform:none; }
+  .ember-alt .cmd-input { border-color:#a5793d99; box-shadow:inset 0 2px 6px #0009; }
+  .ember-alt .cmd-input::placeholder { color:#b8ab9a; opacity:1; }
+  .ember-alt .voice-lab-link { display:inline-flex; align-items:center; gap:5px; color:#ffd198; text-decoration:underline; text-underline-offset:3px; white-space:nowrap; }
+  .ember-alt :is(button,a,input,textarea,select):focus-visible { outline:2px solid #ffce85; outline-offset:3px; }
+  .ember-alt :is(.chip,.seg,.toggle-chip,.hbtn,.tool-link,.proj-chip,.header-control,.chat-run,.prompt-plate,.tool-tile,.big,.tab,.kg-close,.fa-control):active:not(:disabled) {
+    top:3px; transform:none; filter:none; animation:none; box-shadow:var(--button-sunk); border-color:var(--button-edge);
+  }
+  /* Shadows/top provide travel without rasterizing the small text on iOS. */
+  .ember-alt .dock-control:active:not(:disabled) { transform:none; box-shadow:inset 0 4px 12px #000e,inset 0 -1px 0 #e5b36866; }
+  .ember-alt .dock-control:active:not(:disabled) .dock-art { top:2px; }
+  .ember-alt button:disabled { top:0; }
+  @media (hover:hover) and (pointer:fine) {
+    .ember-alt :is(.chip,.seg,.toggle-chip,.hbtn,.tool-link,.proj-chip,.fa-control):hover:not(:disabled) {
+      transform:none; filter:none; animation:none; border-color:var(--button-edge); color:#fff;
+      box-shadow:0 3px 0 #080503,0 8px 16px #000b,0 0 12px #c8924638,inset 0 1px 0 #fff3;
+    }
+    .ember-alt :is(.chip,.seg,.toggle-chip,.hbtn,.tool-link,.proj-chip,.fa-control):active:not(:disabled) { box-shadow:var(--button-sunk); }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .ember-alt :is(.chip,.seg,.toggle-chip,.hbtn,.tool-link,.proj-chip,.header-control,.chat-run,.prompt-plate,.tool-tile,.big,.tab,.kg-close,.fa-control):active:not(:disabled) { top:0; }
+    .ember-alt .dock-control:active:not(:disabled) .dock-art { top:0; }
+  }
+`;
+
 export default function BaxstarEmber() {
   const [view, setView] = useState("ops");
   const [missionVisited, setMissionVisited] = useState(false);
@@ -2397,7 +2460,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
      ============================================================ */
 
   return (
-    <div className="ember-root w-full" style={{ background: "var(--bg)", color: "var(--ink)" }}>
+    <div className="ember-root ember-alt w-full" style={{ background: "var(--bg)", color: "var(--ink)" }}>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
@@ -3647,6 +3710,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         /* The composer grows up to 192px (was 240px, -20%), then scrolls inside. */
         .chat-composer .cmd-input { max-height:192px; }
       `}</style>
+      <style>{ALTERNATIVE_CSS}</style>
+      <style>{FOUNDRY_CSS}</style>
 
       {/* background layer (behind everything) */}
       {bgActive && (
@@ -3925,6 +3990,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </span>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
+                  <a className="seg sm voice-lab-link" href="/work/desktop-voice-probe/" target="_blank" rel="noopener noreferrer">VOICE LAB <svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 10 10 2M3 2h7v7" /></svg></a>
                 </div>
               </div>
 
@@ -4891,6 +4957,606 @@ function DrivePlate() {
    drift. It loads only when opened. Second tab: THE WORKS, which used to sit
    collapsed on the OPS page. Backdrop 50% black; Escape, the close button or a
    tap outside the sheet closes it; focus returns to the dock. */
+// The 20 subjects and 34 relationships come from Brady's pasted Argon reference.
+// This is an illustrative source map, not live telemetry or a second source of
+// business facts. Keep the original Foundry and repository ecosystem accessible.
+// Neutral descriptions replace the prototype's unverified LIVE/AUTOMATED claims.
+const FOUNDRY_NODES = [
+  {
+    "id": "ROUTER",
+    "code": "ROUTER",
+    "name": "Source of Truth",
+    "domain": "GOVERNANCE",
+    "orbit": 0,
+    "radius": 60,
+    "desc": "Routes a question to its owning source. This map illustrates those relationships; the source documents remain authoritative.",
+    "url": "https://docs.google.com/document/d/1AgIxAj0YM8XNTTMHVcJInNAquLKnon-WB4i2DMzTzRQ/edit"
+  },
+  {
+    "id": "VOICE",
+    "code": "VOICE",
+    "name": "Brand Voice",
+    "domain": "GOVERNANCE",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "The brand voice and copy standards used when drafting customer-facing material."
+  },
+  {
+    "id": "BUILD",
+    "code": "BUILD",
+    "name": "Build Standards",
+    "domain": "SYSTEMS",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "The shared web-build standards for interfaces, accessibility, reliability, and verification.",
+    "url": "https://docs.google.com/document/d/1VfETYcTNktp-6cZLVAHbAUDBmR1NqlwMGCgl2Xo5DY0/edit"
+  },
+  {
+    "id": "SITE",
+    "code": "SITE",
+    "name": "Site / HTML Authority",
+    "domain": "CHANNELS",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "The ownership and publishing context for websites and HTML surfaces."
+  },
+  {
+    "id": "AI_OPS",
+    "code": "AI OPS",
+    "name": "AI Context",
+    "domain": "SYSTEMS",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "Shared working context for Brady and the AI tools helping with his projects."
+  },
+  {
+    "id": "OPS",
+    "code": "OPS",
+    "name": "Operations Context",
+    "domain": "BUSINESS",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "The operating context for day-to-day business work."
+  },
+  {
+    "id": "POLICY",
+    "code": "POLICY",
+    "name": "Policy System",
+    "domain": "GOVERNANCE",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "The owning documents for business policies and customer terms."
+  },
+  {
+    "id": "TECH",
+    "code": "TECH",
+    "name": "Tech Stack Context",
+    "domain": "SYSTEMS",
+    "orbit": 210,
+    "radius": 42,
+    "desc": "The technology context and hosting map for sites, services, and integrations."
+  },
+  {
+    "id": "CONSULT",
+    "code": "CONSULT",
+    "name": "AI Consulting Framework",
+    "domain": "VENTURES",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "Frameworks and reference material for AI consulting work."
+  },
+  {
+    "id": "COURSE",
+    "code": "COURSE",
+    "name": "AI for Everyday Life",
+    "domain": "VENTURES",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "Course plans and teaching material for practical AI use."
+  },
+  {
+    "id": "RELAY",
+    "code": "RELAY",
+    "name": "Agent Relay",
+    "domain": "SYSTEMS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "Cross-agent coordination and handoff context. Messages do not replace the owning sources.",
+    "url": "https://docs.google.com/document/d/11WhUOKDqBiERVsf8LbOHJm5k9Fn01IZfOvixhsqo7sc/edit"
+  },
+  {
+    "id": "LOGS",
+    "code": "LOGS",
+    "name": "Handoff Logs",
+    "domain": "GOVERNANCE",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "Project handoff records and recorded checkpoints.",
+    "url": "https://docs.google.com/document/d/1WVjv426vSaxp6BbQPRXOfifD2UQUJcweT3RB6xp5znE/edit"
+  },
+  {
+    "id": "EMBER",
+    "code": "EMBER",
+    "name": "Ember Mission Control",
+    "domain": "SYSTEMS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "This command center: chat, communications, schedule, projects, and reviewed drafts. Connection status is shown in OPS.",
+    "url": "https://ember.baxstarfishing.com"
+  },
+  {
+    "id": "COMMS",
+    "code": "COMMS",
+    "name": "Communication Engine",
+    "domain": "CHANNELS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "Communication context, channel guidance, and reply drafting."
+  },
+  {
+    "id": "ENGINE",
+    "code": "ENGINE",
+    "name": "Data Engine Handoff",
+    "domain": "SYSTEMS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "The context and handoffs for the business data system."
+  },
+  {
+    "id": "SPEC",
+    "code": "SPEC",
+    "name": "Booking Behavior Spec",
+    "domain": "BUSINESS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "A reference to the separate booking project’s behavior specification."
+  },
+  {
+    "id": "BOOK",
+    "code": "BOOK",
+    "name": "Booking App Decisions",
+    "domain": "BUSINESS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "The decision record for the separate booking project."
+  },
+  {
+    "id": "ICE",
+    "code": "ICE",
+    "name": "Ice Fleet Context",
+    "domain": "BUSINESS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "Operating context for the winter ice-house fleet."
+  },
+  {
+    "id": "PRICE",
+    "code": "PRICE",
+    "name": "Pricing Engine",
+    "domain": "BUSINESS",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "The source documents for current rates and pricing decisions."
+  },
+  {
+    "id": "DIGI",
+    "code": "DIGI",
+    "name": "Digitized.me System",
+    "domain": "VENTURES",
+    "orbit": 380,
+    "radius": 40,
+    "desc": "The Digitized.me concept included in the supplied reference map."
+  }
+];
+const FOUNDRY_LINKS = [
+  {
+    "source": "ROUTER",
+    "target": "VOICE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "BUILD",
+    "type": "FLOW"
+  },
+  {
+    "source": "ROUTER",
+    "target": "SITE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "AI_OPS",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "OPS",
+    "type": "FLOW"
+  },
+  {
+    "source": "ROUTER",
+    "target": "POLICY",
+    "type": "FLOW"
+  },
+  {
+    "source": "ROUTER",
+    "target": "TECH",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "CONSULT",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "COURSE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "RELAY",
+    "type": "FLOW"
+  },
+  {
+    "source": "ROUTER",
+    "target": "LOGS",
+    "type": "RECORDS"
+  },
+  {
+    "source": "ROUTER",
+    "target": "EMBER",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "COMMS",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "ENGINE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "SPEC",
+    "type": "FLOW"
+  },
+  {
+    "source": "ROUTER",
+    "target": "BOOK",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "ICE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "PRICE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "ROUTER",
+    "target": "DIGI",
+    "type": "ROUTES"
+  },
+  {
+    "source": "TECH",
+    "target": "PRICE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "TECH",
+    "target": "DIGI",
+    "type": "FLOW"
+  },
+  {
+    "source": "VOICE",
+    "target": "CONSULT",
+    "type": "ROUTES"
+  },
+  {
+    "source": "VOICE",
+    "target": "COURSE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "BUILD",
+    "target": "RELAY",
+    "type": "FLOW"
+  },
+  {
+    "source": "BUILD",
+    "target": "SITE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "SITE",
+    "target": "EMBER",
+    "type": "ROUTES"
+  },
+  {
+    "source": "AI_OPS",
+    "target": "EMBER",
+    "type": "FLOW"
+  },
+  {
+    "source": "AI_OPS",
+    "target": "COMMS",
+    "type": "ROUTES"
+  },
+  {
+    "source": "AI_OPS",
+    "target": "RELAY",
+    "type": "FLOW"
+  },
+  {
+    "source": "OPS",
+    "target": "ENGINE",
+    "type": "FLOW"
+  },
+  {
+    "source": "OPS",
+    "target": "SPEC",
+    "type": "ROUTES"
+  },
+  {
+    "source": "OPS",
+    "target": "ICE",
+    "type": "ROUTES"
+  },
+  {
+    "source": "POLICY",
+    "target": "BOOK",
+    "type": "ROUTES"
+  },
+  {
+    "source": "POLICY",
+    "target": "PRICE",
+    "type": "FLOW"
+  }
+];
+
+const FOUNDRY_CSS = `
+  .fa-atlas { display:flex; flex-direction:column; height:100%; min-height:0; color:#fff8ef; }
+  .fa-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid #8c5e2466; background:#17100bf2; }
+  .fa-eyebrow { font:700 9px/1.5 var(--ember-font-ui); letter-spacing:.16em; color:#e5b368; text-transform:uppercase; }
+  .fa-counts { display:flex; flex-wrap:wrap; gap:16px; margin-left:auto; font:11px/1.5 ui-monospace,monospace; color:#dcc6a7; }
+  .fa-counts b { color:#fff; font-size:14px; }
+  .fa-control { border-radius:6px; padding:7px 11px; min-height:36px; font-size:11px; font-weight:700; cursor:pointer; }
+  .fa-control:disabled { opacity:.45; cursor:default; }
+  .fa-filters { display:flex; gap:7px; flex-wrap:wrap; align-items:center; padding:10px 16px; background:#0c0907; border-bottom:1px solid #8c5e2444; }
+  .fa-search { flex:1 1 190px; min-width:0; max-width:260px; }
+  .fa-source-picker { display:none; }
+  .fa-search input { width:100%; min-height:36px; background:#070504; color:#fff8ef; border:1px solid #a5793d; border-radius:6px; padding:8px 10px; font-size:12px; }
+  .fa-filter-group { display:flex; gap:5px; flex-wrap:wrap; }
+  .fa-filter-group .fa-control { font-size:9px; letter-spacing:.06em; text-transform:uppercase; }
+  .fa-workspace { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 285px; min-height:0; }
+  .fa-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background:radial-gradient(ellipse at 50% 44%,#51230850,transparent 65%),#070504; }
+  .fa-svg { width:100%; height:100%; min-height:270px; display:block; touch-action:none; cursor:grab; }
+  .fa-svg:active { cursor:grabbing; }
+  .fa-gear { transform-origin:0px -150px; animation:faGear 90s linear infinite; }
+  @keyframes faGear { to { transform:rotate(360deg); } }
+  .fa-pipe-case { fill:none; stroke:#9aa3af30; stroke-width:5; stroke-linecap:round; }
+  .fa-pipe { fill:none; stroke:url(#fa-pipe); stroke-width:2; stroke-linecap:round; }
+  .fa-conduit { opacity:.55; transition:opacity 180ms; }
+  .fa-conduit.selected { opacity:1; }
+  .fa-conduit.selected .fa-pipe { stroke:#ff923e; stroke-width:2.5; }
+  .fa-flow .fa-pipe { stroke-dasharray:5 10; animation:faFlow 18s linear infinite; }
+  @keyframes faFlow { to { stroke-dashoffset:-240; } }
+  .fa-node { cursor:pointer; transition:opacity 180ms; }
+  .fa-node .fa-rim { fill:#0d0907; stroke:url(#fa-rim); stroke-width:2.4; }
+  .fa-node .fa-face { fill:url(#fa-face); stroke:#ffe0ac40; stroke-width:1; }
+  .fa-node:hover .fa-rim,.fa-node:focus-visible .fa-rim,.fa-node.selected .fa-rim { stroke:#ffab59; stroke-width:3; }
+  .fa-node:focus { outline:none; }
+  .fa-reticle { fill:none; stroke:#ff9b4d; stroke-width:1.4; stroke-dasharray:5 9; }
+  .fa-code { font:bold 11px var(--ember-font-ui); fill:#fff; text-anchor:middle; letter-spacing:.08em; pointer-events:none; }
+  .fa-node-name { font:10px var(--ember-font-ui); fill:#ead5b9; text-anchor:middle; paint-order:stroke; stroke:#080503; stroke-width:4px; stroke-linejoin:round; pointer-events:none; }
+  .fa-inspector { min-height:0; overflow-y:auto; padding:22px 18px; border-left:1px solid #8c5e2480; background:linear-gradient(180deg,#20160f,#0b0806); }
+  .fa-inspector h2 { font:700 23px/1.2 var(--ember-font-display); margin:8px 0 12px; color:#fff; }
+  .fa-description { color:#e0d0ba; font-size:12px; line-height:1.65; margin-bottom:16px; }
+  .fa-badges { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:22px; }
+  .fa-badges span { padding:4px 7px; color:#e5b368; border:1px solid #8c5e24; border-radius:4px; font:9px ui-monospace,monospace; }
+  .fa-relations { display:flex; flex-direction:column; gap:4px; margin-top:8px; }
+  .fa-relation { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; min-height:42px; padding:8px; border:1px solid transparent; border-bottom-color:#8c5e2438; border-radius:4px; text-align:left; color:#f8e7d2; background:transparent; font-size:11px; cursor:pointer; }
+  .fa-relation:hover,.fa-relation:focus-visible { background:#c8924618; border-color:#a5793d; }
+  .fa-relation small { flex:none; color:#bfa07a; font-size:8px; letter-spacing:.05em; }
+  .fa-controls { position:absolute; left:12px; bottom:12px; display:flex; align-items:center; gap:6px; padding:6px; border:1px solid #8c5e2477; border-radius:8px; background:#100c09ee; }
+  .fa-controls output { font:10px ui-monospace,monospace; padding:0 5px; color:#dcc6a7; }
+  .fa-status { position:absolute; left:16px; top:12px; right:16px; pointer-events:none; color:#d2bca0; font-size:10px; letter-spacing:.04em; }
+  .fa-status.empty { padding:12px; background:#17100bf2; border:1px solid #c89246; border-radius:8px; color:#fff1de; font-size:13px; }
+  .fa-footer { padding:8px 16px; border-top:1px solid #8c5e2444; color:#c6ad8e; font-size:10px; line-height:1.4; background:#0e0a07; }
+  .fa-footer span { margin-right:16px; }
+  .fa-still .fa-flow .fa-pipe,.fa-still .fa-gear { animation-play-state:paused; }
+  .ember-alt .kg-head { flex-wrap:wrap; gap:8px; }
+  .ember-alt .kg-tabs { padding:0 3px; border-width:6px; }
+  @media (max-width:900px) {
+    .fa-workspace { display:flex; flex-direction:column; overflow:auto; }
+    .fa-stage { flex:0 0 100%; min-height:280px; }
+    .fa-inspector { flex:none; border-left:0; border-top:1px solid #8c5e2480; padding:16px; overflow:visible; }
+    .fa-toolbar,.fa-filters { padding:8px 12px; gap:7px; }
+    .fa-toolbar > div:first-child { display:none; }
+    .fa-counts { gap:9px; }
+    .fa-counts span:last-child { display:none; }
+    .fa-search { max-width:none; }
+    .fa-filter-group { width:100%; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+    .fa-control { min-height:44px; }
+    .fa-filter-group .fa-control { flex:0 0 auto; padding:5px 10px; }
+    .fa-source-picker { display:block; width:100%; }
+    .fa-source-picker select { width:100%; padding:8px 10px; min-height:44px; border:1px solid #a5793d; background:#100b07; color:#fff8ef; border-radius:6px; font-size:12px; }
+    .fa-relation { min-height:44px; }
+    .fa-svg { min-height:280px; padding:18px 0 64px; }
+    .ember-alt .kg-title { flex:1; font-size:11px; order:0; }
+    .ember-alt .kg-close { order:1; }
+    .ember-alt .kg-tabs { order:2; width:100%; justify-content:space-between; }
+    .ember-alt .kg-tabs .seg { flex:1; }
+    .ember-alt .kg-open { font-size:10px; order:3; }
+  }
+  @media (prefers-reduced-motion:reduce) { .fa-atlas * { animation:none!important; transition:none!important; } }
+`;
+
+const FOUNDRY_DOMAINS = ["GOVERNANCE", "BUSINESS", "SYSTEMS", "CHANNELS", "VENTURES"];
+const FOUNDRY_COLORS = { GOVERNANCE: "#eac47a", BUSINESS: "#ff8c46", SYSTEMS: "#ead9bc", CHANNELS: "#e99d61", VENTURES: "#ffd28e" };
+const FOUNDRY_POINTS = Object.fromEntries(FOUNDRY_NODES.map((node) => {
+  const ring = FOUNDRY_NODES.filter((n) => n.orbit === node.orbit);
+  // Even spacing resolves the overlapping PRICE/DIGI nodes in the pasted sketch.
+  const angle = (-90 + ring.indexOf(node) * 360 / ring.length) * Math.PI / 180;
+  return [node.id, { ...node, x: node.orbit * Math.cos(angle), y: node.orbit * Math.sin(angle) }];
+}));
+
+function FoundryAtlas() {
+  const [selected, setSelected] = useState("ROUTER");
+  const [domain, setDomain] = useState("ALL");
+  const [query, setQuery] = useState("");
+  const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  const [motion, setMotion] = useState(true);
+  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [visible, setVisible] = useState(() => !document.hidden);
+  const dragRef = useRef(null);
+  const inspectorRef = useRef(null);
+  const inspect = (id) => {
+    setSelected(id);
+    if (window.matchMedia("(max-width:900px)").matches) requestAnimationFrame(() => inspectorRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }));
+  };
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(media.matches);
+    const visibility = () => setVisible(!document.hidden);
+    media.addEventListener("change", update);
+    document.addEventListener("visibilitychange", visibility);
+    return () => { media.removeEventListener("change", update); document.removeEventListener("visibilitychange", visibility); };
+  }, []);
+  const active = FOUNDRY_POINTS[selected];
+  const connected = FOUNDRY_LINKS.filter((edge) => edge.source === selected || edge.target === selected);
+  const neighbors = new Set([selected, ...connected.map((e) => e.source === selected ? e.target : e.source)]);
+  const needle = query.trim().toLowerCase();
+  const matches = new Set(FOUNDRY_NODES.filter((n) => (domain === "ALL" || n.domain === domain) &&
+    `${n.name} ${n.code} ${n.domain}`.toLowerCase().includes(needle)).map((n) => n.id));
+  const filtered = domain !== "ALL" || Boolean(needle);
+  const animate = motion && !reduced && visible;
+  const zoom = (delta) => setCamera((c) => ({ ...c, scale: Math.min(2.6, Math.max(.6, Math.round((c.scale + delta) * 10) / 10)) }));
+  const reset = () => { setCamera({ x: 0, y: 0, scale: 1 }); setQuery(""); setDomain("ALL"); setSelected("ROUTER"); };
+  const selectRelated = (id) => { inspect(id); setQuery(""); setDomain("ALL"); };
+  const point = (event) => {
+    const svg = event.currentTarget;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  };
+  const startPan = (event) => {
+    if (event.button !== 0 || dragRef.current || event.target.closest(".fa-node")) return;
+    const p = point(event);
+    if (!p) return;
+    dragRef.current = { id: event.pointerId, p, camera };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const movePan = (event) => {
+    const start = dragRef.current;
+    if (!start || start.id !== event.pointerId) return;
+    const p = point(event);
+    if (!p) return;
+    const limit = 650 * start.camera.scale;
+    setCamera({ ...start.camera, x: Math.max(-limit, Math.min(limit, start.camera.x + p.x - start.p.x)),
+      y: Math.max(-limit, Math.min(limit, start.camera.y + p.y - start.p.y)) });
+  };
+  const endPan = (event) => { if (dragRef.current?.id === event.pointerId) dragRef.current = null; };
+  return (
+    <section className={`fa-atlas ${animate ? "" : "fa-still"}`} aria-label="Knowledge Foundry atlas">
+      <div className="fa-toolbar">
+        <div><div className="fa-eyebrow">Foundry atlas</div><span style={{ fontSize: 12, color: "#eee0cd" }}>The operating system, made mechanical.</span></div>
+        <div className="fa-counts"><span><b>{FOUNDRY_NODES.length}</b> nodes</span><span><b>{FOUNDRY_LINKS.length}</b> links</span><span><b>{FOUNDRY_DOMAINS.length}</b> domains</span></div>
+        <button className={`fa-control ${animate ? "on" : ""}`} aria-pressed={motion && !reduced} disabled={reduced}
+          title={reduced ? "Motion follows your reduced-motion setting" : "Animate the illustrated connections"}
+          onClick={() => setMotion((v) => !v)}>{reduced ? "Motion reduced" : motion ? "Pause motion" : "Resume motion"}</button>
+      </div>
+      <div className="fa-filters">
+        <label className="fa-search"><span className="sr-only">Find a source or system</span><input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a source or system…" /></label>
+        <div className="fa-filter-group" role="group" aria-label="Filter atlas by domain">
+          {["ALL", ...FOUNDRY_DOMAINS].map((d) => <button key={d} className={`fa-control ${domain === d ? "on" : ""}`} aria-pressed={domain === d} onClick={() => setDomain(d)}>{d === "ALL" ? "All" : d.toLowerCase()}</button>)}
+        </div>
+        <label className="fa-source-picker"><span className="sr-only">Choose a source</span><select value={matches.has(selected) ? selected : ""} onChange={(e) => { if (e.target.value) inspect(e.target.value); }}><option value="" disabled>{matches.size ? "Choose a source…" : "No matching sources"}</option>{FOUNDRY_NODES.filter((n) => matches.has(n.id)).map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</select></label>
+      </div>
+      <div className="fa-workspace">
+        <div className="fa-stage">
+          <svg className="fa-svg" viewBox="-540 -480 1080 960" role="group" tabIndex={0} aria-label="Orbital source map. Drag to pan, or use arrow keys. Use the zoom controls to resize."
+            onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              const delta = { ArrowLeft: [40, 0], ArrowRight: [-40, 0], ArrowUp: [0, 40], ArrowDown: [0, -40] }[e.key];
+              if (delta) { e.preventDefault(); setCamera((c) => ({ ...c, x: Math.max(-650 * c.scale, Math.min(650 * c.scale, c.x + delta[0])), y: Math.max(-650 * c.scale, Math.min(650 * c.scale, c.y + delta[1])) })); }
+              if (e.key === "+" || e.key === "=") { e.preventDefault(); zoom(.2); }
+              if (e.key === "-") { e.preventDefault(); zoom(-.2); }
+              if (e.key === "Home") { e.preventDefault(); reset(); }
+            }}>
+            <defs>
+              <linearGradient id="fa-rim"><stop stopColor="#f5e2c4" /><stop offset=".4" stopColor="#cf9a51" /><stop offset="1" stopColor="#5a3b16" /></linearGradient>
+              <radialGradient id="fa-face" cx="35%" cy="30%" r="70%"><stop stopColor="#39271b" /><stop offset=".7" stopColor="#160e08" /><stop offset="1" stopColor="#070504" /></radialGradient>
+              <linearGradient id="fa-pipe"><stop stopColor="#e5b368" /><stop offset=".5" stopColor="#c89246" /><stop offset="1" stopColor="#9a7860" /></linearGradient>
+              <radialGradient id="fa-fire"><stop stopColor="#fff2bd" /><stop offset=".35" stopColor="#ffac48" /><stop offset=".7" stopColor="#b73c0b" /><stop offset="1" stopColor="#301006" /></radialGradient>
+            </defs>
+            <g className="fa-viewport" transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
+              <g opacity=".28" aria-hidden="true">
+                <circle r="380" fill="none" stroke="#94652d" strokeDasharray="2 8" /><circle r="210" fill="none" stroke="#c89246" strokeDasharray="2 8" />
+                <g className="fa-gear"><circle cy="-150" r="135" fill="none" stroke="#8c5e24" strokeWidth="14" strokeDasharray="10 8" /><circle cy="-150" r="118" fill="#120c07" stroke="#8a7764" strokeWidth="4" /></g>
+                {[-1, 1].map((side) => <g key={side} transform={`scale(${side} 1)`}><path d="M 380 40 C 340 -120,180 -140,60 -40 L 90 110 C 210 60,310 90,380 40 Z" fill="#1a120b" stroke="#8c5e24" strokeWidth="4" /><circle cx="195" cy="-25" r="58" fill="#0d0906" stroke="#8a7764" strokeWidth="8" strokeDasharray="8 6" /><circle cx="195" cy="-25" r="26" fill="url(#fa-fire)" /></g>)}
+                <circle r="132" fill="none" stroke="#c89246" strokeWidth="1.5" strokeDasharray="2 12" />
+              </g>
+              <g aria-hidden="true">{FOUNDRY_LINKS.map((edge) => {
+                const a = FOUNDRY_POINTS[edge.source], b = FOUNDRY_POINTS[edge.target];
+                const highlighted = edge.source === selected || edge.target === selected;
+                const shown = !filtered || matches.has(a.id) || matches.has(b.id);
+                const d = `M${a.x} ${a.y} Q${(a.x + b.x) * .34} ${(a.y + b.y) * .34} ${b.x} ${b.y}`;
+                return <g key={`${a.id}-${b.id}`} className={`fa-conduit ${highlighted ? "selected" : ""} ${edge.type !== "ROUTES" ? "fa-flow" : ""}`} style={{ opacity: shown ? undefined : .08 }}>
+                  <path className="fa-pipe-case" d={d} /><path className="fa-pipe" d={d} />
+                </g>;
+              })}</g>
+              {FOUNDRY_NODES.map(({ id }) => {
+                const n = FOUNDRY_POINTS[id], match = matches.has(id), picked = selected === id;
+                const opacity = filtered ? match ? 1 : .14 : neighbors.has(id) ? 1 : .4;
+                return <g key={id} data-node-id={id} className={`fa-node ${picked ? "selected" : ""}`} transform={`translate(${n.x} ${n.y})`}
+                  opacity={opacity} role="button" tabIndex={match ? 0 : -1} aria-hidden={!match} aria-label={n.name} aria-pressed={picked}
+                  onClick={() => { if (match) inspect(id); }} onKeyDown={(e) => { if (match && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.stopPropagation(); inspect(id); } }}>
+                  <title>{n.name} — {n.domain.toLowerCase()}</title>
+                  <circle r={Math.max(n.radius + 8, 68)} fill="transparent" />
+                  {picked && <circle className="fa-reticle" r={n.radius + 10} />}
+                  <circle className="fa-rim" r={n.radius} /><circle className="fa-face" r={n.radius - 5} />
+                  <circle cy={-n.radius * .45} r={picked ? 5 : 3} fill={picked ? "url(#fa-fire)" : FOUNDRY_COLORS[n.domain]} />
+                  <text className="fa-code" y="7">{n.code}</text>
+                  <text className="fa-node-name" y={n.radius + 25}>{n.name}</text>
+                </g>;
+              })}
+            </g>
+          </svg>
+          <p className={`fa-status ${matches.size ? "" : "empty"}`} role="status">{matches.size ? filtered ? `${matches.size} matching sources · select a node to inspect` : "Drag to explore · select any source" : "No matching sources. Clear the search or choose another domain."}</p>
+          <div className="fa-controls" role="group" aria-label="Map controls">
+            <button className="fa-control" aria-label="Zoom out" disabled={camera.scale <= .6} onClick={() => zoom(-.2)}>−</button>
+            <output aria-label="Map zoom">{Math.round(camera.scale * 100)}%</output>
+            <button className="fa-control" aria-label="Zoom in" disabled={camera.scale >= 2.6} onClick={() => zoom(.2)}>+</button>
+            <button className="fa-control" onClick={reset}>Reset map</button>
+          </div>
+        </div>
+        <aside ref={inspectorRef} className="fa-inspector" aria-label="Selected source">
+          <div className="fa-eyebrow">{active.domain} · {active.code}</div>
+          <h2>{active.name}</h2>
+          <p className="fa-description">{active.desc}</p>
+          <div className="fa-badges"><span>{connected.length} LINKS</span><span>REFERENCE MAP</span></div>
+          {active.url && <a className="fa-control" style={{ display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 18 }} href={active.url} target="_blank" rel="noopener noreferrer">Open source <svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 10 10 2M3 2h7v7" /></svg></a>}
+          <div className="fa-eyebrow">Connected sources</div>
+          <div className="fa-relations">{connected.map((edge) => {
+            const other = FOUNDRY_POINTS[edge.source === selected ? edge.target : edge.source];
+            return <button className="fa-relation" key={other.id} onClick={() => selectRelated(other.id)}><span>{other.name}</span><small>{edge.type === "ROUTES" ? "AUTHORITY" : edge.type}</small></button>;
+          })}</div>
+        </aside>
+      </div>
+      <div className="fa-footer"><span>── authority &nbsp; ┄ flow / record</span>Illustrated relationships · motion is not live activity. Source documents remain authoritative.</div>
+    </section>
+  );
+}
+
 function GraphOverlay({ open, onClose }) {
   const [tab, setTab] = useState("foundry");
   const closeRef = useRef(null);
@@ -4923,12 +5589,13 @@ function GraphOverlay({ open, onClose }) {
           <div className="codex kg-tabs" role="tablist" aria-label="Graph">
             <button role="tab" aria-selected={tab === "foundry"} className={`seg sm ${tab === "foundry" ? "on" : ""}`} onClick={() => setTab("foundry")}>Foundry</button>
             <button role="tab" aria-selected={tab === "works"} className={`seg sm ${tab === "works" ? "on" : ""}`} onClick={() => setTab("works")}>The Works</button>
+            <button role="tab" aria-selected={tab === "source"} className={`seg sm ${tab === "source" ? "on" : ""}`} onClick={() => setTab("source")}>Source map</button>
           </div>
-          {tab === "foundry" && <a className="kg-open" href={FOUNDRY_URL} target="_blank" rel="noopener noreferrer">Open full page ↗</a>}
+          {tab === "source" && <a className="kg-open" href={FOUNDRY_URL} target="_blank" rel="noopener noreferrer">Open full page ↗</a>}
           <button ref={closeRef} type="button" className="kg-close" onClick={onClose} aria-label="Close Knowledge Graph">✕</button>
         </div>
         <div className="kg-body">
-          {tab === "foundry"
+          {tab === "foundry" ? <FoundryAtlas /> : tab === "source"
             ? <iframe className="kg-frame" src={FOUNDRY_URL} title="Baxstar Knowledge Foundry" referrerPolicy="no-referrer"
                 sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" />
             : <div className="kg-works"><EcoGraph defaultOpen /></div>}

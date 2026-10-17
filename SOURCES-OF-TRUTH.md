@@ -41,6 +41,19 @@ of links to Brady's other properties.
 
 ## Provenance — who did what
 
+- **Codex, 2026-10-17 UTC — requested alternative:** created
+  `codex/ember-brass-pressure-alt` from `108d444`, preserving the original branch.
+  Brady supplied Argon's HTML as `Pasted text.txt` (83,262 bytes; SHA-256
+  `808b9abe1b68cbf18fdf3ed19bda5c871553fe1bf2b84d8e41895c07dfe40c32`).
+  Its brass controls and orbital graph informed the alternative. Codex completed
+  the truncated graph behavior in React, retained the existing dock/skull, brightened
+  text, and added tactile controls. Prototype sync/task assertions were not imported.
+  The 20-node graph's structure comes from the supplied reference; its descriptive
+  copy was qualified to avoid invented live-system claims. The original source map
+  remains linked. The isolated voice lab gains adjustable pause/manual finish,
+  explicit transcript copy, and honest preview limits. No booking-app code, production
+  Worker, or credential was changed. Verification/deployment: `docs/ALTERNATIVE-PREVIEW.md`.
+
 - **Claude Code (Anthropic CLI)** started and carried this build. Working with Brady
   Baxter, it consolidated the app + deploy build + voice rig into this repo, then did
   the full **steampunk retheme** and **integrated the ChatGPT steampunk asset pack**
