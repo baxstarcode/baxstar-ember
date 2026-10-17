@@ -3,6 +3,17 @@
 Latest local continuation: **2026-10-17 UTC**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.
 
+**Production publication request, 2026-10-17:** Brady explicitly requested the current
+website on `ember.baxstarfishing.com`. This is a Pages-only release: authenticated
+inspection of the live Worker source confirms all four current model IDs are already
+accepted by version `6110e34c-2363-41c5-a5f6-fab751ecb717`. No Worker, OAuth grant,
+secret, coordinator, or speech-provider activation is part of this publication.
+`EMBER_VOICE_RELEASED=false` keeps the mouth panel recording/playback-only on the
+production hostname too. The future backend cutover remains separate. The known
+intermittent Mission Control multi-tab save issue remains open; use one editing tab.
+The complete release matrix passed in the preceding continuous session; the small
+production voice gate receives a fresh build and focused voice verification.
+
 **Voice continuation, 2026-10-17:** the orange mouth now opens an explicit recorded-
 voice preview. Opening Ember/panel never arms the mic. Preview hosts permit local
 record/playback only. The new production path records with MediaRecorder, releases

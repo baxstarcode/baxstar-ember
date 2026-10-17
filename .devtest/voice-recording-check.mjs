@@ -8,7 +8,7 @@ const root = path.resolve(new URL('..', import.meta.url).pathname);
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/chromium', args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
 let checks = 0;
 const check = (name, ok) => { assert.ok(ok, name); checks++; console.log(`PASS — ${name}`); };
-async function fixture({ preview = true, width = 390, permission = 'normal', blockedPlay = false } = {}) {
+async function fixture({ preview = true, width = 390, permission = 'normal', blockedPlay = false, enableSpeech = !preview } = {}) {
   const origin = preview ? 'https://voice-test.baxstar-ember.pages.dev' : 'https://ember.baxstarfishing.com';
   const context = await browser.newContext({ viewport: { width, height: width > 500 ? 1000 : 844 }, permissions: ['microphone', 'clipboard-read', 'clipboard-write'], reducedMotion: 'reduce', serviceWorkers: 'block' });
   const page = await context.newPage(); page.setDefaultTimeout(8000);
@@ -51,7 +51,15 @@ async function fixture({ preview = true, width = 390, permission = 'normal', blo
     try {
       const file = path.join(root, url.pathname === '/' ? 'index.html' : url.pathname);
       const type = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png' }[path.extname(file)] || 'application/octet-stream';
-      return route.fulfill({ contentType: type, body: await fs.readFile(file) });
+      let content = await fs.readFile(file);
+      // Exercise future activated speech with intercepted providers only. The
+      // shipped production build must remain recording-only until activation.
+      if (file.endsWith('index.html') && enableSpeech) {
+        const html = content.toString();
+        content = html.replace(/((?:var|let|const) EMBER_VOICE_RELEASED = )false;/, '$1true;');
+        assert.notEqual(content, html, 'test-only activation marker exists');
+      }
+      return route.fulfill({ contentType: type, body: content });
     } catch { return route.fulfill({ status: 404, body: 'Not found' }); }
   });
   await page.goto(origin); await page.locator('.reactor-stage').waitFor();
@@ -62,6 +70,12 @@ async function fixture({ preview = true, width = 390, permission = 'normal', blo
   return { context, page, dialog, calls, errors, open, record, released, mode: value => { mode = value; } };
 }
 try {
+  {
+    const f = await fixture({ preview: false, enableSpeech: false }); await f.open();
+    check('shipped production voice is recording-only until explicit activation', await f.dialog.getByRole('button', { name: 'Transcribe', exact: true }).isDisabled() && await f.dialog.getByRole('button', { name: 'Send to Ember' }).isDisabled());
+    check('production mouth still offers an explicit microphone check', await f.dialog.getByRole('button', { name: 'Record', exact: true }).isEnabled() && await f.page.evaluate(() => voiceRequests === 0));
+    await f.context.close();
+  }
   for (const width of [1440, 390]) {
     const f = await fixture({ width }); await f.open();
     check(`${width}: page and mouth panel do not acquire the mic`, await f.page.evaluate(() => voiceRequests === 0 && voiceLegacy === 0));

@@ -65,7 +65,9 @@ page exit, device track end and reported audio interruption cancel the active tu
 returning never restarts it. Stop cancels that voice turn's chat without cancelling
 an unrelated request. Escape/close also stop and discard the recording.
 
-Preview hosts allow only local record/playback. No recording is uploaded there.
+`EMBER_VOICE_RELEASED=false` currently allows only local record/playback on **all**
+hosts, including production. Keep this off until backend/provider/device verification.
+Even after that flag is enabled, preview hosts allow only local record/playback. No recording is uploaded there.
 Production flow is Record → Finish → Transcribe → review/edit → Send. Sent words
 enter the existing persisted chat with its selected model, business context and
 read-only connector policy. Spoken replies are requested only after a complete

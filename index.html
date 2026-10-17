@@ -342,6 +342,7 @@ if ("serviceWorker" in navigator) {
 </script>
 <script>(() => {
   const { useState, useEffect, useRef } = React;
+  const EMBER_VOICE_RELEASED = false;
   const MCP_SERVERS = [
     // The browser requests names only. The Worker owns destinations, credentials,
     // and read-only toolsets, so client code cannot redirect or expand access.
@@ -777,7 +778,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-17 21:07Z".startsWith("__") ? "dev" : "2026-10-17 21:07Z";
+  const BUILD_STAMP = "2026-10-17 22:23Z".startsWith("__") ? "dev" : "2026-10-17 22:23Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1391,7 +1392,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const audioRef = useRef(null), dialogRef = useRef(null), sendRef = useRef(onSend);
     sendRef.current = onSend;
     const control = useRef({ epoch: 0, live: true, stream: null, recorder: null, request: null, timers: [], url: "", blob: null, events: [] });
-    const preview = location.hostname !== "ember.baxstarfishing.com";
+    const preview = !EMBER_VOICE_RELEASED || location.hostname !== "ember.baxstarfishing.com";
     const capable = window.isSecureContext && !!((_a = navigator.mediaDevices) == null ? void 0 : _a.getUserMedia) && !!window.MediaRecorder;
     const busy = ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(state.phase);
     function mark(event) {

@@ -18,6 +18,10 @@ import { useState, useEffect, useRef } from "react";
 
 /* ---------- CONFIG ---------- */
 
+// Recorded-audio checks are released; live transcription/speech awaits the
+// separate Worker activation and physical-device gate, including on production.
+const EMBER_VOICE_RELEASED = false;
+
 const MCP_SERVERS = [
   // The browser requests names only. The Worker owns destinations, credentials,
   // and read-only toolsets, so client code cannot redirect or expand access.
@@ -1306,7 +1310,7 @@ function EmberVoice({ onClose, onSend, chatBusy }) {
   const audioRef = useRef(null), dialogRef = useRef(null), sendRef = useRef(onSend);
   sendRef.current = onSend;
   const control = useRef({ epoch: 0, live: true, stream: null, recorder: null, request: null, timers: [], url: "", blob: null, events: [] });
-  const preview = location.hostname !== "ember.baxstarfishing.com";
+  const preview = !EMBER_VOICE_RELEASED || location.hostname !== "ember.baxstarfishing.com";
   const capable = window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && !!window.MediaRecorder;
   const busy = ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(state.phase);
   function mark(event) { const c = control.current; c.events.push({ event, ms: Math.round(performance.now()) }); if (c.events.length > 160) c.events.shift(); }

@@ -1,5 +1,15 @@
 # Deploying Ember
 
+**Pages-only publication, 2026-10-17:** Brady explicitly requested the current version
+on the custom domain. Inspection of the actual live Worker source confirms that
+`6110e34c-2363-41c5-a5f6-fab751ecb717` already accepts the current UI model IDs.
+The UI can therefore be published while leaving the Worker, existing grants and
+secrets unchanged. `EMBER_VOICE_RELEASED=false` retains recording-only voice on
+production. The coordinator/fresh-consent/speech cutover below remains pending;
+this publication does not perform it. The existing intermittent board multi-tab
+save issue is disclosed and remains open; a later green test is not a repair.
+
+
 **Voice preview addition (2026-10-17):** the branch adds exact
 `/api/voice/transcribe` and `/api/voice/speak` routes, disabled until explicitly
 configured. Follow `docs/VOICE-REBUILD.md` for the AI binding, activation, single-writer
