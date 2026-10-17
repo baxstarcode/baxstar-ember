@@ -8,17 +8,29 @@ saved handoff `108d444`; `codex/ember-command-plate-light` and its working desig
 preserved. Brady supplied Argon HTML and asked for vivid warm colors, outlined/tactile
 buttons, brighter text, and its knowledge graph, while explicitly retaining the large
 skull and pinned six-item dock. The alternative adds that finish and an interactive
-20-node/34-link Foundry atlas. Search, domain filters, node details, pan/zoom, motion
-pause, reduced motion, and phone source selection work locally. The existing Works
+20-node/34-link Foundry atlas. Brady's newer, complete **Universal Responsive Modal
+v2** upload now supplies the graph's exact node layout, coral/brass finish, glass
+filters, rotating rings, and moving particles. Desktop source details become a
+collapsible phone drawer. Search, domain filters, drag/pinch/wheel/keyboard zoom,
+motion pause, reduced motion, and phone source selection work locally. The existing Works
 graph and external source map remain separate tabs. The atlas describes reference
 relationships; it does not represent live data flow or change another application's
 repository. See `docs/ALTERNATIVE-PREVIEW.md` for provenance and the release checkpoint.
 
-The alternative is pushed at implementation commit `74c3ae3` and published to
+The earlier alternative was pushed at implementation commit `74c3ae3` and published to
 **https://3ee28ad7.baxstar-ember.pages.dev**. Cloudflare's API confirms all preview
 deployment stages succeeded at 2026-10-17 02:54:26 UTC. Combined local verification
 is 830 passing checks and the one pre-existing concurrent-save failure described
 below; this is not a production release or a fully passing release matrix.
+
+The v2 graph continuation passes **285/285 focused browser checks** (alternative,
+ecosystem, UI, layout/truth), plus the production build/Pages staging. Desktop,
+phone portrait, 320 px narrow phone, and phone landscape were visually inspected.
+All application source outside the graph section is unchanged. The full release
+matrix was not rerun; the concurrent-save blocker remains open. See the alternative
+preview document for publication status and upload provenance. Brady's report of a
+preview showing labels without styling has not been reproduced in his browser;
+local rendering and successful deployment metadata do not establish its resolution.
 
 The dashboard now links to the isolated Voice Lab. Adjustable phrase grace, manual
 Finish, Escape cancellation, transcript copy, and state-driven instrument lighting

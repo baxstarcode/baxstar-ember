@@ -8,7 +8,7 @@ not a production replacement or a change to the booking app.
 ## Review the design
 
 - Original preview: https://5b56930b.baxstar-ember.pages.dev
-- Alternative: https://3ee28ad7.baxstar-ember.pages.dev
+- Earlier alternative, before the complete v2 graph: https://3ee28ad7.baxstar-ember.pages.dev
 - Branch alias: https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev
 - Production remains https://ember.baxstarfishing.com and has not received this branch.
 
@@ -26,22 +26,46 @@ are preserved. The alternative adds warmer vivid button faces, etched brass tool
 outlines, brighter text, and physical press depth using shadow/top changes instead
 of transformed small text. Reduced motion suppresses travel.
 
-Knowledge Graph opens the new Foundry atlas: 20 sources, 34 relationships, 5 domains,
-animated illustrated pipes/gears, source search, filters, pan/zoom, reset, and an
-inspector. Phone controls remain visible and a source selector provides readable
-access to every result. The existing Works graph and original external source map
-remain available as tabs. The atlas is a reference illustration, not live traffic.
+Knowledge Graph now uses the **Universal Responsive Modal v2** presentation from
+Brady's second, complete Argon upload: its exact 20 node positions, 34 connections,
+coral/brass palette, glass filter bar, rotating rings, molten router, and moving
+particles. Source details sit in a desktop inspector or a collapsible phone drawer.
+Search, domain filters, source selection, drag/pinch/wheel/keyboard navigation,
+reset, motion pause, and system reduced motion work locally. The existing Works
+graph and external source map remain available as tabs. Relationships and movement
+are illustrative; they do not report live traffic.
+
+The v2 continuation changes only the graph section of the application. The dock,
+skull, dashboard, voice lab, persistence, API gateway, and Worker are unchanged.
+Preview publication for this continuation is recorded in the next checkpoint below.
+
+Brady reported that the earlier preview showed labels without graphics or styling.
+That live-browser symptom remains unverified: the workspace can inspect deployment
+metadata but its proxy cannot retrieve the preview HTML. Local built HTML renders
+with styling and assets. Do not claim the user's viewing issue is fixed merely
+because the Cloudflare build succeeds.
 
 ## Supplied reference
 
 Brady supplied Argon's implementation as `Pasted text.txt`, 83,262 bytes, via
 `sediment://file_00000000dc8081f58d353b8b0655004d`. SHA-256:
 `808b9abe1b68cbf18fdf3ed19bda5c871553fe1bf2b84d8e41895c07dfe40c32`.
-The upload ends mid-JavaScript; its CSS, graph markup, and 20-node/34-link data were
+This first upload ends mid-JavaScript; its CSS, graph markup, and 20-node/34-link data were
 available. The graph interactions were completed in canonical React source.
 Prototype fake sync/task completion and unsupported live-system assertions were
 excluded. Only known source URLs were added. The raw paste is not a new app root
 or repository source of truth.
+
+Brady subsequently supplied the complete graph, titled **Baxstar Knowledge Foundry
+— Universal Responsive Modal v2**, as `Pasted text.txt`, 47,783 bytes, via
+`sediment://file_00000000272c81f5b5a31a253406700c`. SHA-256:
+`f7c486e6f4af38d48839e83531bca63e390d7705e970d4071c91b2e6390d2420`.
+This replaces the earlier adaptation's graph appearance. The supplied node angles,
+radii, colors, rings, node faces, filter styling, and drawer layout are now in the
+canonical React component. The integration corrects the prototype's clipped phone
+header and coordinate scaling during gestures, retains keyboard/browser zoom, and
+stops particles and rings together. Neutral descriptions and known source links
+remain; prototype LIVE/ACTIVE assertions and inert action buttons were not imported.
 
 ## Voice
 
@@ -62,6 +86,17 @@ physical reliability. See `work/desktop-voice-probe/README.md`.
 
 ## Verification
 
+**Complete v2 graph continuation:** build and exact 25-file Pages staging passed.
+The focused browser matrix passed **285/285 checks**: alternative interactions
+122, ecosystem 40, existing UI 36, and layout/truth 87. Renders were inspected at
+1440×1000, 390×844, 320×700, and 844×390, at device scale factor 3. Tests cover real
+browser pointer dispatch for one-to-one dragging, cursor-anchored wheel zoom,
+two-finger pinch, cancellation recovery, phone drawer visibility, particles pausing,
+reduced motion, and preserved dock destinations. Touch is browser-simulated, not a
+physical phone verification. The full release matrix was not rerun for this graph-only
+continuation; its existing concurrent-save failure remains open as documented below.
+
+**Earlier alternative checkpoint (`74c3ae3`):**
 The build and exact 25-file Pages staging passed. Desktop 1440×1000 and phone
 390×844 renders were inspected at device scale factor 3. New browser checks cover
 pressed controls, preserved dock destinations, graph interactions, visible phone

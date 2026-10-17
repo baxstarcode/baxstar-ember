@@ -4951,12 +4951,10 @@ function DrivePlate() {
   );
 }
 
-/* KNOWLEDGE GRAPH overlay. Default tab: the Baxstar Knowledge Foundry — the graph
-   Brady preferred, a self-contained page in baxstarcode/baxstar-knowledge-network —
-   embedded, so it keeps its own search, filters, zoom and sources with no copy to
-   drift. It loads only when opened. Second tab: THE WORKS, which used to sit
-   collapsed on the OPS page. Backdrop 50% black; Escape, the close button or a
-   tap outside the sheet closes it; focus returns to the dock. */
+/* KNOWLEDGE GRAPH overlay. The alternative uses Brady's supplied Argon
+   Universal Responsive Modal v2 presentation for the local Foundry atlas.
+   The Works and the original external source map remain separate tabs.
+   Escape, close, or the backdrop closes it; focus returns to the existing dock. */
 // The 20 subjects and 34 relationships come from Brady's pasted Argon reference.
 // This is an illustrative source map, not live telemetry or a second source of
 // business facts. Keep the original Foundry and repository ecosystem accessible.
@@ -4968,9 +4966,10 @@ const FOUNDRY_NODES = [
     "name": "Source of Truth",
     "domain": "GOVERNANCE",
     "orbit": 0,
-    "radius": 60,
+    "radius": 56,
     "desc": "Routes a question to its owning source. This map illustrates those relationships; the source documents remain authoritative.",
-    "url": "https://docs.google.com/document/d/1AgIxAj0YM8XNTTMHVcJInNAquLKnon-WB4i2DMzTzRQ/edit"
+    "url": "https://docs.google.com/document/d/1AgIxAj0YM8XNTTMHVcJInNAquLKnon-WB4i2DMzTzRQ/edit",
+    "angle": 0
   },
   {
     "id": "VOICE",
@@ -4978,8 +4977,9 @@ const FOUNDRY_NODES = [
     "name": "Brand Voice",
     "domain": "GOVERNANCE",
     "orbit": 210,
-    "radius": 42,
-    "desc": "The brand voice and copy standards used when drafting customer-facing material."
+    "radius": 38,
+    "desc": "The brand voice and copy standards used when drafting customer-facing material.",
+    "angle": -90
   },
   {
     "id": "BUILD",
@@ -4987,9 +4987,10 @@ const FOUNDRY_NODES = [
     "name": "Build Standards",
     "domain": "SYSTEMS",
     "orbit": 210,
-    "radius": 42,
+    "radius": 38,
     "desc": "The shared web-build standards for interfaces, accessibility, reliability, and verification.",
-    "url": "https://docs.google.com/document/d/1VfETYcTNktp-6cZLVAHbAUDBmR1NqlwMGCgl2Xo5DY0/edit"
+    "url": "https://docs.google.com/document/d/1VfETYcTNktp-6cZLVAHbAUDBmR1NqlwMGCgl2Xo5DY0/edit",
+    "angle": -38
   },
   {
     "id": "SITE",
@@ -4997,8 +4998,9 @@ const FOUNDRY_NODES = [
     "name": "Site / HTML Authority",
     "domain": "CHANNELS",
     "orbit": 210,
-    "radius": 42,
-    "desc": "The ownership and publishing context for websites and HTML surfaces."
+    "radius": 38,
+    "desc": "The ownership and publishing context for websites and HTML surfaces.",
+    "angle": 14
   },
   {
     "id": "AI_OPS",
@@ -5006,8 +5008,9 @@ const FOUNDRY_NODES = [
     "name": "AI Context",
     "domain": "SYSTEMS",
     "orbit": 210,
-    "radius": 42,
-    "desc": "Shared working context for Brady and the AI tools helping with his projects."
+    "radius": 38,
+    "desc": "Shared working context for Brady and the AI tools helping with his projects.",
+    "angle": 66
   },
   {
     "id": "OPS",
@@ -5015,8 +5018,9 @@ const FOUNDRY_NODES = [
     "name": "Operations Context",
     "domain": "BUSINESS",
     "orbit": 210,
-    "radius": 42,
-    "desc": "The operating context for day-to-day business work."
+    "radius": 38,
+    "desc": "The operating context for day-to-day business work.",
+    "angle": 118
   },
   {
     "id": "POLICY",
@@ -5024,8 +5028,9 @@ const FOUNDRY_NODES = [
     "name": "Policy System",
     "domain": "GOVERNANCE",
     "orbit": 210,
-    "radius": 42,
-    "desc": "The owning documents for business policies and customer terms."
+    "radius": 38,
+    "desc": "The owning documents for business policies and customer terms.",
+    "angle": 170
   },
   {
     "id": "TECH",
@@ -5033,8 +5038,9 @@ const FOUNDRY_NODES = [
     "name": "Tech Stack Context",
     "domain": "SYSTEMS",
     "orbit": 210,
-    "radius": 42,
-    "desc": "The technology context and hosting map for sites, services, and integrations."
+    "radius": 38,
+    "desc": "The technology context and hosting map for sites, services, and integrations.",
+    "angle": 222
   },
   {
     "id": "CONSULT",
@@ -5042,8 +5048,9 @@ const FOUNDRY_NODES = [
     "name": "AI Consulting Framework",
     "domain": "VENTURES",
     "orbit": 380,
-    "radius": 40,
-    "desc": "Frameworks and reference material for AI consulting work."
+    "radius": 36,
+    "desc": "Frameworks and reference material for AI consulting work.",
+    "angle": -115
   },
   {
     "id": "COURSE",
@@ -5051,8 +5058,9 @@ const FOUNDRY_NODES = [
     "name": "AI for Everyday Life",
     "domain": "VENTURES",
     "orbit": 380,
-    "radius": 40,
-    "desc": "Course plans and teaching material for practical AI use."
+    "radius": 36,
+    "desc": "Course plans and teaching material for practical AI use.",
+    "angle": -65
   },
   {
     "id": "RELAY",
@@ -5060,9 +5068,10 @@ const FOUNDRY_NODES = [
     "name": "Agent Relay",
     "domain": "SYSTEMS",
     "orbit": 380,
-    "radius": 40,
+    "radius": 36,
     "desc": "Cross-agent coordination and handoff context. Messages do not replace the owning sources.",
-    "url": "https://docs.google.com/document/d/11WhUOKDqBiERVsf8LbOHJm5k9Fn01IZfOvixhsqo7sc/edit"
+    "url": "https://docs.google.com/document/d/11WhUOKDqBiERVsf8LbOHJm5k9Fn01IZfOvixhsqo7sc/edit",
+    "angle": -28
   },
   {
     "id": "LOGS",
@@ -5070,9 +5079,10 @@ const FOUNDRY_NODES = [
     "name": "Handoff Logs",
     "domain": "GOVERNANCE",
     "orbit": 380,
-    "radius": 40,
+    "radius": 36,
     "desc": "Project handoff records and recorded checkpoints.",
-    "url": "https://docs.google.com/document/d/1WVjv426vSaxp6BbQPRXOfifD2UQUJcweT3RB6xp5znE/edit"
+    "url": "https://docs.google.com/document/d/1WVjv426vSaxp6BbQPRXOfifD2UQUJcweT3RB6xp5znE/edit",
+    "angle": 5
   },
   {
     "id": "EMBER",
@@ -5080,9 +5090,10 @@ const FOUNDRY_NODES = [
     "name": "Ember Mission Control",
     "domain": "SYSTEMS",
     "orbit": 380,
-    "radius": 40,
+    "radius": 36,
     "desc": "This command center: chat, communications, schedule, projects, and reviewed drafts. Connection status is shown in OPS.",
-    "url": "https://ember.baxstarfishing.com"
+    "url": "https://ember.baxstarfishing.com",
+    "angle": 38
   },
   {
     "id": "COMMS",
@@ -5090,8 +5101,9 @@ const FOUNDRY_NODES = [
     "name": "Communication Engine",
     "domain": "CHANNELS",
     "orbit": 380,
-    "radius": 40,
-    "desc": "Communication context, channel guidance, and reply drafting."
+    "radius": 36,
+    "desc": "Communication context, channel guidance, and reply drafting.",
+    "angle": 70
   },
   {
     "id": "ENGINE",
@@ -5099,8 +5111,9 @@ const FOUNDRY_NODES = [
     "name": "Data Engine Handoff",
     "domain": "SYSTEMS",
     "orbit": 380,
-    "radius": 40,
-    "desc": "The context and handoffs for the business data system."
+    "radius": 36,
+    "desc": "The context and handoffs for the business data system.",
+    "angle": 102
   },
   {
     "id": "SPEC",
@@ -5108,8 +5121,9 @@ const FOUNDRY_NODES = [
     "name": "Booking Behavior Spec",
     "domain": "BUSINESS",
     "orbit": 380,
-    "radius": 40,
-    "desc": "A reference to the separate booking project’s behavior specification."
+    "radius": 36,
+    "desc": "A reference to the separate booking project\u2019s behavior specification.",
+    "angle": 134
   },
   {
     "id": "BOOK",
@@ -5117,8 +5131,9 @@ const FOUNDRY_NODES = [
     "name": "Booking App Decisions",
     "domain": "BUSINESS",
     "orbit": 380,
-    "radius": 40,
-    "desc": "The decision record for the separate booking project."
+    "radius": 36,
+    "desc": "The decision record for the separate booking project.",
+    "angle": 165
   },
   {
     "id": "ICE",
@@ -5126,8 +5141,9 @@ const FOUNDRY_NODES = [
     "name": "Ice Fleet Context",
     "domain": "BUSINESS",
     "orbit": 380,
-    "radius": 40,
-    "desc": "Operating context for the winter ice-house fleet."
+    "radius": 36,
+    "desc": "Operating context for the winter ice-house fleet.",
+    "angle": 196
   },
   {
     "id": "PRICE",
@@ -5135,8 +5151,9 @@ const FOUNDRY_NODES = [
     "name": "Pricing Engine",
     "domain": "BUSINESS",
     "orbit": 380,
-    "radius": 40,
-    "desc": "The source documents for current rates and pricing decisions."
+    "radius": 36,
+    "desc": "The source documents for current rates and pricing decisions.",
+    "angle": 226
   },
   {
     "id": "DIGI",
@@ -5144,8 +5161,9 @@ const FOUNDRY_NODES = [
     "name": "Digitized.me System",
     "domain": "VENTURES",
     "orbit": 380,
-    "radius": 40,
-    "desc": "The Digitized.me concept included in the supplied reference map."
+    "radius": 36,
+    "desc": "The Digitized.me concept included in the supplied reference map.",
+    "angle": -146
   }
 ];
 const FOUNDRY_LINKS = [
@@ -5322,244 +5340,328 @@ const FOUNDRY_LINKS = [
 ];
 
 const FOUNDRY_CSS = `
-  .fa-atlas { display:flex; flex-direction:column; height:100%; min-height:0; color:#fff8ef; }
-  .fa-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid #8c5e2466; background:#17100bf2; }
-  .fa-eyebrow { font:700 9px/1.5 var(--ember-font-ui); letter-spacing:.16em; color:#e5b368; text-transform:uppercase; }
-  .fa-counts { display:flex; flex-wrap:wrap; gap:16px; margin-left:auto; font:11px/1.5 ui-monospace,monospace; color:#dcc6a7; }
-  .fa-counts b { color:#fff; font-size:14px; }
-  .fa-control { border-radius:6px; padding:7px 11px; min-height:36px; font-size:11px; font-weight:700; cursor:pointer; }
+  .ember-alt .kg-sheet { width:min(1920px,100%); height:93vh; height:93dvh; border:1.5px solid #9e7339; border-radius:10px; background:radial-gradient(circle at 40% 52%,#d381511c,#120d09f5 58%,#090604),#0b0805; box-shadow:0 30px 90px #000f,0 0 50px #d9a75a1f,inset 0 0 0 3px #0c0906,inset 0 0 0 4px #d9a75a38; }
+  .kg-rivet { position:absolute; width:7px; height:7px; border-radius:50%; background:radial-gradient(circle at 35% 35%,#ffd89b,#785121); box-shadow:0 1px 3px #000e; z-index:3; pointer-events:none; }
+  .kg-rivet.tl { top:7px; left:7px; } .kg-rivet.tr { top:7px; right:7px; } .kg-rivet.bl { bottom:7px; left:7px; } .kg-rivet.br { bottom:7px; right:7px; }
+  .ember-alt .kg-head { gap:12px; padding:8px 18px; min-height:64px; flex-wrap:nowrap; background:linear-gradient(180deg,#20170ffa,#100b08fa); border-bottom:1px solid #d9a75a57; box-shadow:0 6px 24px #0009; }
+  .ember-alt .kg-tabs { flex:none; flex-wrap:nowrap; padding:3px; border:1px solid #9e7339; border-image:none; border-radius:7px; background:#0a0705; box-shadow:inset 0 2px 6px #000e,0 1px 0 #ffd7961f; }
+  .ember-alt .kg-tabs .seg { padding:6px 10px; font-size:11px; white-space:nowrap; border:0; border-radius:5px; background:transparent; box-shadow:none; color:#c6b29a; }
+  .ember-alt .kg-head .seg.on { background:linear-gradient(180deg,#ff8b73,#e0533c)!important; box-shadow:0 0 12px #fe7d6766,inset 0 1px 1px #fff6; color:#fff; }
+  .ember-alt .kg-title { display:flex; flex-direction:column; gap:3px; min-width:0; font:700 clamp(13px,1.3vw,19px)/1.15 var(--ember-font-display); letter-spacing:.07em; color:#f5eadc; white-space:nowrap; }
+  .kg-title small { font:9px/1.1 ui-monospace,monospace; letter-spacing:.16em; color:#d9a75a; }
+  .kg-title em { font-style:normal; color:#fe7d67; }
+  .fa-counts { margin-left:auto; display:flex; align-items:center; gap:14px; padding:6px 10px; border:1px solid #d9a75a29; border-radius:6px; background:#0a0705cc; white-space:nowrap; font:9px ui-monospace,monospace; letter-spacing:.05em; color:#c6b29a; }
+  .fa-counts b { font-size:13px; color:#fe7d67; margin-right:4px; }
+  .ember-alt .kg-close { margin-left:0; border-radius:6px; }
+  .ember-alt .kg-open { margin-left:auto; }
+  .fa-control { position:relative; top:0; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid #9e7339; border-radius:6px; padding:7px 11px; min-height:34px; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  .ember-alt :is(.fa-atlas,.kg-head) .fa-control { background:linear-gradient(180deg,#261b12,#140e09); color:#f5eadc; box-shadow:inset 0 1px 0 #ffd7962e,0 2px 5px #0009; }
+  .ember-alt :is(.fa-atlas,.kg-head) .fa-control.on { background:linear-gradient(180deg,#ff8b73,#e0533c)!important; border-color:#ffa796; color:#fff; box-shadow:0 0 12px #fe7d6766,inset 0 1px 0 #fff6; }
+  .ember-alt :is(.fa-atlas,.kg-head) .fa-control:active:not(:disabled) { box-shadow:inset 0 3px 7px #000b,0 1px 2px #000; }
   .fa-control:disabled { opacity:.45; cursor:default; }
-  .fa-filters { display:flex; gap:7px; flex-wrap:wrap; align-items:center; padding:10px 16px; background:#0c0907; border-bottom:1px solid #8c5e2444; }
-  .fa-search { flex:1 1 190px; min-width:0; max-width:260px; }
-  .fa-source-picker { display:none; }
-  .fa-search input { width:100%; min-height:36px; background:#070504; color:#fff8ef; border:1px solid #a5793d; border-radius:6px; padding:8px 10px; font-size:12px; }
-  .fa-filter-group { display:flex; gap:5px; flex-wrap:wrap; }
-  .fa-filter-group .fa-control { font-size:9px; letter-spacing:.06em; text-transform:uppercase; }
-  .fa-workspace { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 285px; min-height:0; }
-  .fa-stage { position:relative; min-width:0; min-height:0; overflow:hidden; background:radial-gradient(ellipse at 50% 44%,#51230850,transparent 65%),#070504; }
-  .fa-svg { width:100%; height:100%; min-height:270px; display:block; touch-action:none; cursor:grab; }
+  .fa-motion { flex:none; }
+  .fa-led { width:7px; height:7px; border-radius:50%; background:#73614c; }
+  .fa-motion[aria-pressed="true"] .fa-led { background:#4ade80; box-shadow:0 0 8px #4ade80; }
+  .fa-atlas { height:100%; min-height:0; position:relative; color:#f5eadc; }
+  .fa-workspace { display:flex; position:relative; width:100%; height:100%; min-height:0; overflow:hidden; }
+  .fa-stage { position:relative; flex:1; min-width:0; height:100%; overflow:hidden; background:radial-gradient(circle at 44% 52%,#fe7d6724, #d381510f 28%,transparent 62%),linear-gradient(#d9a75a06 1px,transparent 1px),linear-gradient(90deg,#d9a75a06 1px,transparent 1px); background-size:100% 100%,48px 48px,48px 48px; }
+  .fa-svg { display:block; width:100%; height:100%; padding:65px 5px 64px; touch-action:none; cursor:grab; user-select:none; }
   .fa-svg:active { cursor:grabbing; }
-  .fa-gear { transform-origin:0px -150px; animation:faGear 90s linear infinite; }
-  @keyframes faGear { to { transform:rotate(360deg); } }
-  .fa-pipe-case { fill:none; stroke:#9aa3af30; stroke-width:5; stroke-linecap:round; }
-  .fa-pipe { fill:none; stroke:url(#fa-pipe); stroke-width:2; stroke-linecap:round; }
-  .fa-conduit { opacity:.55; transition:opacity 180ms; }
-  .fa-conduit.selected { opacity:1; }
-  .fa-conduit.selected .fa-pipe { stroke:#ff923e; stroke-width:2.5; }
-  .fa-flow .fa-pipe { stroke-dasharray:5 10; animation:faFlow 18s linear infinite; }
-  @keyframes faFlow { to { stroke-dashoffset:-240; } }
-  .fa-node { cursor:pointer; transition:opacity 180ms; }
-  .fa-node .fa-rim { fill:#0d0907; stroke:url(#fa-rim); stroke-width:2.4; }
-  .fa-node .fa-face { fill:url(#fa-face); stroke:#ffe0ac40; stroke-width:1; }
-  .fa-node:hover .fa-rim,.fa-node:focus-visible .fa-rim,.fa-node.selected .fa-rim { stroke:#ffab59; stroke-width:3; }
+  .fa-filters { position:absolute; top:14px; left:18px; right:379px; z-index:2; display:flex; align-items:center; gap:8px; padding:5px 8px; max-width:100%; border:1px solid #d9a75a57; border-radius:8px; background:#0e0a07e0; box-shadow:0 10px 28px #000b,inset 0 1px 0 #ffd7961f; backdrop-filter:blur(10px); }
+  .fa-search { position:relative; flex:0 1 170px; min-width:120px; }
+  .fa-search svg { position:absolute; left:8px; top:50%; margin-top:-7px; width:13px; height:13px; color:#d9a75a; pointer-events:none; }
+  .fa-search input { width:100%; min-height:34px; padding:5px 8px 5px 26px; background:#0a0705; border:1px solid #d9a75a57; border-radius:6px; color:#f5eadc; font-size:11.5px; box-shadow:inset 0 2px 5px #000d; }
+  .fa-search input::placeholder { color:#b09b82; }
+  .fa-filter-group { display:flex; flex:1; min-width:0; overflow-x:auto; gap:2px; padding:3px; border:1px solid #9e7339; border-radius:6px; background:#0a0705; scrollbar-width:thin; }
+  .ember-alt .fa-filter-group .fa-control { flex:none; font-size:9px; letter-spacing:.03em; text-transform:uppercase; padding:5px 8px; min-height:28px; border:0; background:transparent; box-shadow:none; color:#d4bfa4; }
+  .fa-source-picker { display:none; }
+  .fa-ring { transform-origin:0 0; animation:faSpin 140s linear infinite; }
+  .fa-ring.reverse { animation-direction:reverse; animation-duration:95s; }
+  .fa-ring.medium { animation-duration:48s; }
+  @keyframes faSpin { to { transform:rotate(360deg); } }
+  .fa-pipe-case { fill:none; stroke:#9e733938; stroke-width:4.5; stroke-linecap:round; }
+  .fa-pipe { fill:none; stroke:url(#fa-conduit-grad); stroke-width:1.6; stroke-linecap:round; }
+  .fa-conduit { transition:opacity .2s; }
+  .fa-conduit.selected .fa-pipe-case { stroke:#fe7d6761; stroke-width:6; }
+  .fa-conduit.selected .fa-pipe { stroke:#fe7d67; stroke-width:2.5; }
+  .fa-flow .fa-pipe { stroke-dasharray:4 7; animation:faFlow 18s linear infinite; }
+  @keyframes faFlow { to { stroke-dashoffset:-220; } }
+  .fa-node { cursor:pointer; transition:opacity .2s; }
+  .fa-node .fa-rim { fill:#110c08; stroke:#9e7339; stroke-width:1.6; }
+  .fa-node .fa-face { fill:url(#fa-obsidian); stroke:#d9a75a47; stroke-width:1; }
+  .fa-node:hover .fa-rim,.fa-node:focus-visible .fa-rim,.fa-node.selected .fa-rim { stroke:#fe7d67; stroke-width:2.5; }
   .fa-node:focus { outline:none; }
-  .fa-reticle { fill:none; stroke:#ff9b4d; stroke-width:1.4; stroke-dasharray:5 9; }
-  .fa-code { font:bold 11px var(--ember-font-ui); fill:#fff; text-anchor:middle; letter-spacing:.08em; pointer-events:none; }
-  .fa-node-name { font:10px var(--ember-font-ui); fill:#ead5b9; text-anchor:middle; paint-order:stroke; stroke:#080503; stroke-width:4px; stroke-linejoin:round; pointer-events:none; }
-  .fa-inspector { min-height:0; overflow-y:auto; padding:22px 18px; border-left:1px solid #8c5e2480; background:linear-gradient(180deg,#20160f,#0b0806); }
-  .fa-inspector h2 { font:700 23px/1.2 var(--ember-font-display); margin:8px 0 12px; color:#fff; }
-  .fa-description { color:#e0d0ba; font-size:12px; line-height:1.65; margin-bottom:16px; }
-  .fa-badges { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:22px; }
-  .fa-badges span { padding:4px 7px; color:#e5b368; border:1px solid #8c5e24; border-radius:4px; font:9px ui-monospace,monospace; }
-  .fa-relations { display:flex; flex-direction:column; gap:4px; margin-top:8px; }
-  .fa-relation { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; min-height:42px; padding:8px; border:1px solid transparent; border-bottom-color:#8c5e2438; border-radius:4px; text-align:left; color:#f8e7d2; background:transparent; font-size:11px; cursor:pointer; }
-  .fa-relation:hover,.fa-relation:focus-visible { background:#c8924618; border-color:#a5793d; }
-  .fa-relation small { flex:none; color:#bfa07a; font-size:8px; letter-spacing:.05em; }
-  .fa-controls { position:absolute; left:12px; bottom:12px; display:flex; align-items:center; gap:6px; padding:6px; border:1px solid #8c5e2477; border-radius:8px; background:#100c09ee; }
-  .fa-controls output { font:10px ui-monospace,monospace; padding:0 5px; color:#dcc6a7; }
-  .fa-status { position:absolute; left:16px; top:12px; right:16px; pointer-events:none; color:#d2bca0; font-size:10px; letter-spacing:.04em; }
-  .fa-status.empty { padding:12px; background:#17100bf2; border:1px solid #c89246; border-radius:8px; color:#fff1de; font-size:13px; }
-  .fa-footer { padding:8px 16px; border-top:1px solid #8c5e2444; color:#c6ad8e; font-size:10px; line-height:1.4; background:#0e0a07; }
-  .fa-footer span { margin-right:16px; }
-  .fa-still .fa-flow .fa-pipe,.fa-still .fa-gear { animation-play-state:paused; }
-  .ember-alt .kg-head { flex-wrap:wrap; gap:8px; }
-  .ember-alt .kg-tabs { padding:0 3px; border-width:6px; }
-  @media (max-width:900px) {
-    .fa-workspace { display:flex; flex-direction:column; overflow:auto; }
-    .fa-stage { flex:0 0 100%; min-height:280px; }
-    .fa-inspector { flex:none; border-left:0; border-top:1px solid #8c5e2480; padding:16px; overflow:visible; }
-    .fa-toolbar,.fa-filters { padding:8px 12px; gap:7px; }
-    .fa-toolbar > div:first-child { display:none; }
-    .fa-counts { gap:9px; }
-    .fa-counts span:last-child { display:none; }
-    .fa-search { max-width:none; }
-    .fa-filter-group { width:100%; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
-    .fa-control { min-height:44px; }
-    .fa-filter-group .fa-control { flex:0 0 auto; padding:5px 10px; }
+  .fa-code { font:700 10.5px var(--ember-font-display); fill:#f5eadc; text-anchor:middle; letter-spacing:.06em; pointer-events:none; }
+  .fa-node-name { font:500 7.5px var(--ember-font-ui); fill:#c4af96; text-anchor:middle; pointer-events:none; }
+  .fa-reticle { fill:none; stroke:#fe7d67; stroke-width:1.5; stroke-dasharray:10 6; opacity:.85; animation:faSpin 48s linear infinite; transform-origin:0 0; }
+  .fa-controls { position:absolute; left:18px; bottom:18px; z-index:1; display:flex; align-items:center; gap:6px; padding:6px; border:1px solid #d9a75a57; border-radius:7px; background:#0f0a07e6; box-shadow:0 8px 24px #000b; }
+  .fa-controls output { font:10px ui-monospace,monospace; color:#d2bca0; min-width:38px; text-align:center; }
+  .fa-status { position:absolute; top:70px; left:18px; right:18px; pointer-events:none; font-size:10px; color:#c5ae91; }
+  .fa-status.empty { padding:12px; background:#17100bf2; border:1px solid #d9a75a; border-radius:8px; color:#fff1de; font-size:13px; }
+  .fa-legend { position:absolute; right:18px; bottom:22px; font:9px ui-monospace,monospace; color:#c5ae91; background:#0f0a07e6; border:1px solid #d9a75a57; padding:8px 12px; border-radius:7px; }
+  .fa-legend b { font-weight:400; color:#fe7d67; }
+  .fa-inspector { display:flex; flex-direction:column; flex:0 0 345px; min-width:0; min-height:0; margin:14px 16px 14px 0; overflow:hidden; border:1px solid #9e7339; border-radius:8px; background:linear-gradient(180deg,#1a120cf2,#0c0906fa); box-shadow:-12px 0 36px #000b,inset 0 0 0 2px #0b0805; z-index:3; }
+  .fa-sheet-toggle { display:none; }
+  .fa-inspector-content { display:flex; flex-direction:column; min-height:0; height:100%; }
+  .fa-inspector-content[hidden] { display:none; }
+  .fa-inspector-head { padding:16px 18px 12px; border-bottom:1px solid #d9a75a29; background:radial-gradient(circle at 85% 15%,#fe7d6724,transparent 60%); }
+  .fa-eyebrow { font:10px/1.4 ui-monospace,monospace; letter-spacing:.12em; color:#fe7d67; text-transform:uppercase; }
+  .fa-inspector h2 { font:700 19px/1.2 var(--ember-font-display); text-transform:uppercase; letter-spacing:.06em; margin:5px 0 8px; color:#f5eadc; }
+  .fa-description { font-size:12px; line-height:1.5; color:#c7b299; margin-bottom:12px; }
+  .fa-badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .fa-badges span { padding:4px 8px; border:1px solid #d9a75a57; border-radius:4px; background:#d9a75a1a; color:#d9a75a; font:9px ui-monospace,monospace; letter-spacing:.07em; }
+  .fa-badges span:first-child { color:#fe7d67; background:#fe7d6726; border-color:#fe7d678c; }
+  .fa-actions { display:flex; flex-wrap:wrap; gap:8px; padding:10px 18px; border-bottom:1px solid #d9a75a29; }
+  .fa-actions a { flex:1; }
+  .fa-relations-title { padding:10px 18px 4px; font:9px ui-monospace,monospace; letter-spacing:.1em; color:#b09b82; }
+  .fa-relations { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:4px 10px 12px; }
+  .fa-relation { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; min-height:40px; padding:8px 10px; margin-bottom:2px; border:1px solid transparent; border-radius:5px; text-align:left; background:transparent; color:#f5eadc; cursor:pointer; font-size:12px; }
+  .fa-relation:hover,.fa-relation:focus-visible { border-color:#9e7339; background:#d9a75a14; }
+  .fa-relation > span { display:flex; align-items:center; gap:8px; font-weight:600; }
+  .fa-pip { width:7px; height:7px; border-radius:50%; flex:none; }
+  .fa-relation small { font:9px ui-monospace,monospace; color:#b09b82; }
+  .fa-relation small.flow { color:#fe7d67; }
+  .fa-note { flex:none; padding:8px 18px; border-top:1px solid #d9a75a29; color:#baa488; font-size:10px; line-height:1.4; }
+  .fa-still .fa-ring,.fa-still .fa-reticle,.fa-still .fa-flow .fa-pipe { animation-play-state:paused; }
+  @media (max-width:1240px) { .fa-counts { display:none; } .fa-motion { margin-left:auto; } .fa-legend { display:none; } }
+  @media (max-width:1024px) {
+    .ember-alt .kg-sheet { width:100%; height:100%; }
+    .ember-alt .kg-head { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:7px 10px; padding:8px 12px; }
+    .ember-alt .kg-tabs { grid-column:1; grid-row:1; width:fit-content; max-width:100%; }
+    .ember-alt .kg-tabs .seg { min-height:44px; padding:6px 10px; }
+    .ember-alt .kg-title { grid-column:1; grid-row:2; max-width:calc(100% - 85px); font-size:clamp(11px,2.8vw,16px); white-space:normal; }
+    .kg-title small { display:none; }
+    .ember-alt .kg-close { grid-column:2; grid-row:1; justify-self:end; }
+    .fa-motion { grid-column:1 / -1; grid-row:2; justify-self:end; margin-left:0; min-height:44px; font-size:10px; }
+    .ember-alt .kg-open { grid-column:1; grid-row:3; margin-left:0; }
+    .fa-filters { left:12px; right:12px; top:10px; flex-wrap:wrap; gap:6px; }
+    .fa-search { flex:0 0 135px; min-width:0; }
+    .fa-search input { min-height:44px; font-size:12px; }
+    .fa-filter-group { border:0; padding:0; }
+    .ember-alt .fa-filter-group .fa-control { min-height:44px; padding-inline:10px; }
     .fa-source-picker { display:block; width:100%; }
-    .fa-source-picker select { width:100%; padding:8px 10px; min-height:44px; border:1px solid #a5793d; background:#100b07; color:#fff8ef; border-radius:6px; font-size:12px; }
-    .fa-relation { min-height:44px; }
-    .fa-svg { min-height:280px; padding:18px 0 64px; }
-    .ember-alt .kg-title { flex:1; font-size:11px; order:0; }
-    .ember-alt .kg-close { order:1; }
-    .ember-alt .kg-tabs { order:2; width:100%; justify-content:space-between; }
-    .ember-alt .kg-tabs .seg { flex:1; }
-    .ember-alt .kg-open { font-size:10px; order:3; }
+    .fa-source-picker select { width:100%; padding:8px 10px; min-height:44px; background:#0a0705; color:#f5eadc; border:1px solid #d9a75a57; border-radius:6px; font-size:12px; }
+    .fa-svg { padding:126px 4px 154px; }
+    .fa-status { top:117px; left:14px; font-size:9px; }
+    .fa-controls { bottom:82px; left:12px; }
+    .fa-control,.fa-relation { min-height:44px; }
+    .fa-inspector { position:absolute; left:0; right:0; bottom:0; width:100%; height:68px; max-height:calc(100% - 12px); flex:none; margin:0; border-radius:14px 14px 0 0; transition:height 220ms ease; }
+    .fa-inspector.expanded { height:min(62vh,650px); height:min(62dvh,650px); }
+    .fa-sheet-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; flex:none; width:100%; min-height:66px; padding:16px; border:0; background:radial-gradient(circle at 85% 15%,#fe7d6724,transparent 60%); color:#f5eadc; text-align:left; cursor:pointer; font:700 14px var(--ember-font-display); }
+    .fa-sheet-toggle::before { content:""; position:absolute; width:42px; height:4px; top:7px; left:calc(50% - 21px); border-radius:2px; background:#9e7339; }
+    .fa-sheet-toggle small { color:#fe7d67; font:10px var(--ember-font-ui); white-space:nowrap; }
+    .fa-inspector-content { flex:1; min-height:0; overflow-y:auto; }
+    .fa-relations { flex:none; overflow:visible; }
+  }
+  @media (max-width:360px) { .ember-alt .kg-tabs .seg { font-size:10px; padding:6px 7px; } .ember-alt .kg-title { font-size:11px; } .fa-motion { padding:6px 7px; font-size:9px; } .fa-search { flex-basis:118px; } }
+  @media (max-height:600px) and (max-width:1024px) {
+    .ember-alt .kg-overlay { padding:6px; }
+    .fa-source-picker { display:none; }
+    .fa-svg { padding-top:66px; padding-bottom:64px; }
+    .fa-status { top:68px; }
+    .fa-controls { bottom:66px; }
+    .fa-inspector { height:56px; }
+    .fa-sheet-toggle { min-height:54px; padding-block:12px; }
+  }
+  @media (min-width:600px) and (max-height:600px) and (max-width:1024px) {
+    .ember-alt .kg-head { display:flex; }
+    .ember-alt .kg-title { flex:1; max-width:none; font-size:12px; }
+    .fa-motion { margin-left:auto; }
   }
   @media (prefers-reduced-motion:reduce) { .fa-atlas * { animation:none!important; transition:none!important; } }
 `;
 
 const FOUNDRY_DOMAINS = ["GOVERNANCE", "BUSINESS", "SYSTEMS", "CHANNELS", "VENTURES"];
-const FOUNDRY_COLORS = { GOVERNANCE: "#eac47a", BUSINESS: "#ff8c46", SYSTEMS: "#ead9bc", CHANNELS: "#e99d61", VENTURES: "#ffd28e" };
-const FOUNDRY_POINTS = Object.fromEntries(FOUNDRY_NODES.map((node) => {
-  const ring = FOUNDRY_NODES.filter((n) => n.orbit === node.orbit);
-  // Even spacing resolves the overlapping PRICE/DIGI nodes in the pasted sketch.
-  const angle = (-90 + ring.indexOf(node) * 360 / ring.length) * Math.PI / 180;
-  return [node.id, { ...node, x: node.orbit * Math.cos(angle), y: node.orbit * Math.sin(angle) }];
+// The small domain indicators follow Brady's explicitly supplied Argon v2 colors.
+const FOUNDRY_COLORS = { GOVERNANCE:"#fe7d67", SYSTEMS:"#f59e0b", BUSINESS:"#eab308", CHANNELS:"#38bdf8", VENTURES:"#a855f7" };
+const FOUNDRY_POINTS = Object.fromEntries(FOUNDRY_NODES.map((n) => {
+  const angle = n.angle * Math.PI / 180;
+  return [n.id, { ...n, x:n.orbit * Math.cos(angle), y:n.orbit * Math.sin(angle) }];
 }));
+const FOUNDRY_PATHS = FOUNDRY_LINKS.map((edge) => {
+  const a = FOUNDRY_POINTS[edge.source], b = FOUNDRY_POINTS[edge.target];
+  const x = a.id === "ROUTER" ? (a.x + b.x) * .52 - (b.y - a.y) * .12 : (a.x + b.x) * .42;
+  const y = a.id === "ROUTER" ? (a.y + b.y) * .52 + (b.x - a.x) * .12 : (a.y + b.y) * .42;
+  return { ...edge, a, b, x, y, d:`M${a.x} ${a.y} Q${x} ${y} ${b.x} ${b.y}` };
+});
+const foundryParticlePoint = (p, t) => ({ x:(1-t)**2*p.a.x+2*(1-t)*t*p.x+t*t*p.b.x, y:(1-t)**2*p.a.y+2*(1-t)*t*p.y+t*t*p.b.y });
+const foundryCamera = (c) => {
+  const scale = Math.max(.5, Math.min(2.6, c.scale));
+  return { x:Math.max(-650*scale,Math.min(650*scale,c.x)), y:Math.max(-650*scale,Math.min(650*scale,c.y)), scale };
+};
 
-function FoundryAtlas() {
+function FoundryAtlas({ motion, reduced }) {
   const [selected, setSelected] = useState("ROUTER");
   const [domain, setDomain] = useState("ALL");
   const [query, setQuery] = useState("");
-  const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
-  const [motion, setMotion] = useState(true);
-  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [camera, setCamera] = useState({ x:0, y:0, scale:1 });
+  const [expanded, setExpanded] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width:1024px)").matches);
   const [visible, setVisible] = useState(() => !document.hidden);
-  const dragRef = useRef(null);
-  const inspectorRef = useRef(null);
-  const inspect = (id) => {
-    setSelected(id);
-    if (window.matchMedia("(max-width:900px)").matches) requestAnimationFrame(() => inspectorRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }));
+  const cameraRef = useRef(camera), pointers = useRef(new Map()), gesture = useRef(null), draggedRef = useRef(false);
+  const svgRef = useRef(null), particlesRef = useRef(null), particleClock = useRef(0);
+  const setView = (next) => { cameraRef.current = foundryCamera(typeof next === "function" ? next(cameraRef.current) : next); setCamera(cameraRef.current); };
+  const inspect = (id) => { setSelected(id); setExpanded(true); };
+  useEffect(() => {
+    const media = window.matchMedia("(max-width:1024px)");
+    const resize = () => { setCompact(media.matches); pointers.current.clear(); gesture.current = null; };
+    const visibility = () => { setVisible(!document.hidden); if (document.hidden) { pointers.current.clear(); gesture.current = null; } };
+    media.addEventListener("change", resize); document.addEventListener("visibilitychange", visibility);
+    return () => { media.removeEventListener("change", resize); document.removeEventListener("visibilitychange", visibility); pointers.current.clear(); };
+  }, []);
+  const animate = motion && !reduced && visible;
+  useEffect(() => {
+    if (!animate) return undefined;
+    let frame, previous = null;
+    const dots = Array.from(particlesRef.current?.children || []);
+    const tick = (time) => {
+      if (previous !== null) particleClock.current += Math.min(64, time - previous) / 1000;
+      previous = time;
+      dots.forEach((dot, index) => {
+        const p = foundryParticlePoint(FOUNDRY_PATHS[index], (index * .13 + particleClock.current * (.08 + index % 5 * .014)) % 1);
+        dot.setAttribute("cx", p.x); dot.setAttribute("cy", p.y);
+      });
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [animate]);
+  const point = (clientX, clientY) => {
+    const matrix = svgRef.current?.getScreenCTM();
+    return matrix ? new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse()) : null;
+  };
+  const zoomTo = (scale, anchor = { x:0, y:0 }) => {
+    const c = cameraRef.current, bounded = Math.max(.5, Math.min(2.6, scale)), ratio = bounded / c.scale;
+    setView({ scale:bounded, x:anchor.x - (anchor.x - c.x) * ratio, y:anchor.y - (anchor.y - c.y) * ratio });
   };
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(media.matches);
-    const visibility = () => setVisible(!document.hidden);
-    media.addEventListener("change", update);
-    document.addEventListener("visibilitychange", visibility);
-    return () => { media.removeEventListener("change", update); document.removeEventListener("visibilitychange", visibility); };
+    const svg = svgRef.current;
+    const wheel = (event) => {
+      if (!event.deltaY) return;
+      event.preventDefault();
+      const anchor = point(event.clientX, event.clientY);
+      if (anchor) zoomTo(cameraRef.current.scale * (event.deltaY < 0 ? 1.12 : 1 / 1.12), anchor);
+    };
+    svg.addEventListener("wheel", wheel, { passive:false });
+    return () => svg.removeEventListener("wheel", wheel);
   }, []);
-  const active = FOUNDRY_POINTS[selected];
-  const connected = FOUNDRY_LINKS.filter((edge) => edge.source === selected || edge.target === selected);
-  const neighbors = new Set([selected, ...connected.map((e) => e.source === selected ? e.target : e.source)]);
-  const needle = query.trim().toLowerCase();
-  const matches = new Set(FOUNDRY_NODES.filter((n) => (domain === "ALL" || n.domain === domain) &&
-    `${n.name} ${n.code} ${n.domain}`.toLowerCase().includes(needle)).map((n) => n.id));
-  const filtered = domain !== "ALL" || Boolean(needle);
-  const animate = motion && !reduced && visible;
-  const zoom = (delta) => setCamera((c) => ({ ...c, scale: Math.min(2.6, Math.max(.6, Math.round((c.scale + delta) * 10) / 10)) }));
-  const reset = () => { setCamera({ x: 0, y: 0, scale: 1 }); setQuery(""); setDomain("ALL"); setSelected("ROUTER"); };
-  const selectRelated = (id) => { inspect(id); setQuery(""); setDomain("ALL"); };
-  const point = (event) => {
-    const svg = event.currentTarget;
-    const matrix = svg.getScreenCTM();
-    if (!matrix) return null;
-    return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-  };
+  const beginGesture = () => { gesture.current = { points:[...pointers.current.values()], camera:{ ...cameraRef.current } }; };
   const startPan = (event) => {
-    if (event.button !== 0 || dragRef.current || event.target.closest(".fa-node")) return;
-    const p = point(event);
+    if (event.button !== 0 || pointers.current.size >= 2) return;
+    const p = point(event.clientX, event.clientY);
     if (!p) return;
-    dragRef.current = { id: event.pointerId, p, camera };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (!pointers.current.size) draggedRef.current = false;
+    pointers.current.set(event.pointerId, p); beginGesture();
+    if (pointers.current.size === 2) draggedRef.current = true;
+    (event.target.closest(".fa-node") || event.currentTarget).setPointerCapture(event.pointerId);
   };
   const movePan = (event) => {
-    const start = dragRef.current;
-    if (!start || start.id !== event.pointerId) return;
-    const p = point(event);
-    if (!p) return;
-    const limit = 650 * start.camera.scale;
-    setCamera({ ...start.camera, x: Math.max(-limit, Math.min(limit, start.camera.x + p.x - start.p.x)),
-      y: Math.max(-limit, Math.min(limit, start.camera.y + p.y - start.p.y)) });
+    const start = gesture.current;
+    if (!start || !pointers.current.has(event.pointerId)) return;
+    const p = point(event.clientX, event.clientY); if (!p) return;
+    pointers.current.set(event.pointerId, p);
+    const now = [...pointers.current.values()];
+    if (now.length > 1 || Math.hypot(p.x-start.points[0].x,p.y-start.points[0].y) > 8) draggedRef.current = true;
+    if (now.length === 1 && start.points.length === 1) setView({ ...start.camera, x:start.camera.x + p.x - start.points[0].x, y:start.camera.y + p.y - start.points[0].y });
+    if (now.length === 2 && start.points.length === 2) {
+      const distance = (pts) => Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const center = (pts) => ({ x:(pts[0].x + pts[1].x)/2, y:(pts[0].y + pts[1].y)/2 });
+      const oldDistance = distance(start.points); if (oldDistance < 1) return;
+      const scale = Math.max(.5, Math.min(2.6, start.camera.scale * distance(now) / oldDistance));
+      const from = center(start.points), to = center(now), ratio = scale / start.camera.scale;
+      setView({ scale, x:to.x - (from.x - start.camera.x)*ratio, y:to.y - (from.y - start.camera.y)*ratio });
+    }
   };
-  const endPan = (event) => { if (dragRef.current?.id === event.pointerId) dragRef.current = null; };
+  const endPan = (event) => { if (pointers.current.delete(event.pointerId)) beginGesture(); };
+  const reset = () => { setView({ x:0,y:0,scale:1 }); setQuery(""); setDomain("ALL"); setSelected("ROUTER"); setExpanded(false); };
+  const selectRelated = (id) => { inspect(id); setQuery(""); setDomain("ALL"); };
+  const active = FOUNDRY_POINTS[selected];
+  const connected = FOUNDRY_PATHS.filter((p) => p.source === selected || p.target === selected);
+  const neighbors = new Set([selected,...connected.map((p) => p.source === selected ? p.target : p.source)]);
+  const needle = query.trim().toLowerCase();
+  const matches = new Set(FOUNDRY_NODES.filter((n) => (domain === "ALL" || n.domain === domain) && `${n.name} ${n.code} ${n.domain}`.toLowerCase().includes(needle)).map((n) => n.id));
+  const filtered = domain !== "ALL" || Boolean(needle);
+  const edgeShown = (p) => (p.source === selected || p.target === selected) && (!filtered || matches.has(p.source) || matches.has(p.target));
   return (
     <section className={`fa-atlas ${animate ? "" : "fa-still"}`} aria-label="Knowledge Foundry atlas">
-      <div className="fa-toolbar">
-        <div><div className="fa-eyebrow">Foundry atlas</div><span style={{ fontSize: 12, color: "#eee0cd" }}>The operating system, made mechanical.</span></div>
-        <div className="fa-counts"><span><b>{FOUNDRY_NODES.length}</b> nodes</span><span><b>{FOUNDRY_LINKS.length}</b> links</span><span><b>{FOUNDRY_DOMAINS.length}</b> domains</span></div>
-        <button className={`fa-control ${animate ? "on" : ""}`} aria-pressed={motion && !reduced} disabled={reduced}
-          title={reduced ? "Motion follows your reduced-motion setting" : "Animate the illustrated connections"}
-          onClick={() => setMotion((v) => !v)}>{reduced ? "Motion reduced" : motion ? "Pause motion" : "Resume motion"}</button>
-      </div>
-      <div className="fa-filters">
-        <label className="fa-search"><span className="sr-only">Find a source or system</span><input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a source or system…" /></label>
-        <div className="fa-filter-group" role="group" aria-label="Filter atlas by domain">
-          {["ALL", ...FOUNDRY_DOMAINS].map((d) => <button key={d} className={`fa-control ${domain === d ? "on" : ""}`} aria-pressed={domain === d} onClick={() => setDomain(d)}>{d === "ALL" ? "All" : d.toLowerCase()}</button>)}
-        </div>
-        <label className="fa-source-picker"><span className="sr-only">Choose a source</span><select value={matches.has(selected) ? selected : ""} onChange={(e) => { if (e.target.value) inspect(e.target.value); }}><option value="" disabled>{matches.size ? "Choose a source…" : "No matching sources"}</option>{FOUNDRY_NODES.filter((n) => matches.has(n.id)).map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</select></label>
-      </div>
       <div className="fa-workspace">
+        <div className="fa-filters">
+          <label className="fa-search"><span className="sr-only">Find a source or system</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && matches.size) inspect([...matches][0]); }} placeholder="Find source or system…" /></label>
+          <div className="fa-filter-group" role="group" aria-label="Filter atlas by domain">{["ALL",...FOUNDRY_DOMAINS].map((d) => <button key={d} className={`fa-control ${domain === d ? "on" : ""}`} aria-pressed={domain === d} onClick={() => setDomain(d)}>{d === "ALL" ? "All" : d.toLowerCase()}</button>)}</div>
+          <label className="fa-source-picker"><span className="sr-only">Choose a source</span><select value={matches.has(selected) ? selected : ""} onChange={(e) => { if (e.target.value) inspect(e.target.value); }}><option value="" disabled>{matches.size ? "Choose a source…" : "No matching sources"}</option>{FOUNDRY_NODES.filter((n) => matches.has(n.id)).map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}</select></label>
+        </div>
         <div className="fa-stage">
-          <svg className="fa-svg" viewBox="-540 -480 1080 960" role="group" tabIndex={0} aria-label="Orbital source map. Drag to pan, or use arrow keys. Use the zoom controls to resize."
+          <svg ref={svgRef} className="fa-svg" viewBox="-560 -450 1120 900" role="group" tabIndex={0} aria-label="Orbital source map. Drag or use arrow keys to pan. Pinch, scroll, or use the zoom controls to resize."
             onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan} onLostPointerCapture={endPan}
+            onClickCapture={(e) => { if (draggedRef.current) { e.preventDefault(); e.stopPropagation(); draggedRef.current = false; } }}
             onKeyDown={(e) => {
-              if (e.target !== e.currentTarget) return;
-              const delta = { ArrowLeft: [40, 0], ArrowRight: [-40, 0], ArrowUp: [0, 40], ArrowDown: [0, -40] }[e.key];
-              if (delta) { e.preventDefault(); setCamera((c) => ({ ...c, x: Math.max(-650 * c.scale, Math.min(650 * c.scale, c.x + delta[0])), y: Math.max(-650 * c.scale, Math.min(650 * c.scale, c.y + delta[1])) })); }
-              if (e.key === "+" || e.key === "=") { e.preventDefault(); zoom(.2); }
-              if (e.key === "-") { e.preventDefault(); zoom(-.2); }
+              if (e.target !== e.currentTarget || e.ctrlKey || e.metaKey || e.altKey) return;
+              const delta = { ArrowLeft:[40,0],ArrowRight:[-40,0],ArrowUp:[0,40],ArrowDown:[0,-40] }[e.key];
+              if (delta) { e.preventDefault(); setView((c) => ({ ...c,x:c.x+delta[0],y:c.y+delta[1] })); }
+              if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomTo(Math.round((cameraRef.current.scale+.2)*10)/10); }
+              if (e.key === "-") { e.preventDefault(); zoomTo(Math.round((cameraRef.current.scale-.2)*10)/10); }
               if (e.key === "Home") { e.preventDefault(); reset(); }
             }}>
             <defs>
-              <linearGradient id="fa-rim"><stop stopColor="#f5e2c4" /><stop offset=".4" stopColor="#cf9a51" /><stop offset="1" stopColor="#5a3b16" /></linearGradient>
-              <radialGradient id="fa-face" cx="35%" cy="30%" r="70%"><stop stopColor="#39271b" /><stop offset=".7" stopColor="#160e08" /><stop offset="1" stopColor="#070504" /></radialGradient>
-              <linearGradient id="fa-pipe"><stop stopColor="#e5b368" /><stop offset=".5" stopColor="#c89246" /><stop offset="1" stopColor="#9a7860" /></linearGradient>
-              <radialGradient id="fa-fire"><stop stopColor="#fff2bd" /><stop offset=".35" stopColor="#ffac48" /><stop offset=".7" stopColor="#b73c0b" /><stop offset="1" stopColor="#301006" /></radialGradient>
+              <radialGradient id="fa-molten"><stop stopColor="#fff3e0"/><stop offset=".28" stopColor="#fe7d67"/><stop offset=".65" stopColor="#b84a27"/><stop offset="1" stopColor="#1c0d06"/></radialGradient>
+              <radialGradient id="fa-obsidian" cx="35%" cy="30%" r="70%"><stop stopColor="#291c12"/><stop offset=".65" stopColor="#120c08"/><stop offset="1" stopColor="#080503"/></radialGradient>
+              <linearGradient id="fa-conduit-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop stopColor="#fe7d67" stopOpacity=".95"/><stop offset=".55" stopColor="#d9a75a" stopOpacity=".75"/><stop offset="1" stopColor="#9e7339" stopOpacity=".45"/></linearGradient>
             </defs>
             <g className="fa-viewport" transform={`translate(${camera.x} ${camera.y}) scale(${camera.scale})`}>
-              <g opacity=".28" aria-hidden="true">
-                <circle r="380" fill="none" stroke="#94652d" strokeDasharray="2 8" /><circle r="210" fill="none" stroke="#c89246" strokeDasharray="2 8" />
-                <g className="fa-gear"><circle cy="-150" r="135" fill="none" stroke="#8c5e24" strokeWidth="14" strokeDasharray="10 8" /><circle cy="-150" r="118" fill="#120c07" stroke="#8a7764" strokeWidth="4" /></g>
-                {[-1, 1].map((side) => <g key={side} transform={`scale(${side} 1)`}><path d="M 380 40 C 340 -120,180 -140,60 -40 L 90 110 C 210 60,310 90,380 40 Z" fill="#1a120b" stroke="#8c5e24" strokeWidth="4" /><circle cx="195" cy="-25" r="58" fill="#0d0906" stroke="#8a7764" strokeWidth="8" strokeDasharray="8 6" /><circle cx="195" cy="-25" r="26" fill="url(#fa-fire)" /></g>)}
-                <circle r="132" fill="none" stroke="#c89246" strokeWidth="1.5" strokeDasharray="2 12" />
+              <g className="fa-rings" aria-hidden="true">
+                <g className="fa-ring fa-gear"><circle r="380" fill="none" stroke="#d9a75a29" strokeWidth="1.5"/><circle r="392" fill="none" stroke="#d9a75a1c" strokeDasharray="3 9"/></g>
+                <g className="fa-ring reverse"><circle r="295" fill="none" stroke="#fe7d671f" strokeDasharray="18 12 4 12"/><circle r="302" fill="none" stroke="#d9a75a2e" strokeWidth="4" strokeDasharray="2 16"/></g>
+                <g className="fa-ring medium"><circle r="210" fill="none" stroke="#d9a75a42" strokeWidth="1.5"/><circle r="220" fill="none" stroke="#d9a75a26" strokeWidth="3" strokeDasharray="2 10"/></g>
+                <g className="fa-ring reverse"><circle r="112" fill="none" stroke="#fe7d6752" strokeWidth="1.5" strokeDasharray="8 6"/></g>
               </g>
-              <g aria-hidden="true">{FOUNDRY_LINKS.map((edge) => {
-                const a = FOUNDRY_POINTS[edge.source], b = FOUNDRY_POINTS[edge.target];
-                const highlighted = edge.source === selected || edge.target === selected;
-                const shown = !filtered || matches.has(a.id) || matches.has(b.id);
-                const d = `M${a.x} ${a.y} Q${(a.x + b.x) * .34} ${(a.y + b.y) * .34} ${b.x} ${b.y}`;
-                return <g key={`${a.id}-${b.id}`} className={`fa-conduit ${highlighted ? "selected" : ""} ${edge.type !== "ROUTES" ? "fa-flow" : ""}`} style={{ opacity: shown ? undefined : .08 }}>
-                  <path className="fa-pipe-case" d={d} /><path className="fa-pipe" d={d} />
-                </g>;
-              })}</g>
+              <g aria-hidden="true">{FOUNDRY_PATHS.map((p) => <g key={`${p.source}-${p.target}`} className={`fa-conduit ${edgeShown(p) && selected !== "ROUTER" ? "selected" : ""} ${p.type !== "ROUTES" ? "fa-flow" : ""}`} opacity={edgeShown(p) ? 1 : .1}><path className="fa-pipe-case" d={p.d}/><path className="fa-pipe" d={p.d}/></g>)}</g>
+              <g ref={particlesRef} className="fa-particles" aria-hidden="true">{FOUNDRY_PATHS.map((p,i) => { const initial = foundryParticlePoint(p,(i*.13)%1); return <circle key={`${p.source}-${p.target}`} className="fa-particle" cx={initial.x} cy={initial.y} r={p.type === "ROUTES" ? 2.4 : 3.2} fill={p.type === "ROUTES" ? "#d9a75a" : "#fe7d67"} opacity={edgeShown(p) ? 1 : .1}/>; })}</g>
+              <g aria-hidden="true" transform={`translate(${active.x} ${active.y})`}><circle r={active.radius+10} className="fa-reticle"/></g>
               {FOUNDRY_NODES.map(({ id }) => {
-                const n = FOUNDRY_POINTS[id], match = matches.has(id), picked = selected === id;
-                const opacity = filtered ? match ? 1 : .14 : neighbors.has(id) ? 1 : .4;
-                return <g key={id} data-node-id={id} className={`fa-node ${picked ? "selected" : ""}`} transform={`translate(${n.x} ${n.y})`}
-                  opacity={opacity} role="button" tabIndex={match ? 0 : -1} aria-hidden={!match} aria-label={n.name} aria-pressed={picked}
+                const n = FOUNDRY_POINTS[id], match = matches.has(id), picked = selected === id, router = id === "ROUTER";
+                const words = n.name.split(" "), middle = Math.ceil(words.length/2), split = n.name.length > 14 && words.length > 1;
+                const lines = split ? [words.slice(0,middle).join(" "),words.slice(middle).join(" ")] : [n.name];
+                return <g key={id} data-node-id={id} className={`fa-node ${picked ? "selected" : ""}`} transform={`translate(${n.x} ${n.y})`} opacity={match && (selected === "ROUTER" || neighbors.has(id) || filtered) ? 1 : .18}
+                  role="button" tabIndex={match ? 0 : -1} aria-hidden={!match} aria-label={n.name} aria-pressed={picked}
                   onClick={() => { if (match) inspect(id); }} onKeyDown={(e) => { if (match && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.stopPropagation(); inspect(id); } }}>
                   <title>{n.name} — {n.domain.toLowerCase()}</title>
-                  <circle r={Math.max(n.radius + 8, 68)} fill="transparent" />
-                  {picked && <circle className="fa-reticle" r={n.radius + 10} />}
-                  <circle className="fa-rim" r={n.radius} /><circle className="fa-face" r={n.radius - 5} />
-                  <circle cy={-n.radius * .45} r={picked ? 5 : 3} fill={picked ? "url(#fa-fire)" : FOUNDRY_COLORS[n.domain]} />
-                  <text className="fa-code" y="7">{n.code}</text>
-                  <text className="fa-node-name" y={n.radius + 25}>{n.name}</text>
+                  <circle r={compact ? 62 : n.radius+5} fill="transparent"/>
+                  <circle className="fa-rim" r={n.radius}/>
+                  {router ? <><circle r={n.radius-6} fill="url(#fa-molten)" opacity=".92"/><circle r={n.radius-14} fill="#140c07" stroke="#d9a75a" strokeWidth="1.2"/><circle cy="-16" r="3.2" fill="#fe7d67"/><text y="1" className="fa-code" style={{fontSize:13}}>ROUTER</text><text y="16" className="fa-node-name" style={{fontSize:8.5}}>Source of Truth</text></> : <><circle className="fa-face" r={n.radius-4}/><circle cy={-n.radius+9} r="2.5" fill={FOUNDRY_COLORS[n.domain]}/><text y={split ? -4 : 0} className="fa-code" style={{fontSize:n.orbit===210?10.5:9.5}}>{n.code}</text>{lines.map((line,i) => <text key={i} y={split ? 8+i*9 : 12} className="fa-node-name">{line}</text>)}</>}
                 </g>;
               })}
             </g>
           </svg>
-          <p className={`fa-status ${matches.size ? "" : "empty"}`} role="status">{matches.size ? filtered ? `${matches.size} matching sources · select a node to inspect` : "Drag to explore · select any source" : "No matching sources. Clear the search or choose another domain."}</p>
-          <div className="fa-controls" role="group" aria-label="Map controls">
-            <button className="fa-control" aria-label="Zoom out" disabled={camera.scale <= .6} onClick={() => zoom(-.2)}>−</button>
-            <output aria-label="Map zoom">{Math.round(camera.scale * 100)}%</output>
-            <button className="fa-control" aria-label="Zoom in" disabled={camera.scale >= 2.6} onClick={() => zoom(.2)}>+</button>
-            <button className="fa-control" onClick={reset}>Reset map</button>
-          </div>
+          <p className={`fa-status ${matches.size ? "" : "empty"}`} role="status">{matches.size ? filtered ? `${matches.size} matching sources · select a node or press Enter in search` : "Drag to explore · select a source" : "No matching sources. Clear the search or choose another domain."}</p>
+          <div className="fa-controls" role="group" aria-label="Map controls"><button className="fa-control" aria-label="Zoom out" disabled={camera.scale <= .5} onClick={() => zoomTo(Math.round((camera.scale-.2)*10)/10)}>−</button><output aria-label="Map zoom">{Math.round(camera.scale*100)}%</output><button className="fa-control" aria-label="Zoom in" disabled={camera.scale >= 2.6} onClick={() => zoomTo(Math.round((camera.scale+.2)*10)/10)}>+</button><button className="fa-control" onClick={reset}>Reset map</button></div>
+          <div className="fa-legend"><b>──</b> authority &nbsp; <b>┄</b> flow / record</div>
         </div>
-        <aside ref={inspectorRef} className="fa-inspector" aria-label="Selected source">
-          <div className="fa-eyebrow">{active.domain} · {active.code}</div>
-          <h2>{active.name}</h2>
-          <p className="fa-description">{active.desc}</p>
-          <div className="fa-badges"><span>{connected.length} LINKS</span><span>REFERENCE MAP</span></div>
-          {active.url && <a className="fa-control" style={{ display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 18 }} href={active.url} target="_blank" rel="noopener noreferrer">Open source <svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 10 10 2M3 2h7v7" /></svg></a>}
-          <div className="fa-eyebrow">Connected sources</div>
-          <div className="fa-relations">{connected.map((edge) => {
-            const other = FOUNDRY_POINTS[edge.source === selected ? edge.target : edge.source];
-            return <button className="fa-relation" key={other.id} onClick={() => selectRelated(other.id)}><span>{other.name}</span><small>{edge.type === "ROUTES" ? "AUTHORITY" : edge.type}</small></button>;
-          })}</div>
+        <aside className={`fa-inspector ${expanded ? "expanded" : ""}`} aria-label="Selected source">
+          <button className="fa-sheet-toggle" aria-expanded={expanded} aria-controls="fa-source-details" aria-label={expanded ? "Hide source details" : "Show source details"} onClick={() => setExpanded((v) => !v)}><span>{active.name}</span><small>{expanded ? "Close details ↓" : "View details ↑"}</small></button>
+          <div className="fa-inspector-content" id="fa-source-details" hidden={compact&&!expanded}>
+            <div className="fa-inspector-head"><div className="fa-eyebrow">{active.domain} · {active.code}</div><h2>{active.name}</h2><p className="fa-description">{active.desc}</p><div className="fa-badges"><span>REFERENCE MAP</span><span>{connected.length} LINKS</span></div></div>
+            <div className="fa-actions">{active.url && <a className="fa-control on" href={active.url} target="_blank" rel="noopener noreferrer">Open source <svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 10 10 2M3 2h7v7"/></svg></a>}<button className="fa-control" onClick={reset}>Focus Router</button></div>
+            <div className="fa-relations-title">CONNECTED SYSTEMS · {connected.length} LINKS</div>
+            <div className="fa-relations">{connected.map((p) => { const other = FOUNDRY_POINTS[p.source === selected ? p.target : p.source]; return <button className="fa-relation" key={other.id} onClick={() => selectRelated(other.id)}><span><i className="fa-pip" style={{background:FOUNDRY_COLORS[other.domain]}}/>{other.name}</span><small className={p.type === "ROUTES" ? "" : "flow"}>{p.type === "ROUTES" ? "AUTHORITY" : p.type}</small></button>; })}</div>
+            <p className="fa-note">Illustrated relationships. Motion is not live activity; source documents remain authoritative.</p>
+          </div>
         </aside>
       </div>
-      <div className="fa-footer"><span>── authority &nbsp; ┄ flow / record</span>Illustrated relationships · motion is not live activity. Source documents remain authoritative.</div>
     </section>
   );
 }
 
 function GraphOverlay({ open, onClose }) {
   const [tab, setTab] = useState("foundry");
+  const [motion, setMotion] = useState(true);
+  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion:reduce)").matches);
   const closeRef = useRef(null);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion:reduce)");
+    const change = () => setReduced(media.matches);
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
@@ -5584,18 +5686,20 @@ function GraphOverlay({ open, onClose }) {
     <div className="kg-overlay" role="dialog" aria-modal="true" aria-label="Knowledge Graph"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="kg-sheet">
+        {["tl","tr","bl","br"].map((corner) => <span key={corner} className={`kg-rivet ${corner}`} aria-hidden="true"/>)}
         <div className="kg-head">
-          <span className="kg-title font-display">Knowledge Graph</span>
           <div className="codex kg-tabs" role="tablist" aria-label="Graph">
             <button role="tab" aria-selected={tab === "foundry"} className={`seg sm ${tab === "foundry" ? "on" : ""}`} onClick={() => setTab("foundry")}>Foundry</button>
             <button role="tab" aria-selected={tab === "works"} className={`seg sm ${tab === "works" ? "on" : ""}`} onClick={() => setTab("works")}>The Works</button>
             <button role="tab" aria-selected={tab === "source"} className={`seg sm ${tab === "source" ? "on" : ""}`} onClick={() => setTab("source")}>Source map</button>
           </div>
+          <span className="kg-title font-display"><small>BAXSTAR EMBER · SOURCE ATLAS</small><span>Knowledge <em>{tab === "foundry" ? "Foundry" : "Graph"}</em></span></span>
+          {tab === "foundry" && <><div className="fa-counts"><span><b>{FOUNDRY_NODES.length}</b> NODES</span><span><b>{FOUNDRY_LINKS.length}</b> CONDUITS</span><span><b>{FOUNDRY_DOMAINS.length}</b> DOMAINS</span></div><button className="fa-control fa-motion" aria-pressed={motion&&!reduced} disabled={reduced} onClick={() => setMotion((v) => !v)}><span className="fa-led" aria-hidden="true"/>{reduced ? "Motion reduced" : motion ? "Pause motion" : "Resume motion"}</button></>}
           {tab === "source" && <a className="kg-open" href={FOUNDRY_URL} target="_blank" rel="noopener noreferrer">Open full page ↗</a>}
           <button ref={closeRef} type="button" className="kg-close" onClick={onClose} aria-label="Close Knowledge Graph">✕</button>
         </div>
         <div className="kg-body">
-          {tab === "foundry" ? <FoundryAtlas /> : tab === "source"
+          {tab === "foundry" ? <FoundryAtlas motion={motion} reduced={reduced} /> : tab === "source"
             ? <iframe className="kg-frame" src={FOUNDRY_URL} title="Baxstar Knowledge Foundry" referrerPolicy="no-referrer"
                 sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" />
             : <div className="kg-works"><EcoGraph defaultOpen /></div>}
