@@ -14,6 +14,12 @@ OPS / Caption Studio / Knowledge Graph / Google Drive / FareHarbor / Projects do
 Its artwork, arrangement, and existing mechanical animations remain intact; only
 press feedback is added. The larger skull is retained too.
 
+Implementation: `74c3ae3fff49aa0cc6517b552067142e47545b6b`.
+Successful preview: **https://3ee28ad7.baxstar-ember.pages.dev**, deployment
+`3ee28ad7-c940-4575-9d2f-f7693768306a`, verified via Cloudflare API at
+2026-10-17 02:54:26 UTC. No merge or production release. Validation: 830 passed,
+1 existing concurrent-board-save failure; details below.
+
 Brady's pasted Argon HTML supplies the brass outlines, warmer vivid controls, and
 20-node/34-link orbital reference map. The paste ends mid-script; Codex implemented
 working React interactions instead of copying the prototype's fake sync/task actions.

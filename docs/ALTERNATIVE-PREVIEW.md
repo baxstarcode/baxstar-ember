@@ -8,9 +8,17 @@ not a production replacement or a change to the booking app.
 ## Review the design
 
 - Original preview: https://5b56930b.baxstar-ember.pages.dev
-- Alternative: Cloudflare Pages preview for `codex/ember-brass-pressure-alt`.
-  The exact successful deployment URL will be recorded after publication.
+- Alternative: https://3ee28ad7.baxstar-ember.pages.dev
+- Branch alias: https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev
 - Production remains https://ember.baxstarfishing.com and has not received this branch.
+
+Cloudflare's authenticated API reports deployment
+`3ee28ad7-c940-4575-9d2f-f7693768306a` successful at 2026-10-17 02:54:26 UTC, for
+implementation commit `74c3ae3fff49aa0cc6517b552067142e47545b6b`. Queue, initialize,
+clone, build, and deploy stages all succeeded in the **preview** environment.
+The immutable URL above is that exact implementation; later handoff-only commits
+do not change its application source. The workspace cannot inspect the deployed
+HTML through its proxy, so live signed-in rendering remains a separate user check.
 
 Brady explicitly liked the larger skull and pinned bottom dock. Both remain. The
 six dock destinations, their artwork/crop geometry, and existing mechanical motion

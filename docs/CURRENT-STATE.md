@@ -14,6 +14,12 @@ graph and external source map remain separate tabs. The atlas describes referenc
 relationships; it does not represent live data flow or change another application's
 repository. See `docs/ALTERNATIVE-PREVIEW.md` for provenance and the release checkpoint.
 
+The alternative is pushed at implementation commit `74c3ae3` and published to
+**https://3ee28ad7.baxstar-ember.pages.dev**. Cloudflare's API confirms all preview
+deployment stages succeeded at 2026-10-17 02:54:26 UTC. Combined local verification
+is 830 passing checks and the one pre-existing concurrent-save failure described
+below; this is not a production release or a fully passing release matrix.
+
 The dashboard now links to the isolated Voice Lab. Adjustable phrase grace, manual
 Finish, Escape cancellation, transcript copy, and state-driven instrument lighting
 are implemented there. Pages previews allow microphone/transcript testing only;
