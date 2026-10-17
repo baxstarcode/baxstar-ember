@@ -8,11 +8,19 @@ not a production replacement or a change to the booking app.
 ## Review the design
 
 - Original preview: https://5b56930b.baxstar-ember.pages.dev
+- Current alternative with Argon v2: **https://1cd6c549.baxstar-ember.pages.dev**
 - Earlier alternative, before the complete v2 graph: https://3ee28ad7.baxstar-ember.pages.dev
 - Branch alias: https://codex-ember-brass-pressure-a.baxstar-ember.pages.dev
 - Production remains https://ember.baxstarfishing.com and has not received this branch.
 
-Cloudflare's authenticated API reports deployment
+**Current v2 checkpoint:** implementation commit
+`9096488a41273e43991106d903d01bbe2e4bad21`, deployment
+`1cd6c549-a673-4764-a8b0-55b98a8e9a3e`. Cloudflare's authenticated API confirms
+queue, initialize, clone, build, and deploy all succeeded in the **preview** environment
+at 2026-10-17 18:39:18 UTC. The immutable URL above points to that implementation.
+Remote original branch remains `108d444`; remote `main` remains `af8d6ba`.
+
+For the earlier alternative, Cloudflare's authenticated API reports deployment
 `3ee28ad7-c940-4575-9d2f-f7693768306a` successful at 2026-10-17 02:54:26 UTC, for
 implementation commit `74c3ae3fff49aa0cc6517b552067142e47545b6b`. Queue, initialize,
 clone, build, and deploy stages all succeeded in the **preview** environment.
@@ -37,7 +45,7 @@ are illustrative; they do not report live traffic.
 
 The v2 continuation changes only the graph section of the application. The dock,
 skull, dashboard, voice lab, persistence, API gateway, and Worker are unchanged.
-Preview publication for this continuation is recorded in the next checkpoint below.
+Preview publication for this continuation is recorded above.
 
 Brady reported that the earlier preview showed labels without graphics or styling.
 That live-browser symptom remains unverified: the workspace can inspect deployment

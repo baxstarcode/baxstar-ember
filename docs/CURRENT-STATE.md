@@ -28,7 +28,9 @@ ecosystem, UI, layout/truth), plus the production build/Pages staging. Desktop,
 phone portrait, 320 px narrow phone, and phone landscape were visually inspected.
 All application source outside the graph section is unchanged. The full release
 matrix was not rerun; the concurrent-save blocker remains open. See the alternative
-preview document for publication status and upload provenance. Brady's report of a
+preview document for upload provenance. Implementation `9096488` is pushed and
+published at **https://1cd6c549.baxstar-ember.pages.dev**; all Cloudflare preview stages
+succeeded at 2026-10-17 18:39:18 UTC. Brady's report of a
 preview showing labels without styling has not been reproduced in his browser;
 local rendering and successful deployment metadata do not establish its resolution.
 
