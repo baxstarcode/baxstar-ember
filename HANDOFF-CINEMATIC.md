@@ -1,8 +1,9 @@
 # Ember — Living Cinematic Handoff
 
 **Latest continuation, 2026-10-18 (America/Chicago):** read the top of
-`docs/CURRENT-STATE.md`. The original visual alternative is now production (prior
-release `dc83045`). Brady authorized an independent Mission Control save repair and
+`docs/CURRENT-STATE.md`. Implementation `7ea389a` is now production at
+https://ember.baxstarfishing.com (Pages `662422a8`, completed October 18 at 02:04 CT).
+The full release suite passed 1008 checks across 19 suites. Brady authorized an independent Mission Control save repair and
 mobile pass while voice/account checks wait. Revision-checked IndexedDB transactions
 replace unsafe localStorage writes; the original copy stays intact. Mobile field
 layout, touch controls and navigation are fixed without changing the pinned dock.

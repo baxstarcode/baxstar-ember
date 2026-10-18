@@ -14,11 +14,19 @@ The deterministic stale-read regression fails on untouched `dc83045` and passes
 with the repair. Mobile Lake/time controls now wrap correctly, Mission Control
 uses readable text and larger touch targets in portrait/landscape, and switching
 tools starts at the top. The pinned six-item dock and existing visual design remain.
-`CHROME_PATH=/usr/bin/chromium npm run test:release` passed with exit 0, including
+`CHROME_PATH=/usr/bin/chromium npm run test:release` passed with exit 0: **1008 checks
+across 19 suites**, including
 24 local-state, 26 chat and 45 touch-mobile checks, the unchanged backend contracts,
 graph/Caption Studio regressions and simulated voice checks. Generated HTML matches
 the staged Pages payload. Phone portrait/landscape screenshots were inspected.
-Publication follows this verified UI commit; live metadata is recorded in the handoff.
+Implementation `7ea389ad0c625fb4fcc89178d092af5ab8518842` is pushed to `main` and the
+alternative branch. Production deployment `662422a8-fa47-4ef8-903f-203dcb1d27b3`
+completed at **2026-10-18 02:04:46 America/Chicago** (07:04:46 UTC), with every
+Cloudflare stage successful and the custom domain as its alias. Immutable URL:
+https://662422a8.baxstar-ember.pages.dev . Authenticated API metadata confirms
+this as the canonical production deployment. The custom domain is active; the
+workspace's unauthenticated live probe still returns 403, so signed-in rendering
+and real iPhone behavior are not claimed as verified here.
 This is UI-only: Worker `6110e34c-2363-41c5-a5f6-fab751ecb717`, credentials, model
 choice and `EMBER_VOICE_RELEASED=false` remain unchanged. Gmail/Quo fresh consent
 and the signed-in gateway check still await Brady; physical iPhone/CarPlay tests
