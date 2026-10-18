@@ -1,5 +1,15 @@
 # Ember — Living Cinematic Handoff
 
+**Latest continuation, 2026-10-18 (America/Chicago):** read the top of
+`docs/CURRENT-STATE.md`. The original visual alternative is now production (prior
+release `dc83045`). Brady authorized an independent Mission Control save repair and
+mobile pass while voice/account checks wait. Revision-checked IndexedDB transactions
+replace unsafe localStorage writes; the original copy stays intact. Mobile field
+layout, touch controls and navigation are fixed without changing the pinned dock.
+See Known Issues §5 and Deploy for migration/rollback details. No Worker or
+credential changes; recording-only voice and pending Gmail/Quo consent are separate.
+Older release-blocker/preview statements below describe their dated checkpoints.
+
 **Latest voice continuation (2026-10-17):** read `docs/VOICE-REBUILD.md` before voice
 work. Brady authorized an explicit recording experiment behind the orange mouth.
 Preview supports local record/playback; new official speech adapters are implemented

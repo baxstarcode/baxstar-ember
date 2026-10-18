@@ -41,6 +41,15 @@ of links to Brady's other properties.
 
 ## Provenance — who did what
 
+- **Codex, 2026-10-18 (America/Chicago) — local saves and mobile usability:**
+  replaced Mission Control's unsafe cross-tab localStorage writes with revision-
+  checked IndexedDB transactions, preserving the original board as a recovery
+  copy. Reviewed OPS tasks share the transactional store. Added deterministic
+  concurrency/abort/typing/legacy recovery tests and fixed narrow caption fields,
+  touch editing targets and tool-navigation scroll. The pinned six-item dock,
+  chosen design, voice activation and backend credentials are unchanged. Current
+  release evidence is recorded in `docs/CURRENT-STATE.md`.
+
 - **Codex, 2026-10-17 UTC — graph navigation cleanup:** after reviewing the styled
   preview, Brady requested removal of the Source map tab. Its iframe and unused
   source URL/styles are removed from the application; the original graph URL is

@@ -1,7 +1,28 @@
 # Ember — Current State
 
-Latest local continuation: **2026-10-17 UTC**. Production evidence below remains dated
+Latest local continuation: **2026-10-18 (America/Chicago)**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.
+
+**Mission Control/mobile continuation, 2026-10-18:** Brady authorized fixing the
+two-tab save conflict and mobile usability without waiting for voice testing.
+Canonical saves now use revision-checked IndexedDB transactions shared by board
+edits and reviewed OPS tasks. The old localStorage bytes stay as a recovery copy;
+new saves never overwrite them. Losing tabs retain downloadable drafts. Commit
+aborts, typing while saving, denied storage, malformed records and old-version
+tabs retain explicit recovery paths. See Known Issues §5 for migration/limits.
+The deterministic stale-read regression fails on untouched `dc83045` and passes
+with the repair. Mobile Lake/time controls now wrap correctly, Mission Control
+uses readable text and larger touch targets in portrait/landscape, and switching
+tools starts at the top. The pinned six-item dock and existing visual design remain.
+`CHROME_PATH=/usr/bin/chromium npm run test:release` passed with exit 0, including
+24 local-state, 26 chat and 45 touch-mobile checks, the unchanged backend contracts,
+graph/Caption Studio regressions and simulated voice checks. Generated HTML matches
+the staged Pages payload. Phone portrait/landscape screenshots were inspected.
+Publication follows this verified UI commit; live metadata is recorded in the handoff.
+This is UI-only: Worker `6110e34c-2363-41c5-a5f6-fab751ecb717`, credentials, model
+choice and `EMBER_VOICE_RELEASED=false` remain unchanged. Gmail/Quo fresh consent
+and the signed-in gateway check still await Brady; physical iPhone/CarPlay tests
+remain open. The selected female Ember voice is the intended voice (no voice clone).
 
 **Production publication request, 2026-10-17:** Brady explicitly requested the current
 website on `ember.baxstarfishing.com`. This is a Pages-only release: authenticated

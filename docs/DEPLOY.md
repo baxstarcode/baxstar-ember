@@ -1,5 +1,13 @@
 # Deploying Ember
 
+**Mission Control/mobile release, 2026-10-18:** a Pages-only update moves local
+board saves to IndexedDB transactions and fixes mobile controls/navigation. No
+Worker, credentials, provider consent, model selection, or voice activation changes.
+The original localStorage board is retained, with migration on the first edit.
+Before rolling back to a pre-transaction UI, download the current board: older
+builds only read the legacy recovery copy and will not show newer IndexedDB edits.
+Prefer a forward fix or an IndexedDB-aware rollback; do not clear the database.
+
 **Pages-only publication, 2026-10-17:** Brady explicitly requested the current version
 on the custom domain. Inspection of the actual live Worker source confirms that
 `6110e34c-2363-41c5-a5f6-fab751ecb717` already accepts the current UI model IDs.
@@ -218,7 +226,8 @@ npm run test:release
 
 This rebuilds and stages the exact Pages payload, then runs all current Worker, Pages,
 Apps Script, coordinated-token workerd/SQLite, posting-time, chat, dashboard, layout, streaming, Caption Studio, and
-voice-probe contracts. Do not convert an obsolete expectation into product behavior;
+voice-probe contracts, including local board concurrency/recovery and touch mobile
+usability. Do not convert an obsolete expectation into product behavior;
 update the harness when a deliberate contract change is verified.
 
 For a managed environment with system Chromium, run

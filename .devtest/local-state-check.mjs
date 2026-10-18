@@ -39,22 +39,89 @@ async function fixture({ raw = originalRaw, viewport = { width: 1440, height: 90
       if (raw !== null) localStorage.setItem('ember-mc', raw);
       localStorage.setItem('local-state-fixture', 'yes');
     }
-    const get = Storage.prototype.getItem, set = Storage.prototype.setItem;
+    const get = Storage.prototype.getItem, set = Storage.prototype.setItem, remove = Storage.prototype.removeItem;
+    const idbGet = IDBObjectStore.prototype.get, idbPut = IDBObjectStore.prototype.put;
+    const idbTransaction = IDBDatabase.prototype.transaction;
+    const isBoard = (store) => store.name === 'boards' && store.transaction.db.name === 'ember-local';
+    const openDatabase = () => new Promise((resolve, reject) => {
+      const request = indexedDB.open('ember-local', 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('boards')) request.result.createObjectStore('boards');
+      };
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    });
+    const head = async () => {
+      const db = await openDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = idbTransaction.call(db, 'boards', 'readonly');
+        const request = idbGet.call(transaction.objectStore('boards'), 'ember-mc');
+        transaction.oncomplete = () => { db.close(); resolve(request.result ?? null); };
+        transaction.onabort = () => { db.close(); reject(transaction.error); };
+      });
+    };
     const mock = window.__localTest = {
-      writes: 0, failRead: false, failWrite: false,
-      raw: () => get.call(localStorage, 'ember-mc'),
-      setRaw: (value) => set.call(localStorage, 'ember-mc', value),
+      writes: 0, legacyWrites: 0, readwriteStarted: 0,
+      failRead: false, failWrite: false, abortAfterPut: false, putSucceeded: false,
+      holdNextCommit: false, commitHeld: false, releaseCommit: false,
+      staleRead: undefined,
+      head,
+      raw: async () => (await head())?.raw ?? get.call(localStorage, 'ember-mc'),
+      legacyRaw: () => get.call(localStorage, 'ember-mc'),
+      setLegacyRaw: (value) => value === null ? remove.call(localStorage, 'ember-mc') : set.call(localStorage, 'ember-mc', value),
+      setRaw: async (value) => {
+        const db = await openDatabase();
+        return new Promise((resolve, reject) => {
+          const transaction = idbTransaction.call(db, 'boards', 'readwrite');
+          const store = transaction.objectStore('boards');
+          const request = idbGet.call(store, 'ember-mc');
+          request.onsuccess = () => idbPut.call(store, {
+            format: 1, revision: (request.result?.revision ?? 0) + 1,
+            raw: value, legacyRaw: request.result?.legacyRaw ?? get.call(localStorage, 'ember-mc'),
+          }, 'ember-mc');
+          transaction.oncomplete = () => { db.close(); resolve(); };
+          transaction.onabort = () => { db.close(); reject(transaction.error); };
+        });
+      },
     };
     Storage.prototype.getItem = function (key) {
       if (key === 'ember-mc' && mock.failRead) throw new DOMException('Fixture read denied', 'SecurityError');
+      if (key === 'ember-mc' && mock.staleRead !== undefined) return mock.staleRead;
       return get.call(this, key);
     };
     Storage.prototype.setItem = function (key, value) {
-      if (key === 'ember-mc') {
-        mock.writes++;
-        if (mock.failWrite) throw new DOMException('Fixture quota exceeded', 'QuotaExceededError');
-      }
+      if (key === 'ember-mc') mock.legacyWrites++;
       return set.call(this, key, value);
+    };
+    IDBDatabase.prototype.transaction = function (stores, mode, ...args) {
+      if (this.name === 'ember-local' && mode === 'readwrite') mock.readwriteStarted++;
+      return idbTransaction.call(this, stores, mode, ...args);
+    };
+    IDBObjectStore.prototype.get = function (key) {
+      if (isBoard(this) && mock.failRead) throw new DOMException('Fixture database read denied', 'SecurityError');
+      return idbGet.call(this, key);
+    };
+    IDBObjectStore.prototype.put = function (...args) {
+      if (!isBoard(this)) return idbPut.apply(this, args);
+      mock.writes++;
+      if (mock.failWrite) throw new DOMException('Fixture quota exceeded', 'QuotaExceededError');
+      const request = idbPut.apply(this, args);
+      const store = this, transaction = this.transaction;
+      request.addEventListener('success', () => {
+        mock.putSucceeded = true;
+        if (mock.abortAfterPut) { transaction.abort(); return; }
+        if (!mock.holdNextCommit) return;
+        mock.holdNextCommit = false;
+        mock.commitHeld = true;
+        // Real requests keep the real transaction alive until the test releases it.
+        // This is an explicit scheduling barrier, never a timing-dependent sleep.
+        const keepAlive = () => {
+          if (mock.releaseCommit) { mock.commitHeld = false; return; }
+          idbGet.call(store, 'fixture-keepalive').addEventListener('success', keepAlive);
+        };
+        keepAlive();
+      });
+      return request;
     };
     if (noLocks) Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
   }, { raw, noLocks });
@@ -71,11 +138,12 @@ async function openBoard(page) {
   await page.locator('.console-dock').getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: 'MISSION CONTROL', exact: true }).click();
   await page.locator('.mc-grid').waitFor();
+  await page.getByText('Reading saved board…', { exact: true }).waitFor({ state: 'hidden' });
 }
 async function saved(page) {
   await page.locator('.mc-grid').getByText('Saved on this device.', { exact: true }).waitFor();
 }
-async function stored(page) { return page.evaluate(() => JSON.parse(__localTest.raw())); }
+async function stored(page) { return page.evaluate(async () => JSON.parse(await __localTest.raw())); }
 async function download(page, name) {
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name, exact: true }).click();
@@ -98,6 +166,7 @@ async function test(name, run, options) {
   try {
     f = await fixture(options);
     await run(f);
+    assert.equal(await f.page.evaluate(() => __localTest.legacyWrites), 0, 'New saves never rewrite the legacy localStorage recovery copy');
     assert.deepEqual(f.errors, [], 'Uncaught browser errors');
     assert.deepEqual(f.requests, [], 'No external actions were requested');
     console.log(`PASS — ${name}`); passed++;
@@ -188,7 +257,13 @@ try {
     await openBoard(page);
     assert.equal(await page.evaluate(() => __localTest.writes), 0);
     assert.equal(await page.evaluate(() => __localTest.raw()), originalRaw);
+    assert.equal(await page.evaluate(() => __localTest.head()), null, 'Mount does not migrate or create a canonical board');
     await page.getByLabel('Project name', { exact: true }).first().fill('Edited name'); await saved(page);
+    const head = await page.evaluate(() => __localTest.head());
+    assert.equal(head.format, 1);
+    assert.equal(head.revision, 1);
+    assert.equal(head.legacyRaw, originalRaw);
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), originalRaw);
     const next = await stored(page);
     assert.deepEqual(next.customRoot, record.customRoot);
     assert.deepEqual(next.zap, record.zap);
@@ -240,6 +315,26 @@ try {
     assert.equal(await page.getByLabel('Project name', { exact: true }).first().inputValue(), record.projects[0].name);
   });
 
+
+  await test('denied IndexedDB access preserves the previous copy and offers an explicitly labelled export', async ({ page }) => {
+    await page.evaluate(() => {
+      const open = indexedDB.open;
+      window.__restoreDatabaseOpen = () => { indexedDB.open = open; };
+      indexedDB.open = () => { throw new DOMException('Fixture database access denied', 'SecurityError'); };
+    });
+    await openBoard(page);
+    await page.getByText(/Cannot read saved Mission Control data/).waitFor();
+    assert.equal(await page.locator('.mc-row').count(), 0);
+    assert.equal(await page.evaluate(() => __localTest.writes), 0);
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), originalRaw);
+    assert.equal(await download(page, 'Download previous board copy'), originalRaw);
+    await page.evaluate(() => __restoreDatabaseOpen());
+    await page.getByRole('button', { name: 'Try reading again', exact: true }).click(); await saved(page);
+    assert.equal(await page.getByLabel('Project name', { exact: true }).first().inputValue(), record.projects[0].name);
+    assert.equal(await page.evaluate(() => __localTest.head()), null);
+    assert.equal(await page.evaluate(() => __localTest.writes), 0);
+  });
+
   await test('older records with absent optional lists remain usable without a mount rewrite', async ({ page }) => {
     await openBoard(page);
     assert.equal(await page.evaluate(() => __localTest.writes), 0);
@@ -270,9 +365,11 @@ try {
     assert.equal(await unloadBlocked(page), false);
   });
 
-  await test('simultaneous board edits serialize and preserve the losing tab as a recoverable draft', async ({ page, newPage }) => {
+  await test('simultaneous edits retain both versions even when localStorage reads stay stale', async ({ page, newPage }) => {
     await openBoard(page);
     const second = await newPage(); await openBoard(second);
+    await page.evaluate((raw) => { __localTest.staleRead = raw; }, originalRaw);
+    await second.evaluate((raw) => { __localTest.staleRead = raw; }, originalRaw);
     await holdLock(page);
     await page.getByLabel('Project name', { exact: true }).first().fill('First concurrent edit');
     await second.getByLabel('Project name', { exact: true }).first().fill('Second concurrent edit');
@@ -284,6 +381,8 @@ try {
     assert.equal((await stored(page)).projects[0].name, 'First concurrent edit');
     assert.equal(await second.getByLabel('Project name', { exact: true }).first().inputValue(), 'Second concurrent edit');
     assert(await unloadBlocked(second));
+    assert.equal(JSON.parse(await download(second, 'Download my edits')).projects[0].name, 'Second concurrent edit');
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), originalRaw);
   });
 
   await test('failed recovery reads keep the unsaved version and malformed storage intact', async ({ page }) => {
@@ -291,7 +390,7 @@ try {
     await page.evaluate(() => { __localTest.failWrite = true; });
     await page.getByLabel('Project name', { exact: true }).first().fill('Keep my recovery draft');
     await page.getByText(/Could not save on this device/).waitFor();
-    await page.evaluate(() => { __localTest.failWrite = false; __localTest.setRaw('{malformed newer data'); });
+    await page.evaluate(async () => { __localTest.failWrite = false; await __localTest.setRaw('{malformed newer data'); });
     await page.getByRole('button', { name: 'Retry save', exact: true }).click();
     await page.getByText(/Saved data changed in another tab or tool/).waitFor();
     await page.getByRole('button', { name: 'Load saved version', exact: true }).click();
@@ -341,6 +440,131 @@ try {
     assert.equal((await stored(page)).customRoot.newer, true);
     assert.equal(await page.getByLabel('Project name', { exact: true }).first().inputValue(), 'Fallback draft');
   }, { noLocks: true });
+
+  await test('without Web Locks, transactions protect against a stale-read competing tab', async ({ page, newPage }) => {
+    await openBoard(page);
+    const second = await newPage(); await openBoard(second);
+    await page.evaluate((raw) => { __localTest.staleRead = raw; __localTest.holdNextCommit = true; }, originalRaw);
+    await second.evaluate((raw) => { __localTest.staleRead = raw; }, originalRaw);
+    await page.getByLabel('Project name', { exact: true }).first().fill('First atomic edit');
+    await page.waitForFunction(() => __localTest.commitHeld);
+    await second.getByLabel('Project name', { exact: true }).first().fill('Second retained draft');
+    await second.waitForFunction(() => __localTest.readwriteStarted > 0);
+    await page.evaluate(() => { __localTest.releaseCommit = true; });
+    await saved(page);
+    await second.getByText(/Saved data changed in another tab or tool/).waitFor();
+    assert.equal((await stored(page)).projects[0].name, 'First atomic edit');
+    assert.equal((await page.evaluate(() => __localTest.head())).revision, 1);
+    assert.equal(await second.getByLabel('Project name', { exact: true }).first().inputValue(), 'Second retained draft');
+    assert.equal(JSON.parse(await download(second, 'Download my edits')).projects[0].name, 'Second retained draft');
+    assert(await unloadBlocked(second));
+    assert.equal(await second.evaluate(() => __localTest.legacyWrites), 0);
+  }, { noLocks: true });
+
+  await test('an abort after put success never reports a saved board and retry preserves the draft', async ({ page }) => {
+    await openBoard(page);
+    await page.evaluate(() => { __localTest.abortAfterPut = true; });
+    await page.getByLabel('Project name', { exact: true }).first().fill('Aborted but recoverable');
+    await page.getByText(/Could not save on this device/).waitFor();
+    assert.equal(await page.evaluate(() => __localTest.putSucceeded), true, 'The individual put succeeded before the transaction abort');
+    assert.equal(await page.evaluate(() => __localTest.head()), null);
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), originalRaw);
+    assert.equal(JSON.parse(await download(page, 'Download my edits')).projects[0].name, 'Aborted but recoverable');
+    assert(await unloadBlocked(page));
+    await page.evaluate(() => { __localTest.abortAfterPut = false; });
+    await page.getByRole('button', { name: 'Retry save', exact: true }).click(); await saved(page);
+    assert.equal((await stored(page)).projects[0].name, 'Aborted but recoverable');
+    assert.equal((await page.evaluate(() => __localTest.head())).revision, 1);
+  });
+
+  await test('typing during an unfinished commit is retained and saved against the committed revision', async ({ page }) => {
+    await openBoard(page);
+    await page.evaluate(() => { __localTest.holdNextCommit = true; });
+    const field = page.getByLabel('Project name', { exact: true }).first();
+    await field.fill('Earlier pending value');
+    await page.waitForFunction(() => __localTest.commitHeld);
+    await field.fill('Latest typed value');
+    assert.equal(await field.inputValue(), 'Latest typed value');
+    assert(await unloadBlocked(page));
+    await page.evaluate(() => { __localTest.releaseCommit = true; });
+    await saved(page);
+    assert.equal((await stored(page)).projects[0].name, 'Latest typed value');
+    assert.equal(await field.inputValue(), 'Latest typed value');
+    assert.equal((await page.evaluate(() => __localTest.head())).revision, 2);
+    assert.equal(await unloadBlocked(page), false);
+  });
+
+  await test('two OPS task saves without Web Locks append against the latest transaction state', async ({ page, newPage }) => {
+    const second = await newPage();
+    const prepare = async (tab, title) => {
+      await tab.getByRole('button', { name: 'Task draft', exact: true }).first().click();
+      await tab.getByLabel('Task title', { exact: true }).fill(title);
+    };
+    await prepare(page, 'First reviewed concurrent task');
+    await prepare(second, 'Second reviewed concurrent task');
+    await page.evaluate(() => { __localTest.holdNextCommit = true; });
+    await page.getByRole('button', { name: 'Save locally', exact: true }).click();
+    await page.waitForFunction(() => __localTest.commitHeld);
+    await second.getByRole('button', { name: 'Save locally', exact: true }).click();
+    await second.waitForFunction(() => __localTest.readwriteStarted > 0);
+    await page.evaluate(() => { __localTest.releaseCommit = true; });
+    await page.locator('.task-feedback').waitFor();
+    await second.locator('.task-feedback').waitFor();
+    const next = await stored(page);
+    assert.deepEqual(next.projects[0].tasks.map((task) => task.text), ['Keep this task', 'First reviewed concurrent task', 'Second reviewed concurrent task']);
+    assert.equal(new Set(next.projects[0].tasks.map((task) => task.id)).size, 3);
+    assert.equal((await page.evaluate(() => __localTest.head())).revision, 2);
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), originalRaw);
+    assert.equal(await second.evaluate(() => __localTest.legacyWrites), 0);
+  }, { noLocks: true });
+
+  await test('older tabs cannot replace the canonical board and their separate edits remain downloadable', async ({ page, newPage }) => {
+    await openBoard(page);
+    await page.getByLabel('Project name', { exact: true }).first().fill('Current canonical board'); await saved(page);
+    const second = await newPage();
+    const olderRaw = JSON.stringify({ ...record, projects: [{ ...record.projects[0], name: 'Older tab edit' }, record.projects[1]] });
+    await second.evaluate((raw) => __localTest.setLegacyRaw(raw), olderRaw);
+    await page.getByRole('button', { name: 'Download older-tab data', exact: true }).waitFor();
+    assert.equal((await stored(page)).projects[0].name, 'Current canonical board');
+    assert.equal(await page.getByLabel('Project name', { exact: true }).first().inputValue(), 'Current canonical board');
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download older-tab data', exact: true }).click();
+    assert.equal(await readFile(await (await pending).path(), 'utf8'), olderRaw);
+    await page.getByRole('button', { name: 'Keep current board', exact: true }).click();
+    await page.getByRole('button', { name: 'Download older-tab data', exact: true }).waitFor({ state: 'hidden' });
+    assert.equal((await stored(page)).projects[0].name, 'Current canonical board');
+    assert.equal((await page.evaluate(() => __localTest.head())).legacyRaw, olderRaw);
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), olderRaw);
+    await page.reload({ waitUntil: 'networkidle' }); await openBoard(page); await saved(page);
+    assert.equal(await page.getByLabel('Project name', { exact: true }).first().inputValue(), 'Current canonical board');
+    assert.equal(await page.getByRole('button', { name: 'Download older-tab data', exact: true }).count(), 0);
+  });
+
+
+  await test('typing while acknowledging an older-tab copy preserves the new edit without Web Locks', async ({ page, newPage }) => {
+    await openBoard(page);
+    const field = page.getByLabel('Project name', { exact: true }).first();
+    await field.fill('Current board before acknowledgement'); await saved(page);
+    const second = await newPage();
+    const olderRaw = JSON.stringify({ ...record, customRoot: { olderTab: true } });
+    await second.evaluate((raw) => __localTest.setLegacyRaw(raw), olderRaw);
+    await page.getByRole('button', { name: 'Keep current board', exact: true }).waitFor();
+    await page.evaluate(() => { __localTest.holdNextCommit = true; });
+    await page.getByRole('button', { name: 'Keep current board', exact: true }).click();
+    await page.waitForFunction(() => __localTest.commitHeld);
+    await field.fill('Typed while acknowledgement commits');
+    assert(await unloadBlocked(page));
+    await page.evaluate(() => { __localTest.releaseCommit = true; });
+    await saved(page);
+    assert.equal(await field.inputValue(), 'Typed while acknowledgement commits');
+    assert.equal((await stored(page)).projects[0].name, 'Typed while acknowledgement commits');
+    const head = await page.evaluate(() => __localTest.head());
+    assert.equal(head.revision, 3);
+    assert.equal(head.legacyRaw, olderRaw);
+    assert.equal(await page.evaluate(() => __localTest.legacyRaw()), olderRaw);
+    assert.equal(await unloadBlocked(page), false);
+  }, { noLocks: true });
+
 } finally {
   await browser.close(); await server.close();
 }

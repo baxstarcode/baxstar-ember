@@ -47,6 +47,31 @@ const savedMission = {
 };
 const taskOptions = { syncData: taskSyncData, storage: { 'ember-mc': savedMission } };
 
+// Observe the committed canonical board, never a successful request that may
+// still be rolled back. The original localStorage value is a recovery copy.
+async function missionHead(page) {
+  return page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('ember-local', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('boards');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const transaction = db.transaction('boards', 'readonly');
+      const request = transaction.objectStore('boards').get('ember-mc');
+      transaction.oncomplete = () => { db.close(); resolve(request.result ?? null); };
+      transaction.onabort = () => { db.close(); reject(transaction.error); };
+    };
+  }));
+}
+
+async function savedBoard(page) {
+  const head = await missionHead(page);
+  assert(head, 'A successful save must commit a canonical board');
+  assert.equal(head.format, 1);
+  assert(Number.isSafeInteger(head.revision) && head.revision > 0);
+  return JSON.parse(head.raw);
+}
+
 async function syncCommunications(f) {
   await f.page.locator('.sync-control').click();
   await f.page.locator('.ember-row').filter({ hasText: taskSyncData.voicemails[0].from }).waitFor();
@@ -424,6 +449,7 @@ try {
     assert.equal(await proposal.getByLabel('Task due', { exact: true }).inputValue(), '');
     assert.equal(await proposal.getByLabel('Task details', { exact: true }).inputValue(), taskSyncData.voicemails[0].vm);
     assert.deepEqual(await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-mc'))), savedMission, 'Opening a draft must not save it');
+    assert.equal(await missionHead(f.page), null, 'Opening a draft must not migrate the board');
     await proposal.getByLabel('Task title', { exact: true }).fill('Reviewed callback task');
     await proposal.getByLabel('Task due', { exact: true }).fill('Tomorrow at 9 AM');
     await proposal.getByLabel('Task details', { exact: true }).fill('Edited details remain local.');
@@ -431,7 +457,9 @@ try {
     await f.page.locator('.task-feedback').waitFor();
     assert.equal(await f.page.locator('.task-proposal').count(), 0);
     assert.match(await f.page.locator('.task-feedback').innerText(), /saved locally[\s\S]*not sent to Quo/i);
-    const stored = await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-mc')));
+    const stored = await savedBoard(f.page);
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('ember-mc')), JSON.stringify(savedMission), 'Migration keeps the original recovery copy byte-for-byte');
+    assert.equal((await missionHead(f.page)).legacyRaw, JSON.stringify(savedMission));
     assert.deepEqual(stored.customRoot, savedMission.customRoot);
     assert.deepEqual(stored.zap, savedMission.zap);
     assert.deepEqual(stored.decisions, savedMission.decisions);
@@ -467,6 +495,7 @@ try {
     await proposal.getByRole('button', { name: 'Discard', exact: true }).click();
     assert.equal(await proposal.count(), 0);
     assert.deepEqual(await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-mc'))), savedMission);
+    assert.equal(await missionHead(f.page), null, 'Discard must not migrate the board');
     assert.equal(await f.page.evaluate(() => __chatMock.allRequests.length), requestsBefore);
   }, taskOptions);
 
@@ -479,6 +508,7 @@ try {
       await proposal.getByRole('button', { name: 'Save locally', exact: true }).click();
       await f.page.locator('.task-error').waitFor();
       assert.equal(await f.page.evaluate(() => localStorage.getItem('ember-mc')), invalid);
+      assert.equal(await missionHead(f.page), null, 'Unreadable legacy data must never be replaced by a new canonical board');
       assert.equal(await proposal.count(), 1);
       assert.match(await f.page.locator('.task-error').innerText(), /unreadable|cannot read|nothing was overwritten/i);
       assert.equal(await f.page.locator('.task-feedback').count(), 0);
@@ -492,8 +522,11 @@ try {
     const proposal = f.page.locator('.task-proposal');
     await proposal.getByLabel('Task title', { exact: true }).fill('Preserve reviewed task on quota failure');
     await f.page.evaluate(() => {
-      const original = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (key, value) { if (key === 'ember-mc') throw new DOMException('Fixture quota exceeded', 'QuotaExceededError'); return original.call(this, key, value); };
+      const original = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, key) {
+        if (this.name === 'boards' && key === 'ember-mc') throw new DOMException('Fixture quota exceeded', 'QuotaExceededError');
+        return original.call(this, value, key);
+      };
     });
     await proposal.getByRole('button', { name: 'Save locally', exact: true }).click();
     await f.page.locator('.task-error').waitFor();
@@ -501,28 +534,65 @@ try {
     assert.match(await f.page.locator('.task-error').innerText(), /could not save|storage/i);
     assert.equal(await f.page.locator('.task-feedback').count(), 0);
     assert.deepEqual(await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-mc'))), savedMission);
+    assert.equal(await missionHead(f.page), null, 'Failed migration must not leave a committed board');
     assert.equal(await f.page.evaluate(() => __chatMock.allRequests.length), requestsBefore);
   }, taskOptions);
 
-  await test('mounted Mission Control refreshes on local and storage events', async (f) => {
+  await test('mounted Mission Control refreshes committed local and cross-tab updates', async (f) => {
     await f.page.locator('.console-dock').getByRole('button', { name: 'Projects', exact: true }).click();
     await f.page.getByRole('button', { name: 'MISSION CONTROL', exact: true }).click();
     await f.page.locator('.mc-grid').waitFor();
     await f.page.locator('.mc-row').first().getByRole('button', { name: 'tasks (1)', exact: true }).click();
-    for (const [id, event] of [['task-custom-event', 'ember:mc-updated'], ['task-storage-event', 'storage']]) {
-      await f.page.evaluate(({ id, event }) => {
-        const record = JSON.parse(localStorage.getItem('ember-mc'));
-        record.projects[0].tasks.push({ id, text: `Refreshed ${id}`, done: false, localOnly: true, due: 'Today', details: 'Event-refresh fixture', source: 'Local fixture' });
-        localStorage.setItem('ember-mc', JSON.stringify(record));
-        window.dispatchEvent(event === 'storage' ? new StorageEvent('storage', { key: 'ember-mc', newValue: JSON.stringify(record), storageArea: localStorage }) : new CustomEvent(event));
-      }, { id, event });
+    for (const [id, event] of [['task-custom-event', 'ember:mc-updated'], ['task-broadcast-event', 'broadcast']]) {
+      await f.page.evaluate(({ id, event }) => new Promise((resolve, reject) => {
+        const open = indexedDB.open('ember-local', 1);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const transaction = db.transaction('boards', 'readwrite');
+          const store = transaction.objectStore('boards');
+          const request = store.get('ember-mc');
+          request.onsuccess = () => {
+            const prior = request.result;
+            const legacyRaw = prior ? prior.legacyRaw : localStorage.getItem('ember-mc');
+            const record = JSON.parse(prior ? prior.raw : legacyRaw);
+            record.projects[0].tasks.push({ id, text: `Refreshed ${id}`, done: false, localOnly: true, due: 'Today', details: 'Event-refresh fixture', source: 'Local fixture' });
+            store.put({ format: 1, revision: (prior?.revision ?? 0) + 1, raw: JSON.stringify(record), legacyRaw }, 'ember-mc');
+          };
+          transaction.oncomplete = () => {
+            db.close();
+            if (event === 'broadcast') {
+              const channel = new BroadcastChannel('ember-mc');
+              channel.postMessage('changed');
+              channel.close();
+            } else window.dispatchEvent(new CustomEvent(event));
+            resolve();
+          };
+          transaction.onabort = () => { db.close(); reject(transaction.error); };
+        };
+      }), { id, event });
       await f.page.locator(`[data-task-id="${id}"]`).waitFor();
       assert.equal(await f.page.locator(`[data-task-id="${id}"]`).getByLabel('Task name', { exact: true }).inputValue(), `Refreshed ${id}`);
     }
-    const stored = await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-mc')));
+    const stored = await savedBoard(f.page);
     assert.equal(stored.projects[0].tasks.length, 3);
     assert.deepEqual(stored.customRoot, savedMission.customRoot);
     assert.deepEqual(stored.projects[1], savedMission.projects[1]);
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('ember-mc')), JSON.stringify(savedMission));
+    // An old build may still edit localStorage after migration. Its notification
+    // must expose recovery, not replace the committed board with that stale copy.
+    const olderRaw = await f.page.evaluate(() => {
+      const older = JSON.parse(localStorage.getItem('ember-mc'));
+      older.projects[0].tasks.push({ id: 'older-tab-task', text: 'Older-tab work to recover', done: false });
+      const raw = JSON.stringify(older);
+      localStorage.setItem('ember-mc', raw);
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ember-mc', newValue: raw, storageArea: localStorage }));
+      return raw;
+    });
+    await f.page.getByRole('button', { name: 'Download older-tab data', exact: true }).waitFor();
+    assert.equal(await f.page.locator('[data-task-id="older-tab-task"]').count(), 0);
+    assert.deepEqual(await savedBoard(f.page), stored, 'An old-build notification must not overwrite canonical edits');
+    assert.equal(await f.page.evaluate(() => localStorage.getItem('ember-mc')), olderRaw, 'Older-tab data remains available for recovery');
     assert.equal(await f.page.evaluate(() => __chatMock.allRequests.length), 0);
   }, taskOptions);
 
@@ -538,7 +608,7 @@ try {
     assert(await f.page.evaluate(() => document.documentElement.scrollWidth - innerWidth <= 1));
     await proposal.getByRole('button', { name: 'Save locally', exact: true }).click();
     await f.page.locator('.task-feedback').waitFor();
-    const stored = await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-mc')));
+    const stored = await savedBoard(f.page);
     assert.equal(stored.projects[0].tasks.at(-1).text, 'Phone local task');
     assert.equal(stored.projects[0].tasks.at(-1).due, '');
     assert.equal(await f.page.evaluate(() => __chatMock.allRequests.length), requestsBefore);

@@ -1548,6 +1548,11 @@ export default function BaxstarEmber() {
   const [missionVisited, setMissionVisited] = useState(false);
   useEffect(() => { if (view === "mission") setMissionVisited(true); }, [view]);
   const [studioTool, setStudioTool] = useState("captions");
+  useEffect(() => {
+    // On phones the document scrolls. Carrying OPS' inbox position into Studio
+    // can hide its upload field above the screen. Only navigation resets it.
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [view, studioTool]);
   // Bumped on every Caption Studio press; DockMech keys the lever rotor off it,
   // so each click restarts the throw animation from the top with no timers.
   const [leverPull, setLeverPull] = useState(0);
@@ -3316,8 +3321,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .mc-linkurl { width:150px; }
         .mc-x { color:var(--ink-faint); background:transparent; border:none; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
         .mc-x:hover { color:var(--ember-red); }
+        .mc-toggle-target { display:inline-flex; align-items:center; justify-content:center; flex:none; cursor:pointer; }
+        .caption-schedule { display:flex; flex-wrap:wrap; gap:16px; }
+        .caption-lake { flex:1 1 180px; min-width:0; }
+        .caption-posting { flex:1 1 260px; min-width:0; }
+        .caption-post-times { display:flex; flex-wrap:wrap; gap:8px; }
+        .caption-post-times .seg { white-space:nowrap; }
 
-        @media (max-width:760px) {
+        @media (max-width:760px), (pointer:coarse) {
           .mc-grid, .mc-stack, .mc-grid .panel, .mc-row { min-width:0; width:100%; max-width:100%; }
           .mc-grid .grid-cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
           .mc-project-head, .mc-project-meta, .mc-next-row, .mc-links { min-width:0; width:100%; }
@@ -3334,7 +3345,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .mc-linkin { flex:1 1 90px; width:auto; }
           .mc-linkurl { flex-basis:150px; width:auto; }
           .mc-input, .mc-status, .mc-mini { min-height:44px; }
+          .mc-input { font-size:16px; }
+          .mc-num { min-width:64px; }
+          .mc-check > .mc-toggle-target { width:44px; height:44px; }
+          .mc-linkchip > a { display:flex; align-items:center; min-height:44px; }
           .mc-x { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; }
+          .caption-schedule { flex-direction:column; }
+          .caption-lake, .caption-posting { flex:initial; width:100%; }
+          .caption-schedule input { font-size:16px; min-height:44px; max-width:100%; }
+          .caption-post-times .seg { min-height:44px; }
         }
 
         .dock-control {
@@ -4612,16 +4631,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </div>
                 </div>
 
-                <div className="mt-4 flex gap-4">
-                  <div className="flex-1">
-                    <div className="fieldlabel">Lake</div>
-                    <input value={lake} onChange={(e) => setLake(e.target.value)}
+                <div className="mt-4 caption-schedule">
+                  <div className="caption-lake">
+                    <label className="fieldlabel" htmlFor="caption-lake">Lake</label>
+                    <input id="caption-lake" value={lake} onChange={(e) => setLake(e.target.value)}
                       className="cmd-input mt-2 w-full rounded-lg px-3 py-2 text-sm"
                       style={{ background: "#120c0c", color: "var(--ink)" }} />
                   </div>
-                  <div>
+                  <div className="caption-posting">
                     <div className="fieldlabel">Posting Window</div>
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 caption-post-times">
                       {POST_PRESETS.map((t) => (
                         <button key={t} className={`seg ${postTime === t ? "on" : ""}`} onClick={() => setPostTime(t)}>
                           {fmtPostTime(t)}
@@ -6351,22 +6370,94 @@ function mcNormalize(record) {
   return { ...record, zap, projects, decisions: list(record.decisions, task) };
 }
 
-function mcRead() {
+// IndexedDB owns the canonical board after the first successful edit. Comparing
+// a revision and writing its replacement in ONE readwrite transaction is atomic
+// across tabs; a Web Lock around localStorage is not (its cached reads can lag).
+// The original localStorage key stays untouched as a recovery copy. Old builds
+// can still write that copy, but can never replace the canonical board.
+function missionTransaction(mode, transform) {
+  return new Promise((resolve, reject) => {
+    let db, tx, result, failure, finished = false;
+    const finish = (error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      db?.close();
+      error ? reject(error) : resolve(result);
+    };
+    const timer = setTimeout(() => {
+      failure = new Error("Browser storage did not respond. Keep this tab open and retry saving.");
+      if (tx) { try { tx.abort(); } catch { /* Already complete. */ } }
+      finish(failure);
+    }, 10000);
+    try {
+      const open = indexedDB.open("ember-local", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("boards");
+      open.onerror = () => finish(open.error || new Error("Browser storage is unavailable."));
+      open.onblocked = () => finish(new Error("Another Ember tab is blocking storage. Close older tabs and retry."));
+      open.onsuccess = () => {
+        db = open.result;
+        if (finished) { db.close(); return; }
+        try {
+          tx = db.transaction("boards", mode);
+          tx.oncomplete = () => finish(); // A successful put alone is NOT a commit.
+          tx.onabort = () => finish(failure || tx.error || new Error("The board save was interrupted."));
+          const store = tx.objectStore("boards");
+          const get = store.get(MC_KEY);
+          get.onsuccess = () => {
+            try {
+              const head = get.result;
+              if (head !== undefined && (!head || head.format !== 1 || !Number.isSafeInteger(head.revision) || head.revision < 1 ||
+                  typeof head.raw !== "string" || !(head.legacyRaw === null || typeof head.legacyRaw === "string"))) {
+                throw Object.assign(new Error("Saved Mission Control data is unreadable. Nothing was overwritten; your task draft is still here."), { code: "read" });
+              }
+              let legacyCurrent, legacyReadable = true;
+              try { legacyCurrent = window.localStorage.getItem(MC_KEY); }
+              catch (error) { if (!head) throw error; legacyReadable = false; }
+              const snapshot = head ? { ...head, legacyCurrent, legacyReadable,
+                legacyChanged: legacyReadable && head.legacyRaw !== legacyCurrent } :
+                { revision: 0, raw: legacyCurrent, legacyRaw: legacyCurrent, legacyCurrent, legacyReadable, legacyChanged: false };
+              const change = transform?.(snapshot);
+              result = snapshot;
+              if (change) {
+                if (mode !== "readwrite" || typeof change.raw !== "string" || snapshot.revision >= Number.MAX_SAFE_INTEGER) throw new Error("Invalid board save.");
+                const next = { format: 1, revision: snapshot.revision + 1, raw: change.raw,
+                  legacyRaw: Object.hasOwn(change, "legacyRaw") ? change.legacyRaw : snapshot.legacyRaw };
+                store.put(next, MC_KEY);
+                result = { ...snapshot, ...next, legacyChanged: legacyReadable && next.legacyRaw !== legacyCurrent };
+              }
+            } catch (error) { failure = error; tx.abort(); }
+          };
+        } catch (error) { finish(error); }
+      };
+    } catch (error) { finish(error); }
+  });
+}
+const readMissionSnapshot = () => missionTransaction("readonly");
+const updateMissionSnapshot = (transform) => missionTransaction("readwrite", transform);
+const mcSameVersion = (a, b) => a.revision === b.revision && a.raw === b.raw;
+const mcConflict = () => Object.assign(new Error("Saved data changed in another tab or tool. Your draft is still here."), { code: "conflict" });
+async function mcRead() {
+  const snapshot = await readMissionSnapshot();
+  return { ...snapshot, record: snapshot.raw === null ? mcDefaults() : mcNormalize(JSON.parse(snapshot.raw)) };
+}
+function mcNotify() {
+  window.dispatchEvent(new CustomEvent(MC_CHANGED));
   try {
-    const raw = window.localStorage.getItem(MC_KEY);
-    return { raw, record: raw === null ? mcDefaults() : mcNormalize(JSON.parse(raw)) };
-  } catch {
-    throw new Error("Cannot read saved Mission Control data. Nothing was overwritten; your task draft is still here.");
-  }
+    const channel = new BroadcastChannel(MC_KEY);
+    channel.postMessage("changed"); channel.close();
+  } catch { /* Focus/pageshow still refresh; transactions protect every write. */ }
 }
 
-// Both local writers use one origin-wide lock where supported. The synchronous
-// fallback still checks the saved snapshot before replacing a board.
+// Keep ordering with older clients where possible. IndexedDB, not this lock,
+// enforces the revision check even when Web Locks are unavailable.
 const mcWriteLock = (write) => navigator.locks?.request ? navigator.locks.request(MC_KEY, write) : Promise.resolve().then(write);
 
 async function mcSaveTaskDraft(draft) {
-  return mcWriteLock(() => {
-    const { record } = mcRead();
+  await mcWriteLock(() => updateMissionSnapshot((snapshot) => {
+    let record;
+    try { record = snapshot.raw === null ? mcDefaults() : mcNormalize(JSON.parse(snapshot.raw)); }
+    catch { throw Object.assign(new Error("Cannot read saved Mission Control data. Nothing was overwritten; your task draft is still here."), { code: "read" }); }
     const projects = [...record.projects];
     let index = projects.findIndex((p) => typeof p?.name === "string" && p.name.trim().toLowerCase() === "baxstar ember");
     if (index < 0) {
@@ -6382,38 +6473,63 @@ async function mcSaveTaskDraft(draft) {
       tasks: [...tasks, { id: draft.id, text: draft.title.trim(), done: false, due: draft.due.trim(), details: draft.details.trim(), source: draft.source, localOnly: true }],
     };
     const next = { ...record, projects };
-    if (!lsSet(MC_KEY, next)) throw new Error("Could not save locally. Check this browser's storage; your task draft is still here.");
-    window.dispatchEvent(new CustomEvent(MC_CHANGED));
-  });
+    return { raw: JSON.stringify(next) };
+  })).catch((error) => { throw error.code === "read" ? error : new Error("Could not save locally. Check this browser's storage; your task draft is still here."); });
+  mcNotify();
 }
 
 function MissionControl({ active, onActivate }) {
-  const [state, setState] = useState(() => {
-    try { return { ...mcRead(), dirty: false, problem: "" }; }
-    catch { return { raw: null, record: null, dirty: false, problem: "read" }; }
-  });
+  const [state, setState] = useState({ raw: null, revision: 0, record: null, dirty: false, loading: true, problem: "" });
   const stateRef = useRef(state);
+  const savingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const readSequence = useRef(0);
   const [confirmLoad, setConfirmLoad] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [openRows, setOpenRows] = useState({});
-  const update = (next) => { stateRef.current = next; setState(next); };
-  const loadSaved = () => {
-    try { update({ ...mcRead(), dirty: false, problem: "" }); setConfirmLoad(false); setDownloadError(""); }
-    catch { update({ ...stateRef.current, problem: "read" }); }
+  const update = (next) => { stateRef.current = next; if (mountedRef.current) setState(next); };
+  const loadSaved = async () => {
+    const before = stateRef.current, sequence = ++readSequence.current;
+    try {
+      const next = await mcRead();
+      // Reading storage must never replace typing that happened while it waited.
+      if (sequence !== readSequence.current || stateRef.current !== before || !mountedRef.current) return;
+      update({ ...next, dirty: false, loading: false, problem: "" });
+      setConfirmLoad(false); setDownloadError("");
+    } catch { if (sequence === readSequence.current && stateRef.current === before) update({ ...before, loading: false, problem: "read" }); }
+  };
+  const refresh = async () => {
+    if (savingRef.current || document.visibilityState === "hidden") return;
+    const before = stateRef.current, sequence = ++readSequence.current;
+    try {
+      const next = await mcRead();
+      if (sequence !== readSequence.current || stateRef.current !== before || !mountedRef.current) return;
+      if (!before.dirty) update({ ...next, dirty: false, loading: false, problem: "" });
+      else if (!mcSameVersion(next, before)) update({ ...before, legacyChanged: next.legacyChanged, problem: "conflict" });
+    } catch { if (sequence === readSequence.current && stateRef.current === before) update({ ...before, loading: false, problem: "read" }); }
   };
   const save = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     try {
-      await mcWriteLock(() => {
-        // Read inside the lock, using the latest draft if typing queued more edits.
-        const current = stateRef.current;
-        if (!current.dirty || !current.record || current.problem === "conflict") return;
-        const raw = window.localStorage.getItem(MC_KEY);
-        if (raw !== current.raw) { update({ ...current, problem: "conflict" }); return; }
-        const nextRaw = JSON.stringify(current.record);
-        window.localStorage.setItem(MC_KEY, nextRaw);
-        update({ ...current, raw: nextRaw, dirty: false, problem: "" });
-      });
-    } catch { update({ ...stateRef.current, problem: "save" }); }
+      while (stateRef.current.dirty && stateRef.current.record && stateRef.current.problem !== "conflict") {
+        let written;
+        const next = await mcWriteLock(() => updateMissionSnapshot((snapshot) => {
+          const current = stateRef.current;
+          if (!current.dirty || current.problem === "conflict") return null;
+          if (!mcSameVersion(snapshot, current)) throw mcConflict();
+          written = current;
+          return { raw: JSON.stringify(current.record) };
+        }));
+        if (!written) break;
+        const latest = stateRef.current;
+        // Only the captured draft committed. Carry later typing forward and save
+        // it against the new revision; never mark that newer work saved early.
+        update({ ...latest, ...next, record: latest.record, dirty: latest.record !== written.record, problem: "" });
+        mcNotify();
+      }
+    } catch (error) { update({ ...stateRef.current, problem: error.code === "conflict" ? "conflict" : "save" }); }
+    finally { savingRef.current = false; }
   };
   const change = (key, fn) => {
     const current = stateRef.current;
@@ -6424,9 +6540,10 @@ function MissionControl({ active, onActivate }) {
   const setZap = (fn) => change("zap", fn);
   const setProjects = (fn) => change("projects", fn);
   const setDecisions = (fn) => change("decisions", fn);
-  const download = () => {
+  const download = async (older = false) => {
     try {
-      const content = stateRef.current.dirty ? JSON.stringify(stateRef.current.record, null, 2) : window.localStorage.getItem(MC_KEY);
+      const current = stateRef.current;
+      const content = older ? window.localStorage.getItem(MC_KEY) : current.dirty ? JSON.stringify(current.record, null, 2) : (await readMissionSnapshot()).raw;
       if (content === null) throw new Error("No saved data");
       const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
       const link = document.createElement("a");
@@ -6436,31 +6553,51 @@ function MissionControl({ active, onActivate }) {
       setDownloadError("");
     } catch { setDownloadError("Could not download a copy. Keep this tab open and try again."); }
   };
+  const keepCurrent = async () => {
+    const before = stateRef.current;
+    if (before.dirty || savingRef.current) return;
+    try {
+      const next = await mcWriteLock(() => updateMissionSnapshot((snapshot) => {
+        if (!mcSameVersion(snapshot, before)) throw mcConflict();
+        if (!snapshot.legacyReadable || snapshot.raw === null) throw new Error("Cannot read the older copy.");
+        return { raw: snapshot.raw, legacyRaw: snapshot.legacyCurrent };
+      }));
+      const latest = stateRef.current;
+      if (mcSameVersion(latest, before)) update({ ...latest, ...next, record: latest.record });
+      mcNotify();
+    } catch { update({ ...stateRef.current, problem: "read" }); }
+  };
   useEffect(() => {
-    const refresh = (event) => {
+    mountedRef.current = true;
+    void loadSaved();
+    const onStorage = (event) => {
       if (event.type === "storage" && (event.key !== MC_KEY && event.key !== null || event.storageArea && event.storageArea !== window.localStorage)) return;
-      const current = stateRef.current;
-      if (!current.dirty) { loadSaved(); return; }
-      try {
-        if (window.localStorage.getItem(MC_KEY) !== current.raw) update({ ...current, problem: "conflict" });
-      } catch { update({ ...current, problem: "read" }); }
+      void refresh();
     };
     const warnUnsaved = (event) => {
       if (!stateRef.current.dirty) return;
       event.preventDefault(); event.returnValue = "";
     };
+    let channel;
+    try { channel = new BroadcastChannel(MC_KEY); channel.onmessage = refresh; } catch { /* Optional wake-up only. */ }
     window.addEventListener(MC_CHANGED, refresh);
-    window.addEventListener("storage", refresh);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    document.addEventListener("visibilitychange", refresh);
     window.addEventListener("beforeunload", warnUnsaved);
     return () => {
-      window.removeEventListener(MC_CHANGED, refresh); window.removeEventListener("storage", refresh);
+      mountedRef.current = false; channel?.close();
+      window.removeEventListener(MC_CHANGED, refresh); window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", refresh); window.removeEventListener("pageshow", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("beforeunload", warnUnsaved);
     };
   }, []);
 
   const notice = <div className={`mc-save-note ${state.problem ? "problem" : ""}`}>
     <p role={state.problem ? "alert" : "status"}>
-      {state.problem === "read" ? `Cannot read saved Mission Control data. Nothing was overwritten.${state.dirty ? " Your unsaved edits are still in this tab." : " Try reading again or download the saved data for recovery."}` :
+      {state.loading ? "Reading saved board…" : state.problem === "read" ? `Cannot read saved Mission Control data. Nothing was overwritten.${state.dirty ? " Your unsaved edits are still in this tab." : " Try reading again or download the saved data for recovery."}` :
        state.problem === "conflict" ? "Saved data changed in another tab or tool. Your unsaved edits are still here; neither version was overwritten." :
        state.problem === "save" ? "Could not save on this device. Your edits are only in this tab. Keep it open, retry saving, or download a copy." :
        state.dirty ? "Saving on this device…" : state.raw === null ? "Starter board · edits save on this device." : "Saved on this device."}
@@ -6468,8 +6605,17 @@ function MissionControl({ active, onActivate }) {
     {state.problem && <div className="mt-2 flex flex-wrap gap-2">
       {state.dirty && state.problem !== "conflict" && <button className="chip solid" onClick={save}>Retry save</button>}
       {!state.dirty && <button className="chip solid" onClick={loadSaved}>Try reading again</button>}
-      <button className="chip ghost" onClick={download}>{state.dirty ? "Download my edits" : "Download saved data"}</button>
+      <button className="chip ghost" onClick={() => download()}>{state.dirty ? "Download my edits" : "Download saved data"}</button>
+      {state.problem === "read" && !state.record && <button className="chip ghost" onClick={() => download(true)}>Download previous board copy</button>}
       {state.dirty && <button className="chip ghost" onClick={() => setConfirmLoad(true)}>Load saved version</button>}
+    </div>}
+    {state.legacyChanged && <div className="mt-2" role="status">
+      <p>An older Ember tab changed the previous board copy. Your current board is safe. Close older tabs, then download their copy if you need those edits.</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button className="chip ghost" onClick={() => download(true)}>Download older-tab data</button>
+        <button className="chip ghost" onClick={() => download()}>{state.dirty ? "Download current edits" : "Download current board"}</button>
+        {!state.dirty && <button className="chip solid" onClick={keepCurrent}>Keep current board</button>}
+      </div>
     </div>}
     {confirmLoad && state.dirty && <div className="mt-2">
       <p>Loading the saved version will discard your unsaved edits in this tab. Download them first if you want to keep a copy.</p>
@@ -6632,7 +6778,7 @@ function MissionControl({ active, onActivate }) {
                       {p.tasks.map((t) => (
                         <div key={t.id} data-task-id={t.id}>
                           <div className={`mc-check ${t.done ? "done" : ""}`}>
-                            <input type="checkbox" aria-label={`Complete ${t.text}`} checked={t.done} onChange={(e) => updTask(p.id, t.id, { done: e.target.checked })} />
+                            <label className="mc-toggle-target"><input type="checkbox" aria-label={`Complete ${t.text}`} checked={t.done} onChange={(e) => updTask(p.id, t.id, { done: e.target.checked })} /></label>
                             <input aria-label="Task name" className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={t.text} onChange={(e) => updTask(p.id, t.id, { text: e.target.value })} />
                             <button className="mc-x" aria-label={`Remove ${t.text}`} onClick={() => delTask(p.id, t.id)}>×</button>
                           </div>
@@ -6675,7 +6821,7 @@ function MissionControl({ active, onActivate }) {
           <div className="flex flex-col gap-1">
             {decisions.map((d) => (
               <div key={d.id} className={`mc-check ${d.done ? "done" : ""}`}>
-                <input type="checkbox" checked={d.done} onChange={(e) => updDecision(d.id, { done: e.target.checked })} />
+                <label className="mc-toggle-target"><input type="checkbox" aria-label={`Complete ${d.text}`} checked={d.done} onChange={(e) => updDecision(d.id, { done: e.target.checked })} /></label>
                 <input className="mc-input flex-1" style={{ background: "transparent", border: "none" }} value={d.text} onChange={(e) => updDecision(d.id, { text: e.target.value })} />
                 <button className="mc-x" onClick={() => delDecision(d.id)}>×</button>
               </div>

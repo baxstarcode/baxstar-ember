@@ -1,6 +1,6 @@
 # Ember — Known Issues and Deliberate Limits
 
-Last updated from the working repository on **2026-10-17 UTC**. Recorded production
+Last updated from the working repository on **2026-10-18 (America/Chicago)**. Recorded production
 verification remains dated 2026-09-20 unless stated otherwise. This is the active
 ledger; Git history and the Ember Handoff Log preserve the closed issue record.
 
@@ -211,7 +211,7 @@ production API and physical voice checks.
 
 **Status: DELIBERATE LIMIT / PRODUCT DECISION PENDING**
 
-Mission Control lives in browser `localStorage`; local tasks do not sync to Quo or
+Mission Control lives in this browser's IndexedDB after its first edit; local tasks do not sync to Quo or
 another device. The Projects bars are maintained in the source `PROJECTS` constant.
 Both views are useful, but neither is a durable shared project database.
 
@@ -223,15 +223,28 @@ Loading another saved version requires an explicit discard, and a failed recover
 read keeps the draft. Missing optional lists in older records remain supported;
 unknown root/project/task metadata is preserved.
 
-Board edits and reviewed OPS tasks share an origin-wide Web Lock where supported.
-The code compares the saved snapshot before writing, but **a stale cross-tab read
-can defeat that check even with Web Locks** (see the reproduced case below).
-Browsers without Web Locks also lack atomic simultaneous writes. Old app versions
-and other scripts that bypass the lock can race. This is browser-local protection,
-not cross-device sync. Browser termination can still lose an unsaved in-memory draft;
-the leave warning is best effort, so download the copy when storage is failing.
+**Transaction repair, 2026-10-18:** board saves now compare a shared revision and
+write the next record within one IndexedDB readwrite transaction. OPS task drafts
+append inside the same transaction boundary. Web Locks retain ordering where
+available but are not the correctness mechanism. A losing tab keeps its draft and
+download/recovery controls; the saved board is not replaced. A save is acknowledged
+only after transaction completion, and text entered while it waits stays dirty
+until its own save commits. Storage denial/abort never falls back to unsafe writes.
 
-**Reopened, 2026-10-17 UTC — production-release blocker:** the existing
+The original `localStorage['ember-mc']` bytes remain untouched. The first successful
+edit imports them into database `ember-local`, store `boards`, key `ember-mc`.
+Opening a board never writes a board record. Old tabs can still change the legacy
+copy, but cannot overwrite the current database record. Ember flags that separate
+copy and offers both downloads; **Keep current board** acknowledges it without
+discarding either stored version. Close older tabs after updating. No cloud backend,
+cross-device sync, external tasks, or new paid service was added.
+
+Clearing all site data or losing the browser profile still removes local data.
+Browser termination can lose an unsaved in-memory draft; the leave warning is best
+effort, so download the copy when storage is failing. Physical iPhone/Safari keyboard
+behavior remains unverified; automated touch Chromium checks cover phone layouts.
+
+**Historical reproduction, 2026-10-17 UTC:** the existing
 `simultaneous board edits serialize and preserve the losing tab as a recoverable draft`
 browser test failed during alternative validation. Two tabs queue edits behind one
 held `ember-mc` lock. After release, the first writes its edit; the second acquires
@@ -242,12 +255,12 @@ failed against preserved source at `108d444` (second repeated baseline attempt),
 establishing that this is not a new visual/voice logic change. The earlier 771-pass
 run did not establish reliable cross-tab atomicity.
 
-The alternative leaves the board persistence implementation untouched and is a
-visual preview only. Use one Mission Control editing tab until this is repaired.
-Do not rerun until green and call the race fixed, add an arbitrary sleep, or weaken
-the regression. A repair must establish a reliable shared revision/transaction
-boundary and preserve both drafts in the stale-read case, while retaining existing
-stored records and export/recovery behavior.
+The October 18 repair was verified against permanently stale legacy reads and
+actual IndexedDB transactions, including concurrent tabs without Web Locks, abort
+after a successful put, typing during a pending commit, and concurrent OPS appends.
+The forced-stale-read regression fails against untouched `dc83045` and passes with
+the repair; this is not a retry-until-green result. Full release evidence belongs
+in `docs/CURRENT-STATE.md`.
 
 Do not silently add a backend or turn local task drafts into external actions. Brady
 must choose the shared owner and migration path first.
