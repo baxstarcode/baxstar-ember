@@ -1,0 +1,256 @@
+{
+  "version": 1,
+  "workspaceId": "baxstar",
+  "accountId": "baxstar-fishing",
+  "source": "demo",
+  "signals": [
+    {
+      "id": "fishing-weather",
+      "title": "A weather check before the next launch",
+      "summary": "Demo: a trip is approaching. Review the current official forecast and local conditions before deciding how to proceed.",
+      "categories": [
+        "fishing"
+      ],
+      "kind": "attention",
+      "priority": "safety",
+      "impact": 5,
+      "effortMinutes": 10,
+      "confidence": 0.85,
+      "actionable": true,
+      "blocked": false,
+      "dueKind": "hard",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#fishing-weather"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic scenario only; no actual forecast or booking was read.",
+        "why": "A short human review can surface conditions that deserve a change of plan.",
+        "next": "If preparing a trip, open the official forecast and review conditions before choosing the next step.",
+        "prompt": "Help me build a short pre-trip weather review checklist. Keep unknowns explicit; do not issue a safe-to-go decision."
+      },
+      "dueAt": "2026-10-19T13:00:00Z"
+    },
+    {
+      "id": "rental-readiness",
+      "title": "One last check for a smooth handoff",
+      "summary": "Demo: the rental checklist has an unanswered readiness item. Confirm the source before treating it as a customer issue.",
+      "categories": [
+        "rentals"
+      ],
+      "kind": "attention",
+      "priority": "routine",
+      "impact": 4,
+      "effortMinutes": 20,
+      "confidence": 0.85,
+      "actionable": true,
+      "blocked": false,
+      "dueKind": "hard",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#rental-readiness"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic rental readiness report: one checklist item has no recorded answer.",
+        "why": "A verified handoff can prevent avoidable friction for a guest.",
+        "next": "If the checklist is still incomplete, verify the item and note the result.",
+        "prompt": "Turn this verified checklist gap into a 20-minute next step. Do not assume payment, damage, or guest obligations."
+      },
+      "dueAt": "2026-10-20T15:00:00Z"
+    },
+    {
+      "id": "consulting-dependency",
+      "title": "A client answer can unlock the build",
+      "summary": "Demo: a software deliverable depends on a client decision. Prepare the smallest useful question; review before sending.",
+      "categories": [
+        "consulting",
+        "software"
+      ],
+      "kind": "attention",
+      "priority": "waiting",
+      "impact": 4,
+      "effortMinutes": 5,
+      "confidence": 0.85,
+      "actionable": true,
+      "blocked": false,
+      "dueKind": "unknown",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#consulting-dependency"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic project note: the next build step depends on one client decision.",
+        "why": "A focused question can reduce rework without starting another implementation.",
+        "next": "If the decision is still open, draft one question with two concrete options.",
+        "prompt": "Draft a concise question about the missing decision. Separate the source fact from your assumptions. Do not send anything."
+      }
+    },
+    {
+      "id": "golf-feedback",
+      "title": "A good session is worth remembering",
+      "summary": "Demo: a golfer shared encouraging feedback. Keep the win; there is no follow-up required.",
+      "categories": [
+        "golf"
+      ],
+      "kind": "good",
+      "priority": "routine",
+      "impact": 3,
+      "effortMinutes": null,
+      "confidence": 0.85,
+      "actionable": false,
+      "blocked": false,
+      "dueKind": "none",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#golf-feedback"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic feedback example: a guest enjoyed a simulator session.",
+        "why": "Positive feedback is useful context, even when it creates no task.",
+        "next": "Nothing is required. Keep this as a useful signal.",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "software-checks",
+      "title": "The smaller fix passed its checks",
+      "summary": "Demo: the sample software change passed its local checks. That is progress, with production verification still separate.",
+      "categories": [
+        "software",
+        "consulting"
+      ],
+      "kind": "good",
+      "priority": "routine",
+      "impact": 4,
+      "effortMinutes": null,
+      "confidence": 0.85,
+      "actionable": false,
+      "blocked": false,
+      "dueKind": "none",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#software-checks"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic test report: the focused local checks passed.",
+        "why": "A verified local result is progress. It does not prove deployment or live integrations.",
+        "next": "Nothing required from this signal. Keep any release decision with its owner.",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "cross-business-week",
+      "title": "Make room for one useful improvement",
+      "summary": "Demo: compare one open slot across fishing, rentals, and golf. Use a dated source and the right capacity unit before drawing a conclusion.",
+      "categories": [
+        "fishing",
+        "rentals",
+        "golf"
+      ],
+      "kind": "information",
+      "priority": "opportunity",
+      "impact": 3,
+      "effortMinutes": 15,
+      "confidence": 0.85,
+      "actionable": true,
+      "blocked": false,
+      "dueKind": "none",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#cross-business-week"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic planning note: capacity sources have not been compared.",
+        "why": "Guide slots, rental hours, and bay-hours use different denominators.",
+        "next": "If you have 15 minutes, pick one business and verify one gap against its source.",
+        "prompt": "Build a small capacity comparison with period, source, denominator, and unknowns. Do not invent benchmarks or treat one-time consulting fees as MRR."
+      },
+      "reviewAt": "2026-10-21T15:00:00Z"
+    },
+    {
+      "id": "stale-source",
+      "title": "This note needs a fresh look",
+      "summary": "Demo: an older source may no longer describe the business. Check the original before repeating its recommendation.",
+      "categories": [
+        "software",
+        "rentals"
+      ],
+      "kind": "attention",
+      "priority": "routine",
+      "impact": 2,
+      "effortMinutes": 10,
+      "confidence": 0.85,
+      "actionable": true,
+      "blocked": false,
+      "dueKind": "unknown",
+      "observedAt": "2026-10-07T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-07T12:00:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#stale-source"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic archived report: its last observation is over a week old.",
+        "why": "Old reports can repeat resolved work or contradict a newer source.",
+        "next": "If this still matters, open the original and look for an update.",
+        "prompt": ""
+      }
+    },
+    {
+      "id": "software-capacity",
+      "title": "A larger dependency deserves a decision",
+      "summary": "Demo: a service issue would need more time than a quick triage session. Keep it visible and arrange capacity before attempting the fix.",
+      "categories": [
+        "software"
+      ],
+      "kind": "attention",
+      "priority": "disruption",
+      "impact": 5,
+      "effortMinutes": 90,
+      "confidence": 0.6,
+      "actionable": true,
+      "blocked": true,
+      "dueKind": "unknown",
+      "observedAt": "2026-10-18T13:00:00Z",
+      "sourceUpdatedAt": "2026-10-18T12:30:00Z",
+      "sources": [
+        {
+          "label": "Synthetic example \u00b7 full record",
+          "url": "https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/demo.json#software-capacity"
+        }
+      ],
+      "details": {
+        "signal": "Synthetic service disruption example; no live incident was detected.",
+        "why": "A short time budget must not hide a potentially important dependency.",
+        "next": "If the issue is verified, reserve focused time or ask the owner for a smaller safe step.",
+        "prompt": ""
+      }
+    }
+  ]
+}

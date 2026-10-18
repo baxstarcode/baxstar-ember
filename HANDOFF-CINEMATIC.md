@@ -1,5 +1,14 @@
 # Ember — Living Cinematic Handoff
 
+**2026-10-18 Signal Log scope:** additive page on `codex/ember-signal-log`, based
+on current default `main` `dc83045` (not the stale configured `108d444`). Read
+[`signal-log/README.md`](signal-log/README.md) for contract, privacy, ownership,
+ranking, and the exact missing Gmail/Calendar integration step. Synthetic demo
+and manual JSON import work locally; live feeds are not wired. The Worker/auth
+owner's work and existing UI are preserved. No merge, deployment, or reminder
+change is authorized. Registry row was read, but no secret or shared Drive write
+was used; the parent retains the precise claim/write-back gap.
+
 **Latest voice continuation (2026-10-17):** read `docs/VOICE-REBUILD.md` before voice
 work. Brady authorized an explicit recording experiment behind the orange mouth.
 Preview supports local record/playback; new official speech adapters are implemented
