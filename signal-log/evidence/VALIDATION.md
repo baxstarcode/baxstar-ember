@@ -7,8 +7,8 @@ Branch: `codex/ember-signal-log`. No shared Worker/auth/app code changed.
 
 `CHROME_PATH=/usr/bin/chromium npm run test:signal-log`
 
-- 21/21 unit/contract scenarios.
-- 16/16 browser scenarios, Chromium, device scale factor 3.
+- 26/26 unit/contract scenarios.
+- 19/19 browser scenarios, Chromium, device scale factor 3.
 - Viewports: 1440×1000, 390×844, 320×740, 844×390; no horizontal overflow.
 - Summary 200 / combined details+prompt 750 Unicode character boundaries;
   account mismatch, malicious links/text, import limits, stable occurrence identity,
@@ -17,6 +17,15 @@ Branch: `codex/ember-signal-log`. No shared Worker/auth/app code changed.
   tested foreground/background contrast ≥4.5, reduced-motion setting.
 - State persistence, memory-only imported content, saved views, multi-tab metadata
   transaction merging, stale-undo rejection, storage-denial recovery.
+- Explicit private backup download/restore including decisions; restored records
+  cannot inherit trusted provider verification. Waiting items leave the time
+  budget. Old deadlines require current explicit source confirmation to retain
+  deadline urgency, otherwise remain visible for verification.
+- Registered synthetic Gmail and Calendar readers populate/update the page,
+  preserve identity and decisions, reject account mismatch, and retain stale
+  data after errors. This proves the adapter seam, not a live provider connection.
+- At 390×844, at least 120px of the first signal appears before scrolling;
+  secondary filters collapse while all three primary focus controls stay visible.
 - No uncaught browser errors or external requests.
 
 The contrast checks cover declared text pairs, not a complete WCAG audit. Device
@@ -43,6 +52,13 @@ Mission Control issue already documented in `docs/CURRENT-STATE.md` and Known
 Issues §5 on the untouched base. No repair is claimed. Later suites were not
 reached in that aggregate run; the new Signal Log suite ran separately and passed.
 The full log is retained in `/workspace/signal-log-evidence/release-tests.log`.
+
+Reproduced separately on a pristine detached worktree at the exact base
+`dc830451054cb8af5637332504f899fa2f5123ec` with
+`CHROME_PATH=/usr/bin/chromium npm run test:local-state`: **16 passed, 1 failed**,
+the same simultaneous-board-edit assertion and 6000ms timeout. The base test and
+app files were not changed. See [base reproduction log](base-local-state.log).
+This establishes that the failure predates this feature; it is not fixed here.
 
 ## Live integration: NOT VERIFIED / NOT CONNECTED
 

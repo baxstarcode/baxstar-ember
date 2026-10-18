@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { CONFIG, length, parseImport, validateEnvelope, rankSignals, ranking, triage, deduplicate, identity, metadataKey, effectiveStatus, freshness, safeUrl, clamp, formatDate } from '../../signal-log/core.mjs';
+import { CONFIG, length, parseImport, parseTransfer, createBackup, validateEnvelope, rankSignals, ranking, deadlineState, triage, deduplicate, identity, metadataKey, effectiveStatus, freshness, safeUrl, clamp, formatDate } from '../../signal-log/core.mjs';
 import { createAccountAdapter } from '../../signal-log/adapters.mjs';
 const fixture = JSON.parse(await readFile(new URL('../../signal-log/example.json', import.meta.url)));
 const demo = validateEnvelope(JSON.parse(await readFile(new URL('../../signal-log/demo.json', import.meta.url))));
@@ -67,6 +67,39 @@ test('near material deadline has its own tier; distant deadline creates no fake 
 });
 test('rank order is deterministic across input orders', () => {
   assert.deepEqual(rankSignals(demo, now).map(s => s.id), rankSignals([...demo].reverse(), now).map(s => s.id));
+});
+test('months-old deadlines have no deadline urgency and are excluded pending verification', () => {
+  const s = signal({ dueAt: '2026-01-01T12:00:00Z', dueKind: 'hard', impact: 5 });
+  assert.equal(deadlineState(s, now).state, 'overdue-review'); assert.equal(ranking(s, now).components.deadline, 0); assert.equal(ranking(s, now).tier, 4);
+  const result = triage([s], 30, now); assert.equal(result.selected.length, 0); assert.equal(result.verification.length, 1);
+  const recent = { ...s, dueAt: '2026-10-17T12:00:00Z', id: 'a' };
+  assert.equal(rankSignals([{ ...s, id: 'z' }, recent], now)[0].id, 'a', 'unverified old dates do not win the tie');
+});
+test('a current explicit overdue confirmation preserves a real obligation and expires', () => {
+  const s = signal({ dueAt: '2026-09-01T12:00:00Z', dueKind: 'hard', overdueConfirmedAt: '2026-10-12T10:00:00Z', observedAt: '2026-10-12T11:00:00Z', impact: 5 });
+  const current = Date.parse('2026-10-12T12:00:00Z');
+  assert.equal(deadlineState(s, current).state, 'overdue-confirmed'); assert.equal(ranking(s, current).tier, 1); assert.equal(triage([s], 30, current).selected.length, 1);
+  assert.equal(deadlineState(s, current + 86400000).state, 'overdue-review');
+  assert.throws(() => signal({ dueKind: 'hard', dueAt: '2026-10-13T12:00:00Z', overdueConfirmedAt: '2026-10-12T10:00:00Z' }), /confirmation/);
+});
+test('backup round-trip preserves bounded source data and explicit dispositions without trusting old verification', () => {
+  const s = { ...signal(), key: 'opaque', verifiedRead: true, provenance: 'Verified provider read' };
+  const state = { read: true, status: 'waiting', snoozeUntil: null, observedAt: s.observedAt };
+  const text = createBackup([s], new Map([['opaque', state]])); assert(!text.includes('verifiedRead')); assert(!text.includes('opaque'));
+  const restored = parseTransfer(text); assert.equal(restored.type, 'backup'); assert.equal(restored.signals[0].summary, s.summary); assert.deepEqual(restored.states.get(identity(s)), state); assert.equal(restored.signals[0].verifiedRead, undefined);
+});
+test('backup account, link, state and duplicate-identity validation is atomic', () => {
+  const s = { ...signal(), key: 'opaque' }, backup = JSON.parse(createBackup([s], new Map()));
+  assert.throws(() => parseTransfer(JSON.stringify({ ...backup, accountId: 'wrong' })), /mismatch/);
+  const badState = structuredClone(backup); badState.entries[0].disposition.status = '<script>'; assert.throws(() => parseTransfer(JSON.stringify(badState)), /disposition/);
+  const badLink = structuredClone(backup); badLink.entries[0].record.sources[0].url = 'javascript:alert(1)'; assert.throws(() => parseTransfer(JSON.stringify(badLink)), /HTTPS/);
+  assert.throws(() => parseTransfer(JSON.stringify({ ...backup, entries: [...backup.entries, ...backup.entries] })), /duplicate/);
+  assert.throws(() => parseTransfer(' '.repeat(CONFIG.maxBackupBytes + 1)), /3 MiB/);
+});
+test('normal report limits remain 256 KiB; demo cannot be exported as private data', () => {
+  assert.equal(parseTransfer(JSON.stringify(fixture)).type, 'report');
+  assert.throws(() => parseTransfer(JSON.stringify({ ...fixture, ignored: 'x'.repeat(CONFIG.maxBytes) })), /256 KiB/);
+  assert.throws(() => createBackup(demo, new Map()), /demo/);
 });
 test('triage fits cumulative budget and retains oversized/blocked critical work', () => {
   const plan = triage(demo, 15, now);

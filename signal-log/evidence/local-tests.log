@@ -2,35 +2,40 @@
 > baxstar-ember@4.1.0 test:signal-log
 > node --test .devtest/signal-log/core.test.mjs && node .devtest/signal-log/browser.mjs
 
-✔ all bundled cards obey summary and combined detail limits and have source links (1.577588ms)
-✔ 200/750 Unicode character boundaries are enforced without truncating (2.403338ms)
-✔ bad JSON, huge files and excessive records fail atomically (0.741057ms)
-✔ workspace/account/provider mismatch cannot be silently remapped (0.459979ms)
-✔ executable and credential-bearing links are rejected (0.67339ms)
-✔ hostile content remains literal and extra fields are stripped (0.468078ms)
-✔ real dates require explicit zones; unknown/review dates never become hard deadlines (17.375109ms)
-✔ numeric inputs cannot create NaN or out-of-range scores (0.751807ms)
-✔ importance tiers beat easy low-impact urgency; score is explainable (0.551748ms)
-✔ near material deadline has its own tier; distant deadline creates no fake urgency (0.631607ms)
-✔ rank order is deterministic across input orders (0.527313ms)
-✔ triage fits cumulative budget and retains oversized/blocked critical work (0.446466ms)
-✔ dedup uses scoped record/occurrence identity, never titles (0.494364ms)
-✔ latest source update wins, sources survive duplicates, cross-source merge needs explicit canonical identity (1.154619ms)
-✔ metadata keys are opaque and account/occurrence separated (11.804768ms)
-✔ read is independent of completion; snoozes expire and decisions persist (0.233283ms)
-✔ freshness comes from observation; old and new remain distinct (0.140795ms)
-✔ unwired adapter performs no read and reports exact missing path (0.130283ms)
-✔ adapter failure uses a fixed message and does not expose provider error text (0.146824ms)
-✔ account-attested adapter fails closed before accepting provider data (0.318646ms)
-✔ verified adapter contract is functional with synthetic host evidence, never inferred from credential status (0.604937ms)
-ℹ tests 21
+✔ all bundled cards obey summary and combined detail limits and have source links (1.554351ms)
+✔ 200/750 Unicode character boundaries are enforced without truncating (3.237627ms)
+✔ bad JSON, huge files and excessive records fail atomically (0.658531ms)
+✔ workspace/account/provider mismatch cannot be silently remapped (0.601524ms)
+✔ executable and credential-bearing links are rejected (0.576393ms)
+✔ hostile content remains literal and extra fields are stripped (0.591239ms)
+✔ real dates require explicit zones; unknown/review dates never become hard deadlines (18.685536ms)
+✔ numeric inputs cannot create NaN or out-of-range scores (0.565461ms)
+✔ importance tiers beat easy low-impact urgency; score is explainable (0.898496ms)
+✔ near material deadline has its own tier; distant deadline creates no fake urgency (0.759056ms)
+✔ rank order is deterministic across input orders (0.51562ms)
+✔ months-old deadlines have no deadline urgency and are excluded pending verification (1.219586ms)
+✔ a current explicit overdue confirmation preserves a real obligation and expires (0.734159ms)
+✔ backup round-trip preserves bounded source data and explicit dispositions without trusting old verification (1.003657ms)
+✔ backup account, link, state and duplicate-identity validation is atomic (6.926315ms)
+✔ normal report limits remain 256 KiB; demo cannot be exported as private data (2.837801ms)
+✔ triage fits cumulative budget and retains oversized/blocked critical work (0.55783ms)
+✔ dedup uses scoped record/occurrence identity, never titles (0.511927ms)
+✔ latest source update wins, sources survive duplicates, cross-source merge needs explicit canonical identity (0.536725ms)
+✔ metadata keys are opaque and account/occurrence separated (19.098967ms)
+✔ read is independent of completion; snoozes expire and decisions persist (0.318873ms)
+✔ freshness comes from observation; old and new remain distinct (0.629605ms)
+✔ unwired adapter performs no read and reports exact missing path (0.36546ms)
+✔ adapter failure uses a fixed message and does not expose provider error text (0.837515ms)
+✔ account-attested adapter fails closed before accepting provider data (0.869768ms)
+✔ verified adapter contract is functional with synthetic host evidence, never inferred from credential status (0.693458ms)
+ℹ tests 26
 ℹ suites 0
-ℹ pass 21
+ℹ pass 26
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 122.826359
+ℹ duration_ms 169.023257
 PASS responsive 1440×1000 at scale 3
 PASS responsive 390×844 at scale 3
 PASS phone expansion, prompt dialog, focus return, no overflow
@@ -38,13 +43,21 @@ PASS responsive 320×740 at scale 3
 PASS responsive 844×390 at scale 3
 PASS good news includes no-action cards and alerts to critical work outside filter
 PASS budget clamps; critical oversized work remains visible
+PASS manually waiting signals leave the budget but keep critical dependency visibility
 PASS cross-category saved combination persists after reload
 PASS read, resolved, waiting, snoozed, dismissed, accepted and undo remain distinct
 PASS keyboard dialog traps focus and Escape returns to its trigger
 PASS hostile import is inert, prompt is reviewable, account mismatch is atomic
 PASS duplicate import updates one signal, resolved state survives reload/reimport, content does not
+PASS private backup downloads only on request and restores data/decisions with explicit choice
 PASS two-tab IndexedDB transactions preserve concurrent independent metadata patches
 PASS undo refuses to overwrite a newer decision from another tab
 PASS text colors meet 4.5 contrast on their darkest/lightest nominal surfaces
+PASS supplied reader populates/updates the log, rejects another account and retains data on failure
 PASS storage denial is visible and never prevents importing or viewing
-16 browser scenarios passed; no uncaught errors or external requests. Screenshots: local screenshot directory
+19 browser scenarios passed; no uncaught errors or external requests. Screenshots: /tmp/ember-signal-log-shots
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

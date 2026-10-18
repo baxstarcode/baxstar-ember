@@ -17,7 +17,7 @@
   <header class="topbar">
     <a class="brand" href="../index.html"><img src="../assets/ember/icon.svg" alt="" width="28" height="28"> EMBER <span>/ SIGNAL LOG</span></a>
     <span class="system-label">THE OPERATING JOURNAL <i aria-hidden="true"></i></span>
-    <a href="../index.html" class="back">Return to Ember <span aria-hidden="true">↗</span></a>
+    <a href="../index.html" class="back">Return to Ember</a>
   </header>
   <main class="shell">
     <section class="hero" aria-labelledby="title">
@@ -37,10 +37,10 @@
         <div class="saved-heading"><h2>Saved combinations</h2><button id="save-view" type="button" aria-label="Save current filter combination">+ Save</button></div>
         <div id="saved-views" class="saved-views"></div>
         <button id="reset" class="quiet reset" type="button">Reset filters</button>
-        <div class="connection-box"><h2>Source connections</h2><p><span class="health-dot" aria-hidden="true"></span> Gmail <b>Not wired</b></p><p><span class="health-dot" aria-hidden="true"></span> Calendar <b>Not wired</b></p><p><span class="health-dot manual" aria-hidden="true"></span> Claude <b>JSON import</b></p><button id="connections" class="quiet" type="button">View connection details ↗</button></div>
+        <div class="connection-box"><h2>Source connections</h2><p><span class="health-dot" aria-hidden="true"></span> Gmail <b id="health-gmail">Not wired</b></p><p><span class="health-dot" aria-hidden="true"></span> Calendar <b id="health-calendar">Not wired</b></p><p><span class="health-dot manual" aria-hidden="true"></span> Claude <b>JSON import</b></p><button id="refresh-sources" type="button">Refresh sources</button><button id="connections" class="quiet" type="button">View connection details ↗</button></div>
       </aside>
       <section class="journal" aria-label="Signal journal">
-        <div class="journal-toolbar"><div><p class="eyebrow">YOUR SIGNAL LOG</p><h2 id="view-heading">All the moving parts.</h2></div><button id="import" type="button">↓ Import signals</button></div>
+        <div class="journal-toolbar"><div><p class="eyebrow">YOUR SIGNAL LOG</p><h2 id="view-heading">All the moving parts.</h2></div><div class="journal-tools"><button id="export" type="button">Export</button><button id="import" type="button">↓ Import signals</button></div></div>
         <div class="mode-buttons" role="group" aria-label="Signal focus"><button id="triage" type="button" aria-pressed="true">↟ Triage <span>importance + time</span></button><button id="good" type="button" aria-pressed="false">✧ Good News</button><button id="attention" type="button" aria-pressed="false">! Needs Attention</button></div>
         <div class="budget-row"><label for="budget">Time available <span class="muted">(minutes)</span></label><input id="budget" type="number" min="5" max="240" step="5" value="30"><span id="budget-note">Choose a feasible next step.</span><button id="method" class="quiet" type="button">How ranking works</button></div>
         <div id="plan" class="plan" aria-live="polite"></div>

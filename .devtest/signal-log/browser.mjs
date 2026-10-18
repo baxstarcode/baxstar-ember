@@ -41,6 +41,10 @@ try {
       const small = await page.locator('button, select, input:not([type=checkbox])').evaluateAll(nodes => nodes.filter(n => n.getBoundingClientRect().width && (n.getBoundingClientRect().height < 24 || n.getBoundingClientRect().width < 24)).map(n => n.outerHTML));
       assert.deepEqual(small, []);
       assert.equal(await page.locator('.signal-card').count(), 8);
+      if (viewport.width === 390) {
+        const first = await page.locator('.signal-card').first().boundingBox();
+        assert(first.y <= viewport.height - 120, `First phone signal must show at least 120px above fold; y=${first.y}`);
+      }
       if (!process.env.SIGNAL_FAST) {
         await page.screenshot({ path: resolve(shots, `signal-log-${viewport.width}.png`), fullPage: true });
         if ([1440,390].includes(viewport.width)) await page.screenshot({ path: resolve(shots, `signal-log-${viewport.width}.jpg`), type: 'jpeg', quality: 80 });
@@ -69,6 +73,14 @@ try {
     await page.locator('#budget').fill('9999'); await page.locator('#budget').press('Tab'); assert.equal(await page.locator('#budget').inputValue(), '240');
     await page.locator('#budget').fill('5'); await page.locator('#budget').press('Tab');
     assert.equal(await page.locator('.signal-card').count(), 8); assert.match(await page.locator('#plan').textContent(), /capacity or dependency review/);
+  });
+  await test('manually waiting signals leave the budget but keep critical dependency visibility', async () => {
+    await page.locator('#budget').fill('30'); await page.locator('#budget').press('Tab');
+    const card = page.locator('[data-id="fishing-weather"]'); assert.equal(await card.locator('.fit').count(), 1);
+    await card.getByRole('button', { name: /More actions/ }).click(); await page.getByRole('button', { name: 'Waiting', exact: true }).click();
+    await card.getByText('Waiting on others · not scheduled', { exact: true }).waitFor();
+    assert.equal(await card.locator('.fit').count(), 0); assert.match(await page.locator('#plan').textContent(), /2 high-priority signals/);
+    await card.getByRole('button', { name: 'Reopen', exact: true }).click(); await card.locator('.fit').waitFor();
   });
   await test('cross-category saved combination persists after reload', async () => {
     await page.locator('#categories input[value=fishing]').check(); await page.locator('#categories input[value=software]').check();
@@ -119,6 +131,19 @@ try {
     assert.deepEqual(persisted.local, {}); assert.deepEqual(persisted.session, {});
     assert(!JSON.stringify(persisted.items).includes('Example only')); assert(!JSON.stringify(persisted.items).includes('example.com')); assert(!JSON.stringify(persisted.items).includes('<script>'));
   });
+  await test('private backup downloads only on request and restores data/decisions with explicit choice', async () => {
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    assert.match(await page.locator('#dialog-body').textContent(), /treat the file as private/);
+    const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download private backup', exact: true }).click();
+    const file = await download, backup = JSON.parse(await readFile(await file.path(), 'utf8'));
+    assert.equal(backup.format, 'ember-signal-log-backup'); assert.equal(backup.entries.length, 1); assert.equal(backup.entries[0].disposition.status, 'done');
+    const fresh = await context(), restored = await load(fresh);
+    await restored.getByRole('button', { name: '↓ Import signals', exact: true }).click(); await restored.getByLabel('Signal Log JSON', { exact: true }).fill(JSON.stringify(backup)); await restored.getByRole('button', { name: 'Validate & import', exact: true }).click();
+    await restored.getByRole('button', { name: 'Restore signals + decisions', exact: true }).waitFor(); assert.equal(await restored.locator('.signal-card').count(), 8, 'preview does not mutate current data');
+    await restored.getByRole('button', { name: 'Restore signals + decisions', exact: true }).click(); await restored.locator('#dialog').waitFor({ state: 'hidden' }); await cards(restored, 0);
+    await restored.locator('#status-filter').selectOption('done'); await cards(restored, 1); assert.match(await restored.locator('.signal-card').textContent(), /IMPORTED/);
+    assert.deepEqual(await restored.evaluate(() => ({ ...localStorage })), {}); await fresh.close();
+  });
   await test('two-tab IndexedDB transactions preserve concurrent independent metadata patches', async () => {
     const other = await c.newPage(); await other.goto(url);
     const update = (p, patch) => p.evaluate(async patch => { const { openStore } = await import('./storage.mjs'); const store = await openStore(); return store.update('synthetic-concurrency-key', patch); }, patch);
@@ -144,6 +169,33 @@ try {
     }
   });
   await c.close();
+  await test('supplied reader populates/updates the log, rejects another account and retains data on failure', async () => {
+    const c = await context(), p = await load(c);
+    await p.evaluate(async source => {
+      window.__readerMode = 'ok'; window.__readerCalls = 0;
+      const { registerAccountReader } = await import('./adapters.mjs');
+      registerAccountReader({ workspaceId: 'baxstar', accountId: 'baxstar-fishing', provider: 'gmail', readVerifiedFeed: async () => {
+        window.__readerCalls++;
+        if (window.__readerMode === 'error') throw new Error('private upstream details');
+        const envelope = structuredClone(source); envelope.source = 'gmail'; envelope.signals[0].id = 'provider-message-1';
+        if (window.__readerMode === 'new') { envelope.signals[0].title = 'Updated provider report'; envelope.signals[0].sourceUpdatedAt = '2026-10-12T10:45:00Z'; envelope.signals[0].supersedes = 'prior-report'; }
+        return { verifiedAccount: { workspaceId: 'baxstar', accountId: window.__readerMode === 'wrong' ? 'other' : 'baxstar-fishing', provider: 'gmail' }, endToEndVerified: true, envelope };
+      } });
+      registerAccountReader({ workspaceId: 'baxstar', accountId: 'baxstar-fishing', provider: 'calendar', readVerifiedFeed: async () => {
+        const envelope = structuredClone(source); envelope.source = 'calendar'; envelope.signals[0].id = 'provider-event-1';
+        return { verifiedAccount: { workspaceId: 'baxstar', accountId: 'baxstar-fishing', provider: 'calendar' }, endToEndVerified: true, envelope };
+      } });
+    }, source);
+    const gmail = p.locator('[data-id="provider-message-1"]');
+    await p.locator('[data-id="provider-event-1"]').waitFor(); await cards(p, 2); assert.match(await gmail.textContent(), /VERIFIED READ/);
+    const refresh = async mode => { await p.evaluate(mode => window.__readerMode = mode, mode); await p.getByRole('button', { name: 'Refresh sources', exact: true }).click(); await p.getByRole('button', { name: 'Refresh sources', exact: true }).evaluate(n => n.disabled); await p.locator('#refresh-sources:not(:disabled)').waitFor(); };
+    await p.locator('#search').fill('Example'); await refresh('error'); assert.equal(await p.locator('#search').inputValue(), 'Example'); assert.match(await gmail.textContent(), /STALE READ/); assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read'); assert(!((await p.locator('body').textContent()).includes('private upstream details')));
+    await p.locator('#search').fill(''); await p.locator('#stale-only').check(); await cards(p, 1); assert.match(await gmail.textContent(), /STALE READ/); await p.locator('#stale-only').uncheck();
+    await refresh('wrong'); await cards(p, 2); assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable');
+    await refresh('new'); await cards(p, 2); await p.getByRole('heading', { name: 'Updated provider report' }).waitFor(); assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read');
+    await gmail.getByRole('button', { name: 'Open signal ↓' }).click(); assert.match(await p.locator('.detail').textContent(), /Supersedes reference: prior-report/);
+    assert((await p.evaluate(() => window.__readerCalls)) >= 4); await c.close();
+  });
   await test('storage denial is visible and never prevents importing or viewing', async () => {
     const c = await context(); await c.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { get() { throw new Error('Storage blocked for test'); } }); });
     const p = await load(c); assert.match(await p.locator('#storage-notice').textContent(), /Storage blocked/); await p.locator('.signal-card').first().getByRole('button', { name: 'Mark read', exact: true }).click(); assert.match(await p.locator('#storage-notice').textContent(), /storage unavailable/i); await c.close();

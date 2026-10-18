@@ -1,6 +1,6 @@
-import { CONFIG, clamp, parseImport, validateEnvelope, deduplicate, metadataKey, ranking, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
+import { CONFIG, clamp, parseTransfer, createBackup, validateEnvelope, deduplicate, identity, metadataKey, ranking, deadlineState, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
 import { openStore } from './storage.mjs';
-import { adapters } from './adapters.mjs';
+import { getAccountAdapters } from './adapters.mjs';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, attrs = {}) => {
@@ -14,6 +14,8 @@ const link = (text, href) => el('a', text, { href, target: '_blank', rel: 'noope
 let demo = [], imported = [], mode = 'demo', focusMode = 'triage', categories = new Set(), extra = '', views = [], store;
 const meta = new Map(), expanded = new Set(), pending = new Map();
 let undoAction = null, lastDialogFocus;
+let refreshing = false, refreshAgain = false;
+const health = new Map(['gmail', 'calendar'].map(p => [p, { state: 'not-connected', reason: 'No authenticated reader is supplied.' }]));
 const now = () => mode === 'demo' ? Date.parse(CONFIG.demoNow) : Date.now();
 const current = () => mode === 'demo' ? demo : imported;
 const states = { open: 'Open', waiting: 'Waiting', done: 'Done / resolved', snoozed: 'Snoozed', dismissed: 'Dismissed', accepted: 'Accepted risk' };
@@ -62,7 +64,7 @@ async function change(s, patch) {
 function notify(message, undo = false) { $('toast').hidden = false; $('toast').querySelector('span').textContent = message; $('undo').hidden = !undo; }
 $('dismiss-toast').onclick = () => { $('toast').hidden = true; };
 $('undo').onclick = async () => { try { await undoAction?.(); undoAction = null; render(); notify('Previous state restored.'); } catch (e) { notify(e.message); await hydrate(current()); render(); } };
-function openDialog(title) { lastDialogFocus = document.activeElement; $('dialog-title').textContent = title; $('dialog-body').replaceChildren(); if (!$('dialog').open) $('dialog').showModal(); return $('dialog-body'); }
+function openDialog(title) { if (!$('dialog').open) lastDialogFocus = document.activeElement; $('dialog-title').textContent = title; $('dialog-body').replaceChildren(); if (!$('dialog').open) $('dialog').showModal(); return $('dialog-body'); }
 $('close-dialog').onclick = () => $('dialog').close();
 $('dialog').addEventListener('close', () => { if (lastDialogFocus?.isConnected) lastDialogFocus.focus(); });
 $('dialog').addEventListener('keydown', event => {
@@ -119,7 +121,7 @@ function filtered() {
     if (state === 'unread' ? m.read : state === 'open' ? !['open', 'waiting'].includes(status) : state !== 'all' && state !== status) return false;
     if (categories.size && !s.categories.some(c => categories.has(c))) return false;
     if (focusMode === 'good' && s.kind !== 'good' || focusMode === 'attention' && s.kind !== 'attention') return false;
-    if ($('stale-only').checked && !freshness(s, now()).stale) return false;
+    if ($('stale-only').checked && !s.sourceReadStale && !freshness(s, now()).stale) return false;
     if (extra === 'risk' && !['safety', 'disruption', 'waiting'].includes(s.priority) && s.impact < 4) return false;
     if (extra === 'closed' && !['done', 'accepted'].includes(status)) return false;
     if (extra === 'week' && ![s.dueAt, s.reviewAt].some(d => d && Date.parse(d) >= now() && Date.parse(d) <= now() + 7 * 86400000)) return false;
@@ -130,15 +132,18 @@ function card(s, index, selected) {
   const m = meta.get(s.key) || {}, status = effectiveStatus(m, now()), r = ranking(s, now()), fresh = freshness(s, now());
   const article = el('article', null, { class: `signal-card ${s.kind}${m.read ? ' is-read' : ''}`, 'aria-labelledby': `title-${s.key}`, 'data-id': s.id });
   const top = el('div', null, { class: 'card-top' });
-  top.append(el('span', `${String(index + 1).padStart(2, '0')} /`, { class: 'rank' }), el('span', `${s.kind === 'good' ? '✧' : s.kind === 'attention' ? '!' : '○'} ${CONFIG.kinds[s.kind]}`, { class: `badge ${s.kind === 'good' ? 'good' : r.tier === 0 ? 'risk' : s.kind === 'information' ? 'neutral' : ''}` }), el('span', s.demo ? 'DEMO' : 'IMPORTED'), el('span', s.categories.map(c => CONFIG.categories[c]).join(' · '), { class: 'category-list' }));
+  top.append(el('span', `${String(index + 1).padStart(2, '0')} /`, { class: 'rank' }), el('span', `${s.kind === 'good' ? '✧' : s.kind === 'attention' ? '!' : '○'} ${CONFIG.kinds[s.kind]}`, { class: `badge ${s.kind === 'good' ? 'good' : r.tier === 0 ? 'risk' : s.kind === 'information' ? 'neutral' : ''}` }), el('span', s.demo ? 'DEMO' : s.sourceReadStale ? 'STALE READ' : s.verifiedRead ? 'VERIFIED READ' : 'IMPORTED'), el('span', s.categories.map(c => CONFIG.categories[c]).join(' · '), { class: 'category-list' }));
   article.append(top);
   const main = el('div', null, { class: 'card-main' }), text = el('div'); text.append(el('h3', s.title, { id: `title-${s.key}` }), el('p', s.summary, { class: 'summary' })); main.append(text);
   const effort = el('aside', null, { class: 'effort', 'aria-label': s.actionable ? s.effortMinutes ? `${s.effortMinutes} minute next step` : 'Effort unknown' : 'No action needed' });
   effort.append(el('strong', !s.actionable ? '—' : s.effortMinutes === null ? '?' : Math.round(s.effortMinutes)), el('small', s.actionable ? 'MIN NEXT STEP' : 'JUST GOOD TO KNOW')); main.append(effort); article.append(main);
   const info = el('div', null, { class: 'card-meta' });
-  info.append(el('span', s.dueAt ? `Hard deadline · ${formatDate(s.dueAt)}${Date.parse(s.dueAt) < now() ? ' · past; verify status' : ''}` : s.dueKind === 'none' ? 'No deadline' : 'Deadline unknown'), el('span', fresh.label, { class: fresh.stale ? 'stale' : '' }), el('span', `${Math.round(s.confidence * 100)}% source confidence`));
+  const deadline = deadlineState(s, now());
+  info.append(el('span', s.dueAt ? `${deadline.state === 'overdue-review' ? 'Past deadline · verify current status' : deadline.state === 'overdue-confirmed' ? 'Overdue · source confirms still open' : 'Hard deadline'} · ${formatDate(s.dueAt)}` : s.dueKind === 'none' ? 'No deadline' : 'Deadline unknown'), el('span', fresh.label, { class: fresh.stale ? 'stale' : '' }), el('span', `${Math.round(s.confidence * 100)}% source confidence`));
   if (selected.has(s.key)) info.append(el('span', '✓ Fits your time budget', { class: 'fit' }));
-  if (s.blocked) info.append(el('span', 'Dependency blocked · review first'));
+  if (status === 'waiting') info.append(el('span', 'Waiting on others · not scheduled'));
+  else if (s.blocked) info.append(el('span', 'Dependency blocked · review first'));
+  if (s.sourceReadStale) info.append(el('span', 'Refresh unavailable · retained source record', { class: 'stale' }));
   if (status !== 'open') info.append(el('span', `${states[status]}${status === 'snoozed' ? ` until ${formatDate(m.snoozeUntil)}` : ''}`, { class: 'state-label' }));
   article.append(info);
   const bottom = el('div', null, { class: 'card-bottom' }), actions = el('div', null, { class: 'card-actions' });
@@ -176,22 +181,25 @@ function promptDialog(s) {
 }
 function render() {
   const focus = document.activeElement?.dataset?.focus, sorted = rankSignals(filtered(), now());
-  const eligible = sorted.filter(s => ['open', 'waiting'].includes(effectiveStatus(meta.get(s.key), now()))), plan = triage(eligible, $('budget').value, now()), selected = new Set(plan.selected.map(s => s.key));
+  const eligible = sorted.filter(s => ['open', 'waiting'].includes(effectiveStatus(meta.get(s.key), now()))).map(s => effectiveStatus(meta.get(s.key), now()) === 'waiting' ? { ...s, blocked: true } : s), plan = triage(eligible, $('budget').value, now()), selected = new Set(plan.selected.map(s => s.key));
   $('open-count').textContent = current().filter(s => ['open', 'waiting'].includes(effectiveStatus(meta.get(s.key), now()))).length;
   $('good-count').textContent = current().filter(s => s.kind === 'good').length;
   $('done-count').textContent = current().filter(s => effectiveStatus(meta.get(s.key), now()) === 'done').length;
   for (const id of Object.keys(CONFIG.categories)) $(`count-${id}`).textContent = current().filter(s => s.categories.includes(id)).length;
   for (const id of ['triage', 'good', 'attention']) $(id).setAttribute('aria-pressed', String(focusMode === id));
   $('view-heading').textContent = focusMode === 'good' ? 'Keep the momentum.' : focusMode === 'attention' ? 'Give the right things attention.' : 'All the moving parts.';
-  $('mode-label').textContent = mode === 'demo' ? 'DEMO · ILLUSTRATIVE DATA' : 'MY LOG · IMPORTED DATA';
-  $('mode-note').textContent = mode === 'demo' ? 'No live Gmail, Calendar, or Claude feed. Demo clock: Oct 18, 2026.' : 'Manual import · unverified source claims. Summaries disappear when this tab closes or reloads.';
+  $('mode-label').textContent = mode === 'demo' ? 'DEMO · ILLUSTRATIVE DATA' : 'MY LOG · SOURCE RECORDS';
+  $('mode-note').textContent = mode === 'demo' ? 'No live Gmail, Calendar, or Claude feed. Demo clock: Oct 18, 2026.' : 'Source verification is labeled on each card. Text stays in this tab; export a private backup before closing.';
   $('data-mode').textContent = mode === 'demo' ? 'Open my log' : 'View demo';
+  $('export').disabled = imported.length === 0;
+  for (const provider of ['gmail', 'calendar']) $(`health-${provider}`).textContent = ({ verified: 'Verified read', unavailable: 'Unavailable', 'not-connected': 'Not wired' })[health.get(provider).state] || 'Unknown';
   $('result-count').textContent = `${sorted.length} of ${current().length} signals`;
   $('plan').replaceChildren();
   if (focusMode === 'good') $('plan').append(el('p', 'Worth noticing, even when there is nothing to do. No streaks. No invented wins.'));
   else {
     const summary = el('p'); summary.append(el('strong', `${plan.selected.length} next step${plan.selected.length === 1 ? '' : 's'} · ${plan.used} min`), document.createTextNode(` within your ${clamp($('budget').value, 5, 240, 30)}-minute budget. Ranked by importance first.`)); $('plan').append(summary);
-    if (plan.review.length) $('plan').append(el('p', `${plan.review.length} high-priority signal${plan.review.length === 1 ? '' : 's'} need a capacity or dependency review. They remain visible below.`));
+    if (plan.review.length) $('plan').append(el('p', `${plan.review.length} high-priority signal${plan.review.length === 1 ? ' needs' : 's need'} a capacity or dependency review. Still shown below.`));
+    if (plan.verification.length) $('plan').append(el('p', `${plan.verification.length} past deadline${plan.verification.length === 1 ? ' needs' : 's need'} verification; not scheduled.`));
   }
   const hiddenCritical = current().filter(s => ranking(s, now()).tier <= 1 && ['open', 'waiting'].includes(effectiveStatus(meta.get(s.key), now())) && !sorted.includes(s));
   $('critical-note').hidden = hiddenCritical.length === 0;
@@ -216,28 +224,84 @@ $('toggle-filters').onclick = () => {
   $('toggle-filters').setAttribute('aria-expanded', String(open));
   $('toggle-filters').textContent = open ? 'Close filters ↑' : 'Filters & saved views ↓';
 };
-$('import').onclick = () => {
-  const body = openDialog('Import signals');
-  body.append(el('p', 'Baxstar · Fishing account. Paste a Signal Log v1 JSON report or choose a file (maximum 256 KiB / 200 signals). Only selected summaries belong here; never paste a full inbox, credentials, or private attachments.'));
-  body.append(link('Download the Claude/manual import example', 'https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/example.json'));
-  const label = el('label', 'Signal Log JSON', { class: 'field' }), input = el('textarea', '', { spellcheck: false, maxlength: CONFIG.maxBytes, placeholder: '{"version":1,"workspaceId":"baxstar","accountId":"baxstar-fishing",…}' }); label.append(input); body.append(label);
-  const fileLabel = el('label', 'Choose JSON file', { class: 'field' }), file = el('input', null, { type: 'file', accept: '.json,application/json' }); fileLabel.append(file); body.append(fileLabel);
+async function acceptRecords(accepted, decisions, resetFilters = true) {
+  const merged = deduplicate([...imported, ...accepted]);
+  if (merged.length > CONFIG.maxSignals) throw new Error('This tab already holds signals. Keep at most 200 total.');
+  await hydrate(merged);
+  if (decisions) for (const s of merged) {
+    const decision = decisions.get(identity(s)); if (!decision) continue;
+    const patch = { ...decision, updatedAt: Date.now() };
+    try { if (!store) throw new Error('Device storage unavailable. Restored decisions remain in this tab.'); meta.set(s.key, (await store.update(s.key, patch)).after); }
+    catch (error) { meta.set(s.key, patch); pending.set(s.key, patch); storageError(error.message); }
+  }
+  imported = merged; mode = 'imported'; if (resetFilters) applyView(defaultViews[0]); else render();
+  return merged.length;
+}
+function confirmRestore(transfer) {
+  const body = openDialog('Restore private backup');
+  body.append(el('p', `${transfer.signals.length} validated signals for Baxstar · Fishing account. Source text returns to this tab only. Restored provider records are imported claims until freshly verified.`), el('p', 'Choose whether to replace this device’s read, resolved, waiting, snoozed, dismissed and accepted-risk decisions with the saved decisions. Newer source text is retained when identities match.'));
   const error = el('p', '', { class: 'error', role: 'alert' }); body.append(error);
-  file.onchange = async () => { const f = file.files[0]; if (!f) return; if (f.size > CONFIG.maxBytes) { error.textContent = 'File exceeds 256 KiB. Nothing was loaded.'; return; } input.value = await f.text(); error.textContent = ''; };
-  body.append(el('p', 'Imports are unverified source claims. Duplicate provider/account/record IDs update to the latest observation. Read and resolved states remain; text stays in memory only.', { class: 'constraint-note' }));
-  body.append(button('Validate & import', async () => {
+  const row = el('div', null, { class: 'button-row' });
+  for (const restoreDecisions of [false, true]) row.append(button(restoreDecisions ? 'Restore signals + decisions' : 'Restore signals only', async () => {
+    try { const count = await acceptRecords(transfer.signals, restoreDecisions ? transfer.states : undefined); $('dialog').close(); notify(`${count} signals restored in this tab${restoreDecisions ? ' with saved decisions' : ''}. No provider or reminder was changed.`); }
+    catch (e) { error.textContent = e.message; }
+  })); body.append(row);
+}
+$('export').onclick = () => {
+  const body = openDialog('Export a private backup');
+  body.append(el('p', `This downloads ${imported.length} imported/source records plus their read and action states as a JSON file. It includes source summaries, AI prompts and links; treat the file as private.`), el('p', 'The file goes to your browser’s download location. Nothing is uploaded or sent. Store it somewhere you trust and restore it with Import signals. Cross-device/server sync is not connected.'));
+  const error = el('p', '', { class: 'error', role: 'alert' }); body.append(error);
+  body.append(button('Download private backup', () => {
     try {
-      const accepted = parseImport(input.value), merged = deduplicate([...imported, ...accepted]);
-      if (merged.length > CONFIG.maxSignals) throw new Error('This tab already holds signals. Keep at most 200 total.');
-      await hydrate(merged); imported = merged; mode = 'imported'; applyView(defaultViews[0]); $('dialog').close();
-      notify(`${accepted.length} records accepted · ${merged.length} unique signals in this tab. Nothing sent or scheduled.`);
+      const text = createBackup(imported, meta), url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const a = el('a', '', { href: url, download: `ember-signal-log-${new Date().toISOString().slice(0, 10)}.json` }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
+      $('dialog').close(); notify('Private backup downloaded. No data was uploaded.');
     } catch (e) { error.textContent = e.message; }
   }));
 };
+$('import').onclick = () => {
+  const body = openDialog('Import signals');
+  body.append(el('p', 'Baxstar · Fishing account. Import a Signal Log v1 report (256 KiB) or restore a private backup (3 MiB), at most 200 signals. Never paste a full inbox, credentials, or private attachments.'));
+  body.append(link('Download the Claude/manual import example', 'https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/example.json'));
+  const label = el('label', 'Signal Log JSON', { class: 'field' }), input = el('textarea', '', { spellcheck: false, maxlength: CONFIG.maxBackupBytes, placeholder: '{"version":1,"workspaceId":"baxstar","accountId":"baxstar-fishing",…}' }); label.append(input); body.append(label);
+  const fileLabel = el('label', 'Choose JSON file', { class: 'field' }), file = el('input', null, { type: 'file', accept: '.json,application/json' }); fileLabel.append(file); body.append(fileLabel);
+  const error = el('p', '', { class: 'error', role: 'alert' }); body.append(error);
+  file.onchange = async () => { const f = file.files[0]; if (!f) return; if (f.size > CONFIG.maxBackupBytes) { error.textContent = 'File exceeds 3 MiB. Nothing was loaded.'; return; } input.value = await f.text(); error.textContent = ''; };
+  body.append(el('p', 'Imports are unverified source claims. Duplicate provider/account/record IDs update to the latest observation. Read and resolved states remain; text stays in memory only.', { class: 'constraint-note' }));
+  body.append(button('Validate & import', async () => {
+    try {
+      const transfer = parseTransfer(input.value);
+      if (transfer.type === 'backup') { confirmRestore(transfer); return; }
+      const count = await acceptRecords(transfer.signals); $('dialog').close();
+      notify(`${transfer.signals.length} records accepted · ${count} unique signals in this tab. Nothing sent or scheduled.`);
+    } catch (e) { error.textContent = e.message; }
+  }));
+};
+async function refreshSources() {
+  if (refreshing) { refreshAgain = true; return; } refreshing = true; $('refresh-sources').disabled = true;
+  let loaded = 0;
+  try {
+    for (const adapter of getAccountAdapters()) {
+      let result;
+      try {
+        result = await adapter.read();
+        if (result.state === 'verified') { await acceptRecords(result.signals, undefined, false); loaded += result.signals.length; }
+      } catch { result = { state: 'unavailable', reason: 'Read validation failed. Existing records were retained.' }; }
+      health.set(adapter.provider, result);
+      if (result.state !== 'verified') imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · refresh unavailable' } : s);
+    }
+    render(); notify(loaded ? `${loaded} source records received. Verification and health are labeled separately.` : 'No new source records. Existing records retained; inspect connection details.');
+  } finally {
+    refreshing = false; $('refresh-sources').disabled = false;
+    if (refreshAgain) { refreshAgain = false; await refreshSources(); }
+  }
+}
+$('refresh-sources').onclick = refreshSources;
+window.addEventListener('ember-signal-readers-changed', refreshSources);
 $('connections').onclick = async () => {
   const body = openDialog('Connection truth');
-  body.append(el('p', 'Gmail and Calendar are not wired into this Signal Log. A successful read in ChatGPT, or a connected credential indicator in Ember, does not verify this page’s data path.'));
-  for (const adapter of adapters) { const result = await adapter.read(); body.append(el('h3', `${adapter.provider === 'gmail' ? 'Gmail' : 'Calendar'} · ${result.state}`), el('p', result.reason)); }
+  body.append(el('p', 'A successful read in ChatGPT, or a connected credential indicator in Ember, does not verify this page’s data path. No provider reader is supplied in this release. An authorized host can register one; refresh results then populate the log.'));
+  for (const provider of ['gmail', 'calendar']) { const result = health.get(provider); body.append(el('h3', `${provider === 'gmail' ? 'Gmail' : 'Calendar'} · ${result.state}`), el('p', result.reason || 'Account-attested provider read completed. Retained records are still labeled if an earlier refresh failed.')); }
   body.append(el('h3', 'Smallest remaining integration step'), el('p', 'The Ember connector owner must supply an authenticated, account-attested, bounded read through the existing same-origin service binding, then verify one Gmail record and one Calendar event end to end. No OAuth grants or refresh tokens are changed by this page.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
 };
 const references = [
@@ -257,7 +321,7 @@ function method(showSources = false) {
   const body = openDialog(showSources ? 'Sources & method' : 'How ranking works');
   body.append(el('p', 'Design inference, not validated science: priority tier first, then a deterministic score. Unknown dates stay unknown. Source confidence is supplied by the report; it is not measured accuracy.'));
   const list = el('ol'); CONFIG.tiers.forEach(t => list.append(el('li', t))); body.append(list);
-  body.append(el('p', 'Within a tier: impact up to 45 points, sourced deadline proximity up to 30, next-step effort up to 10, and confidence up to 15. A hard deadline enters tier 2 only at impact 3+ and within 7 days. Ties use due time, then stable identity.'), el('p', 'Time budget selects feasible next steps in that order. It never removes larger or blocked work; high-priority exceptions remain called out. Suggested review dates do not increase deadline urgency. Stale sources (7 days) and past deadlines require verification.'), el('p', 'Cards: summary ≤200 Unicode characters. All four expanded sections, including the optional AI prompt, share a 750-character limit. Full source links remain available. All timestamps display in America/Chicago.'));
+  body.append(el('p', 'Within a tier: impact up to 45 points, sourced deadline proximity up to 30, next-step effort up to 10, and confidence up to 15. A future hard deadline enters tier 2 only at impact 3+ and within 7 days. Ties use due time, then stable identity.'), el('p', 'Past deadlines receive no urgency points and are not scheduled until the source explicitly confirms the obligation is still open within the last 24 hours. Confirmation expires; a fresh observation alone does not confirm an overdue obligation.'), el('p', 'Time budget selects feasible next steps in that order. Waiting, larger or blocked work stays visible; high-priority dependencies remain called out. Suggested review dates do not increase urgency. Stale sources (7 days) require verification.'), el('p', 'Cards: summary ≤200 Unicode characters. All four expanded sections, including the optional AI prompt, share a 750-character limit. Full source links remain available. All timestamps display in America/Chicago.'));
   if (showSources) for (const [title, url, note] of references) { const section = el('section', null, { class: 'source-ref' }); section.append(link(title, url), el('p', note)); body.append(section); }
 }
 $('method').onclick = () => method(); $('sources').onclick = () => method(true);
@@ -270,3 +334,4 @@ try {
   demo = deduplicate(validateEnvelope(await response.json())); await hydrate(demo);
 } catch (e) { mode = 'imported'; notify(e.message); }
 renderViews(); render();
+if (getAccountAdapters().some(adapter => adapter.configured)) await refreshSources();
