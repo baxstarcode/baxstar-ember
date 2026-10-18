@@ -8,13 +8,18 @@ Branch: `codex/ember-signal-log`. No shared Worker/auth/app code changed.
 `CHROME_PATH=/usr/bin/chromium npm run test:signal-log`
 
 - 26/26 unit/contract scenarios.
-- 19/19 browser scenarios, Chromium, device scale factor 3.
-- Viewports: 1440×1000, 390×844, 320×740, 844×390; no horizontal overflow.
+- 22/22 browser scenarios, Chromium, device scale factor 3.
+- Viewports: 1440×1000, 390×844, 375×812, 320×740, 844×390; no horizontal overflow.
 - Summary 200 / combined details+prompt 750 Unicode character boundaries;
   account mismatch, malicious links/text, import limits, stable occurrence identity,
   explicit cross-source dedup, ranking and budget edge cases, source freshness.
-- Keyboard dialogs, Escape/focus return, non-color labels, minimum 24px targets,
-  tested foreground/background contrast ≥4.5, reduced-motion setting.
+- Keyboard dialogs, Escape/focus return, non-color labels, minimum 24px desktop
+  targets and 44px phone/coarse-pointer controls, rendered foreground/background
+  contrast ≥4.5 across tested gradient stops, reduced-motion setting.
+- Neutral and selected button surfaces match current canonical Ember control
+  CSS; the perimeter/radius match the source-backed Argon outline. Keyboard press depth, focus outlines, disabled
+  controls, clipped labels, open phone filters/dialogs and reduced motion pass.
+  See the [visual source comparison](STYLE-COMPARISON.md).
 - State persistence, memory-only imported content, saved views, multi-tab metadata
   transaction merging, stale-undo rejection, storage-denial recovery.
 - Explicit private backup download/restore including decisions; restored records
@@ -28,7 +33,7 @@ Branch: `codex/ember-signal-log`. No shared Worker/auth/app code changed.
   secondary filters collapse while all three primary focus controls stay visible.
 - No uncaught browser errors or external requests.
 
-The contrast checks cover declared text pairs, not a complete WCAG audit. Device
+The contrast checks cover sampled rendered text pairs, not a complete WCAG audit. Device
 scale/viewport simulation does not prove physical iPhone/Safari behavior.
 
 [Test log](local-tests.log) · [Desktop screenshot](desktop.jpg) ·

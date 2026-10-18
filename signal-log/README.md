@@ -5,6 +5,13 @@ design tokens, iron texture, reactor bezel and icon. It does not replace the doc
 or modify the existing app, Worker, gateway, OAuth configuration or automation.
 There are no new dependencies, model calls, telemetry or external requests on load.
 
+The visual finish combines Argon's small-corner outlined buttons with current
+Ember's machined shadows and dark furnace selection, white lettering and the
+later Argon review's obsidian surface.
+The earlier tan selection has been removed. See the [source comparison](evidence/STYLE-COMPARISON.md)
+for exact reused styles, deliberate adaptations and the separate coral Foundry
+variant that is not this page's target.
+
 ## Run and verify
 
 From the repository root:

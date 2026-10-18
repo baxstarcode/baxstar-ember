@@ -9,9 +9,20 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const shots = process.env.EMBER_SHOT_DIR || '/tmp/ember-signal-log-shots';
 await mkdir(shots, { recursive: true });
 const types = { '.html': 'text/html', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
+// Compare actual computed styles against the current canonical Ember control CSS,
+// not a second hand-maintained list of expected Signal Log colors.
+const canonicalSource = await readFile(resolve(root, 'src/baxstar-ember.jsx'), 'utf8');
+const canonicalControls = canonicalSource.match(/const ALTERNATIVE_CSS = `([\s\S]*?)`;/)?.[1];
+const argonOutline = canonicalSource.match(/\.fa-control \{[^}]+\}/)?.[0];
+assert(canonicalControls, 'Canonical Ember control finish must be available');
+assert(argonOutline, 'Argon action outline definition must be available');
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname === '/__style-reference') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<style>${canonicalControls}${argonOutline}</style><div class="ember-alt"><button class="seg" id="neutral">Neutral</button><button class="seg on" id="selected">Selected</button></div><button class="fa-control" id="argon-outline">Outline</button>`); return;
+    }
     const file = resolve(root, '.' + (pathname.endsWith('/') ? pathname + 'index.html' : pathname));
     if (!file.startsWith(root) || !(await stat(file)).isFile()) throw Error('not found');
     res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream' }); res.end(await readFile(file));
@@ -25,7 +36,7 @@ let passed = 0;
 const errors = [], external = [];
 async function test(name, run) { await run(); passed++; console.log(`PASS ${name}`); }
 async function context(viewport = { width: 1440, height: 1000 }) {
-  const c = await browser.newContext({ viewport, deviceScaleFactor: 3, reducedMotion: 'reduce', serviceWorkers: 'block' });
+  const c = await browser.newContext({ viewport, deviceScaleFactor: 3, hasTouch: viewport.width < 900, reducedMotion: 'reduce', serviceWorkers: 'block' });
   c.on('page', p => p.on('pageerror', e => errors.push(e.message)));
   await c.route('**/*', route => { if (new URL(route.request().url()).origin === origin) return route.continue(); external.push(route.request().url()); return route.abort(); });
   return c;
@@ -34,13 +45,15 @@ async function load(c) { const page = await c.newPage(); page.setDefaultTimeout(
 async function importData(page, data, invalid = false) { await page.getByRole('button', { name: '↓ Import signals', exact: true }).click(); await page.getByLabel('Signal Log JSON', { exact: true }).fill(JSON.stringify(data)); await page.getByRole('button', { name: 'Validate & import', exact: true }).click(); await page.locator(invalid ? '#dialog .error:not(:empty)' : '#dialog').waitFor({ state: invalid ? 'visible' : 'hidden' }); }
 async function cards(page, count) { await page.locator('.signal-card').nth(Math.max(0,count-1)).waitFor({ state: count ? 'visible' : 'hidden' }); assert.equal(await page.locator('.signal-card').count(), count); }
 try {
-  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 320, height: 740 }, { width: 844, height: 390 }]) {
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 375, height: 812 }, { width: 320, height: 740 }, { width: 844, height: 390 }]) {
     const c = await context(viewport), page = await load(c);
     await test(`responsive ${viewport.width}×${viewport.height} at scale 3`, async () => {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       const small = await page.locator('button, select, input:not([type=checkbox])').evaluateAll(nodes => nodes.filter(n => n.getBoundingClientRect().width && (n.getBoundingClientRect().height < 24 || n.getBoundingClientRect().width < 24)).map(n => n.outerHTML));
       assert.deepEqual(small, []);
       assert.equal(await page.locator('.signal-card').count(), 8);
+      const clipped = await page.locator('.mode-buttons button').evaluateAll(nodes => nodes.filter(n => n.scrollWidth > n.clientWidth || n.scrollHeight > n.clientHeight).map(n => n.textContent));
+      assert.deepEqual(clipped, [], 'Primary button labels must not clip');
       if (viewport.width === 390) {
         const first = await page.locator('.signal-card').first().boundingBox();
         assert(first.y <= viewport.height - 120, `First phone signal must show at least 120px above fold; y=${first.y}`);
@@ -49,6 +62,14 @@ try {
         await page.screenshot({ path: resolve(shots, `signal-log-${viewport.width}.png`), fullPage: true });
         if ([1440,390].includes(viewport.width)) await page.screenshot({ path: resolve(shots, `signal-log-${viewport.width}.jpg`), type: 'jpeg', quality: 80 });
       }
+    });
+    if (viewport.width === 375) await test('375px touch controls stay at least 44px with filters and dialogs open', async () => {
+      const small = () => page.locator('button,select,input:not([type=checkbox]),.check').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length && (n.getBoundingClientRect().height < 44 || n.getBoundingClientRect().width < 44)).map(n => n.outerHTML));
+      assert.deepEqual(await small(), []);
+      await page.locator('#toggle-filters').click(); assert.deepEqual(await small(), []);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.locator('#toggle-filters').click(); await page.locator('#import').click(); assert.deepEqual(await small(), []);
+      await page.keyboard.press('Escape');
     });
     if (viewport.width === 390) await test('phone expansion, prompt dialog, focus return, no overflow', async () => {
       await page.locator('.signal-card').filter({ hasText: 'A weather check' }).getByRole('button', { name: 'Open signal ↓' }).click();
@@ -61,6 +82,36 @@ try {
     });
     await c.close();
   }
+  await test('Ember furnace surfaces and Argon outlines match; press, focus and disabled states remain accessible', async () => {
+    const c = await context(), p = await load(c), reference = await c.newPage();
+    await reference.goto(`${origin}/__style-reference`);
+    const values = locator => locator.evaluate(el => { const s = getComputedStyle(el); return Object.fromEntries(['backgroundImage','borderTopColor','borderBottomColor','boxShadow','textShadow','transform','top'].map(k => [k,s[k]])); });
+    const surface = value => Object.fromEntries(Object.entries(value).filter(([key]) => !['borderTopColor','borderBottomColor'].includes(key)));
+    assert.deepEqual(surface(await values(p.locator('#good'))), surface(await values(reference.locator('#neutral'))));
+    assert.deepEqual(await values(p.locator('#triage')), await values(reference.locator('#selected')));
+    const outline = locator => locator.evaluate(el => { const s=getComputedStyle(el); return [s.borderTopWidth,s.borderTopStyle,s.borderTopColor,s.borderRadius]; });
+    assert.deepEqual(await outline(p.locator('#method')),await outline(reference.locator('#argon-outline')));
+    assert.deepEqual(await p.locator('#triage').evaluate(el=>{const s=getComputedStyle(el);return[s.borderTopWidth,s.borderRadius];}),['1px','5px']);
+    await p.locator('#triage').focus();
+    assert.deepEqual(await p.locator('#triage').evaluate(el => { const s=getComputedStyle(el); return [s.outlineColor,s.outlineWidth,s.color]; }), ['rgb(255, 206, 133)','2px','rgb(255, 255, 255)']);
+    for (const reduced of [false,true]) {
+      await p.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' });
+      await p.keyboard.down('Space');
+      // Poll through evaluate; waitForFunction uses eval inside the page and is
+      // correctly denied by Signal Log's strict production CSP.
+      for(let i=0;i<30;i++) {
+        if((await values(p.locator('#triage'))).top === (reduced ? '0px' : '3px')) break;
+        await p.waitForTimeout(20);
+      }
+      const pressed = await values(p.locator('#triage'));
+      assert.equal(pressed.top,reduced ? '0px' : '3px'); assert.equal(pressed.transform, 'none'); assert(pressed.boxShadow.includes('inset'));
+      await p.keyboard.up('Space');
+    }
+    const disabled = p.locator('#export'); assert(await disabled.isDisabled());
+    await disabled.hover(); await p.mouse.down();
+    assert.equal((await values(disabled)).top, '0px'); assert.notEqual((await values(disabled)).backgroundImage, (await values(p.locator('#triage'))).backgroundImage);
+    await p.mouse.up(); await c.close();
+  });
   const c = await context(), page = await load(c);
   await test('good news includes no-action cards and alerts to critical work outside filter', async () => {
     await page.getByRole('button', { name: '✧ Good News', exact: true }).click();
@@ -162,11 +213,20 @@ try {
     });
     assert.match(result.error, /another tab/); assert.equal(result.saved.status, 'accepted');
   });
-  await test('text colors meet 4.5 contrast on their darkest/lightest nominal surfaces', async () => {
-    const lum = hex => { const rgb = hex.match(/\w\w/g).map(v => parseInt(v, 16) / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4); return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2]; };
-    for (const [fg, bg] of [['f3e9d8','1e1912'],['d8c9b5','1e1912'],['c7b395','1e1912'],['bdaa8c','1e1912'],['b3d1b8','1e1912'],['ffa68f','1e1912'],['080604','9b703b'],['dbc7a9','251b10']]) {
-      const l = [lum(fg),lum(bg)].sort((a,b)=>b-a); assert((l[0]+.05)/(l[1]+.05) >= 4.5, `${fg}/${bg} contrast`);
-    }
+  await test('rendered text meets 4.5 contrast across actual card and button gradient stops', async () => {
+    const c = await context(), p = await load(c);
+    const pairs = await p.evaluate(() => {
+      const pairs=[];
+      for (const [selector,surface] of [['.card-main h3','.signal-card'],['.summary','.signal-card'],['.card-meta','.signal-card'],['.badge.good','.signal-card'],['.badge.risk','.signal-card'],['#triage','#triage'],['#triage span','#triage'],['#good','#good'],['#data-mode','#data-mode']]) {
+        const node=document.querySelector(selector), bg=getComputedStyle(document.querySelector(surface));
+        for (const color of bg.backgroundImage.match(/rgba?\([^)]+\)/g) || [bg.backgroundColor]) pairs.push([selector,getComputedStyle(node).color,color]);
+      }
+      pairs.push(['search placeholder',getComputedStyle(document.querySelector('#search'),'::placeholder').color,getComputedStyle(document.querySelector('#search')).backgroundColor]);
+      return pairs;
+    });
+    const lum = css => { const rgb=css.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4); return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]; };
+    for(const [label,fg,bg] of pairs) {const l=[lum(fg),lum(bg)].sort((a,b)=>b-a); assert((l[0]+.05)/(l[1]+.05)>=4.5, `${label}: ${fg}/${bg} contrast`);}
+    await c.close();
   });
   await c.close();
   await test('supplied reader populates/updates the log, rejects another account and retains data on failure', async () => {
