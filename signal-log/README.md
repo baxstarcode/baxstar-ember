@@ -5,6 +5,10 @@ design tokens, iron texture, reactor bezel and icon. It does not replace the doc
 or modify the existing app, Worker, gateway, OAuth configuration or automation.
 There are no new dependencies, model calls, telemetry or external requests on load.
 
+**Start/resume here: [end-to-end roadmap](ROADMAP.md).** The UI/manual workflow is
+tested; the connected build is unfinished. The roadmap records the unanswered
+connector-owner handoff, remaining implementation phases and final acceptance gates.
+
 The visual finish combines Argon's small-corner outlined buttons with current
 Ember's machined shadows and dark furnace selection, white lettering and the
 later Argon review's obsidian surface.

@@ -4,6 +4,10 @@ This is a concrete integration contract, **not an authorization to deploy, invok
 a metered model, change credentials or establish a grant**. Signal Log remains a
 draft, with synthetic demo/manual import and no supplied production reader.
 
+Follow the [single end-to-end roadmap](ROADMAP.md) for current phase status,
+ownership blocker, implementation order, release gates and resume instructions.
+This document supplies the connector details; it is not a separate completion plan.
+
 ## Current ownership and executable evidence
 
 Verified remotely again on 2026-10-18:
