@@ -1,5 +1,15 @@
 # Ember — Living Cinematic Handoff
 
+**Speech fix deployed, October 18 at 22:00 CT:** read the newest Current State block.
+The phone screenshot confirmed provider refusal. Canonical implementation `d9a826c`
+updates the obsolete v1 speech connection token to the v2 algorithm used by current
+edge-tts 7.3.1, preserving Jenny. The live Worker received only this speech hotfix:
+version `f8d6ac15-844d-4e59-b0ed-20f8822dcf09` at 100%, all settings/bindings retained.
+It has **not** received the pending coordinator migration. Reference and Worker
+tests pass, including the exact candidate in workerd. One actual signed-in phone
+speech-only request still needs to prove provider output/audibility. No further truck
+test until that works; stop the unofficial protocol path if the provider still refuses.
+
 **Latest voice evidence, 2026-10-18:** Brady's physical phone/wireless-CarPlay tests
 captured speech and returned useful text, but both failed to speak the reply.
 The supplied older-lab v2 report fails before `audio-ready` and hides the exact HTTP

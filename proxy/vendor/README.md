@@ -2,7 +2,8 @@
 
 `edge-gec-v2.mjs` is a server-side JavaScript adaptation of `src/edge_tts/drm.py`
 from **edge-tts 7.3.1**, published October 13, 2026. Its source is LGPLv3; the
-upstream license text is preserved in `edge-gec-LICENSE.txt`. The source remains
+upstream license text is preserved in `edge-gec-LICENSE.txt`, with the incorporated
+GPLv3 text in `GPL-3.0.txt`. The source remains
 separate and editable. It is not copied to the Pages/browser payload.
 
 Upstream: https://github.com/rany2/edge-tts

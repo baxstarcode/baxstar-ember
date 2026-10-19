@@ -22,6 +22,13 @@ cutover is part of this repair. The source/module deployment is described in
 must establish whether v2 restores live output. If rejected again, stop adding
 protocol workarounds. Local mocks/reference agreement are not live provider proof.
 
+Deployed at **October 18, 22:00:33 America/Chicago** (October 19 03:00:33 UTC):
+Worker `f8d6ac15-844d-4e59-b0ed-20f8822dcf09`, 100% traffic. The two deployed modules
+match the tested hotfix hashes and all 12 existing bindings/runtime settings match
+the pre-upload metadata. The deployed connector code remains the old version;
+no coordinator rollout was bundled into this repair. Await the next explicit
+speech-only phone result before claiming live voice works.
+
 ## Physical report and speech investigation — 2026-10-18
 
 Brady reports successful microphone transcription and useful text replies on his

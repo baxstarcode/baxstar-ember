@@ -1,5 +1,31 @@
 # Ember — Current State
 
+**Speech compatibility hotfix — 2026-10-18, 22:00 America/Chicago:** Brady's
+speech-only v3 screenshot confirmed HTTP 502 / provider connection refusal. The
+current edge-tts 7.3.1 client uses a v2 connection-token algorithm while the live
+Worker used v1. Implementation `d9a826c` updates the canonical Worker and adds a
+licensed server-only port verified against 38 independent Python reference vectors.
+239 existing Worker checks and five new tests pass. The exact narrow deployment
+candidate additionally passes its WebSocket/MP3/chat/host-gate test in workerd.
+The application build also passes; application code and generated UI behavior are
+unchanged. All speech-provider responses in these tests are synthetic.
+
+Live Worker version **`f8d6ac15-844d-4e59-b0ed-20f8822dcf09`** is at 100%, deployment
+`6f00f0b8-39bc-4078-9cc1-4f6645fdf18e`, created October 19 03:00:33 UTC. The upload
+changes only the existing live Worker's token function/version plus the helper
+import/module. Downloaded deployed module hashes match the tested candidate. All
+12 existing bindings and runtime settings were verified unchanged; there is no
+coordinator migration, new secret/provider account, alternate voice or Access change.
+Jenny remains `en-US-JennyNeural`. The rest of the deployed Worker still uses the
+older connector implementation; do not confuse this narrow hotfix with deploying
+the canonical coordinator configuration. See Deploy for the reproducible patch.
+
+**Next proof:** one signed-in **Test Ember’s voice** request on the phone. Live
+provider audio and physical audibility are still unverified here; the workspace has
+no signed-in production browser. If the provider still refuses, stop adding Edge
+protocol workarounds and evaluate a supported speech service. Preserve Jenny unless
+Brady explicitly chooses another voice. The orange mouth remains recording-only.
+
 Latest local continuation: **2026-10-18 (America/Chicago)**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.
 
