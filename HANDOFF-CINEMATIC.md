@@ -8,6 +8,11 @@ Read `docs/VOICE-REBUILD.md` and the top of `docs/CURRENT-STATE.md`. The selecte
 is JennyNeural; the new disabled Aura/Luna adapter is a different voice. No automatic
 substitution. The signed-in connector-free chat path now has current device evidence;
 Gmail/Quo freshness and spoken output remain separate open checks.
+Diagnostic implementation `a608230` is now production through Pages `f484ffaa`,
+completed October 18 at 21:35 CT. Open the live lab, confirm **Voice check v3**, enable
+the phone experiment and tap **Test Ember’s voice**. This speech-only diagnostic
+needs no mic/chat; it preserves separate safe failure records. 105 focused checks
+and Pages build passed. This is not yet a repair of the unresolved spoken reply.
 
 **Latest continuation, 2026-10-18 (America/Chicago):** read the top of
 `docs/CURRENT-STATE.md`. Implementation `7ea389a` is now production at

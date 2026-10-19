@@ -25,6 +25,15 @@ versioned to avoid the earlier cached-script ambiguity. Local verification passe
 **105 focused checks** (27 phrase-grace, 40 lab/browser, 38 Pages gateway), plus
 `npm run build:pages`; desktop/phone layouts were inspected. These are simulated
 speech/provider checks, not a live audio repair or physical speaker pass.
+Implementation `a608230ae8000771f7430938f78d686e22bb7b85` is pushed to `main` and
+the alternative branch. Cloudflare production deployment
+`f484ffaa-d2b5-4c90-8bcf-09fcce24eb64` completed every stage successfully at
+**2026-10-18 21:35:18 America/Chicago** (October 19 02:35 UTC), with
+https://ember.baxstarfishing.com as its alias. Immutable checkpoint:
+https://f484ffaa.baxstar-ember.pages.dev . The actual service error and an audible
+physical reply remain pending. The workspace cannot perform the signed-in request;
+historical observability queries also return permission-denied with the current
+deployment token. No additional token scope or Access bypass was added.
 
 
 **Mission Control/mobile continuation, 2026-10-18:** Brady authorized fixing the
