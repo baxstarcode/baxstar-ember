@@ -4,6 +4,9 @@ const MESSAGE_ENDPOINT = window.EMBER_MESSAGE_ENDPOINT || window.EMBER_API_PROXY
 const TTS_ENDPOINT = window.EMBER_TTS_ENDPOINT || "/api/tts";
 const MODEL = "claude-sonnet-4-6";
 const VOICE = "en-US-JennyNeural";
+const VOICE_TEST_TEXT = "Hello, Brady. This is Ember. My voice is ready for your listening test.";
+const SAFE_SPEECH_ERRORS = new Set(["provider-refused", "provider-unreachable", "provider-no-audio",
+  "http-error", "non-audio", "audio-too-small"]);
 // Extra patience after the browser finalizes a phrase, not a native VAD setting.
 const END_OF_SPEECH_GRACE_MS = 750;
 // A Pages preview intentionally cannot call the production-only API gateway.
@@ -36,6 +39,9 @@ const turns = [];
 let turn = null;
 let nextTurn = 0;
 let releaseTimer = null;
+const speechAttempts = [];
+let nextSpeechAttempt = 0;
+let activeSpeechAttempt = null;
 
 function audioSupported() { return typeof HTMLMediaElement !== "undefined"; }
 function ready() { return transportReady && (!mobile || mobileOptIn); }
@@ -90,14 +96,14 @@ function beginTurn(source) {
 
 function report() {
   return {
-    experiment: "Ember explicit-turn voice reliability lab", version: 2,
+    experiment: "Ember explicit-turn voice reliability lab", version: 3,
     status: "PROVISIONAL: browser events are not physical-device proof",
     startedAt: sessionStarted,
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext,
       recognitionAPI: Boolean(Recognition), playbackAPI: playbackReady, mobileDetected: mobile,
       mobileOptIn, endOfSpeechGraceMs: selectedGraceMs(), previewHost: PREVIEW_HOST, deviceNotes: $("device-notes").value.trim().slice(0, 500) },
     privacy: "No transcript, reply text, audio, credentials, or business data included. Review your device notes before sharing.",
-    turns, events,
+    turns, speechAttempts, events,
   };
 }
 
@@ -117,6 +123,7 @@ function controls() {
   $("talk").textContent = micPhase === "starting" ? "Cancel mic start" : micPhase === "listening" ? "Finish talking" : "Talk";
   $("send").disabled = !apiReady() || busy || !$("transcript").value.trim();
   $("play").disabled = !apiReady() || !playbackReady || busy || !replyComplete;
+  $("test-voice").disabled = !apiReady() || !playbackReady || busy;
   $("copy-transcript").disabled = busy || !$("transcript").value.trim();
   $("pause-window").disabled = busy;
   $("voice-instrument").dataset.micPhase = micPhase;
@@ -135,6 +142,14 @@ function micState(phase, label) {
 }
 
 function clearAudio() {
+  if (activeSpeechAttempt && !["failed", "ended", "cancelled"].includes(activeSpeechAttempt.result)) {
+    activeSpeechAttempt.cancelledMs = elapsed() - activeSpeechAttempt.startedMs;
+    if (activeSpeechAttempt.result !== "blocked") activeSpeechAttempt.result = "cancelled";
+    activeSpeechAttempt.failure ||= "cancelled";
+    activeSpeechAttempt.durationMs ??= activeSpeechAttempt.cancelledMs;
+    if (activeSpeechAttempt.source === "voice-test") $("voice-check-state").textContent = "Voice check stopped. Tap Test Ember’s voice to try again.";
+  }
+  activeSpeechAttempt = null;
   if (audioUrl) mark("audio-cleared");
   audio.onplaying = audio.onpause = audio.onended = audio.onerror = null;
   audio.pause();
@@ -432,46 +447,142 @@ async function sendTranscript() {
   }
 }
 
-async function playResponse() {
-  if (!apiReady() || !playbackReady || micPhase !== "off" || recognition || request || !replyComplete) return;
-  mark("tts-requested");
+function speechContentType(response) {
+  const type = (response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
+  if (!type) return "missing";
+  if (type.startsWith("audio/")) return "audio";
+  if (type === "application/json" || /^application\/[a-z0-9.+-]+\+json$/.test(type)) return "json";
+  return type === "text/html" ? "html" : "other";
+}
+
+function speechError(code, text) {
+  const error = new Error(text);
+  error.speechCode = code;
+  return error;
+}
+
+// Error responses can contain arbitrary upstream text. Read less than 8 KiB and
+// retain only exact known messages as fixed codes; never export the body, URL,
+// headers, provider diagnostics, or arbitrary error messages into the report.
+async function providerFailure(response) {
+  const limit = 8191;
+  const length = Number(response.headers.get("content-length"));
+  if (!response.body?.getReader) return {};
+  if (Number.isFinite(length) && length > limit) {
+    await response.body.cancel().catch(() => {});
+    return {};
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > limit) { await reader.cancel().catch(() => {}); return {}; }
+      chunks.push(value);
+    }
+    const body = new Uint8Array(bytes);
+    let offset = 0;
+    for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+    const data = JSON.parse(new TextDecoder().decode(body));
+    const error = typeof data?.error === "string" ? data.error : "";
+    const refused = /^Voice engine refused the connection \(([1-5][0-9]{2})\)\.$/.exec(error);
+    if (refused) return { failure: "provider-refused", providerStatus: Number(refused[1]) };
+    if (error === "Voice engine unreachable.") return { failure: "provider-unreachable" };
+    if (error === "Voice engine produced no audio.") return { failure: "provider-no-audio" };
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  return {};
+}
+
+async function playResponse(source = "reply") {
+  if (!apiReady() || !playbackReady || micPhase !== "off" || recognition || request ||
+      (source === "reply" && !replyComplete)) return;
   clearAudio();
+  if (source === "voice-test") beginTurn("voice-test");
+  mark("tts-requested", source);
+  const attempt = { number: ++nextSpeechAttempt, turn: turn?.number || null, source,
+    startedMs: elapsed(), stage: "request", result: "pending" };
+  speechAttempts.push(attempt);
+  if (speechAttempts.length > 30) speechAttempts.shift();
+  activeSpeechAttempt = attempt;
+  function speechMessage(text, error = false) {
+    message(text, error);
+    if (source === "voice-test") {
+      $("voice-check-state").textContent = text;
+      $("voice-check-state").dataset.error = String(error);
+    }
+  }
   const token = ++generation;
   const controller = new AbortController();
   request = controller;
-  const timer = setTimeout(() => controller.abort(), 15000);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
   let playbackTimer;
   $("audio-state").textContent = "Generating neural audio…";
-  message("Requesting neural audio. Mic stays off.");
+  speechMessage(source === "voice-test" ? "Requesting Ember’s fixed listening-test sentence. No microphone or AI chat request is used."
+    : "Requesting neural audio. Mic stays off.");
   controls();
   try {
     const response = await fetch(TTS_ENDPOINT, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: answer.slice(0, 1000), voice: VOICE }),
+      body: JSON.stringify({ text: source === "voice-test" ? VOICE_TEST_TEXT : answer.slice(0, 1000), voice: VOICE }),
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`Neural TTS HTTP ${response.status}. Text response is still available.`);
-    if (!(response.headers.get("content-type") || "").includes("audio/")) throw new Error("TTS returned a non-audio response.");
-    const blob = await response.blob();
-    if (blob.size < 200) throw new Error("TTS returned empty or too-small audio.");
     if (token !== generation) return;
+    attempt.stage = "http";
+    attempt.httpStatus = response.status;
+    attempt.contentType = speechContentType(response);
+    attempt.responseMs = elapsed() - attempt.startedMs;
+    mark("tts-response-received", `HTTP ${attempt.httpStatus}; ${attempt.contentType}`);
+    if (!response.ok) {
+      const known = attempt.contentType === "json" ? await providerFailure(response) : {};
+      if (token !== generation) return;
+      if (known.providerStatus) attempt.providerStatus = known.providerStatus;
+      const guidance = known.failure === "provider-refused" ? "The speech provider refused the connection."
+        : known.failure === "provider-unreachable" ? "The speech provider could not be reached."
+        : known.failure === "provider-no-audio" ? "The speech provider returned no audio."
+        : "The speech request failed.";
+      throw speechError(known.failure || "http-error", `Neural TTS HTTP ${response.status}. ${guidance} Prepare the test report below; your text remains available.`);
+    }
+    if (attempt.contentType !== "audio") throw speechError("non-audio", "TTS returned a non-audio response. Prepare the test report below; your text remains available.");
+    attempt.stage = "body";
+    const blob = await response.blob();
+    if (token !== generation) return;
+    attempt.bytes = blob.size;
+    if (blob.size < 200) throw speechError("audio-too-small", "TTS returned empty or too-small audio. Prepare the test report below; your text remains available.");
     clearTimeout(timer);
+    attempt.requestDurationMs = elapsed() - attempt.startedMs;
+    attempt.stage = "audio-prepare";
     audioUrl = URL.createObjectURL(blob);
     audio.src = audioUrl;
     audio.hidden = false;
+    if (source === "voice-test") audio.scrollIntoView({ block: "center" });
+    attempt.result = "ready";
     mark("audio-ready");
     audio.onplaying = () => {
       if (token !== generation) return;
+      attempt.stage = "playback";
+      attempt.result = "playing";
       $("audio-state").textContent = "Playing — confirm you can hear it";
       $("voice-instrument").dataset.playback = "playing";
-      message("The browser reports playback. Confirm the voice is audible through your actual speaker.");
+      speechMessage("The browser reports playback. Confirm the voice is audible through your actual speaker.");
       mark("audio-playing");
       log("Audio element fired playing (audibility not verified).");
     };
     audio.onended = () => {
       if (token !== generation) return;
+      attempt.stage = "complete";
+      attempt.result = "ended";
+      attempt.durationMs = elapsed() - attempt.startedMs;
       $("audio-state").textContent = "Playback ended — mic stays off";
       $("voice-instrument").dataset.playback = "off";
+      if (source === "voice-test") speechMessage("Voice check finished in the browser. Confirm whether you heard Ember through the actual speaker, then record Limited for this speech-only test.");
       mark("audio-ended");
       log("Audio element fired ended.");
     };
@@ -484,32 +595,49 @@ async function playResponse() {
     };
     audio.onerror = () => {
       if (token !== generation) return;
+      attempt.stage = "playback";
+      attempt.result = "failed";
+      attempt.failure = "audio-decode-error";
+      attempt.mediaErrorCode = [1, 2, 3, 4].includes(audio.error?.code) ? audio.error.code : 0;
+      attempt.durationMs = elapsed() - attempt.startedMs;
       $("audio-state").textContent = "Audio playback error";
       $("voice-instrument").dataset.playback = "off";
       mark("audio-error");
-      message("The browser could not decode or play the neural audio. Text is still available.", true);
+      speechMessage("The browser could not decode or play the neural audio. Text is still available.", true);
     };
     $("audio-state").textContent = "Audio ready";
     // A separate Play click and visible native controls make autoplay failure reviewable.
     try {
+      attempt.stage = "playback";
       await Promise.race([
         audio.play(),
-        new Promise((_, reject) => { playbackTimer = setTimeout(() => reject(new Error("Playback did not start")), 5000); }),
+        new Promise((_, reject) => { playbackTimer = setTimeout(() => reject(speechError("playback-timeout", "Playback did not start")), 5000); }),
       ]);
-    } catch {
+    } catch (error) {
       if (token !== generation) return;
       audio.pause();
+      if (attempt.failure === "audio-decode-error") return;
+      attempt.result = "blocked";
+      attempt.failure = error.speechCode === "playback-timeout" ? "playback-timeout"
+        : error.name === "NotAllowedError" ? "playback-blocked" : "playback-error";
+      attempt.durationMs = elapsed() - attempt.startedMs;
       mark("audio-playback-blocked");
       $("audio-state").textContent = "Playback blocked — use audio player Play";
-      message("The browser did not start playback. Tap Play on the audio player below; a fresh tap may be required after the audio download.", true);
+      speechMessage("The browser did not start playback. Tap Play on the audio player below; a fresh tap may be required after the audio download.", true);
     }
   } catch (error) {
     if (token !== generation) return;
-    mark("tts-failed", error.name === "AbortError" ? "timeout" : "request-or-audio-error");
+    attempt.result = "failed";
+    const safeCode = SAFE_SPEECH_ERRORS.has(error.speechCode) ? error.speechCode : null;
+    attempt.failure = safeCode || (timedOut ? "timeout" : error.name === "AbortError" ? "request-aborted"
+      : attempt.stage === "audio-prepare" ? "audio-prepare-error" : error instanceof TypeError ? "network-error" : "request-error");
+    attempt.durationMs = elapsed() - attempt.startedMs;
+    attempt.requestDurationMs ??= attempt.durationMs;
+    mark("tts-failed", attempt.failure);
     $("audio-state").textContent = "Audio unavailable";
-    message(error.name === "AbortError" ? "TTS timed out after 15 seconds. Text is still available."
-      : error instanceof TypeError ? "Cannot reach the TTS endpoint. Check network and proxy CORS."
-      : error.message, true);
+    speechMessage(timedOut ? "TTS timed out after 15 seconds. Text is still available."
+      : safeCode ? error.message
+      : "The speech request or audio preparation failed. Prepare the test report below; your text remains available.", true);
     log("TTS request failed.");
   } finally {
     clearTimeout(timer);
@@ -521,7 +649,8 @@ async function playResponse() {
 $("talk").addEventListener("click", startTalking);
 $("cancel").addEventListener("click", () => stopAll());
 $("send").addEventListener("click", sendTranscript);
-$("play").addEventListener("click", playResponse);
+$("play").addEventListener("click", () => playResponse("reply"));
+$("test-voice").addEventListener("click", () => playResponse("voice-test"));
 $("transcript").addEventListener("input", controls);
 $("copy-transcript").addEventListener("click", async () => {
   if (micPhase !== "off" || request || !$("transcript").value.trim()) return;
@@ -592,7 +721,7 @@ function updateCapability() {
     : !transportReady ? "Required request APIs are unavailable in this browser. This probe cannot send text or generate audio."
     : mobile && !mobileOptIn ? "Phone/tablet experiment is off. Opt in below to test this device; detecting an API does not prove reliability."
     : !Recognition ? "Speech recognition API is unavailable in this browser. Typed text and optional neural playback can be tested, but microphone voice is unsupported here."
-    : mobile ? "Experimental phone recognition API detected. Use Safari on iPhone for the first test, keep this tab visible, and record interruptions and recovery. Reliability is PROVISIONAL."
+    : mobile ? "Experimental phone recognition API detected. Keep this tab visible and record the browser, interruptions and recovery. Test Ember’s voice below can check speech output without using the microphone. Reliability is PROVISIONAL."
     : "Speech recognition API detected. Target: desktop Chrome on your Mac; availability does not prove it works.";
   if (!playbackReady) $("capability").textContent += " Required audio playback APIs are unavailable.";
 }

@@ -1,5 +1,14 @@
 # Ember — Living Cinematic Handoff
 
+**Latest voice evidence, 2026-10-18:** Brady's physical phone/wireless-CarPlay tests
+captured speech and returned useful text, but both failed to speak the reply.
+The supplied older-lab v2 report fails before `audio-ready` and hides the exact HTTP
+cause. Diagnose the speech request before changing browser or truck routing.
+Read `docs/VOICE-REBUILD.md` and the top of `docs/CURRENT-STATE.md`. The selected voice
+is JennyNeural; the new disabled Aura/Luna adapter is a different voice. No automatic
+substitution. The signed-in connector-free chat path now has current device evidence;
+Gmail/Quo freshness and spoken output remain separate open checks.
+
 **Latest continuation, 2026-10-18 (America/Chicago):** read the top of
 `docs/CURRENT-STATE.md`. Implementation `7ea389a` is now production at
 https://ember.baxstarfishing.com (Pages `662422a8`, completed October 18 at 02:04 CT).

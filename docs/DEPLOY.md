@@ -1,5 +1,14 @@
 # Deploying Ember
 
+**Voice failure investigation, 2026-10-18:** Brady's signed-in physical test returned
+a complete connector-free streamed reply through the production Pages binding.
+Live Worker `6110e34c-2363-41c5-a5f6-fab751ecb717` supports the current `/api/*` routes
+and response types. This supplies current chat/binding evidence; §3's mandatory
+non-streaming first probe describes the older pre-gateway Worker. Spoken output
+failed before audio preparation and needs its own diagnosis. A Pages-only lab
+diagnostic update does not activate new speech providers, deploy the coordinator,
+rotate credentials or establish Gmail/Quo health.
+
 **Mission Control/mobile release, 2026-10-18:** a Pages-only update moves local
 board saves to IndexedDB transactions and fixes mobile controls/navigation. No
 Worker, credentials, provider consent, model selection, or voice activation changes.

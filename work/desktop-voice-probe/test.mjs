@@ -51,6 +51,17 @@ async function session({ mobile = false, speech = true, blockedAudio = false, ho
     if (url.endsWith("/tts")) {
       if (mode === "tts-fail") return route.fulfill({ status: 502, body: "TTS unavailable" });
       if (mode === "tts-type") return route.fulfill({ contentType: "application/json", body: "{}" });
+      if (mode === "tts-html") return route.fulfill({ contentType: "text/html", body: "<p>PRIVATE_PROVIDER_SENTINEL</p>" });
+      if (mode === "tts-small") return route.fulfill({ contentType: "audio/mpeg", body: Buffer.alloc(100, 1) });
+      const errors = {
+        "tts-refused": { error: "Voice engine refused the connection (403).", private: "PRIVATE_PROVIDER_SENTINEL" },
+        "tts-unreachable": { error: "Voice engine unreachable." },
+        "tts-no-audio": { error: "Voice engine produced no audio.", diag: { header: "PRIVATE_PROVIDER_SENTINEL" } },
+        "tts-unknown": { error: "PRIVATE_PROVIDER_SENTINEL" },
+        "tts-malicious": { error: "Voice engine refused the connection (403). PRIVATE_PROVIDER_SENTINEL" },
+        "tts-oversized": { error: "Voice engine unreachable.", private: "PRIVATE_PROVIDER_SENTINEL" + "x".repeat(8192) },
+      };
+      if (errors[mode]) return route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify(errors[mode]) });
       return route.fulfill({ contentType: "audio/mpeg", body: Buffer.alloc(400, 1) });
     }
     if (mode === "json") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ content: [{ type: "text", text: "A short JSON response." }], stop_reason: "end_turn" }) });
@@ -104,6 +115,10 @@ async function sendTyped(s) {
 }
 async function state(page, id, text) {
   await page.locator(`#${id}`).filter({ hasText: text }).waitFor();
+}
+async function diagnostic(s) {
+  await s.page.locator("#prepare-report").click();
+  return JSON.parse(await s.page.locator("#report").inputValue());
 }
 async function speak(s, text = "Give me one sentence.") {
   await s.page.locator("#talk").click();
@@ -245,13 +260,146 @@ try {
   await blocked.page.locator("#play").click();
   await state(blocked.page, "audio-state", "Playback blocked");
   assert.equal(await blocked.page.locator("#audio").isVisible(), true);
+  const blockedReport = await diagnostic(blocked);
+  assert.equal(blockedReport.speechAttempts[0].failure, "playback-blocked");
+  assert.equal(blockedReport.speechAttempts[0].stage, "playback");
+  assert.ok(blockedReport.events.some((event) => event.event === "audio-ready"));
   check("autoplay rejection leaves visible native controls and an honest error");
   blocked.mode("tts-fail");
   await blocked.page.locator("#play").click();
   await state(blocked.page, "message", "TTS HTTP 502");
   assert.equal(await blocked.page.locator("#reply").innerText(), "One calm sentence.");
+  const retriedReport = await diagnostic(blocked);
+  assert.equal(retriedReport.speechAttempts.length, 2);
+  assert.equal(retriedReport.speechAttempts[0].turn, retriedReport.speechAttempts[1].turn);
+  assert.equal(retriedReport.speechAttempts[0].failure, "playback-blocked");
+  assert.equal(retriedReport.speechAttempts[0].result, "blocked");
+  assert.ok(retriedReport.speechAttempts[0].cancelledMs >= retriedReport.speechAttempts[0].durationMs);
+  assert.equal(retriedReport.speechAttempts[1].failure, "http-error");
+  assert.equal(retriedReport.speechAttempts[1].httpStatus, 502);
+  assert.ok(retriedReport.speechAttempts[0].startedMs <= retriedReport.speechAttempts[1].startedMs);
   check("TTS failure preserves the text response");
+  check("separate speech attempts preserve a blocked playback and later failed HTTP retry in one turn");
   await healthy(blocked);
+
+  const voiceOnly = await session({ speech: false });
+  assert.equal(await voiceOnly.page.locator("#test-voice").isEnabled(), true);
+  await voiceOnly.page.locator("#test-voice").click();
+  await state(voiceOnly.page, "audio-state", "Playing");
+  assert.equal(voiceOnly.requests.length, 1);
+  assert.ok(voiceOnly.requests[0].url.endsWith("/api/tts"));
+  assert.deepEqual(voiceOnly.requests[0].payload, {
+    text: "Hello, Brady. This is Ember. My voice is ready for your listening test.", voice: "en-US-JennyNeural",
+  });
+  assert.equal(await voiceOnly.page.evaluate(() => window.__mock.starts), 0);
+  assert.equal(await voiceOnly.page.locator("#transcript").inputValue(), "");
+  assert.equal(await voiceOnly.page.locator("#play").isDisabled(), true);
+  await voiceOnly.page.evaluate(() => document.getElementById("audio").dispatchEvent(new Event("ended")));
+  await state(voiceOnly.page, "voice-check-state", "Voice check finished");
+  let voiceReport = await diagnostic(voiceOnly);
+  assert.equal(voiceReport.version, 3);
+  assert.equal(voiceReport.speechAttempts[0].stage, "complete");
+  assert.equal(voiceReport.speechAttempts[0].result, "ended");
+  assert.equal(voiceReport.speechAttempts[0].contentType, "audio");
+  assert.equal(voiceReport.speechAttempts[0].bytes, 400);
+  assert.equal(voiceReport.turns[0].source, "voice-test");
+  assert.ok(!voiceReport.events.some((event) => ["mic-start-requested", "text-sent"].includes(event.event)));
+  assert.equal(JSON.stringify(voiceReport).includes("Hello, Brady"), false);
+  await voiceOnly.page.locator("#result").selectOption("pass");
+  await voiceOnly.page.locator("#released").check();
+  await voiceOnly.page.locator("#heard").check();
+  await voiceOnly.page.locator("#record-result").click();
+  await state(voiceOnly.page, "message", "A full pass needs a microphone turn");
+  check("fixed-sentence voice check uses Jenny without mic, transcript, or AI chat and cannot claim a full voice pass");
+
+  for (const [mode, code, status, type, stage] of [
+    ["tts-refused", "provider-refused", 502, "json", "http"],
+    ["tts-unreachable", "provider-unreachable", 502, "json", "http"],
+    ["tts-no-audio", "provider-no-audio", 502, "json", "http"],
+    ["tts-unknown", "http-error", 502, "json", "http"],
+    ["tts-malicious", "http-error", 502, "json", "http"],
+    ["tts-oversized", "http-error", 502, "json", "http"],
+    ["http", "http-error", 403, "json", "http"],
+    ["tts-type", "non-audio", 200, "json", "http"],
+    ["tts-html", "non-audio", 200, "html", "http"],
+    ["tts-small", "audio-too-small", 200, "audio", "body"],
+    ["network", "network-error", undefined, undefined, "request"],
+  ]) {
+    voiceOnly.mode(mode);
+    await voiceOnly.page.locator("#test-voice").click();
+    await state(voiceOnly.page, "audio-state", "Audio unavailable");
+    const data = await diagnostic(voiceOnly);
+    const attempt = data.speechAttempts.at(-1);
+    assert.equal(attempt.failure, code);
+    assert.equal(attempt.stage, stage);
+    assert.equal(attempt.httpStatus, status);
+    assert.equal(attempt.contentType, type);
+    assert.ok(attempt.requestDurationMs >= 0);
+    if (mode === "tts-refused") assert.equal(attempt.providerStatus, 403);
+    if (mode === "tts-small") assert.equal(attempt.bytes, 100);
+    assert.ok(data.events.some((event) => event.turn === attempt.turn && event.event === "tts-failed" && event.detail === code));
+    assert.ok(!data.events.some((event) => event.turn === attempt.turn && event.event === "audio-ready"));
+    assert.equal(JSON.stringify(data).includes("PRIVATE_PROVIDER_SENTINEL"), false);
+    assert.equal((await voiceOnly.page.locator("#voice-check-state").innerText()).includes("PRIVATE_PROVIDER_SENTINEL"), false);
+    check(`${mode} reports a bounded ${code} diagnostic without raw provider data or a false playback event`);
+  }
+  assert.ok(voiceOnly.requests.every(({ url, payload }) => url.endsWith("/api/tts") && payload.voice === "en-US-JennyNeural"));
+  assert.equal(await voiceOnly.page.evaluate(() => window.__mock.starts), 0);
+  await healthy(voiceOnly);
+
+  const bounded = await session();
+  await bounded.page.evaluate(() => {
+    window.__bodyCancelled = false;
+    window.__bodyPulls = 0;
+    window.fetch = async () => new Response(new ReadableStream({
+      pull(controller) { window.__bodyPulls++; controller.enqueue(new TextEncoder().encode("PRIVATE_PROVIDER_SENTINEL" + "x".repeat(8192))); },
+      cancel() { window.__bodyCancelled = true; },
+    }), { status: 502, headers: { "content-type": "application/json" } });
+  });
+  await bounded.page.locator("#test-voice").click();
+  await state(bounded.page, "audio-state", "Audio unavailable");
+  const boundedReport = await diagnostic(bounded);
+  assert.equal(boundedReport.speechAttempts[0].failure, "http-error");
+  assert.equal(await bounded.page.evaluate(() => window.__bodyCancelled), true);
+  assert.ok(await bounded.page.evaluate(() => window.__bodyPulls <= 2));
+  assert.equal(JSON.stringify(boundedReport).includes("PRIVATE_PROVIDER_SENTINEL"), false);
+  check("unknown-length error streams are cancelled at the byte limit without storing or exposing their contents");
+  await healthy(bounded);
+
+  const speechCancel = await session();
+  speechCancel.mode("pending");
+  await speechCancel.page.locator("#test-voice").click();
+  await state(speechCancel.page, "audio-state", "Generating neural audio");
+  await speechCancel.page.locator("#cancel").click();
+  let cancelledReport = await diagnostic(speechCancel);
+  assert.equal(cancelledReport.speechAttempts[0].result, "cancelled");
+  assert.equal(cancelledReport.speechAttempts[0].failure, "cancelled");
+  assert.equal(await speechCancel.page.locator("#test-voice").isEnabled(), true);
+  assert.equal(await speechCancel.page.evaluate(() => window.__mock.plays), 0);
+  await speechCancel.page.locator("#test-voice").click();
+  await hide(speechCancel);
+  cancelledReport = await diagnostic(speechCancel);
+  assert.equal(cancelledReport.speechAttempts[1].result, "cancelled");
+  speechCancel.mode("stream");
+  await speechCancel.page.locator("#test-voice").click();
+  await state(speechCancel.page, "audio-state", "Playing");
+  assert.equal(await speechCancel.page.evaluate(() => window.__mock.starts), 0);
+  assert.equal(await speechCancel.page.evaluate(() => window.__mock.plays), 1);
+  check("explicit cancel and tab hiding record cancelled speech-only requests; retry never starts the microphone");
+  await healthy(speechCancel);
+
+  const speechTimeout = await session();
+  await speechTimeout.page.clock.install();
+  speechTimeout.mode("pending");
+  await speechTimeout.page.locator("#test-voice").click();
+  await speechTimeout.page.clock.fastForward(15001);
+  await state(speechTimeout.page, "audio-state", "Audio unavailable");
+  const timeoutReport = await diagnostic(speechTimeout);
+  assert.equal(timeoutReport.speechAttempts[0].failure, "timeout");
+  assert.equal(timeoutReport.speechAttempts[0].stage, "request");
+  assert.equal(await speechTimeout.page.locator("#test-voice").isEnabled(), true);
+  check("speech-only timeout is distinct from user cancellation and unlocks a deliberate retry");
+  await healthy(speechTimeout);
 
   const unsupported = await session({ speech: false });
   assert.equal(await unsupported.page.locator("#talk").isDisabled(), true);
@@ -264,12 +412,15 @@ try {
   assert.equal(await phone.page.locator("#talk").isDisabled(), true);
   await phone.page.locator("#transcript").fill("Test");
   assert.equal(await phone.page.locator("#send").isDisabled(), true);
+  assert.equal(await phone.page.locator("#test-voice").isDisabled(), true);
   assert.equal(phone.requests.length, 0);
   assert.equal(await phone.page.locator("#mobile-experiment").isVisible(), true);
   await phone.page.locator("#mobile-opt-in").check();
   assert.equal(await phone.page.locator("#talk").isEnabled(), true);
+  assert.equal(await phone.page.locator("#test-voice").isEnabled(), true);
   assert.equal(phone.requests.length, 0);
   assert.equal(await phone.page.evaluate(() => window.__mock.starts), 0);
+  await phone.page.screenshot({ path: "/tmp/ember-voice-check-v3-phone.png" });
   check("phone stays off until explicit opt-in; enabling it starts no microphone or request");
 
   for (let n = 1; n <= 5; n++) {

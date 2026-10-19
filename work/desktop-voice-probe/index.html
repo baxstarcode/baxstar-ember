@@ -6,13 +6,14 @@
   <meta name="color-scheme" content="dark">
   <title>Ember · Voice reliability lab</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./probe.js?v=brass-alt-1"></script>
+  <script type="module" src="./probe.js?v=diagnostic-v3"></script>
 </head>
 <body>
   <main>
     <header>
       <div class="lab-heading"><p class="eyebrow">EMBER / VOICE WORKSHOP</p><a href="/">Back to Ember</a></div>
       <h1>Voice reliability lab</h1>
+      <p class="eyebrow">Voice check v3</p>
       <p>Talk. Review your words. Send. Play the reply.</p>
       <p class="hint">Desktop Chrome first; iPhone Safari is an optional experiment. The real microphone and speaker still need your test.</p>
     </header>
@@ -29,6 +30,9 @@
         <label class="check"><input id="mobile-opt-in" type="checkbox"> Enable this phone/tablet experiment for this visit</label>
         <p class="hint">Keep this page visible. Safari speech recognition may require Siri to be enabled. This is a test, not a promise of supported phone voice; no setting is saved.</p>
       </div>
+      <button id="test-voice" disabled>Test Ember’s voice</button>
+      <p class="hint">Hear a short, fixed sentence in Ember’s selected female voice. This button uses no microphone or AI chat. On a phone, enable the experiment above first.</p>
+      <p id="voice-check-state" role="status" aria-live="polite">Voice check has not started.</p>
     </section>
     <section aria-label="Microphone">
       <div id="voice-instrument" class="voice-instrument" data-mic-phase="off" data-playback="off" aria-hidden="true">

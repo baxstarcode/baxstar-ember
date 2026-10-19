@@ -14,6 +14,27 @@ recognition and neural `/tts` contracts, plus the current app’s JSON/SSE reque
 format. On production it uses Access-protected same-origin `/api/messages` and
 `/api/tts`; API credentials remain in the bound Worker.
 
+## Isolate a failed spoken reply (Voice check v3)
+
+Brady's October 18 phone/CarPlay report reached a complete text response, then failed
+before audio preparation. Do not repeat microphone capture to diagnose that layer.
+
+Open the signed-in production page and confirm **Voice check v3** near the title.
+On a phone, enable the experiment for this visit. Tap **Test Ember’s voice** for one
+fixed harmless sentence in the existing `en-US-JennyNeural` voice. This action starts
+no microphone, calls no AI chat model and uses no business connectors. It shares the
+normal `/api/tts` path. Read the nearby result; if audio is ready but playback needs
+another tap, use the visible native player. Report whether anything was actually
+audible. A successful speech-only test is not a full microphone/conversation pass.
+
+Report v3 adds bounded per-attempt speech diagnostics: stage, HTTP status, a fixed
+content-type category, byte count, outcome and safe failure code. Known Worker errors
+map to fixed codes; unknown upstream text is not copied into the report. The report
+continues to exclude transcript/reply text, audio, URLs and credentials. Device notes
+remain user-entered text that must be reviewed before sharing. No report is uploaded
+automatically. This update diagnoses the speech failure; it does not claim that the
+underlying live provider or physical playback has been repaired.
+
 ## End-of-speech grace: adjustable, default 750 ms
 
 `END_OF_SPEECH_GRACE_MS` in `probe.js` defaults to 750 ms after a finalized phrase,

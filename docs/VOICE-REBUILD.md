@@ -1,5 +1,47 @@
 # Recorded voice rebuild — 2026-10-17
 
+## Physical report and speech investigation — 2026-10-18
+
+Brady reports successful microphone transcription and useful text replies on his
+iPhone alone and through wireless CarPlay in his 2024 GMC. Neither attempt produced
+an audible spoken reply. The supplied report covers the first session: iPhone
+17 Pro / reported iOS 27.0.1, Chrome iOS 155, production origin, lab report v2,
+started `2026-10-18T19:33:44.065Z`. This is the **older isolated Web Speech lab**,
+not the orange mouth's MediaRecorder experiment.
+
+Its event list records recognition ending and a complete streamed text reply, then
+two TTS failures after 356 ms and 684 ms. Neither reached `audio-ready`. The v2
+`request-or-audio-error` category cannot distinguish HTTP rejection, non-audio
+responses, download failures or audio preparation. Autoplay rejection has a separate
+event after `audio-ready`, so this report does not establish an iOS/CarPlay playback
+policy failure. Repeated events overwrite v2 turn marks; use the chronological events
+for those timings. The unchecked microphone-off box means physical release was
+**not confirmed**, not that the microphone necessarily stayed active. No second
+session JSON or visible HTTP error was supplied.
+
+Authenticated inspection confirms live Worker `6110e34c-2363-41c5-a5f6-fab751ecb717`
+still implements `/api/tts` using the unofficial Microsoft Edge consumer WebSocket
+and **`en-US-JennyNeural`**. Pages forwards that exact route. Both deployed and local
+legacy TTS code use the same voice and handshake. The voice selection is now explicit:
+the disabled new adapter's Aura/Luna voice is a different voice and must not be
+activated as a silent substitute for Jenny. Preserve the chosen voice or obtain
+Brady's preference before any provider change that changes its sound.
+
+The successful signed-in, connector-free streamed reply is current evidence for
+the Pages → Worker chat path. The non-streaming-only preflight in Deploy §3 addresses
+a historical Worker predating the live version; repeating it is not required merely
+to re-prove this binding. This does not verify current Gmail/Quo credentials.
+
+Next proof: isolate a single TTS request with the microphone off and capture its
+safe HTTP/failure category. Fix that confirmed layer before repeating truck tests.
+Do not infer provider rejection, change browsers, add microphone Shortcuts, activate
+a new provider or deploy the coordinator based only on v2's generic failure.
+The cloud workspace has authenticated configuration access but no signed-in
+production browser; direct production requests return 403. Provider audio and actual
+speaker output therefore remain open verification steps.
+
+## Earlier implementation checkpoint
+
 Status: **implemented for preview and simulated end-to-end; physical iPhone, CarPlay,
 provider inference, and production deployment remain PROVISIONAL**. This continuation
 is on `codex/ember-brass-pressure-alt`. The original visual branch, dock, graph, existing

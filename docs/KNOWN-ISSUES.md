@@ -160,6 +160,14 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 18 device evidence:** Brady reports working microphone transcription and
+text replies on the phone and wireless CarPlay, but no spoken audio on either.
+The supplied older-lab v2 report fails twice before `audio-ready`; its generic error
+does not identify the HTTP/provider failure or prove an autoplay problem. Physical
+mic release remains unconfirmed. Live `/api/tts` still uses JennyNeural through the
+unofficial Edge service. See `docs/VOICE-REBUILD.md` for the evidence and next proof.
+The earlier successful browser cycle below is historical, not a current device pass.
+
 The isolated page at `work/desktop-voice-probe/` has automated simulation coverage. Those
 mocks cannot prove the actual Mac microphone, Chrome speech service, recognition
 accuracy, microphone release, MP3 decoding, speaker audibility, permission recovery,

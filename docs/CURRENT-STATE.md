@@ -3,6 +3,30 @@
 Latest local continuation: **2026-10-18 (America/Chicago)**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.
 
+**Voice device report, 2026-10-18:** Brady reports successful microphone transcription
+and text replies on his iPhone alone and through wireless CarPlay, with no audible
+reply in either test. The supplied older-lab v2 report records two failures before
+`audio-ready`; the generic error omits the HTTP/provider cause. This is partial
+physical success, not a complete voice pass. Mic release remains unconfirmed.
+The successful signed-in streamed reply supplies current connector-free Pages/Worker
+chat evidence; the earlier pending typed binding probe need not be repeated.
+Live Worker `6110e34c-2363-41c5-a5f6-fab751ecb717` still uses JennyNeural through the
+unofficial Edge TTS service. The disabled new adapter uses a different voice and
+must not silently replace Jenny. The next diagnostic isolates one speech request
+without mic or chat and preserves safe failure details. No backend, credentials or
+voice activation change is implied. See `docs/VOICE-REBUILD.md` for precise evidence.
+
+**Voice check v3:** the isolated lab now has a fixed-sentence **Test Ember’s voice**
+button beside phone opt-in. It uses the existing Jenny endpoint without mic/chat.
+Reports preserve separate, bounded attempts with HTTP/content/stage/failure details,
+including known provider rejection categories, while excluding raw response text.
+Retry, cancellation and playback blocks remain distinct. The v3 script URL is
+versioned to avoid the earlier cached-script ambiguity. Local verification passed
+**105 focused checks** (27 phrase-grace, 40 lab/browser, 38 Pages gateway), plus
+`npm run build:pages`; desktop/phone layouts were inspected. These are simulated
+speech/provider checks, not a live audio repair or physical speaker pass.
+
+
 **Mission Control/mobile continuation, 2026-10-18:** Brady authorized fixing the
 two-tab save conflict and mobile usability without waiting for voice testing.
 Canonical saves now use revision-checked IndexedDB transactions shared by board
