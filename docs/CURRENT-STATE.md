@@ -20,11 +20,14 @@ Jenny remains `en-US-JennyNeural`. The rest of the deployed Worker still uses th
 older connector implementation; do not confuse this narrow hotfix with deploying
 the canonical coordinator configuration. See Deploy for the reproducible patch.
 
-**Next proof:** one signed-in **Test Ember’s voice** request on the phone. Live
-provider audio and physical audibility are still unverified here; the workspace has
-no signed-in production browser. If the provider still refuses, stop adding Edge
-protocol workarounds and evaluate a supported speech service. Preserve Jenny unless
-Brady explicitly chooses another voice. The orange mouth remains recording-only.
+**Phone speech confirmed — 2026-10-19 UTC:** after the deployed repair, Brady
+answered the fixed-sentence **Test Ember’s voice** check: **“I hear Ember’s voice.”**
+This is user-reported live provider output and physical phone audibility for one
+speech-only attempt, beyond the synthetic tests above. No success report/export or
+exact browser/output route was supplied. Full spoken turns, repeated cycles,
+physical mic release, interruptions and wireless CarPlay playback remain unverified
+after the repair. Next: one complete phone turn, then a parked CarPlay test.
+Jenny remains selected; the orange mouth remains recording-only.
 
 Latest local continuation: **2026-10-18 (America/Chicago)**. Production evidence below remains dated
 2026-09-20 unless explicitly stated otherwise.

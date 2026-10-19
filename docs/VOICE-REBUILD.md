@@ -7,7 +7,7 @@ connection.** This is the known Worker refusal error, not a browser autoplay or
 CarPlay routing failure. No further microphone/vehicle test is needed to reproduce
 that layer. The upstream status number remains absent from the screenshot.
 
-Read-only inspection still finds the live v1 `Sec-MS-GEC` algorithm. PyPI's current
+Pre-repair read-only inspection found the live v1 `Sec-MS-GEC` algorithm. PyPI's current
 edge-tts 7.3.1 (October 13) uses v2 with a different combined digest, while retaining
 the same browser-version constant. Both the version parameter and token algorithm
 must change together. The licensed server-side port matches the unmodified Python
@@ -26,8 +26,15 @@ Deployed at **October 18, 22:00:33 America/Chicago** (October 19 03:00:33 UTC):
 Worker `f8d6ac15-844d-4e59-b0ed-20f8822dcf09`, 100% traffic. The two deployed modules
 match the tested hotfix hashes and all 12 existing bindings/runtime settings match
 the pre-upload metadata. The deployed connector code remains the old version;
-no coordinator rollout was bundled into this repair. Await the next explicit
-speech-only phone result before claiming live voice works.
+no coordinator rollout was bundled into this repair.
+
+**Post-repair physical result — 2026-10-19 UTC:** Brady reports **“I hear Ember’s
+voice”** in response to the fixed-sentence phone test. This confirms audible live
+speech on the phone for one speech-only attempt. No success diagnostic export or
+exact browser/output route was supplied. It does not prove a full microphone/chat/
+playback cycle, repeated turns, mic release, interruptions, wireless CarPlay playback,
+or the integrated skull panel. Next: a full phone turn, then a parked truck test.
+Keep the integrated orange mouth recording-only until its separate release gates pass.
 
 ## Physical report and speech investigation — 2026-10-18
 

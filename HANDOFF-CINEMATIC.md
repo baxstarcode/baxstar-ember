@@ -6,11 +6,13 @@ updates the obsolete v1 speech connection token to the v2 algorithm used by curr
 edge-tts 7.3.1, preserving Jenny. The live Worker received only this speech hotfix:
 version `f8d6ac15-844d-4e59-b0ed-20f8822dcf09` at 100%, all settings/bindings retained.
 It has **not** received the pending coordinator migration. Reference and Worker
-tests pass, including the exact candidate in workerd. One actual signed-in phone
-speech-only request still needs to prove provider output/audibility. No further truck
-test until that works; stop the unofficial protocol path if the provider still refuses.
+tests pass, including the exact candidate in workerd. **Phone speech confirmed
+2026-10-19 UTC:** Brady answered the post-repair fixed-sentence test with “I hear
+Ember’s voice.” One actual phone speech-only attempt is audible. Next: a complete
+phone turn, then parked wireless CarPlay playback. Repeated turns, physical mic
+release and interruptions remain unverified; the orange mouth is recording-only.
 
-**Latest voice evidence, 2026-10-18:** Brady's physical phone/wireless-CarPlay tests
+**Earlier voice failure evidence, 2026-10-18:** Brady's physical phone/wireless-CarPlay tests
 captured speech and returned useful text, but both failed to speak the reply.
 The supplied older-lab v2 report fails before `audio-ready` and hides the exact HTTP
 cause. Diagnose the speech request before changing browser or truck routing.

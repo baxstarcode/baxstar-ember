@@ -160,6 +160,11 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**Post-repair phone result, 2026-10-19 UTC:** Brady heard Ember in the fixed-sentence
+speech-only test after the v2 compatibility hotfix. This closes the single-attempt
+phone audibility check. Full spoken turns, repeated cycles, physical mic release,
+interruptions and wireless CarPlay playback still need post-repair device evidence.
+
 **October 18 follow-up (America/Chicago):** the speech-only v3 screenshot confirms provider connection
 refusal (HTTP 502), before playback. A concrete protocol mismatch was found: the
 live code uses v1 while current edge-tts 7.3.1 uses v2. A narrowly scoped server
