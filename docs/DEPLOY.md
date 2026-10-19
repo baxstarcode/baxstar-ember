@@ -1,5 +1,34 @@
 # Deploying Ember
 
+**Speech-only hotfix, 2026-10-18 (America/Chicago):** the phone's v3 check confirms HTTP 502 with
+`provider-refused`, before audio preparation. The deployed v1 connection token
+differs from the current edge-tts 7.3.1 v2 protocol (published October 13). The
+canonical Worker now uses the v2 token while retaining Jenny and the existing
+MP3/SSML contract. This is a bounded compatibility repair, not an official-service
+migration or proof of actual phone audibility.
+
+For this one hotfix, **do not deploy `proxy/wrangler.toml`**: it would activate the
+separate coordinator cutover. `scripts/prepare-tts-v2-hotfix.py` accepts the private
+Cloudflare source download only when its decoded source hash matches the recorded
+live `6110e34c` version. It changes one import, the GEC function and the protocol
+version, and copies the licensed helper as a separate server module. It proves the
+rest of the live source is unchanged. Test that exact candidate with:
+
+```sh
+EMBER_TTS_CANDIDATE=/tmp/ember-tts-hotfix/cloudflare-worker.mjs node --test proxy/tts-runtime.test.mjs
+```
+
+The deployment owner must re-read the active Worker version/source/settings just
+before upload, stop on drift, preserve existing `plain_text` and `secret_text`
+bindings using Cloudflare's `keep_bindings` metadata, retain runtime/observability
+settings, and upload only the two reviewed modules. Verify the active version,
+module hashes and binding names/types after upload. No secrets are printed, copied
+or replaced. The previous Worker version is the rollback target for this isolated
+pre-coordinator change; after a future coordinator cutover, the older rollback
+prohibitions still apply. Canonical source includes the same v2 repair, so the later
+full rollout will not regress it. If the real provider still refuses v2, stop this
+compatibility path and evaluate a supported Jenny speech service with Brady.
+
 **Voice failure investigation, 2026-10-18:** Brady's signed-in physical test returned
 a complete connector-free streamed reply through the production Pages binding.
 Live Worker `6110e34c-2363-41c5-a5f6-fab751ecb717` supports the current `/api/*` routes

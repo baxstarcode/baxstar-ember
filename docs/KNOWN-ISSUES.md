@@ -160,6 +160,12 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 18 follow-up (America/Chicago):** the speech-only v3 screenshot confirms provider connection
+refusal (HTTP 502), before playback. A concrete protocol mismatch was found: the
+live code uses v1 while current edge-tts 7.3.1 uses v2. A narrowly scoped server
+compatibility repair preserves Jenny. See Voice Rebuild/Deploy for validation,
+deployment scope and the stop rule if the real provider continues refusing it.
+
 **October 18 device evidence:** Brady reports working microphone transcription and
 text replies on the phone and wireless CarPlay, but no spoken audio on either.
 The supplied older-lab v2 report fails twice before `audio-ready`; its generic error

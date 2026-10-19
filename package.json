@@ -8,7 +8,7 @@
     "build": "node build.mjs",
     "build:pages": "npm run build && node scripts/stage-pages.mjs",
     "serve": "python3 -m http.server 8080",
-    "test:worker": "node proxy/worker.test.mjs",
+    "test:worker": "node --test proxy/edge-gec.test.mjs proxy/tts-runtime.test.mjs && node proxy/worker.test.mjs",
     "test:tokens": "node --test proxy/token-coordinator.test.mjs proxy/token-coordinator-runtime.test.mjs",
     "test:pages": "node --test .devtest/pages-api-gateway.test.mjs",
     "test:outbox": "node apps-script/outbox/outbox.test.mjs",

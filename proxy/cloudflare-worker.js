@@ -108,6 +108,7 @@ function readOnlyToolset(name) {
 }
 
 import { handleVoice } from "./voice.mjs";
+import { edgeGecV2 } from "./vendor/edge-gec-v2.mjs";
 
 const POST_ROUTES = new Map([
   ["/api/messages", "messages"],
@@ -1068,7 +1069,7 @@ async function connectorStatus(body, env, cors, fetchImpl, now) {
 
 const EDGE_TTS_HOST = "speech.platform.bing.com";
 const EDGE_TTS_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"; // public, ships in every Edge install
-const EDGE_TTS_VERSION = "1-143.0.3650.75";
+const EDGE_TTS_VERSION = "2-143.0.3650.75";
 const EDGE_TTS_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
   "Accept-Encoding": "gzip, deflate, br, zstd",
@@ -1092,15 +1093,10 @@ const TTS_DEFAULT_VOICE = "en-US-JennyNeural";
 // Ember speaks at most ~380 chars per reply; anything past this is not Ember.
 const TTS_MAX_CHARS = 1000;
 
-// Sec-MS-GEC: uppercase SHA-256 of (Windows-epoch ticks floored to 5 minutes,
-// concatenated with the client token). Derived from the clock, so it cannot be
-// hardcoded — but it CAN be pinned in a test with a fixed clock.
+// The provider moved to the v2 digest used by edge-tts 7.3.1. Merely changing
+// the version string while retaining the old SHA-256 produces rejected tokens.
 async function edgeGec(now) {
-  const WIN_EPOCH = 11644473600n;
-  const s = BigInt(Math.floor(now / 1000)) + WIN_EPOCH;
-  const ticks = (s - (s % 300n)) * 10000000n;
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${ticks}${EDGE_TTS_TOKEN}`));
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  return edgeGecV2(now);
 }
 
 // The service expects the JavaScript Date.toString() shape in UTC — ISO dates

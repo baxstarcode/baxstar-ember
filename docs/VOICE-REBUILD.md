@@ -1,5 +1,27 @@
 # Recorded voice rebuild — 2026-10-17
 
+## Confirmed refusal and compatibility repair — 2026-10-18 (America/Chicago)
+
+Brady's v3 screenshot shows **Neural TTS HTTP 502. The speech provider refused the
+connection.** This is the known Worker refusal error, not a browser autoplay or
+CarPlay routing failure. No further microphone/vehicle test is needed to reproduce
+that layer. The upstream status number remains absent from the screenshot.
+
+Read-only inspection still finds the live v1 `Sec-MS-GEC` algorithm. PyPI's current
+edge-tts 7.3.1 (October 13) uses v2 with a different combined digest, while retaining
+the same browser-version constant. Both the version parameter and token algorithm
+must change together. The licensed server-side port matches the unmodified Python
+reference across 38 timestamps, including a five-minute boundary. Existing Worker
+contracts pass; the exact hotfix candidate also runs in workerd with a synthetic
+WebSocket delivering MP3 frames, and retains the chat and hostname gates.
+
+Only speech compatibility is being changed. JennyNeural is preserved; no provider
+account, billing change, new key, alternate voice, microphone flow or connector
+cutover is part of this repair. The source/module deployment is described in
+`docs/DEPLOY.md`. The endpoint remains unofficial; one actual signed-in TTS request
+must establish whether v2 restores live output. If rejected again, stop adding
+protocol workarounds. Local mocks/reference agreement are not live provider proof.
+
 ## Physical report and speech investigation — 2026-10-18
 
 Brady reports successful microphone transcription and useful text replies on his

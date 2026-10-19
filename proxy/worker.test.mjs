@@ -1050,12 +1050,11 @@ const ttsPost = (body, headers = {}) =>
   check("tts upgrade includes a fresh Edge MUID cookie",
     /^muid=[A-F0-9]{32};$/.test(call.init.headers["Cookie"] || ""),
     "the current service accepts the socket but returns no audio without MUID");
-  // Pinned from the live handshake that produced audible MP3 on 2026-08-22.
-  // If the ticks math regresses (seconds vs ticks, missing 5-min floor), this
-  // catches it offline instead of as a mystery 403 in production.
+  // Independent reference: edge-tts 7.3.1's Python v2 implementation.
+  // Old v1 tokens no longer match the current client contract.
   check("tts Sec-MS-GEC is the pinned hash for the fixed clock",
-    u.searchParams.get("Sec-MS-GEC") === "2306AEBD08A72D452BD975BCC36E7B41335FE42E975869D2C28FAD6F70998FC0" &&
-    u.searchParams.get("Sec-MS-GEC-Version") === "1-143.0.3650.75" &&
+    u.searchParams.get("Sec-MS-GEC") === "025F47DF260497F6-8A88AE8B29B1151F26226015339A97DBE9599185893EE3BB3A0C794F6B8D27F6" &&
+    u.searchParams.get("Sec-MS-GEC-Version") === "2-143.0.3650.75" &&
     u.searchParams.get("TrustedClientToken") === "6A5AA1D4EAFF4E9FB37E23D68491D6F4");
 
   const ssml = sock.sent.find((s) => s.includes("Path:ssml")) || "";
