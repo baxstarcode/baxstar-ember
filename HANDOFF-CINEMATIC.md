@@ -1,5 +1,25 @@
 # Ember — Living Cinematic Handoff
 
+**First full v4 physical pass — 2026-10-20 UTC:** after reporting silent playback
+in ChatGPT's in-app browser, Brady was asked to compare in standalone Safari and
+replied **“Worked”**, supplying the v4 session begun at `02:42:06.673Z`. The successful
+microphone turn explicitly records `result: pass`, `micIndicatorOff: true` and
+`replyAudible: true`. Recognition ended, the streamed text completed, and the reply
+returned HTTP 200/audio (75888 bytes), with accepted `playback` mode, playing/ended
+events and a request to restore `auto`. This is one user-confirmed complete spoken
+turn in the ongoing wireless-CarPlay test context. The report cannot identify the
+physical speaker route or independently distinguish embedded from standalone Safari.
+Do not attribute causality solely to either the browser switch or v4 mode request.
+
+The initial fixed-sentence test was paused and later cleared/cancelled before Talk;
+it is not a second full pass. Session state is unavailable in this browser, while
+type is reported; that alone is not an error. Use standalone Safari as the current
+successful test path. Next: four more complete turns for the five-turn gate, then
+cancellation/interruption/recovery checks. No further speculative audio fix is
+warranted by this successful report. Keep the main skull panel recording-only and
+repeated-device reliability PROVISIONAL until the release gates are met.
+
+
 **Wireless CarPlay handoff — 2026-10-20 UTC:** Brady's v3 report began at
 02:29:15.636Z. He explicitly confirmed the initial fixed test sentence was audible
 through the truck speakers before Talk. After microphone use, replies were silent.

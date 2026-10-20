@@ -160,6 +160,13 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**Latest result, October 20:** Brady reports “Worked” after the standalone Safari
+comparison and supplies a v4 full microphone turn marked Pass, mic indicator off,
+reply audible. This is the first complete physical pass in the ongoing truck test;
+four further turns and interruption/recovery proof remain. In-app browser playback
+had failed; the report does not establish the browser switch as the sole cause.
+See the newest Voice Rebuild entry for exact evidence and limits.
+
 **October 20 CarPlay evidence:** fixed-sentence Jenny audio was heard through truck
 speakers before Talk; subsequent reply audio was silent after recognition. Five
 HTTP 200/audio attempts played to browser completion. Mic indicator off was physically
