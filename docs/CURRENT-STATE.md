@@ -27,6 +27,13 @@ remains PROVISIONAL until Brady reports it.
 Validation: 27 timing checks, 46 browser checks and 38 Pages gateway checks pass;
 `npm run build:pages` passes. Browser microphone/audio/session events are simulated.
 
+Production publication verified: Pages deployment `df6104be-2984-4a77-943b-b92b33a9fec7`
+completed successfully at **2026-10-20 02:40:35 UTC**, serving commit `2f955d0` on
+`https://ember.baxstarfishing.com`. Worker/settings were not changed. Workspace public
+probe returns HTTP 403 without a signed-in session; actual signed-in v4 playback
+still requires Brady's device check. No claim of a physical CarPlay fix yet.
+
+
 
 **Speech compatibility hotfix — 2026-10-18, 22:00 America/Chicago:** Brady's
 speech-only v3 screenshot confirmed HTTP 502 / provider connection refusal. The
