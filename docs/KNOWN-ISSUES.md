@@ -160,6 +160,13 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 20 CarPlay evidence:** fixed-sentence Jenny audio was heard through truck
+speakers before Talk; subsequent reply audio was silent after recognition. Five
+HTTP 200/audio attempts played to browser completion. Mic indicator off was physically
+confirmed on the final turn. Voice check v4 adds a feature-detected playback-mode
+handoff and safe session/media diagnostics; its physical fix is unproven. The
+previous provider refusal is not present in this report. See Voice Rebuild.
+
 **Post-repair phone result, 2026-10-19 UTC:** Brady heard Ember in the fixed-sentence
 speech-only test after the v2 compatibility hotfix. This closes the single-attempt
 phone audibility check. Full spoken turns, repeated cycles, physical mic release,

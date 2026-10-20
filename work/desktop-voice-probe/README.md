@@ -14,12 +14,29 @@ recognition and neural `/tts` contracts, plus the current app’s JSON/SSE reque
 format. On production it uses Access-protected same-origin `/api/messages` and
 `/api/tts`; API credentials remain in the bound Worker.
 
+## Post-microphone CarPlay silence (Voice check v4)
+
+October 20 physical evidence: the fixed test sentence was audible in the truck,
+but replies after Talk were silent despite HTTP 200/audio and playing/ended events.
+The last turn's physical microphone indicator was off. This is distinct from the
+previous provider refusal. v4 requests the optional iOS Audio Session `playback`
+type before playing after recognition ends, then returns to `auto` on completion,
+error, cancellation, page hide and before new Talk. Native replay reacquires the
+mode. Unsupported/rejected APIs retain the existing player and microphone gates.
+No additional capture or volume override is used; the API cannot select the truck.
+
+The report adds allowlisted before/during/after audio-session type/state and media
+mute/volume snapshots. Browser volume is not hardware volume. No device IDs or
+exception text are exported. Accepted playback mode is not physical audibility.
+Retest a fixed sentence followed by one spoken turn while parked. If still silent,
+stop speculative fixes and compare that report with phone-only playback/routing.
+
 ## Isolate a failed spoken reply (Voice check v3)
 
 Brady's October 18 phone/CarPlay report reached a complete text response, then failed
 before audio preparation. Do not repeat microphone capture to diagnose that layer.
 
-Open the signed-in production page and confirm **Voice check v3** near the title.
+Open the signed-in production page and confirm **Voice check v4** near the title.
 On a phone, enable the experiment for this visit. Tap **Test Ember’s voice** for one
 fixed harmless sentence in the existing `en-US-JennyNeural` voice. This action starts
 no microphone, calls no AI chat model and uses no business connectors. It shares the

@@ -1,5 +1,38 @@
 # Recorded voice rebuild — 2026-10-17
 
+## CarPlay post-capture audibility — 2026-10-20
+
+**Wireless CarPlay handoff — 2026-10-20 UTC:** Brady's v3 report began at
+02:29:15.636Z. He explicitly confirmed the initial fixed test sentence was audible
+through the truck speakers before Talk. After microphone use, replies were silent.
+All five speech attempts returned HTTP 200/audio (22320–40464 bytes) and emitted
+playing/ended; none reported provider refusal, decode failure or autoplay rejection.
+Three spoken questions produced completed text replies. One recognition attempt
+aborted and the following attempt recovered. Brady witnessed the mic indicator off;
+the last turn records `micIndicatorOff: true`, `replyAudible: false`. Earlier turns
+are physically unrecorded. This isolates a post-capture audibility problem; it does
+not identify the actual output route or prove an iOS audio-session defect.
+
+**Bounded lab repair:** Voice check v4 feature-detects the experimental Audio Session
+API on iPhone/iPad and requests `playback` before playing, only while recognition is
+off. It returns to `auto` after playback, error, cancellation, page hide and before
+new capture; native-player replay can reacquire playback mode. Missing/rejected APIs
+fall back to the existing player. Report v4 adds allowlisted session state/type and
+media-element mute/volume snapshots (not hardware volume or output-device identity).
+No mic auto-arm, extra microphone acquisition, forced volume, provider/voice change,
+Worker/connector deployment or dashboard voice activation. Next physical proof:
+on v4, hear the fixed sentence, then complete one Talk → Send → Play turn through
+the truck speakers. If still silent, stop adding speculative audio workarounds and
+compare routing/volume/session evidence with one phone-only turn. Hardware outcome
+remains PROVISIONAL until Brady reports it.
+
+References checked against current upstream text on October 20:
+- [W3C Audio Session draft](https://github.com/w3c/audio-session/blob/main/index.bs)
+- [MDN AudioSession.type](https://developer.mozilla.org/en-US/docs/Web/API/AudioSession/type)
+
+These describe audio-mode intent, not guaranteed Web Speech release or CarPlay
+routing. The web page cannot claim to select or observe the GMC speaker route.
+
 ## Confirmed refusal and compatibility repair — 2026-10-18 (America/Chicago)
 
 Brady's v3 screenshot shows **Neural TTS HTTP 502. The speech provider refused the

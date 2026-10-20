@@ -1,5 +1,33 @@
 # Ember — Current State
 
+**Wireless CarPlay handoff — 2026-10-20 UTC:** Brady's v3 report began at
+02:29:15.636Z. He explicitly confirmed the initial fixed test sentence was audible
+through the truck speakers before Talk. After microphone use, replies were silent.
+All five speech attempts returned HTTP 200/audio (22320–40464 bytes) and emitted
+playing/ended; none reported provider refusal, decode failure or autoplay rejection.
+Three spoken questions produced completed text replies. One recognition attempt
+aborted and the following attempt recovered. Brady witnessed the mic indicator off;
+the last turn records `micIndicatorOff: true`, `replyAudible: false`. Earlier turns
+are physically unrecorded. This isolates a post-capture audibility problem; it does
+not identify the actual output route or prove an iOS audio-session defect.
+
+**Bounded lab repair:** Voice check v4 feature-detects the experimental Audio Session
+API on iPhone/iPad and requests `playback` before playing, only while recognition is
+off. It returns to `auto` after playback, error, cancellation, page hide and before
+new capture; native-player replay can reacquire playback mode. Missing/rejected APIs
+fall back to the existing player. Report v4 adds allowlisted session state/type and
+media-element mute/volume snapshots (not hardware volume or output-device identity).
+No mic auto-arm, extra microphone acquisition, forced volume, provider/voice change,
+Worker/connector deployment or dashboard voice activation. Next physical proof:
+on v4, hear the fixed sentence, then complete one Talk → Send → Play turn through
+the truck speakers. If still silent, stop adding speculative audio workarounds and
+compare routing/volume/session evidence with one phone-only turn. Hardware outcome
+remains PROVISIONAL until Brady reports it.
+
+Validation: 27 timing checks, 46 browser checks and 38 Pages gateway checks pass;
+`npm run build:pages` passes. Browser microphone/audio/session events are simulated.
+
+
 **Speech compatibility hotfix — 2026-10-18, 22:00 America/Chicago:** Brady's
 speech-only v3 screenshot confirmed HTTP 502 / provider connection refusal. The
 current edge-tts 7.3.1 client uses a v2 connection-token algorithm while the live

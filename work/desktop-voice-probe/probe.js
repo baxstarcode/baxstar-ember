@@ -42,6 +42,46 @@ let releaseTimer = null;
 const speechAttempts = [];
 let nextSpeechAttempt = 0;
 let activeSpeechAttempt = null;
+let playbackSessionOwned = false;
+
+// A completed recognition session does not prove iOS restored media playback.
+// Feature-detect the experimental Audio Session API; it cannot select a speaker.
+function audioSnapshot() {
+  let session;
+  try { session = navigator.audioSession; } catch { /* Optional API. */ }
+  let type = "unavailable", state = "unavailable";
+  try {
+    if (["auto", "playback", "play-and-record", "ambient", "transient", "transient-solo"].includes(session?.type)) type = session.type;
+    if (["inactive", "active", "interrupted"].includes(session?.state)) state = session.state;
+  } catch { /* Do not let diagnostic getters interrupt playback. */ }
+  return { sessionType: type, sessionState: state, muted: Boolean(audio.muted),
+    volume: Number.isFinite(audio.volume) ? Math.round(audio.volume * 100) / 100 : null };
+}
+
+function requestPlaybackSession() {
+  if (!ios || micPhase !== "off" || recognition) return "not-applicable";
+  try {
+    const session = navigator.audioSession;
+    if (!session || !("type" in session)) return "unavailable";
+    session.type = "playback";
+    playbackSessionOwned = true;
+    const applied = session.type === "playback";
+    mark("audio-session-playback-requested", applied ? "accepted" : "not-confirmed");
+    return applied ? "accepted" : "not-confirmed";
+  } catch {
+    mark("audio-session-playback-requested", "rejected");
+    return "rejected";
+  }
+}
+
+function releasePlaybackSession() {
+  if (!playbackSessionOwned) return;
+  playbackSessionOwned = false;
+  try {
+    navigator.audioSession.type = "auto";
+    mark("audio-session-auto-requested");
+  } catch { mark("audio-session-auto-rejected"); }
+}
 
 function audioSupported() { return typeof HTMLMediaElement !== "undefined"; }
 function ready() { return transportReady && (!mobile || mobileOptIn); }
@@ -96,7 +136,7 @@ function beginTurn(source) {
 
 function report() {
   return {
-    experiment: "Ember explicit-turn voice reliability lab", version: 3,
+    experiment: "Ember explicit-turn voice reliability lab", version: 4,
     status: "PROVISIONAL: browser events are not physical-device proof",
     startedAt: sessionStarted,
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext,
@@ -151,10 +191,11 @@ function clearAudio() {
   }
   activeSpeechAttempt = null;
   if (audioUrl) mark("audio-cleared");
-  audio.onplaying = audio.onpause = audio.onended = audio.onerror = null;
+  audio.onplay = audio.onplaying = audio.onpause = audio.onended = audio.onerror = null;
   audio.pause();
   audio.removeAttribute("src");
   audio.load();
+  releasePlaybackSession();
   audio.hidden = true;
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audioUrl = "";
@@ -507,7 +548,7 @@ async function playResponse(source = "reply") {
   if (source === "voice-test") beginTurn("voice-test");
   mark("tts-requested", source);
   const attempt = { number: ++nextSpeechAttempt, turn: turn?.number || null, source,
-    startedMs: elapsed(), stage: "request", result: "pending" };
+    startedMs: elapsed(), stage: "request", result: "pending", beforePlayback: audioSnapshot() };
   speechAttempts.push(attempt);
   if (speechAttempts.length > 30) speechAttempts.shift();
   activeSpeechAttempt = attempt;
@@ -565,10 +606,15 @@ async function playResponse(source = "reply") {
     if (source === "voice-test") audio.scrollIntoView({ block: "center" });
     attempt.result = "ready";
     mark("audio-ready");
+    // Native controls can replay the downloaded clip without a new fetch.
+    audio.onplay = () => {
+      if (token === generation) attempt.sessionRequest = requestPlaybackSession();
+    };
     audio.onplaying = () => {
       if (token !== generation) return;
       attempt.stage = "playback";
       attempt.result = "playing";
+      attempt.duringPlayback = audioSnapshot();
       $("audio-state").textContent = "Playing — confirm you can hear it";
       $("voice-instrument").dataset.playback = "playing";
       speechMessage("The browser reports playback. Confirm the voice is audible through your actual speaker.");
@@ -583,6 +629,8 @@ async function playResponse(source = "reply") {
       $("audio-state").textContent = "Playback ended — mic stays off";
       $("voice-instrument").dataset.playback = "off";
       if (source === "voice-test") speechMessage("Voice check finished in the browser. Confirm whether you heard Ember through the actual speaker, then record Limited for this speech-only test.");
+      attempt.afterPlayback = audioSnapshot();
+      releasePlaybackSession();
       mark("audio-ended");
       log("Audio element fired ended.");
     };
@@ -602,6 +650,7 @@ async function playResponse(source = "reply") {
       attempt.durationMs = elapsed() - attempt.startedMs;
       $("audio-state").textContent = "Audio playback error";
       $("voice-instrument").dataset.playback = "off";
+      releasePlaybackSession();
       mark("audio-error");
       speechMessage("The browser could not decode or play the neural audio. Text is still available.", true);
     };
@@ -609,6 +658,7 @@ async function playResponse(source = "reply") {
     // A separate Play click and visible native controls make autoplay failure reviewable.
     try {
       attempt.stage = "playback";
+      attempt.sessionRequest = requestPlaybackSession();
       await Promise.race([
         audio.play(),
         new Promise((_, reject) => { playbackTimer = setTimeout(() => reject(speechError("playback-timeout", "Playback did not start")), 5000); }),
@@ -616,6 +666,7 @@ async function playResponse(source = "reply") {
     } catch (error) {
       if (token !== generation) return;
       audio.pause();
+      releasePlaybackSession();
       if (attempt.failure === "audio-decode-error") return;
       attempt.result = "blocked";
       attempt.failure = error.speechCode === "playback-timeout" ? "playback-timeout"

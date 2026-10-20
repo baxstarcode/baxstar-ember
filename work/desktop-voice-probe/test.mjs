@@ -29,7 +29,7 @@ let browser;
 let count = 0;
 const check = (label) => { count += 1; console.log(`PASS ${count}: ${label}`); };
 
-async function session({ mobile = false, speech = true, blockedAudio = false, holdRelease = false, insecure = false } = {}) {
+async function session({ mobile = false, speech = true, blockedAudio = false, holdRelease = false, insecure = false, audioSession = "missing" } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
     ...(mobile ? { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18 Mobile Safari/604.1" } : {}),
@@ -75,8 +75,21 @@ async function session({ mobile = false, speech = true, blockedAudio = false, ho
     return route.fulfill({ contentType: "text/event-stream", body: frames.map((frame) => `event: ${frame.type}\r\ndata: ${JSON.stringify(frame)}\r\n\r\n`).join("") });
   });
   page.setDefaultTimeout(8000);
-  await page.addInitScript(({ speech, blockedAudio, mobile, holdRelease, insecure }) => {
+  await page.addInitScript(({ speech, blockedAudio, mobile, holdRelease, insecure, audioSession }) => {
     window.__mock = { starts: 0, stops: 0, aborts: 0, plays: 0, rec: null, order: [] };
+    let sessionType = "auto";
+    Object.defineProperty(navigator, "audioSession", { configurable: true,
+      get() {
+        if (audioSession === "getter-error") throw new Error("PRIVATE_SESSION_SENTINEL");
+        if (audioSession === "missing") return undefined;
+        return { get type() { return sessionType; },
+          set type(value) {
+            if (audioSession === "rejected") throw new Error("PRIVATE_SESSION_SENTINEL");
+            sessionType = value;
+            window.__mock.order.push(`session-${value}`);
+          }, state: "active" };
+      },
+    });
     class Recognition {
       constructor() { window.__mock.rec = this; }
       start() { window.__mock.starts += 1; window.__mock.order.push("mic-start"); }
@@ -91,6 +104,7 @@ async function session({ mobile = false, speech = true, blockedAudio = false, ho
     if (insecure) Object.defineProperty(window, "isSecureContext", { configurable: true, value: false });
     HTMLMediaElement.prototype.play = function () {
       window.__mock.plays += 1;
+      window.__mock.order.push("audio-play");
       if (blockedAudio) return Promise.reject(new DOMException("Blocked", "NotAllowedError"));
       this.dispatchEvent(new Event("playing"));
       return Promise.resolve();
@@ -103,7 +117,7 @@ async function session({ mobile = false, speech = true, blockedAudio = false, ho
       get() { return this.__mockSrc || ""; },
       set(value) { this.__mockSrc = value; },
     });
-  }, { speech, blockedAudio, mobile, holdRelease, insecure });
+  }, { speech, blockedAudio, mobile, holdRelease, insecure, audioSession });
   await page.goto(origin);
   await page.locator("#capability").filter({ hasText: /experiment|recognition|secure/ }).waitFor();
   return { context, page, requests, errors, mode: (value) => { mode = value; } };
@@ -297,7 +311,7 @@ try {
   await voiceOnly.page.evaluate(() => document.getElementById("audio").dispatchEvent(new Event("ended")));
   await state(voiceOnly.page, "voice-check-state", "Voice check finished");
   let voiceReport = await diagnostic(voiceOnly);
-  assert.equal(voiceReport.version, 3);
+  assert.equal(voiceReport.version, 4);
   assert.equal(voiceReport.speechAttempts[0].stage, "complete");
   assert.equal(voiceReport.speechAttempts[0].result, "ended");
   assert.equal(voiceReport.speechAttempts[0].contentType, "audio");
@@ -420,7 +434,7 @@ try {
   assert.equal(await phone.page.locator("#test-voice").isEnabled(), true);
   assert.equal(phone.requests.length, 0);
   assert.equal(await phone.page.evaluate(() => window.__mock.starts), 0);
-  await phone.page.screenshot({ path: "/tmp/ember-voice-check-v3-phone.png" });
+  await phone.page.screenshot({ path: "/tmp/ember-voice-check-v4-phone.png" });
   check("phone stays off until explicit opt-in; enabling it starts no microphone or request");
 
   for (let n = 1; n <= 5; n++) {
@@ -506,6 +520,67 @@ try {
   await phone.page.screenshot({ path: "/tmp/ember-iphone-voice-lab.png", fullPage: true });
   check("tab hiding stops playback; opting out stops the experiment, and reload never retains opt-in");
   await healthy(phone);
+
+  const handoff = await session({ mobile: true, audioSession: "supported" });
+  assert.deepEqual(await handoff.page.evaluate(() => window.__mock.order), []);
+  await handoff.page.locator("#mobile-opt-in").check();
+  await speak(handoff);
+  assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "auto");
+  await handoff.page.locator("#send").click();
+  await state(handoff.page, "request-state", "Complete");
+  await handoff.page.locator("#play").click();
+  await state(handoff.page, "audio-state", "Playing");
+  const handoffOrder = await handoff.page.evaluate(() => window.__mock.order);
+  assert.deepEqual(handoffOrder.slice(-2), ["session-playback", "audio-play"]);
+  let handoffReport = await diagnostic(handoff);
+  assert.equal(handoffReport.speechAttempts[0].sessionRequest, "accepted");
+  assert.equal(handoffReport.speechAttempts[0].duringPlayback.sessionType, "playback");
+  assert.equal(handoffReport.speechAttempts[0].duringPlayback.muted, false);
+  assert.equal(handoffReport.turns[0].observation, "unrecorded");
+  await handoff.page.evaluate(() => document.querySelector("audio").dispatchEvent(new Event("ended")));
+  assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "auto");
+  await handoff.page.evaluate(() => document.querySelector("audio").dispatchEvent(new Event("play")));
+  assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "playback");
+  await handoff.page.locator("#talk").click();
+  assert.deepEqual((await handoff.page.evaluate(() => window.__mock.order)).slice(-3), ["audio-pause", "session-auto", "mic-start"]);
+  assert.equal(await handoff.page.locator("#play").isDisabled(), true);
+  await handoff.page.locator("#cancel").click();
+  await state(handoff.page, "mic-state", "recognition ended");
+  check("iPhone handoff requests playback only after mic release, resets before next Talk, and supports native replay without claiming audibility");
+  await sendTyped(handoff);
+  await state(handoff.page, "request-state", "Complete");
+  await handoff.page.locator("#play").click();
+  await state(handoff.page, "audio-state", "Playing");
+  await hide(handoff);
+  assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "auto");
+  check("hiding the page releases the playback session and never restarts audio");
+  await healthy(handoff);
+
+  for (const audioSession of ["missing", "rejected", "getter-error"]) {
+    const optional = await session({ mobile: true, audioSession });
+    await optional.page.locator("#mobile-opt-in").check();
+    await optional.page.locator("#test-voice").click();
+    await state(optional.page, "audio-state", "Playing");
+    const optionalReport = await diagnostic(optional);
+    assert.equal(optionalReport.speechAttempts[0].sessionRequest, audioSession === "missing" ? "unavailable" : "rejected");
+    assert.equal(JSON.stringify(optionalReport).includes("PRIVATE_SESSION_SENTINEL"), false);
+    assert.equal(optionalReport.turns[0].observation, "unrecorded");
+    check(`optional audio session ${audioSession} does not block playback or leak exception details`);
+    await healthy(optional);
+  }
+
+  const blockedSession = await session({ mobile: true, audioSession: "supported", blockedAudio: true });
+  await blockedSession.page.locator("#mobile-opt-in").check();
+  await blockedSession.page.locator("#test-voice").click();
+  await state(blockedSession.page, "audio-state", "Playback blocked");
+  assert.equal(await blockedSession.page.evaluate(() => navigator.audioSession.type), "auto");
+  assert.equal(await blockedSession.page.locator("#audio").isVisible(), true);
+  await blockedSession.page.evaluate(() => document.querySelector("audio").dispatchEvent(new Event("play")));
+  assert.equal(await blockedSession.page.evaluate(() => navigator.audioSession.type), "playback");
+  await blockedSession.page.locator("#cancel").click();
+  assert.equal(await blockedSession.page.evaluate(() => navigator.audioSession.type), "auto");
+  check("blocked playback releases audio mode; a fresh native Play can reacquire it, and Cancel releases it");
+  await healthy(blockedSession);
 
   const missingMobile = await session({ mobile: true, speech: false });
   await missingMobile.page.locator("#mobile-opt-in").check();
