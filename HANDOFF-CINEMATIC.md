@@ -1,5 +1,21 @@
 # Ember — Living Cinematic Handoff
 
+**Second full v4 physical pass — 2026-10-21 UTC:** the supplied session began
+at `12:59:42.536Z`, with device notes “All worked well.” In the ongoing Safari/
+wireless-CarPlay test context, one microphone turn records `pass`,
+`micIndicatorOff: true`, `replyAudible: true`. Recognition ended after the 750 ms
+grace, streamed text completed, and reply TTS returned HTTP 200/audio (33984 bytes).
+The browser accepted playback mode and emitted playing/ended, then requested auto.
+The separate fixed-sentence test also completed, but is not a microphone turn.
+There are now **two confirmed full v4 turns across two sessions**, not five repeated
+turns. Three additional complete turns are needed for the requested five-turn count;
+keep the same page open for the next turns to exercise repeated handoff. Active-turn
+cancellation, interruption and recovery still need evidence. Tab hiding in this
+report occurred before testing and after completed playback; it does not prove
+interruption recovery. No new runtime repair is warranted by this successful report.
+The integrated skull panel remains recording-only pending its release gates.
+
+
 **First full v4 physical pass — 2026-10-20 UTC:** after reporting silent playback
 in ChatGPT's in-app browser, Brady was asked to compare in standalone Safari and
 replied **“Worked”**, supplying the v4 session begun at `02:42:06.673Z`. The successful

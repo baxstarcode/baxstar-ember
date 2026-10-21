@@ -160,6 +160,11 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**Latest result, October 21:** another v4 microphone turn physically passed, with
+mic indicator off and audible reply; device notes say “All worked well.” This is
+two full turns across two sessions. The fixed voice-test sentences do not count
+as microphone turns. Repeated handoff and active interruption/recovery remain open.
+
 **Latest result, October 20:** Brady reports “Worked” after the standalone Safari
 comparison and supplies a v4 full microphone turn marked Pass, mic indicator off,
 reply audible. This is the first complete physical pass in the ongoing truck test;
