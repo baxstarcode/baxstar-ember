@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Signal Log · Ember</title>
+  <link rel="icon" href="../assets/ember/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/ember/design-tokens.css">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#signals">Skip to signals</a>
+  <header class="topbar">
+    <a class="brand" href="../index.html"><img src="../assets/ember/icon.svg" alt="" width="28" height="28"> EMBER <span>/ SIGNAL LOG</span></a>
+    <span class="system-label">THE OPERATING JOURNAL <i aria-hidden="true"></i></span>
+    <a href="../index.html" class="back">Return to Ember</a>
+  </header>
+  <main class="shell">
+    <section class="hero" aria-labelledby="title">
+      <div class="hero-copy"><p class="eyebrow">A CLEARER VIEW. A SMALLER NEXT STEP.</p><h1 id="title">Keep the good.<br>Move what matters.</h1><p>Your signals, across the businesses. A little perspective before the next decision.</p></div>
+      <div class="instrument" aria-hidden="true"><img src="../assets/ember/raster/reactor-bezel@2x.webp" alt=""><span>SIGNAL<br><b>LOG</b><small>EST. MMXXVI</small></span></div>
+      <div class="hero-stats" aria-label="Current dataset"><div><strong id="open-count">—</strong><span>open signals</span></div><div><strong id="good-count">—</strong><span>good things</span></div><div><strong id="done-count">—</strong><span>resolved here</span></div></div>
+    </section>
+    <div class="data-banner"><strong id="mode-label">DEMO · ILLUSTRATIVE DATA</strong><span id="mode-note">No live Gmail, Calendar, or Claude feed. Demo clock: Oct 18, 2026.</span><button id="data-mode" type="button">Open my log</button></div>
+    <button id="toggle-filters" type="button" aria-expanded="false" aria-controls="filter-panel">Filters &amp; saved views ↓</button>
+    <div class="workspace">
+      <aside id="filter-panel" class="sidebar" aria-label="Filters and saved views">
+        <div class="panel-heading"><span aria-hidden="true">⌘</span> THE LENSES <small>01</small></div>
+        <label class="field">Workspace<select id="workspace"><option value="baxstar">Baxstar · Fishing account</option><option disabled>Future workspace · not connected</option></select></label>
+        <fieldset class="categories"><legend>Business categories</legend><div id="categories"></div></fieldset>
+        <label class="field">Show<select id="status-filter"><option value="open">Open signals</option><option value="all">All states</option><option value="unread">Unread</option><option value="waiting">Waiting on others</option><option value="done">Done / resolved</option><option value="snoozed">Snoozed</option><option value="dismissed">Dismissed</option><option value="accepted">Accepted risk</option></select></label>
+        <label class="check"><input id="stale-only" type="checkbox"> Stale sources only</label>
+        <div class="saved-heading"><h2>Saved combinations</h2><button id="save-view" type="button" aria-label="Save current filter combination">+ Save</button></div>
+        <div id="saved-views" class="saved-views"></div>
+        <button id="reset" class="quiet reset" type="button">Reset filters</button>
+        <div class="connection-box"><h2>Source connections</h2><p><span class="health-dot" aria-hidden="true"></span> Gmail <b id="health-gmail">Not wired</b></p><p><span class="health-dot" aria-hidden="true"></span> Calendar <b id="health-calendar">Not wired</b></p><p><span class="health-dot manual" aria-hidden="true"></span> Claude <b>JSON import</b></p><button id="refresh-sources" type="button">Refresh sources</button><button id="connections" class="quiet" type="button">View connection details ↗</button></div>
+      </aside>
+      <section class="journal" aria-label="Signal journal">
+        <div class="journal-toolbar"><div><p class="eyebrow">YOUR SIGNAL LOG</p><h2 id="view-heading">All the moving parts.</h2></div><div class="journal-tools"><button id="export" type="button">Export</button><button id="import" type="button">↓ Import signals</button></div></div>
+        <div class="mode-buttons" role="group" aria-label="Signal focus"><button id="triage" type="button" aria-pressed="true">↟ Triage <span>importance + time</span></button><button id="good" type="button" aria-pressed="false">✧ Good News</button><button id="attention" type="button" aria-pressed="false">! Needs Attention</button></div>
+        <div class="budget-row"><label for="budget">Time available <span class="muted">(minutes)</span></label><input id="budget" type="number" min="5" max="240" step="5" value="30"><span id="budget-note">Choose a feasible next step.</span><button id="method" class="quiet" type="button">How ranking works</button></div>
+        <div id="plan" class="plan" aria-live="polite"></div>
+        <div class="list-toolbar"><label for="search" class="visually-hidden">Search signal text</label><input id="search" type="search" placeholder="Search your signals…" maxlength="120"><span id="result-count" role="status"></span></div>
+        <div id="critical-note" class="critical-note" hidden></div>
+        <div id="signals" tabindex="-1"></div>
+        <div id="empty" class="empty" hidden><img src="../assets/ember/svg/ornaments/corner-gear.svg" alt="" width="56" height="56"><h3 id="empty-title">A little breathing room.</h3><p id="empty-copy">Nothing matches these filters. Try another combination.</p></div>
+        <footer class="journal-footer"><span>Small steps count. So does good news.</span><button class="quiet" id="sources" type="button">Sources &amp; method ↗</button></footer>
+      </section>
+    </div>
+    <p class="privacy-note">Imported summaries stay in this tab. This device remembers only opaque signal IDs, read/action states, and your saved filters. No email bodies or source text are saved.</p>
+    <p id="storage-notice" role="status" class="storage-notice"></p>
+  </main>
+  <div id="toast" class="toast" role="status" hidden><span></span><button id="undo" type="button">Undo</button><button id="dismiss-toast" type="button" aria-label="Dismiss notification">×</button></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-head"><h2 id="dialog-title"></h2><button id="close-dialog" type="button" aria-label="Close dialog">×</button></div><div id="dialog-body"></div></dialog>
+  <noscript><p class="no-script">Signal Log needs JavaScript for filtering, ranking, and local state. No live data has been loaded.</p></noscript>
+</body>
+</html>
