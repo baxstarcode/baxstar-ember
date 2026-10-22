@@ -242,3 +242,80 @@ test('invalid pause choices fall back to the original bounded grace', () => {
   const s = session(); s.element('pause-window').value = 'Infinity';
   const rec = s.begin(); phrase(s, rec); s.tick(750); assert.equal(s.calls.stops, 1);
 });
+
+
+test('tab hiding preserves provisional-only words as an unsent draft without fabricating final recognition', () => {
+  const s = session(); const rec = s.begin();
+  s.result(rec, [['Please help with this draft', false]]);
+  const staleResult = rec.onresult;
+  s.hide();
+  assert.equal(s.element('transcript').value, 'Please help with this draft');
+  assert.equal(s.element('draft-notice').hidden, false);
+  assert.equal(s.calls.aborts, 1);
+  assert.equal(s.calls.fetches, 0);
+  assert.equal(s.calls.starts, 1);
+  assert.equal(s.element('send').disabled, true);
+  assert.match(s.element('message').textContent, /draft is kept/);
+  assert.equal(s.run('"first-final-transcript" in turn.marks'), false);
+  staleResult({ results: [Object.assign([{ transcript: 'late unwanted words' }], { isFinal: true })] });
+  assert.equal(s.element('transcript').value, 'Please help with this draft');
+  rec.onend();
+  assert.equal(s.element('send').disabled, false);
+  assert.equal(s.element('talk').textContent, 'Continue talking');
+  assert.equal(s.calls.fetches, 0);
+  assert.equal(s.run('JSON.stringify(report()).includes("Please help with this draft")'), false);
+});
+
+test('continued recording appends to the edited interrupted draft once across cumulative results and another interruption', () => {
+  const s = session(); const rec = s.begin();
+  s.result(rec, [['First final.', true], ['Partial words', false]]);
+  s.hide(); rec.onend();
+  assert.equal(s.element('transcript').value, 'First final. Partial words');
+  s.element('transcript').value = 'Reviewed draft.';
+  const next = s.begin();
+  assert.equal(s.element('transcript').value, 'Reviewed draft.');
+  assert.equal(s.run('"interrupted-draft-carried" in turn.marks'), true);
+  s.result(next, [['New words.', true]]);
+  s.result(next, [['New words.', true], ['More words', false]], 1);
+  assert.equal(s.element('transcript').value, 'Reviewed draft. New words.');
+  s.hide(); next.onend();
+  assert.equal(s.element('transcript').value, 'Reviewed draft. New words. More words');
+  s.windowEvents.get('pagehide')();
+  assert.equal(s.element('transcript').value, 'Reviewed draft. New words. More words');
+  assert.equal(s.calls.starts, 2);
+  assert.equal(s.calls.fetches, 0);
+});
+
+test('interruption before any recognition words explains the empty draft and permits fresh Talk after release', () => {
+  const s = session(); const rec = s.begin(); s.hide();
+  assert.equal(s.element('transcript').value, '');
+  assert.match(s.element('message').textContent, /before the browser returned any words/);
+  rec.onend();
+  assert.equal(s.element('draft-notice').hidden, true);
+  assert.equal(s.element('talk').textContent, 'Talk');
+  assert.equal(s.element('send').disabled, true);
+  assert.equal(s.calls.starts, 1);
+});
+
+test('direct pagehide also preserves received words, bounded to the existing transcript limit', () => {
+  const s = session(); const rec = s.begin();
+  s.result(rec, [['a'.repeat(990), true], ['b'.repeat(50), false]]);
+  s.windowEvents.get('pagehide')(); rec.onend();
+  assert.equal(s.element('transcript').value.length, 1000);
+  assert.equal(s.element('transcript').value, 'a'.repeat(990) + ' ' + 'b'.repeat(9));
+  assert.equal(s.calls.fetches, 0);
+});
+
+test('clearing an interrupted draft explicitly starts fresh and explicit Cancel does not promote provisional words', () => {
+  const s = session(); const rec = s.begin();
+  s.result(rec, [['Keep temporarily', false]]); s.hide(); rec.onend();
+  s.element('transcript').value = '';
+  s.element('transcript').listeners.get('input')();
+  assert.equal(s.element('talk').textContent, 'Talk');
+  assert.equal(s.element('draft-notice').hidden, true);
+  const next = s.begin();
+  assert.equal(s.run('"interrupted-draft-carried" in turn.marks'), false);
+  s.result(next, [['Discard this provisional speech', false]]);
+  s.run('stopAll()'); next.onend();
+  assert.equal(s.element('transcript').value, '');
+});

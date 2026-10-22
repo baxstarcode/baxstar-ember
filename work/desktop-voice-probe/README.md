@@ -14,6 +14,28 @@ recognition and neural `/tts` contracts, plus the current app’s JSON/SSE reque
 format. On production it uses Access-protected same-origin `/api/messages` and
 `/api/tts`; API credentials remain in the bound Worker.
 
+## Keep received words after an interruption (Voice check v5)
+
+Switching tabs/apps still stops microphone capture, in-flight requests and playback.
+v5 first keeps final and provisional recognition words already received in the editable
+transcript, capped at the existing 1000-character limit. The visible draft notice warns
+that words may be unfinished or inaccurate. After release, **Continue talking** appends
+to the edited draft on an explicit tap, or **Send transcript** sends the reviewed words.
+Clear the text box to start fresh. No microphone, Send or playback restarts on return.
+A late recognition callback during abort cannot replace the preserved draft.
+
+If the browser had not returned any words, the page explains why the transcript is
+empty. Existing completed replies stay available for explicit Play; partial AI replies
+remain labeled incomplete and cannot be spoken as complete answers. The new `tab-returned`
+and draft-recovery event codes contain no text. A recovered turn is Limited, not a clean
+Pass. All draft data stays in page memory: reloading/closing or browser eviction can
+still clear it. This is not persisted conversation history or background voice support.
+
+Offline regression checks cover provisional-only words, final-plus-provisional words,
+reviewed continuation without duplicate cumulative results, late callbacks, a second
+interruption, direct pagehide, empty results, the text cap, and the full explicit
+Send/Play path. Real-device recovery remains provisional until separately observed.
+
 ## Post-microphone CarPlay silence (Voice check v4)
 
 October 20 physical evidence: the fixed test sentence was audible in the truck,
@@ -36,7 +58,7 @@ stop speculative fixes and compare that report with phone-only playback/routing.
 Brady's October 18 phone/CarPlay report reached a complete text response, then failed
 before audio preparation. Do not repeat microphone capture to diagnose that layer.
 
-Open the signed-in production page and confirm **Voice check v4** near the title.
+Open the signed-in production page and confirm **Voice check v5** near the title.
 On a phone, enable the experiment for this visit. Tap **Test Ember’s voice** for one
 fixed harmless sentence in the existing `en-US-JennyNeural` voice. This action starts
 no microphone, calls no AI chat model and uses no business connectors. It shares the

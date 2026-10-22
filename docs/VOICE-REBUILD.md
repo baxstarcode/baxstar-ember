@@ -1,5 +1,23 @@
 # Recorded voice rebuild — 2026-10-17
 
+**Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
+Brady clarified that text disappeared on return, leaving nothing to replay. v4's
+hide handler aborted recognition and discarded provisional words; the interrupted
+report had no finalized transcript. v5 preserves words already received as an
+editable, clearly marked draft before stopping capture. Continue talking appends
+to the reviewed draft only after an explicit tap; Send remains explicit. Completed
+text/replies remain available after tab hiding, and playback still needs a tap.
+Late result callbacks during abort cannot overwrite the recovered draft. If no words
+arrived, the page explains that; it cannot recover unrecognized speech or a full
+page reload. Drafts stay in memory only. Recovery is marked Limited, not a fresh
+uninterrupted Pass. No Worker, voice/model, connector or dashboard activation change.
+Validation: 32 timing/recovery checks, 50 browser checks and 38 Pages gateway checks
+pass; Pages build passes. Desktop and phone rendering checked (phone at 3x scale).
+Real tab/app-switch recovery remains to be checked when Brady returns; no more
+physical testing was requested tonight. Latest main `f92be1c` was fast-forwarded
+before publication, preserving Claude's model-rollout documentation correction.
+
+
 **Extended Mac report — October 22, 2026 (America/Chicago):** the pasted file
 extends the same `2026-10-22T07:29:36.775Z` session; do not count its first turn again.
 Brady says the computer tests worked very well until tab switching, which turned

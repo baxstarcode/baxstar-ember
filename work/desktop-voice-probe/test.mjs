@@ -32,6 +32,7 @@ const check = (label) => { count += 1; console.log(`PASS ${count}: ${label}`); }
 async function session({ mobile = false, speech = true, blockedAudio = false, holdRelease = false, insecure = false, audioSession = "missing" } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
+    deviceScaleFactor: mobile ? 3 : 1,
     ...(mobile ? { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18 Mobile Safari/604.1" } : {}),
   });
   const page = await context.newPage();
@@ -311,7 +312,7 @@ try {
   await voiceOnly.page.evaluate(() => document.getElementById("audio").dispatchEvent(new Event("ended")));
   await state(voiceOnly.page, "voice-check-state", "Voice check finished");
   let voiceReport = await diagnostic(voiceOnly);
-  assert.equal(voiceReport.version, 4);
+  assert.equal(voiceReport.version, 5);
   assert.equal(voiceReport.speechAttempts[0].stage, "complete");
   assert.equal(voiceReport.speechAttempts[0].result, "ended");
   assert.equal(voiceReport.speechAttempts[0].contentType, "audio");
@@ -581,6 +582,63 @@ try {
   assert.equal(await blockedSession.page.evaluate(() => navigator.audioSession.type), "auto");
   check("blocked playback releases audio mode; a fresh native Play can reacquire it, and Cancel releases it");
   await healthy(blockedSession);
+
+  for (const mobile of [false, true]) {
+    const recovery = await session({ mobile, audioSession: mobile ? "supported" : "missing" });
+    if (mobile) await recovery.page.locator("#mobile-opt-in").check();
+    await recovery.page.locator("#talk").click();
+    await recovery.page.evaluate(() => {
+      const rec = window.__mock.rec; rec.onstart();
+      rec.onresult({ results: [Object.assign([{ transcript: "PRIVATE_RECOVERED_WORDS" }], { isFinal: false })] });
+    });
+    await hide(recovery);
+    await state(recovery.page, "mic-state", "recognition ended");
+    assert.equal(await recovery.page.locator("#transcript").inputValue(), "PRIVATE_RECOVERED_WORDS");
+    assert.equal(await recovery.page.locator("#draft-notice").isVisible(), true);
+    assert.equal(await recovery.page.locator("#send").isEnabled(), true);
+    assert.equal(await recovery.page.locator("#talk").textContent(), "Continue talking");
+    assert.equal(await recovery.page.evaluate(() => window.__mock.starts), 1);
+    assert.equal(recovery.requests.length, 0);
+    await recovery.page.locator("#draft-notice").scrollIntoViewIfNeeded();
+    await recovery.page.screenshot({ path: `/tmp/ember-v5-draft-${mobile ? "phone" : "desktop"}.png` });
+    const interrupted = await diagnostic(recovery);
+    assert.equal(interrupted.turns[0].marks["first-final-transcript"], undefined);
+    assert.equal(JSON.stringify(interrupted).includes("PRIVATE_RECOVERED_WORDS"), false);
+    await recovery.page.locator("#transcript").fill("Reviewed earlier words.");
+    await speak(recovery, "Added words.");
+    assert.equal(await recovery.page.locator("#transcript").inputValue(), "Reviewed earlier words. Added words.");
+    await recovery.page.locator("#send").click();
+    await state(recovery.page, "request-state", "Complete");
+    assert.equal(await recovery.page.locator("#draft-notice").isVisible(), false);
+    assert.ok(recovery.requests[0].payload.messages[0].content.endsWith("Reviewed earlier words. Added words."));
+    await recovery.page.locator("#play").click();
+    await state(recovery.page, "audio-state", "Playing");
+    await recovery.page.evaluate(() => document.querySelector("audio").dispatchEvent(new Event("ended")));
+    await recovery.page.locator("#released").check();
+    await recovery.page.locator("#heard").check();
+    await recovery.page.locator("#result").selectOption("pass");
+    await recovery.page.locator("#record-result").click();
+    await state(recovery.page, "message", "Use Limited");
+    await recovery.page.locator("#result").selectOption("limited");
+    await recovery.page.locator("#record-result").click();
+    await state(recovery.page, "turn-number", "limited recorded");
+    check(`${mobile ? "phone" : "desktop"} interruption preserves provisional words for review and explicit continuation; recovery cannot masquerade as a clean pass`);
+
+    const repliesBeforeHide = recovery.requests.length;
+    await hide(recovery);
+    assert.equal(await recovery.page.locator("#transcript").inputValue(), "Reviewed earlier words. Added words.");
+    assert.equal(await recovery.page.locator("#reply").textContent(), "One calm sentence.");
+    assert.equal(await recovery.page.locator("#play").isEnabled(), true);
+    assert.equal(recovery.requests.length, repliesBeforeHide);
+    await recovery.page.locator("#play").click();
+    await state(recovery.page, "audio-state", "Playing");
+    assert.equal(recovery.requests.length, repliesBeforeHide + 1);
+    assert.ok(recovery.requests.at(-1).url.endsWith("/api/tts"));
+    await speak(recovery, "A fresh question.");
+    assert.equal(await recovery.page.locator("#transcript").inputValue(), "A fresh question.");
+    check(`${mobile ? "phone" : "desktop"} completed text survives tab changes, replay requires a tap, and a later fresh turn does not inherit the old draft`);
+    await healthy(recovery);
+  }
 
   const missingMobile = await session({ mobile: true, speech: false });
   await missingMobile.page.locator("#mobile-opt-in").check();
