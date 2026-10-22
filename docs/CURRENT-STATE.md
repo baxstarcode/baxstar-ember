@@ -1,5 +1,20 @@
 # Ember — Current State
 
+**Extended Mac report — October 22, 2026 (America/Chicago):** the pasted file
+extends the same `2026-10-22T07:29:36.775Z` session; do not count its first turn again.
+Brady says the computer tests worked very well until tab switching, which turned
+the mic off. Events preserve the first full turn's original Pass at 34840 ms and a
+later Failed recording at 191722 ms; the turn's latest observation overwrites its
+earlier Pass. Retain both observations. The first tab hide occurred after completed
+reply playback. After returning, a new speech-only request played and a new microphone
+session started, showing recognition restart without reload. A second tab hide
+then aborted that capture; recognition ended 1 ms later. No subsequent full
+Talk/Send/Play recovery cycle is present. The visible cutoff matches the lab's
+explicit `visibilitychange` → `stopAll` behavior, not proof of an OS/browser inability
+to run background audio. Background conversation remains outside this lab's scope.
+No new runtime repair or repeated tab-cutoff test is needed on this evidence.
+
+
 **Mac Chrome physical pass — October 22, 2026 (America/Chicago):** Brady's v4
 report started at `2026-10-22T07:29:36.775Z` (02:29 CT), with notes “done on m4 mac
 in chrome. worked well.” One full microphone turn records Pass, mic indicator off
