@@ -27,6 +27,7 @@ let request = null;
 let audioUrl = "";
 let answer = "";
 let replyComplete = false;
+let interruptedDraft = false;
 let generation = 0;
 let micTimer = null;
 let endSpeechTimer = null;
@@ -136,7 +137,7 @@ function beginTurn(source) {
 
 function report() {
   return {
-    experiment: "Ember explicit-turn voice reliability lab", version: 4,
+    experiment: "Ember explicit-turn voice reliability lab", version: 5,
     status: "PROVISIONAL: browser events are not physical-device proof",
     startedAt: sessionStarted,
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext,
@@ -160,7 +161,7 @@ function message(text, error = false) {
 function controls() {
   const busy = Boolean(request) || micPhase !== "off";
   $("talk").disabled = !speechReady() || Boolean(request) || ["stopping", "releasing", "unconfirmed"].includes(micPhase);
-  $("talk").textContent = micPhase === "starting" ? "Cancel mic start" : micPhase === "listening" ? "Finish talking" : "Talk";
+  $("talk").textContent = micPhase === "starting" ? "Cancel mic start" : micPhase === "listening" ? "Finish talking" : interruptedDraft && $("transcript").value.trim() ? "Continue talking" : "Talk";
   $("send").disabled = !apiReady() || busy || !$("transcript").value.trim();
   $("play").disabled = !apiReady() || !playbackReady || busy || !replyComplete;
   $("test-voice").disabled = !apiReady() || !playbackReady || busy;
@@ -172,6 +173,7 @@ function controls() {
   $("cancel").disabled = !busy && !audioUrl;
   $("confirm-release").hidden = micPhase !== "unconfirmed";
   $("record-result").disabled = !turn || busy;
+  $("draft-notice").hidden = !interruptedDraft || !$("transcript").value.trim();
 }
 
 function micState(phase, label) {
@@ -236,7 +238,22 @@ function closeMic() {
   try { rec.abort(); } catch { /* The physical indicator gate still applies. */ }
 }
 
-function stopAll(reason = "Stopped. Click Talk to start a new turn.") {
+function preserveInterruptedDraft() {
+  // Recognition results may still be provisional when visibility is lost. Keep
+  // only words already received; never fabricate a final transcript or send it.
+  if (!recognition || !["starting", "listening", "stopping"].includes(micPhase)) return false;
+  const interim = $("interim").textContent.trim();
+  const draft = [$("transcript").value.trim(), interim === "—" ? "" : interim].filter(Boolean).join(" ").slice(0, 1000);
+  if (!draft) return false;
+  $("transcript").value = draft;
+  interruptedDraft = true;
+  mark("interrupted-draft-preserved", interim && interim !== "—" ? "includes-provisional-words" : "final-words-only");
+  return true;
+}
+
+function stopAll(reason = "Stopped. Click Talk to start a new turn.", preserveDraft = false) {
+  const wasCapturing = Boolean(recognition);
+  const keptDraft = preserveDraft && preserveInterruptedDraft();
   mark("stop-all", document.hidden ? "tab-hidden" : "explicit-or-page-exit");
   generation += 1;
   request?.abort();
@@ -248,7 +265,11 @@ function stopAll(reason = "Stopped. Click Talk to start a new turn.") {
     $("request-state").textContent = "Cancelled — partial text is not a complete answer";
     replyComplete = false;
   }
-  message(reason);
+  message(keptDraft
+    ? "Listening stopped when you left. Your draft is kept below. Review it, then Send transcript or Continue talking. Nothing restarts automatically."
+    : preserveDraft && wasCapturing && !$("transcript").value.trim()
+      ? "Listening stopped when you left before the browser returned any words. No transcript was available to keep. Tap Talk when you return."
+      : reason);
   controls();
 }
 
@@ -279,16 +300,19 @@ function finishTalking() {
 function startTalking() {
   if (recognition) { finishTalking(); return; }
   if (!speechReady() || request || micPhase !== "off") return;
+  const carriedDraft = interruptedDraft ? $("transcript").value.trim().slice(0, 1000) : "";
   clearEndSpeechGrace();
   generation += 1;
   if (audioUrl) mark("playback-to-mic-handoff-requested");
   clearAudio();
   beginTurn("microphone");
+  interruptedDraft = Boolean(carriedDraft);
+  if (carriedDraft) mark("interrupted-draft-carried");
   answer = "";
   replyComplete = false;
   $("reply").textContent = "Your response will appear here.";
   $("request-state").textContent = "Not sent";
-  $("transcript").value = "";
+  $("transcript").value = carriedDraft;
   $("interim").textContent = "—";
   let rec;
   try { rec = new Recognition(); } catch {
@@ -320,7 +344,7 @@ function startTalking() {
     if (recognition === rec && micPhase === "listening") clearEndSpeechGrace("speech-activity");
   };
   rec.onresult = (event) => {
-    if (recognition !== rec) return;
+    if (recognition !== rec || !["starting", "listening", "stopping"].includes(micPhase)) return;
     clearEndSpeechGrace("recognition-result");
     let finalText = "";
     let interim = "";
@@ -329,7 +353,7 @@ function startTalking() {
       if (result.isFinal) finalText += `${result[0].transcript} `;
       else interim += `${result[0].transcript} `;
     }
-    $("transcript").value = finalText.trim().slice(0, 1000);
+    $("transcript").value = [carriedDraft, finalText.trim()].filter(Boolean).join(" ").slice(0, 1000);
     if (finalText && turn && !("first-final-transcript" in turn.marks)) mark("first-final-transcript");
     $("interim").textContent = interim.trim() || "—";
     // A result event may include an old final plus an unfinished new phrase.
@@ -359,7 +383,8 @@ function startTalking() {
     releasedMic(rec);
     $("interim").textContent = "—";
     message($("transcript").value.trim()
-      ? PREVIEW_HOST ? "Review your words, then Copy transcript. AI replies are available in the live voice lab." : "Review the final transcript, then click Send transcript."
+      ? interruptedDraft ? "Review your recovered draft; it may contain unfinished words. Edit it, then Send transcript or Copy transcript."
+      : PREVIEW_HOST ? "Review your words, then Copy transcript. AI replies are available in the live voice lab." : "Review the final transcript, then click Send transcript."
       : "Recognition ended without a final transcript. Nothing was sent; click Talk to retry.");
   };
   micState("starting", "Requesting microphone…");
@@ -430,6 +455,8 @@ async function sendTranscript() {
   const transcript = $("transcript").value.trim().slice(0, 1000);
   if (!apiReady() || micPhase !== "off" || recognition || request || !transcript) return;
   if (!turn || "text-sent" in turn.marks) beginTurn("typed-or-resubmitted");
+  if (interruptedDraft) mark("interrupted-draft-reviewed");
+  interruptedDraft = false;
   const stream = $("stream-reply").checked;
   mark("text-sent", stream ? "streaming" : "non-streaming");
   turn.stream = stream;
@@ -702,7 +729,10 @@ $("cancel").addEventListener("click", () => stopAll());
 $("send").addEventListener("click", sendTranscript);
 $("play").addEventListener("click", () => playResponse("reply"));
 $("test-voice").addEventListener("click", () => playResponse("voice-test"));
-$("transcript").addEventListener("input", controls);
+$("transcript").addEventListener("input", () => {
+  if (!$("transcript").value.trim()) interruptedDraft = false;
+  controls();
+});
 $("copy-transcript").addEventListener("click", async () => {
   if (micPhase !== "off" || request || !$("transcript").value.trim()) return;
   try {
@@ -735,7 +765,7 @@ $("record-result").addEventListener("click", () => {
   const heard = $("heard").checked;
   const released = $("released").checked;
   const incomplete = ["recognition-started", "first-final-transcript", "recognition-ended", "text-complete", "audio-ended"].some((name) => !(name in turn.marks));
-  const recovered = ["mic-release-unconfirmed", "recognition-error", "audio-playback-blocked", "audio-error", "text-failed", "tts-failed", "stop-all"].some((name) => name in turn.marks);
+  const recovered = ["mic-release-unconfirmed", "recognition-error", "audio-playback-blocked", "audio-error", "text-failed", "tts-failed", "stop-all", "interrupted-draft-carried", "interrupted-draft-reviewed"].some((name) => name in turn.marks);
   if (result === "pass" && (!heard || !released || turn.source !== "microphone" || incomplete || recovered)) {
     message("A full pass needs a microphone turn, complete text, ended audio, and your confirmation of mic release and audibility. Use Limited for a partial test or any recovery.", true);
     return;
@@ -763,9 +793,10 @@ $("copy-report").addEventListener("click", async () => {
   }
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopAll("Paused because the tab was hidden. Click Talk when you return.");
+  if (document.hidden) stopAll("Stopped while the tab was hidden. Existing text stays below. Use Send transcript to retry an interrupted request, or Play response for a completed reply.", true);
+  else { mark("tab-returned"); controls(); }
 });
-window.addEventListener("pagehide", () => stopAll("Page closed."));
+window.addEventListener("pagehide", () => stopAll("Page left. Nothing restarts automatically.", true));
 
 function updateCapability() {
   $("capability").textContent = !window.isSecureContext ? "Microphone requires a secure context. Use the HTTPS production page; localhost is only for desktop diagnostics."

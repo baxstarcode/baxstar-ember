@@ -165,6 +165,12 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 22 interruption fix:** v5 retains received provisional words as an editable
+interrupted draft, supports explicit Continue talking, and blocks late abort results
+from replacing it. Completed replies remain replayable after returning. No automatic
+mic restart or background audio; a full reload still clears the in-memory lab.
+120 focused checks pass. Physical recovery remains provisional; see Voice Rebuild.
+
 **October 22 update (America/Chicago):** one M4 Mac / Chrome 155 v4 full turn
 physically passed (mic off, reply audible). Keep this separate from phone passes.
 The October 21 phone interruption report stopped recognition on tab hide and made

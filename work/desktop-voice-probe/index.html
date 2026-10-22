@@ -6,14 +6,14 @@
   <meta name="color-scheme" content="dark">
   <title>Ember · Voice reliability lab</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./probe.js?v=handoff-v4"></script>
+  <script type="module" src="./probe.js?v=draft-recovery-v5"></script>
 </head>
 <body>
   <main>
     <header>
       <div class="lab-heading"><p class="eyebrow">EMBER / VOICE WORKSHOP</p><a href="/">Back to Ember</a></div>
       <h1>Voice reliability lab</h1>
-      <p class="eyebrow">Voice check v4</p>
+      <p class="eyebrow">Voice check v5</p>
       <p>Talk. Review your words. Send. Play the reply.</p>
       <p class="hint">Desktop Chrome first; iPhone Safari is an optional experiment. The real microphone and speaker still need your test.</p>
     </header>
@@ -57,6 +57,7 @@
       <p class="interim"><span>Interim transcript</span><output id="interim" aria-live="polite">—</output></p>
       <label for="transcript">Final transcript / editable test message</label>
       <textarea id="transcript" rows="3" maxlength="1000" placeholder="Say: Give me one sentence of encouragement. Or type here to test the proxy without a mic."></textarea>
+      <p id="draft-notice" class="hint" role="status" hidden>Draft kept after interruption. These words may be unfinished or inaccurate. Review and edit before sending, or tap Continue talking to add more. Clear the text box to start fresh. This draft stays in this page only; a reload clears it.</p>
       <label class="check"><input id="stream-reply" type="checkbox" checked> Stream reply</label>
       <div class="controls">
         <button id="send" disabled>Send transcript</button>
@@ -82,7 +83,7 @@
         <li>Talk → review the final words → Send transcript → Play response. Check the actual mic indicator turns off and the reply is audible. Record the result below.</li>
         <li>Complete five full turns total. Start at least one new turn immediately after playback ends. Record any extra native-player tap or reload as Limited.</li>
         <li>Then test Cancel during listening, a text request, and playback. Start Talk during playback once; the old audio must stop before listening.</li>
-        <li>While listening, switch apps or tabs briefly and return. On iPhone, also try locking/unlocking once. Listening and playback must not restart on their own. Finish with another explicit full turn.</li>
+        <li>While listening, switch apps or tabs briefly and return. On iPhone, also try locking/unlocking once. Listening and playback must not restart on their own. Words already received should remain as a reviewable draft; if none arrived, the page explains that. Continue talking or review and Send explicitly. Record recovery as Limited, then try a fresh full turn.</li>
         <li>Test microphone denial and recovery once. If anything sticks, record Failed and the visible error; do not repeatedly retry a broken chain.</li>
       </ol>
       <p id="turn-number" class="state">No turn yet · physical result not recorded</p>
