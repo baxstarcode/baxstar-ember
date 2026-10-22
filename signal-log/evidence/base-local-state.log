@@ -1,0 +1,39 @@
+
+> baxstar-ember@4.1.0 test:local-state
+> node .devtest/local-state-check.mjs
+
+build: wrote index.html — self-contained, no CDN
+  react + react-dom  139.2KB  (inlined, was fetched from unpkg)
+  compiled app       453.3KB  (was 457.8KB of JSX compiled in-browser)
+  tailwind css       12.9KB
+  total              607.3KB
+PASS — 1440: revenue keeps cents, reloads, fits, and clears explicitly
+PASS — 1440: invalid revenue preserves the previous amount and draft
+PASS — 1440: failed board saves retain edits across tools and offer an exact backup
+PASS — 390: revenue keeps cents, reloads, fits, and clears explicitly
+PASS — 390: invalid revenue preserves the previous amount and draft
+PASS — 390: failed board saves retain edits across tools and offer an exact backup
+PASS — opening a saved board never writes and edits preserve unrelated fields
+PASS — a starter board stays unsaved until the first deliberate edit
+PASS — malformed saved records stay byte-for-byte intact and can be downloaded
+PASS — a denied storage read never replaces the existing board
+PASS — older records with absent optional lists remain usable without a mount rewrite
+PASS — another tab cannot erase unsaved work; loading its version requires an explicit discard
+FAIL — simultaneous board edits serialize and preserve the losing tab as a recoverable draft: locator.waitFor: Timeout 6000ms exceeded.
+Call log:
+  - waiting for getByText(/Saved data changed in another tab or tool/) to be visible
+
+    at /tmp/ember-signal-baseline/.devtest/local-state-check.mjs:283:73
+    at async test (/tmp/ember-signal-baseline/.devtest/local-state-check.mjs:100:5)
+    at /tmp/ember-signal-baseline/async file:/tmp/ember-signal-baseline/.devtest/local-state-check.mjs:273:3
+PASS — failed recovery reads keep the unsaved version and malformed storage intact
+PASS — OPS task saves share the board lock and retain a queued project edit
+PASS — a storage-clear event refreshes a clean board without recreating deleted data
+PASS — without Web Locks, changed snapshots still block overwrites
+
+16 passed; 1 failed
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

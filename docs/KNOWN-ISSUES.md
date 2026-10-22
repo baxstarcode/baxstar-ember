@@ -377,6 +377,25 @@ live provider reads, not uninterrupted availability of all four providers. Run t
 `/api/connectors/status` check before recording current per-provider state. Do not infer
 provider availability from local mocks, secret names, or an HTTP 200 from another route.
 
+## 9. Signal Log live feed is wired; the signed-in production read is unconfirmed
+
+**Status: SHIPPED 2026-10-22 — PROVISIONAL until Brady opens it signed in**
+
+`/signal-log/` (YOUR TOOLS → Signal Log) now reads Gmail and Calendar through the
+same Access → Pages → Worker gateway the dashboard uses, one provider per call,
+with Haiku 5.5 at low effort projecting bounded results into the page's v1 contract
+(`signal-log/ember-feed.mjs`). A provider is labelled `VERIFIED READ` only when the
+reply carried a successful `mcp_tool_result` for it; a connector-free fallback is
+reported as "no successful tool result" and prior cards are kept and labelled stale.
+Verified in this container with intercepted gateway replies (24 browser scenarios,
+31 contract tests). Not yet verified: one signed-in read on the custom domain —
+the container has no Access session. What a real read depends on: Gmail and
+Calendar connector health (same as OPS; Quo is not involved) and Haiku following
+the JSON contract; a malformed card is dropped, never the whole read. Limits: the
+account label is the Worker's single configured Google grant, not a per-request
+attestation; card classification is the model's judgment of the source text; each
+refresh costs two short Haiku calls.
+
 ## Expected behavior that is not a bug
 
 - In the Knowledge Graph overlay, Escape closes it unless focus is inside the embedded

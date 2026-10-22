@@ -165,7 +165,7 @@ try {
     check(`${name} revenue panel present`, body.includes("TODAY'S REVENUE"));
 
     const links = await page.locator(".tool-link").count();
-    check(`${name} tools rail rendered`, body.includes("YOUR TOOLS") && links === 11, `${links} links`);
+    check(`${name} tools rail rendered`, body.includes("YOUR TOOLS") && links === 12, `${links} links`);
     const firstLink = page.locator(".tool-link").first();
     check(`${name} tool links open in a new tab`,
       (await firstLink.getAttribute("target")) === "_blank" && /noopener/.test(await firstLink.getAttribute("rel") || ""));

@@ -1,5 +1,12 @@
 # Ember — Living Cinematic Handoff
 
+**2026-10-22 — Claude took over the build from Codex; Signal Log is live:** read
+`docs/CURRENT-STATE.md` first. `/signal-log/` (YOUR TOOLS → Signal Log) now reads
+Gmail and Calendar through the existing gateway (`signal-log/ember-feed.mjs`);
+its signed-in production read is PROVISIONAL until Brady confirms it
+(`docs/KNOWN-ISSUES.md` §9). The voice five-turn gate (3 of 5 physical passes),
+the coordinator Worker cutover with fresh consent, and the voice AI binding remain
+the open items; none of them changed here. PR #50 is superseded by this merge.
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
 Brady clarified that text disappeared on return, leaving nothing to replay. v4's
 hide handler aborted recognition and discarded provisional words; the interrupted

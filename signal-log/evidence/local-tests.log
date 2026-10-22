@@ -1,0 +1,66 @@
+
+> baxstar-ember@4.1.0 test:signal-log
+> node --test .devtest/signal-log/core.test.mjs && node .devtest/signal-log/browser.mjs
+
+✔ all bundled cards obey summary and combined detail limits and have source links (1.725959ms)
+✔ 200/750 Unicode character boundaries are enforced without truncating (2.336446ms)
+✔ bad JSON, huge files and excessive records fail atomically (0.746578ms)
+✔ workspace/account/provider mismatch cannot be silently remapped (0.554369ms)
+✔ executable and credential-bearing links are rejected (0.469969ms)
+✔ hostile content remains literal and extra fields are stripped (0.447327ms)
+✔ real dates require explicit zones; unknown/review dates never become hard deadlines (19.738123ms)
+✔ numeric inputs cannot create NaN or out-of-range scores (0.545511ms)
+✔ importance tiers beat easy low-impact urgency; score is explainable (0.516383ms)
+✔ near material deadline has its own tier; distant deadline creates no fake urgency (0.699262ms)
+✔ rank order is deterministic across input orders (0.573225ms)
+✔ months-old deadlines have no deadline urgency and are excluded pending verification (1.329627ms)
+✔ a current explicit overdue confirmation preserves a real obligation and expires (0.686964ms)
+✔ backup round-trip preserves bounded source data and explicit dispositions without trusting old verification (0.828313ms)
+✔ backup account, link, state and duplicate-identity validation is atomic (6.557907ms)
+✔ normal report limits remain 256 KiB; demo cannot be exported as private data (2.110579ms)
+✔ triage fits cumulative budget and retains oversized/blocked critical work (0.551034ms)
+✔ dedup uses scoped record/occurrence identity, never titles (0.382162ms)
+✔ latest source update wins, sources survive duplicates, cross-source merge needs explicit canonical identity (0.249054ms)
+✔ metadata keys are opaque and account/occurrence separated (13.318754ms)
+✔ read is independent of completion; snoozes expire and decisions persist (0.286821ms)
+✔ freshness comes from observation; old and new remain distinct (0.181887ms)
+✔ unwired adapter performs no read and reports exact missing path (0.181193ms)
+✔ adapter failure uses a fixed message and does not expose provider error text (0.22586ms)
+✔ account-attested adapter fails closed before accepting provider data (0.517577ms)
+✔ verified adapter contract is functional with synthetic host evidence, never inferred from credential status (0.317061ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 139.843952
+PASS responsive 1440×1000 at scale 3
+PASS responsive 390×844 at scale 3
+PASS phone expansion, prompt dialog, focus return, no overflow
+PASS responsive 375×812 at scale 3
+PASS 375px touch controls stay at least 44px with filters and dialogs open
+PASS responsive 320×740 at scale 3
+PASS responsive 844×390 at scale 3
+PASS Ember furnace surfaces and Argon outlines match; press, focus and disabled states remain accessible
+PASS good news includes no-action cards and alerts to critical work outside filter
+PASS budget clamps; critical oversized work remains visible
+PASS manually waiting signals leave the budget but keep critical dependency visibility
+PASS cross-category saved combination persists after reload
+PASS read, resolved, waiting, snoozed, dismissed, accepted and undo remain distinct
+PASS keyboard dialog traps focus and Escape returns to its trigger
+PASS hostile import is inert, prompt is reviewable, account mismatch is atomic
+PASS duplicate import updates one signal, resolved state survives reload/reimport, content does not
+PASS private backup downloads only on request and restores data/decisions with explicit choice
+PASS two-tab IndexedDB transactions preserve concurrent independent metadata patches
+PASS undo refuses to overwrite a newer decision from another tab
+PASS rendered text meets 4.5 contrast across actual card and button gradient stops
+PASS supplied reader populates/updates the log, rejects another account and retains data on failure
+PASS storage denial is visible and never prevents importing or viewing
+22 browser scenarios passed; no uncaught errors or external requests. Screenshots: /workspace/signal-log-style-audit/after
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

@@ -489,7 +489,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { group: "Tools", items: [
       { label: "Caption Studio", url: "https://baxstarcode.github.io/caption-studio/", note: "standalone" },
       { label: "Pontoon Check-In", url: "https://baxstarcode.github.io/baxstar-pontoon/", note: "rentals" },
-      { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" }
+      { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" },
+      { label: "Signal Log", url: "https://ember.baxstarfishing.com/signal-log/", note: "ranked attention" }
     ] },
     { group: "Back office", items: [
       { label: "FareHarbor", url: "https://fareharbor.com/dashboard/", note: "bookings" },
@@ -778,7 +779,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-19 02:33Z".startsWith("__") ? "dev" : "2026-10-19 02:33Z";
+  const BUILD_STAMP = "2026-10-22 08:53Z".startsWith("__") ? "dev" : "2026-10-22 08:53Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -3901,7 +3902,7 @@ Check Gmail for anything newer.`;
         .tools-rail { width:100%; padding:7px 12px 10px; flex:none; }
         .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
           border-bottom:1px solid var(--ember-panel-line); }
-        .tools-groups { display:grid; grid-template-columns:repeat(11,minmax(0,1fr)); gap:7px; }
+        .tools-groups { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:7px; }
         .tools-group, .tools-links { display:contents; }
         .tools-group .fieldlabel, .tool-note { display:none; }
         .tool-link { display:flex; flex-direction:column; gap:1px; min-width:0;

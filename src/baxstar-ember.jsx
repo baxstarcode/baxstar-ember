@@ -222,6 +222,7 @@ const TOOL_LINKS = [
     { label: "Caption Studio", url: "https://baxstarcode.github.io/caption-studio/", note: "standalone" },
     { label: "Pontoon Check-In", url: "https://baxstarcode.github.io/baxstar-pontoon/", note: "rentals" },
     { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" },
+    { label: "Signal Log", url: "https://ember.baxstarfishing.com/signal-log/", note: "ranked attention" },
   ]},
   { group: "Back office", items: [
     { label: "FareHarbor", url: "https://fareharbor.com/dashboard/", note: "bookings" },
@@ -3812,7 +3813,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .tools-rail { width:100%; padding:7px 12px 10px; flex:none; }
         .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
           border-bottom:1px solid var(--ember-panel-line); }
-        .tools-groups { display:grid; grid-template-columns:repeat(11,minmax(0,1fr)); gap:7px; }
+        .tools-groups { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:7px; }
         .tools-group, .tools-links { display:contents; }
         .tools-group .fieldlabel, .tool-note { display:none; }
         .tool-link { display:flex; flex-direction:column; gap:1px; min-width:0;

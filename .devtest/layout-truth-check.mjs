@@ -293,7 +293,7 @@ try {
       await check(`${name} no horizontal overflow after reply`, () => noOverflow(page));
       await snapshot(page, `${name}-chat`);
 
-      await check(`${name} tools contain 11 valid safe links`, async () => {
+      await check(`${name} tools contain 12 valid safe links`, async () => {
         const links = await page.locator('.tools-rail .tool-link').evaluateAll((nodes) => nodes.map((node) => ({
           href: node.getAttribute('href'), target: node.target, rel: node.rel, text: node.textContent.trim(),
         })));
@@ -301,7 +301,7 @@ try {
           try { const url = new URL(link.href); return !/^https?:$/.test(url.protocol) || !url.hostname || link.target !== '_blank' || !/\bnoopener\b/.test(link.rel) || !link.text; }
           catch { return true; }
         });
-        return { pass: links.length === 11 && invalid.length === 0, detail: `${links.length} links, ${invalid.length} invalid` };
+        return { pass: links.length === 12 && invalid.length === 0, detail: `${links.length} links, ${invalid.length} invalid` };
       });
       await check(`${name} all tools are reachable by ordinary page and strip scrolling`, async () => {
         // Do not use scrollIntoView here: it can programmatically scroll an
@@ -309,14 +309,14 @@ try {
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.mouse.move(viewport.width - 4, Math.round(viewport.height * 0.6));
         const seen = new Set();
-        for (let attempt = 0; attempt < 18 && seen.size < 11; attempt += 1) {
+        for (let attempt = 0; attempt < 18 && seen.size < 12; attempt += 1) {
           const reachable = await page.locator('.tools-rail .tool-link').evaluateAll((links) => links.flatMap((link, index) => {
             const rect = link.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
             const hit = document.elementFromPoint(x, y);
             return rect.width > 0 && rect.height > 0 && x >= 0 && x < innerWidth && y >= 0 && y < innerHeight && hit && link.contains(hit) ? [index] : [];
           }));
           reachable.forEach((index) => seen.add(index));
-          if (seen.size === 11) break;
+          if (seen.size === 12) break;
           const strip = await page.locator('.tools-groups').evaluate((groups) => {
             const rect = groups.getBoundingClientRect();
             const x = (Math.max(0, rect.left) + Math.min(innerWidth, rect.right)) / 2;
@@ -337,7 +337,7 @@ try {
           }
           await page.waitForTimeout(90);
         }
-        return { pass: seen.size === 11, detail: `${seen.size}/11 links became visible and hit-testable` };
+        return { pass: seen.size === 12, detail: `${seen.size}/12 links became visible and hit-testable` };
       });
 
       await check(`${name} Knowledge Graph overlay opens THE WORKS with 39 parts and 60 links`, async () => {
