@@ -1,8 +1,17 @@
 # Bounded connector handoff — existing Worker/auth owner
 
-This is a concrete integration contract, **not an authorization to deploy, invoke
-a metered model, change credentials or establish a grant**. Signal Log remains a
-draft, with synthetic demo/manual import and no supplied production reader.
+**Delivered 2026-10-22 (Claude, taking over the build):** `ember-feed.mjs` supplies
+both readers exactly through the seam below — the existing authenticated
+`/api/messages` path, one provider per call, Haiku 5.5 at low effort, verification
+by a successful `mcp_tool_result` for that provider, and the v1 projection. The
+account attestation is the Worker's single configured Google grant (an alias, as
+this document warned); a per-request server attestation is still a Worker-owner
+item if a second account is ever added. See `README.md` → "Live feed". The text
+below is kept as the original contract and reads as history.
+
+This was a concrete integration contract, **not an authorization to deploy, invoke
+a metered model, change credentials or establish a grant**, written while Signal
+Log was a draft with synthetic demo/manual import and no supplied production reader.
 
 Follow the [single end-to-end roadmap](ROADMAP.md) for current phase status,
 ownership blocker, implementation order, release gates and resume instructions.

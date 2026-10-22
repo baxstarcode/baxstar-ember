@@ -1,13 +1,16 @@
 # Ember Signal Log
 
-An additive, locally verified Signal Log page at `/signal-log/`. It reuses Ember's
-design tokens, iron texture, reactor bezel and icon. It does not replace the dock
-or modify the existing app, Worker, gateway, OAuth configuration or automation.
-There are no new dependencies, model calls, telemetry or external requests on load.
+A Signal Log page at `/signal-log/`, reached from YOUR TOOLS on the dashboard. It
+reuses Ember's design tokens, iron texture, reactor bezel and icon, and does not
+touch the dock, the Worker, the gateway allowlist or any OAuth configuration.
 
-**Start/resume here: [end-to-end roadmap](ROADMAP.md).** The UI/manual workflow is
-tested; the connected build is unfinished. The roadmap records the unanswered
-connector-owner handoff, remaining implementation phases and final acceptance gates.
+**Live since 2026-10-22:** signed in at `ember.baxstarfishing.com`, the page reads
+Gmail and Calendar by itself on load and on **Refresh sources** — through Ember's
+own gateway, one provider per call, with Haiku 5.5 at low effort turning the bounded
+results into cards (`ember-feed.mjs`, below). Anywhere else (previews, localhost)
+the readers stay inert and the page keeps the demo and manual JSON import. Each
+refresh is two short model calls on Ember's existing key; nothing is marked read,
+completed or sent. **Start/resume here: [end-to-end roadmap](ROADMAP.md).**
 
 The visual finish combines Argon's small-corner outlined buttons with current
 Ember's machined shadows and dark furnace selection, white lettering and the
@@ -23,14 +26,14 @@ From the repository root:
 ```sh
 python3 -m http.server 8080
 # Open http://localhost:8080/signal-log/
-CHROME_PATH=/usr/bin/chromium npm run test:signal-log
-CHROME_PATH=/usr/bin/chromium npm run test:release
+CHROME_PATH=/opt/pw-browsers/chromium npm run test:signal-log   # or /usr/bin/chromium
+CHROME_PATH=/opt/pw-browsers/chromium npm run test:release
 ```
 
 The module is canonical source, not generated output. `npm run build:pages` stages
-its eight runtime files and the existing design-token file in `dist/`. Source docs
+its nine runtime files and the existing design-token file in `dist/`. Source docs
 and tests are not staged. The existing root `index.html` remains generated from
-`src/baxstar-ember.jsx`. No root navigation changes are included in this scope.
+`src/baxstar-ember.jsx`; the YOUR TOOLS link to this page lives in its `TOOL_LINKS`.
 
 ## Working behavior
 
@@ -200,73 +203,59 @@ client dependencies, software incidents/evaluation success and cost per successf
 outcome. No invented benchmarks. One-time consulting revenue is not MRR. Weather
 and ice signals always need human review.
 
-## Integration boundary and exact next step
+## Live feed — how Gmail and Calendar get in
 
-`adapters.mjs` is a functional dependency-injected contract, tested with synthetic
-host responses **through the rendered page**. `registerAccountReader(...)` causes
-the page to load that reader; **Refresh sources** repeats the read. Registration
-before page initialization also loads after initialization. Readers registered
-during an in-flight refresh are queued for another pass. Results are validated,
-deduplicated and ingested; account/provider mismatches are rejected. Source IDs,
-supersession references and existing dispositions survive. Transient failures
-retain prior data with stale-read and provider-health labels. Current filters are
-preserved. The shipped page supplies no reader; Gmail/Calendar remain
-**not connected**. A browser-selected account never grants access.
+`ember-feed.mjs` registers one reader per provider through `registerAccountReader`
+(`adapters.mjs`) before `app.mjs` initialises, so the first load refreshes by itself.
 
-See [CONNECTOR-HANDOFF.md](CONNECTOR-HANDOFF.md) for the exact callback, existing
-auth route, missing attestation, and distinction between Access login and OAuth.
+```text
+signed-in browser at ember.baxstarfishing.com
+  → POST /api/messages (same origin; Cloudflare Access cookie)
+  → functions/api/[[path]].js exact host/path allowlist
+  → EMBER_API service binding → proxy/cloudflare-worker.js
+  → server-owned read-only MCP toolset for ONE provider (gmail or calendar)
+  → Haiku 5.5, effort low, max_tokens 6000, JSON-only reply
+```
 
-Inspected existing Ember paths: `src/baxstar-ember.jsx` per-feed OPS sync,
-`/api/connectors/status`, `/api/messages`, the same-origin Pages service binding,
-and server-controlled read-only toolsets in `proxy/cloudflare-worker.js`. Status
-can mint/refresh tokens and proves only token availability, not a successful MCP
-read. This page calls neither status nor messages and does not spend on a model.
-
-**Missing step:** the Worker/auth owner must supply a bounded, authenticated,
-account-attested feed through the existing boundary, map the selected records to
-this contract, then verify one actual Gmail message and Calendar event end to end.
-Account-specific server routing is not established by the current credential-status
-response. No new endpoint, grant, token, or bypass is added here.
-
-Runtime diagnostic on 2026-10-18: an anonymous HEAD request to
-`https://ember.baxstarfishing.com` returned 302 to Cloudflare Access. There is no
-signed-in Ember browser here, so per-provider runtime reads remain **PROVISIONAL**.
-Gmail/Calendar reads in the parent ChatGPT connector are separate evidence. Quo was
-not tested here. A new phone does not by itself prove OAuth needs replacement.
-Smallest user-side diagnostic is sign into Ember on the phone and inspect its
-per-feed sync result; the connector owner then investigates the specific failed
-provider. Do not re-key Quo ahead of that owner's refresh-coordination cutover.
-
-Parent's source inventory identified weekly pricing/review and risk-watch reports;
-this UI imports selected reports without reviving or mutating their automations.
-The Sunday Signal Sweep remains disabled. Relay is OFF. Calendar `#text` tags
-belong to a separate Quo sender and are not a Signal Log transport.
+- **Bounds, fixed in the prompt:** Gmail — up to 25 inbox messages from the last
+  7 days that need attention (newsletters, receipts and automated notices skipped
+  unless they signal a problem or money). Calendar — up to 40 events from 2 days
+  ago to 14 days ahead. Timestamps are computed by the page and passed verbatim.
+- **Verification is the OPS standard:** a provider counts as read only when the
+  reply carries a successful `mcp_tool_result` paired to that provider's own
+  `mcp_tool_use`, and the Worker did not flag `x-ember-connectors: degraded`.
+  A connector-free fallback answer, however plausible its JSON, is reported as
+  "no successful tool result" and the previous records are kept, labelled stale.
+- **Projection, then the normal contract:** the model's records are coerced into
+  the v1 envelope (text fitted to the 90/200/750 limits, numbers clamped, unknown
+  categories dropped, past event starts never turned into deadlines, Gmail links
+  built from the message id when the model omits one). Each record is validated on
+  its own, so one malformed card never discards the read; the drop count is
+  returned. Identity is `provider + id` (Gmail message id; Calendar event id plus
+  original start for recurring instances), so decisions survive refreshes.
+- **What the labels mean:** `VERIFIED READ` = the provider answered through Ember's
+  gateway this session. The account alias (`baxstar-fishing`) is the Worker's single
+  configured Google grant; the Worker does not yet return a per-request account
+  attestation, so a second account would need its own server mapping first.
+  Classification, impact, effort and confidence are Haiku's judgment of the source
+  text, not facts; the full-source link is always one tap away.
+- **Not on production** (preview hosts, `localhost`): the readers refuse before any
+  request, the health labels say so, and the demo plus manual import still work.
+  Tests set `window.__emberSignalFeedAnyHost = true` and intercept `/api/messages`.
+- **Failure copy** names the real cause: Access sign-in needed (HTML came back),
+  gateway/HTTP error text, timeout (75 s), or a provider with no successful tool
+  result ("check the OPS lights").
 
 ## Ownership and continuity checkpoint
 
-- Canonical repo: `baxstarcode/baxstar-ember`, verified default `main`.
-- Fresh base: `dc830451054cb8af5637332504f899fa2f5123ec` (2026-10-17).
-  Configured checkout `108d444` was stale; it was not used as the feature base.
-- Feature branch: `codex/ember-signal-log`; local base snapshot:
-  `snapshot/ember-signal-log-base-20261018`. The existing checkout and branches are
-  preserved. The snapshot is local; the immutable base commit is canonical GitHub.
-- Existing `codex/ember-command-plate-light` Worker/config/token coordination is
-  already in the fresh main ancestry. This task changes none of those surfaces.
-  PRs #48 and #11 remain independent and untouched.
-- Scope: `signal-log/`, its tests, additive Pages allowlist/test-script entries,
-  and short provenance pointers in existing repository handoffs.
-- Read Registry row `baxstar-ember`: no active owner/lock, HANDOFF_READY,
-  last touched September 21. It is stale and was not treated as ownership clearance
-  over shared code. **No registry claim/write:** the API needs a secret and this
-  task forbids credential access/transmission and shared Drive writes. No secret
-  was read. The parent/authorized owner retains this write-back gap.
-- Read current Ember/General handoffs, Relay STATE and canonical Build Standards.
-  Relay is OFF; no Relay or Drive records were written.
-- No merge, deployment, external message, OAuth action, reminder change or paid
-  tool/model call is authorized in this delivery.
-
-GitHub Actions and Cloudflare Pages support a `[skip ci]` commit directive.
-All feature commits use this prefix, preserving code without running CI or a Pages
-preview. Do not remove it or mark the draft ready without renewed release authority.
-References: [GitHub skip workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs),
-[Cloudflare skip builds](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/#skipping-a-build-via-a-commit-message).
+- Canonical repo: `baxstarcode/baxstar-ember`, default `main`.
+- Built by Codex on `codex/ember-signal-log` (draft PR #50, 2026-10-18, demo and
+  manual import only); merged onto main and wired to the live feed by Claude on
+  2026-10-22 (`ember-feed.mjs`, YOUR TOOLS link, tests, this document). PR #50 is
+  closed as superseded; its evidence folder is kept as history.
+- Scope on main: `signal-log/`, its tests under `.devtest/signal-log/`, the staged
+  file list in `scripts/stage-pages.mjs`, one `TOOL_LINKS` entry in
+  `src/baxstar-ember.jsx`, and two tools-rail count assertions.
+- Live verification: the gateway path is exercised with intercepted responses in
+  `browser.mjs`; a signed-in read on the custom domain is recorded in
+  `docs/KNOWN-ISSUES.md` §9 when Brady confirms it.

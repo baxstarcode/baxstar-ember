@@ -11,7 +11,7 @@ export function createAccountAdapter({ workspaceId, accountId, provider, readVer
       // Callback must return bounded summaries, not raw mail or arbitrary prompts.
       let result;
       try { result = await readVerifiedFeed({ workspaceId, accountId, provider, limit: CONFIG.maxSignals }); }
-      catch { return { state: 'unavailable', signals: [], reason: 'Provider read unavailable. Retain existing records and retry with the connector owner.' }; }
+      catch (error) { return { state: 'unavailable', signals: [], reason: typeof error?.reason === 'string' ? error.reason : 'Provider read unavailable. Existing records were retained; try Refresh sources again.' }; }
       if (result?.verifiedAccount?.workspaceId !== workspaceId || result?.verifiedAccount?.accountId !== accountId || result?.verifiedAccount?.provider !== provider || result?.endToEndVerified !== true) {
         throw new Error('Provider/account identity and end-to-end read verification are required.');
       }

@@ -159,3 +159,69 @@ test('verified adapter contract is functional with synthetic host evidence, neve
   } });
   const result = await a.read(); assert.equal(result.state, 'verified'); assert.equal(called.limit, 200); assert.equal(result.signals[0].provenance, 'Verified provider read');
 });
+
+// ---- live feed projection (signal-log/ember-feed.mjs) ----
+const feed = await import('../../signal-log/ember-feed.mjs');
+const feedNow = new Date('2026-10-21T18:00:00Z');
+const reply = (provider, signals, { ok = true, text = JSON.stringify({ signals }) } = {}) => ({
+  type: 'message', model: 'claude-haiku-5-5',
+  content: [
+    { type: 'mcp_tool_use', id: 'call-1', server_name: provider, name: 'search' },
+    { type: 'mcp_tool_result', tool_use_id: 'call-1', is_error: !ok, content: [] },
+    { type: 'text', text: '```json\n' + text + '\n```' },
+  ],
+});
+test('feed prompt is bounded, provider-specific and demands JSON only', () => {
+  const gmail = feed.buildPrompt('gmail', feedNow), calendar = feed.buildPrompt('calendar', feedNow);
+  assert.match(gmail, /ONLY the Gmail tool/); assert.match(gmail, /2026-10-14T18:00:00.000Z/); assert.match(gmail, /At most 25 messages/);
+  assert.match(calendar, /ONLY the Calendar tool/); assert.match(calendar, /2026-10-19T18:00:00.000Z/); assert.match(calendar, /2026-11-04T18:00:00.000Z/); assert.match(calendar, /At most 40 events/);
+  for (const p of [gmail, calendar]) { assert.match(p, /ONLY valid JSON/); assert.match(p, /Never invent facts/); }
+});
+test('a provider is verified only by its own successful tool result', () => {
+  assert(feed.succeededConnectors(reply('gmail', [])).has('gmail'));
+  assert(!feed.succeededConnectors(reply('gmail', [], { ok: false })).has('gmail'));
+  assert(!feed.succeededConnectors({ content: [{ type: 'mcp_tool_result', tool_use_id: 'orphan', is_error: false }, { type: 'text', text: '{}' }] }).has('gmail'));
+  assert.deepEqual(feed.extractJSON(reply('gmail', [{ id: 'x' }])), { signals: [{ id: 'x' }] });
+  assert.throws(() => feed.extractJSON({ content: [{ type: 'text', text: 'no json here' }] }), /no JSON/);
+});
+test('projection coerces model output into the v1 contract and drops only the bad record', () => {
+  const { signals, dropped } = feed.projectSignals('gmail', { signals: [
+    { id: 'msg-1', link: 'https://mail.google.com/mail/u/0/#all/msg-1', title: 'T'.repeat(120), summary: 'S'.repeat(400), signal: 'Customer asks about a 3-day pontoon rental.', why: 'Revenue.', next: 'Reply with availability.', prompt: 'Draft a reply', categories: ['rentals', 'bogus'], kind: 'attention', priority: 'waiting', impact: '9', effortMinutes: 7.4, confidence: 1.7, actionable: true, dueAt: '2026-10-24T15:00:00Z', sourceUpdatedAt: '2026-10-21T09:00:00-05:00' },
+    { id: 'msg-2', title: 'Newsletter', summary: 'FYI', categories: [], kind: 'nonsense', priority: 'weird', impact: null, confidence: 'high', actionable: false, link: 'javascript:alert(1)' },
+    { title: 'no id' },
+    'garbage',
+  ] }, feedNow);
+  assert.equal(dropped, 2); assert.equal(signals.length, 2);
+  const [a, b] = signals;
+  assert.equal(a.title.length, 90); assert.equal([...a.summary].length, 200); assert(a.summary.endsWith('…'));
+  assert.deepEqual(a.categories, ['rentals']); assert.equal(a.impact, 5); assert.equal(a.effortMinutes, 7); assert.equal(a.confidence, 1);
+  assert.equal(a.dueKind, 'hard'); assert.equal(a.dueAt, '2026-10-24T15:00:00.000Z'); assert.equal(a.sourceUpdatedAt, '2026-10-21T14:00:00.000Z'); assert.equal(a.observedAt, feedNow.toISOString());
+  assert.deepEqual(a.sources, [{ label: 'Open in Gmail', url: 'https://mail.google.com/mail/u/0/#all/msg-1' }]);
+  assert.equal(b.kind, 'information'); assert.equal(b.priority, 'routine'); assert.equal(b.impact, 2); assert.equal(b.confidence, 0.6); assert.equal(b.actionable, false); assert.equal(b.effortMinutes, null); assert.equal(b.dueKind, 'none');
+  assert.deepEqual(b.categories, ['fishing']); assert.equal(b.sources[0].url, 'https://mail.google.com/mail/u/0/#all/msg-2');
+  assert.doesNotThrow(() => validateEnvelope({ version: 1, workspaceId: 'baxstar', accountId: 'baxstar-fishing', source: 'gmail', signals }));
+});
+test('calendar projection keeps occurrence identity and never turns a past start into a deadline', () => {
+  const { signals } = feed.projectSignals('calendar', { signals: [
+    { id: 'evt-1/2026-10-23T13:00:00Z', occurrenceAt: '2026-10-23T08:00:00-05:00', dueAt: '2026-10-23T08:00:00-05:00', title: 'Guided trip', summary: 'Party of 4', kind: 'attention', actionable: true, categories: ['fishing'], link: 'https://www.google.com/calendar/event?eid=abc' },
+    { id: 'evt-0', occurrenceAt: '2026-10-21T08:00:00-05:00', dueAt: '2026-10-21T08:00:00-05:00', title: 'Past turnover', summary: 'Done yesterday', kind: 'information', actionable: false, categories: ['rentals'] },
+  ] }, feedNow);
+  assert.equal(signals[0].occurrenceAt, '2026-10-23T13:00:00.000Z'); assert.equal(signals[0].dueKind, 'hard'); assert.equal(signals[0].sources[0].url, 'https://www.google.com/calendar/event?eid=abc');
+  assert.equal(signals[1].dueAt, null); assert.equal(signals[1].dueKind, 'none'); assert.equal(signals[1].sources[0].url, 'https://calendar.google.com/calendar/u/0/r/day/2026/10/21');
+});
+test('readFeed refuses non-production hosts, Access login pages, errors and unverified replies; accepts a verified one', async () => {
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: async () => { throw new Error('must not fetch'); } }), /only on ember.baxstarfishing.com/);
+  globalThis.window = { __emberSignalFeedAnyHost: true }; globalThis.location = { hostname: '127.0.0.1' };
+  const respond = (body, { status = 200, headers = {} } = {}) => async () => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond('<html>login</html>', { headers: { 'content-type': 'text/html' } }) }), /Sign in to Ember/);
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond({ error: { message: 'Model not allowed.' } }, { status: 400 }) }), /Model not allowed/);
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', [], { ok: false })) }), /no successful tool result/);
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', []), { headers: { 'x-ember-connectors': 'degraded' } }) }), /no successful tool result/);
+  await assert.rejects(feed.readFeed('calendar', { fetchImpl: respond(reply('gmail', [])) }), /no successful tool result/);
+  let sent;
+  const result = await feed.readFeed('gmail', { now: feedNow, fetchImpl: async (url, init) => { sent = { url, body: JSON.parse(init.body) }; return new Response(JSON.stringify(reply('gmail', [{ id: 'm1', title: 'Hi', summary: 'Hello', kind: 'information', categories: ['software'] }, { nope: true }])), { status: 200, headers: { 'content-type': 'application/json' } }); } });
+  assert.equal(sent.url, '/api/messages'); assert.equal(sent.body.model, 'claude-haiku-5-5'); assert.deepEqual(sent.body.mcp_servers, [{ name: 'gmail' }]); assert.deepEqual(sent.body.output_config, { effort: 'low' }); assert.equal(sent.body.max_tokens, 6000);
+  assert.equal(result.endToEndVerified, true); assert.deepEqual(result.verifiedAccount, { workspaceId: 'baxstar', accountId: 'baxstar-fishing', provider: 'gmail' });
+  assert.equal(result.envelope.source, 'gmail'); assert.equal(result.envelope.signals.length, 1); assert.equal(result.dropped, 1);
+  delete globalThis.window; delete globalThis.location;
+});

@@ -1,5 +1,17 @@
 # Ember — Current State
 
+**Signal Log live feed — 2026-10-22 (Claude, taking over from Codex):** Codex's
+`/signal-log/` page (draft PR #50) is merged onto main and now reads Gmail and
+Calendar by itself when opened signed in at ember.baxstarfishing.com: one
+`/api/messages` call per provider, Haiku 5.5 at low effort, bounded to 25 inbox
+messages from 7 days and 40 events from −2 to +14 days, verified only by a
+successful `mcp_tool_result` for that provider, projected per record into the
+page's v1 contract. YOUR TOOLS gained a Signal Log link (12 links; the rail still
+fits on one screen at 1440×900). Verified here: full release matrix green with the
+new feed tests (24 browser scenarios, 31 contract tests). PROVISIONAL: the
+signed-in read on the custom domain, recorded in Known Issues §9 once Brady
+confirms it. Worker, grants, voice and the dock are unchanged.
+
 **Extended Mac report — October 22, 2026 (America/Chicago):** the pasted file
 extends the same `2026-10-22T07:29:36.775Z` session; do not count its first turn again.
 Brady says the computer tests worked very well until tab switching, which turned

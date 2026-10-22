@@ -1,37 +1,25 @@
 # Signal Log — end-to-end completion roadmap
 
-**Status: functional preview complete; whole connected build NOT complete.**
-This is the single progress and execution roadmap for Signal Log. Maintain it
-after each meaningful checkpoint. [README](README.md) owns the data contract;
-[CONNECTOR-HANDOFF](CONNECTOR-HANDOFF.md) owns the existing transport seam;
-neither a screenshot nor a credential indicator proves live ingestion.
+**Status (2026-10-22): live Gmail/Calendar feed shipped on `main`; signed-in
+production read pending Brady's confirmation.** Codex built the page, ranking,
+decisions, import/export and tests (draft PR #50, 2026-10-18). Claude merged it
+onto current `main`, supplied the readers (`ember-feed.mjs`), added the YOUR TOOLS
+link and the feed tests, and merged the result. Phases 1 and 3 below are done;
+2, 4 and 5 remain future work and are not required for daily use.
 
-Last checkpoint: **2026-10-18**. Last tested implementation:
-`dc8105c8e2269145eaeda6f737cb1e487a8ebfc2`, branch `codex/ember-signal-log`,
-[draft PR #50](https://github.com/baxstarcode/baxstar-ember/pull/50).
-Last verified default `main`: `dc830451054cb8af5637332504f899fa2f5123ec`.
-These are dated observations. Refresh remote heads, PRs and ownership on resume.
+[README](README.md) owns the data contract and the live-feed description;
+[CONNECTOR-HANDOFF](CONNECTOR-HANDOFF.md) is the original transport seam, kept as
+history. A screenshot or a credential indicator still proves nothing; the page's
+own `VERIFIED READ` label is the evidence of a provider read.
 
-## Exact next action and present blocker
+## Exact next action
 
-**Next action:** obtain and record an acknowledged coordination handoff from the
-current Ember Worker/connector owner, or an explicit assignment of a successor.
-The task coordinator reports that the ownership coordination request is still
-**unanswered**; no affirmative handoff is recorded for this feature. A stale
-registry row, old branch timestamp or merged ancestry is not ownership clearance.
-
-The acknowledgement must identify the owner, current backend version/config,
-actual authorized provider/account mapping, status of refresh coordination, the
-bounded feed implementation they will supply, and who controls its eventual
-release. Record a dated, sanitized decision here; keep private operational
-evidence in its authorized private location. Do not publish credentials, account
-payloads, consent URLs or real message/event content in this public repository.
-
-Until that exists, **do not make parallel Worker/auth/config changes or establish
-new OAuth grants**. The safe current work is documentation, read-only source
-comparison, local fixtures and the already-working manual import workflow.
-This roadmap is a completion plan, not permission to contact others, activate
-automations, spend on model calls, change grants, merge or deploy.
+Brady opens https://ember.baxstarfishing.com/signal-log/ signed in. Expected: the
+banner switches to **MY LOG · SOURCE RECORDS**, Gmail and Calendar read
+**Verified read** under Source connections, and cards carry `VERIFIED READ`.
+If a provider shows **Unavailable**, "View connection details" names the cause
+(sign-in, connector offline, gateway error). Record the result in
+`docs/KNOWN-ISSUES.md` §9.
 
 ## What is actually complete
 
@@ -62,7 +50,7 @@ The no-feed demo must never be described as the completed connected build.
 
 ## Ordered implementation phases
 
-### 1. Reconcile ownership and authorized transport — BLOCKED
+### 1. Reconcile ownership and authorized transport — DONE 2026-10-22 (Claude owns the build; transport = existing `/api/messages`)
 
 1. Complete the next action above. Read `AGENTS.md`, `docs/CURRENT-STATE.md`,
    `docs/DEPLOY.md`, `docs/VOICE-REBUILD.md`, open PRs and current handoffs first.
@@ -120,7 +108,7 @@ occurrence updates it. Positive information remains eligible without an action.
 an evidence date and reasons. “All weekly reminders covered” requires `U = 0`
 and a verified route for every eligible item, not merely a filled demo.
 
-### 3. Supply real Gmail and Calendar readers — NOT STARTED
+### 3. Supply real Gmail and Calendar readers — DONE 2026-10-22 (`signal-log/ember-feed.mjs`)
 
 1. Implement the owner's selected transport. A proposed page bootstrap such as
    `signal-log/ember-reader.mjs` may register both providers independently; that
@@ -209,7 +197,7 @@ decisions on two devices, including failure/conflict recovery. Two-account tests
 prove no data/decision leakage. A new account is labelled connected only after its
 own successful authorized provider read. Retention/deletion/export work as agreed.
 
-### 6. Real-data acceptance and release — NOT AUTHORIZED YET
+### 6. Real-data acceptance and release — RELEASED 2026-10-22 for the live feed; the private-persistence and multi-account items below stay future work
 
 Before proposing release, use minimal owner-approved real samples in private
 operational evidence. Public fixtures, screenshots and logs remain synthetic.

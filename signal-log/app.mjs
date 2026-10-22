@@ -1,6 +1,8 @@
 import { CONFIG, clamp, parseTransfer, createBackup, validateEnvelope, deduplicate, identity, metadataKey, ranking, deadlineState, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
 import { openStore } from './storage.mjs';
 import { getAccountAdapters } from './adapters.mjs';
+// Registers the live Gmail/Calendar readers before this module initialises.
+import './ember-feed.mjs';
 
 const $ = id => document.getElementById(id);
 const el = (tag, text, attrs = {}) => {
@@ -189,10 +191,10 @@ function render() {
   for (const id of ['triage', 'good', 'attention']) $(id).setAttribute('aria-pressed', String(focusMode === id));
   $('view-heading').textContent = focusMode === 'good' ? 'Keep the momentum.' : focusMode === 'attention' ? 'Give the right things attention.' : 'All the moving parts.';
   $('mode-label').textContent = mode === 'demo' ? 'DEMO · ILLUSTRATIVE DATA' : 'MY LOG · SOURCE RECORDS';
-  $('mode-note').textContent = mode === 'demo' ? 'No live Gmail, Calendar, or Claude feed. Demo clock: Oct 18, 2026.' : 'Source verification is labeled on each card. Text stays in this tab; export a private backup before closing.';
+  $('mode-note').textContent = mode === 'demo' ? 'Signed in at ember.baxstarfishing.com, Gmail and Calendar load into My log by themselves. Demo clock: Oct 18, 2026.' : 'Source verification is labeled on each card. Text stays in this tab; export a private backup before closing.';
   $('data-mode').textContent = mode === 'demo' ? 'Open my log' : 'View demo';
   $('export').disabled = imported.length === 0;
-  for (const provider of ['gmail', 'calendar']) $(`health-${provider}`).textContent = ({ verified: 'Verified read', unavailable: 'Unavailable', 'not-connected': 'Not wired' })[health.get(provider).state] || 'Unknown';
+  for (const provider of ['gmail', 'calendar']) $(`health-${provider}`).textContent = ({ verified: 'Verified read', unavailable: 'Unavailable', 'not-connected': 'Not connected' })[health.get(provider).state] || 'Unknown';
   $('result-count').textContent = `${sorted.length} of ${current().length} signals`;
   $('plan').replaceChildren();
   if (focusMode === 'good') $('plan').append(el('p', 'Worth noticing, even when there is nothing to do. No streaks. No invented wins.'));
@@ -207,7 +209,7 @@ function render() {
   $('signals').replaceChildren(...sorted.map((s, index) => card(s, index, selected)));
   $('empty').hidden = sorted.length > 0;
   $('empty-title').textContent = mode === 'imported' && !imported.length ? 'Your log is ready for its first signal.' : 'A little breathing room.';
-  $('empty-copy').textContent = mode === 'imported' && !imported.length ? 'Import a bounded JSON report from Claude or another source. Live feeds are not connected to this page yet.' : 'Nothing matches these filters. Try another combination.';
+  $('empty-copy').textContent = mode === 'imported' && !imported.length ? 'Press Refresh sources for live Gmail and Calendar (signed in at ember.baxstarfishing.com), or import a bounded JSON report.' : 'Nothing matches these filters. Try another combination.';
   if (focus) {
     const target = [...document.querySelectorAll('[data-focus]')].find(n => n.dataset.focus === focus);
     (target || $('signals')).focus({ preventScroll: true });
@@ -262,7 +264,7 @@ $('export').onclick = () => {
 $('import').onclick = () => {
   const body = openDialog('Import signals');
   body.append(el('p', 'Baxstar · Fishing account. Import a Signal Log v1 report (256 KiB) or restore a private backup (3 MiB), at most 200 signals. Never paste a full inbox, credentials, or private attachments.'));
-  body.append(link('Download the Claude/manual import example', 'https://github.com/baxstarcode/baxstar-ember/blob/codex/ember-signal-log/signal-log/example.json'));
+  body.append(link('Download the Claude/manual import example', 'https://github.com/baxstarcode/baxstar-ember/blob/main/signal-log/example.json'));
   const label = el('label', 'Signal Log JSON', { class: 'field' }), input = el('textarea', '', { spellcheck: false, maxlength: CONFIG.maxBackupBytes, placeholder: '{"version":1,"workspaceId":"baxstar","accountId":"baxstar-fishing",…}' }); label.append(input); body.append(label);
   const fileLabel = el('label', 'Choose JSON file', { class: 'field' }), file = el('input', null, { type: 'file', accept: '.json,application/json' }); fileLabel.append(file); body.append(fileLabel);
   const error = el('p', '', { class: 'error', role: 'alert' }); body.append(error);
@@ -290,7 +292,7 @@ async function refreshSources() {
       health.set(adapter.provider, result);
       if (result.state !== 'verified') imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · refresh unavailable' } : s);
     }
-    render(); notify(loaded ? `${loaded} source records received. Verification and health are labeled separately.` : 'No new source records. Existing records retained; inspect connection details.');
+    render(); notify(loaded ? `${loaded} source records received. Verification and health are labeled separately.` : [...health.values()].every(h => h.state === 'unavailable') ? `${[...health.values()][0].reason}` : 'No new source records. Existing records retained; inspect connection details.');
   } finally {
     refreshing = false; $('refresh-sources').disabled = false;
     if (refreshAgain) { refreshAgain = false; await refreshSources(); }
@@ -300,9 +302,9 @@ $('refresh-sources').onclick = refreshSources;
 window.addEventListener('ember-signal-readers-changed', refreshSources);
 $('connections').onclick = async () => {
   const body = openDialog('Connection truth');
-  body.append(el('p', 'A successful read in ChatGPT, or a connected credential indicator in Ember, does not verify this page’s data path. No provider reader is supplied in this release. An authorized host can register one; refresh results then populate the log.'));
+  body.append(el('p', 'Gmail and Calendar are read through Ember’s own signed-in gateway (Cloudflare Access → Pages → Worker → the read-only connector), one provider at a time, with Haiku turning the bounded results into cards. A provider shows Verified read only when the reply carried a successful tool result for it; a connector-free fallback answer never counts. Reads run on ember.baxstarfishing.com only.'));
   for (const provider of ['gmail', 'calendar']) { const result = health.get(provider); body.append(el('h3', `${provider === 'gmail' ? 'Gmail' : 'Calendar'} · ${result.state}`), el('p', result.reason || 'Account-attested provider read completed. Retained records are still labeled if an earlier refresh failed.')); }
-  body.append(el('h3', 'Smallest remaining integration step'), el('p', 'The Ember connector owner must supply an authenticated, account-attested, bounded read through the existing same-origin service binding, then verify one Gmail record and one Calendar event end to end. No OAuth grants or refresh tokens are changed by this page.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
+  body.append(el('h3', 'Bounds and cost'), el('p', 'Gmail: up to 25 inbox messages from the last 7 days that need attention. Calendar: up to 40 events from 2 days ago to 14 days ahead. Each refresh is two short Haiku calls through Ember’s existing API key; this page never changes an OAuth grant, marks mail read or edits a calendar.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
 };
 const references = [
   ['Importance before urgency', 'https://academic.oup.com/jcr/article-abstract/45/3/673/4847790?login=true', 'The mere urgency effect motivates separating importance and time pressure. Parent-supplied research; publisher text was inaccessible here. This scoring formula is a design inference, not a validated model.'],

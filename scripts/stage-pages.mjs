@@ -22,6 +22,7 @@ const files = [
   "signal-log/core.mjs",
   "signal-log/storage.mjs",
   "signal-log/adapters.mjs",
+  "signal-log/ember-feed.mjs",
   "signal-log/demo.json",
   "signal-log/example.json",
   "assets/ember/design-tokens.css",

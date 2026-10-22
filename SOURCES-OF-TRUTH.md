@@ -1,13 +1,12 @@
 # Ember — Sources of Truth & Build Provenance
 
-**2026-10-18, isolated Signal Log:** `codex/ember-signal-log` starts from freshly
-verified `main` at `dc830451054cb8af5637332504f899fa2f5123ec`. The additive
-`signal-log/` page owns its HTML/CSS/modules and import contract; see
-[`signal-log/README.md`](signal-log/README.md). It reuses Ember assets/tokens,
-adds local ranking/filter/state/import behavior, and is not a live connector feed.
-Existing application, Worker, OAuth, gateway, voice, and dock remain untouched.
-Tests run locally; no deployment, merge, automation change, or Actions run is part
-of this delivery. Registry/Drive write-back remains with the authorized parent.
+**2026-10-22, Signal Log on main with a live feed:** `signal-log/` (built by Codex
+on `codex/ember-signal-log`, draft PR #50) is merged and now reads Gmail and
+Calendar through the existing gateway via `signal-log/ember-feed.mjs`; see
+[`signal-log/README.md`](signal-log/README.md). The page owns its HTML/CSS/modules
+and v1 import contract; the only application-source change is one `TOOL_LINKS`
+entry (YOUR TOOLS → Signal Log). Worker, OAuth, gateway allowlist, voice and dock
+are untouched.
 
 Multiple AI tools are now touching this project. This document is the authority on
 **which file is canonical for what**, and **who built which phase**, so no session or
@@ -49,6 +48,13 @@ of links to Brady's other properties.
 ---
 
 ## Provenance — who did what
+
+- **Claude (Fable 5.1), 2026-10-22 — Signal Log live feed:** took over the Ember
+  build from Codex; merged `codex/ember-signal-log` onto current main; added
+  `signal-log/ember-feed.mjs` (same-origin `/api/messages`, one provider per call,
+  Haiku 5.5 low effort, verification by paired `mcp_tool_result`, per-record v1
+  projection), the YOUR TOOLS link, feed contract/browser tests, and the docs.
+  Also closed KNOWN-ISSUES §1a and landed Codex's final voice-evidence commits.
 
 - **Codex, 2026-10-18 (America/Chicago) — local saves and mobile usability:**
   replaced Mission Control's unsafe cross-tab localStorage writes with revision-
