@@ -1,5 +1,10 @@
 # Ember — Living Cinematic Handoff
 
+**Voice check v6 — 2026-10-22 (Claude):** switching apps mid-reply no longer cuts
+Ember off; only an already-playing reply continues (mic and requests still stop).
+Next physical check: start a spoken reply on CarPlay, switch to Maps, and report
+whether she keeps talking. Details: `docs/VOICE-REBUILD.md`.
+
 **2026-10-22 — Claude took over the build from Codex; Signal Log is live:** read
 `docs/CURRENT-STATE.md` first. `/signal-log/` (YOUR TOOLS → Signal Log) now reads
 Gmail and Calendar through the existing gateway (`signal-log/ember-feed.mjs`);

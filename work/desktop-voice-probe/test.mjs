@@ -312,7 +312,7 @@ try {
   await voiceOnly.page.evaluate(() => document.getElementById("audio").dispatchEvent(new Event("ended")));
   await state(voiceOnly.page, "voice-check-state", "Voice check finished");
   let voiceReport = await diagnostic(voiceOnly);
-  assert.equal(voiceReport.version, 5);
+  assert.equal(voiceReport.version, 6);
   assert.equal(voiceReport.speechAttempts[0].stage, "complete");
   assert.equal(voiceReport.speechAttempts[0].result, "ended");
   assert.equal(voiceReport.speechAttempts[0].contentType, "audio");
@@ -507,10 +507,22 @@ try {
   await state(phone.page, "request-state", "Complete");
   await phone.page.locator("#play").click();
   await state(phone.page, "audio-state", "Playing");
-  const beforeHide = await phone.page.evaluate(() => window.__mock.plays);
+  const beforeHide = await phone.page.evaluate(() => ({ plays: window.__mock.plays, order: window.__mock.order.length, starts: window.__mock.starts }));
   await hide(phone);
+  // Switching apps mid-reply (CarPlay → Maps) keeps the audible reply going:
+  // no pause, no new play, no microphone, and the reply can still finish.
+  assert.equal(await phone.page.locator("#audio").isVisible(), true);
+  assert.deepEqual(await phone.page.evaluate((n) => window.__mock.order.slice(n).filter((e) => e === "audio-pause" || e === "mic-start"), beforeHide.order), []);
+  assert.equal(await phone.page.evaluate(() => window.__mock.plays), beforeHide.plays);
+  assert.equal(await phone.page.evaluate(() => window.__mock.starts), beforeHide.starts);
+  assert.match(await phone.page.locator("#audio-state").textContent(), /Playing/);
+  await phone.page.locator("#prepare-report").click();
+  const keptReport = JSON.parse(await phone.page.locator("#report").inputValue());
+  assert(keptReport.events.some((e) => e.event === "tab-hidden" && e.detail === "playback-kept"), "report records the kept playback");
+  await phone.page.evaluate(() => document.getElementById("audio").dispatchEvent(new Event("ended")));
+  await state(phone.page, "audio-state", "Playback ended");
+  await phone.page.locator("#cancel").click();
   assert.equal(await phone.page.locator("#audio").isVisible(), false);
-  assert.equal(await phone.page.evaluate(() => window.__mock.plays), beforeHide);
   await phone.page.locator("#mobile-opt-in").uncheck();
   assert.equal(await phone.page.locator("#talk").isDisabled(), true);
   assert.equal(await phone.page.locator("#send").isDisabled(), true);
@@ -519,7 +531,7 @@ try {
   assert.equal(await phone.page.locator("#mobile-opt-in").isChecked(), false);
   assert.equal(await phone.page.locator("#talk").isDisabled(), true);
   await phone.page.screenshot({ path: "/tmp/ember-iphone-voice-lab.png", fullPage: true });
-  check("tab hiding stops playback; opting out stops the experiment, and reload never retains opt-in");
+  check("tab hiding keeps an audible reply playing to the end without touching the mic; opting out stops the experiment, and reload never retains opt-in");
   await healthy(phone);
 
   const handoff = await session({ mobile: true, audioSession: "supported" });
@@ -552,9 +564,18 @@ try {
   await state(handoff.page, "request-state", "Complete");
   await handoff.page.locator("#play").click();
   await state(handoff.page, "audio-state", "Playing");
+  const beforeHandoffHide = await handoff.page.evaluate(() => ({ plays: window.__mock.plays, starts: window.__mock.starts }));
+  await hide(handoff);
+  // An audible reply keeps the playback session through an app switch (that is
+  // what lets iOS keep speaking over CarPlay), then releases it when it ends.
+  assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "playback");
+  assert.deepEqual(await handoff.page.evaluate(() => ({ plays: window.__mock.plays, starts: window.__mock.starts })), beforeHandoffHide);
+  await handoff.page.evaluate(() => document.querySelector("audio").dispatchEvent(new Event("ended")));
+  assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "auto");
   await hide(handoff);
   assert.equal(await handoff.page.evaluate(() => navigator.audioSession.type), "auto");
-  check("hiding the page releases the playback session and never restarts audio");
+  assert.equal(await handoff.page.evaluate(() => window.__mock.plays), beforeHandoffHide.plays);
+  check("hiding keeps an audible reply's playback session until it ends, releases it afterwards, and never restarts audio or the mic");
   await healthy(handoff);
 
   for (const audioSession of ["missing", "rejected", "getter-error"]) {
