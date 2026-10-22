@@ -165,6 +165,11 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 22 background playback (v6):** switching apps no longer cuts off a reply
+that is already playing; the mic and in-flight requests still stop. Whether iOS
+keeps a backgrounded Safari reply audible over CarPlay is the next physical check.
+See the newest Voice Rebuild entry.
+
 **October 22 interruption fix:** v5 retains received provisional words as an editable
 interrupted draft, supports explicit Continue talking, and blocks late abort results
 from replacing it. Completed replies remain replayable after returning. No automatic

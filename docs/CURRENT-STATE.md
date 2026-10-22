@@ -1,5 +1,10 @@
 # Ember — Current State
 
+**Voice check v6 — 2026-10-22 (Claude):** switching apps mid-reply no longer cuts
+Ember off; only an already-playing reply continues (mic and requests still stop).
+Next physical check: start a spoken reply on CarPlay, switch to Maps, and report
+whether she keeps talking. Details: `docs/VOICE-REBUILD.md`.
+
 **Signal Log live feed — 2026-10-22 (Claude, taking over from Codex):** Codex's
 `/signal-log/` page (draft PR #50) is merged onto main and now reads Gmail and
 Calendar by itself when opened signed in at ember.baxstarfishing.com: one

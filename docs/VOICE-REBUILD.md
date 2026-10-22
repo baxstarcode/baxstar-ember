@@ -1,5 +1,20 @@
 # Recorded voice rebuild — 2026-10-17
 
+**Voice check v6 background playback — October 22, 2026 (Claude):**
+Brady's CarPlay report (session `2026-10-22T13:02:49Z`, iPhone Safari 27.0.1,
+v5) played the fixed test sentence through to the end (8.3 s), then replayed it
+from the native player and switched apps 2.6 s in; the hide handler's `stopAll`
+cut Ember off by design and he marked the attempt Failed (mic off, audible: yes).
+v6 keeps a reply that is **already playing** when the page is hidden: no pause,
+the `playback` audio session is kept so iOS can continue over CarPlay, and the
+session returns to `auto` when the clip ends. Everything else on hide is unchanged:
+the microphone still closes at once (and v5 keeps received words), any in-flight
+text or speech request still cancels, audio that has not started yet is not
+started, and nothing restarts on return. The report records `tab-hidden /
+playback-kept`. Not proven: whether iOS actually keeps a backgrounded Safari
+`<audio>` element playing through CarPlay — that is the next physical check.
+This was a speech-only test, so it does not count toward the five-turn gate.
+
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
 Brady clarified that text disappeared on return, leaving nothing to replay. v4's
 hide handler aborted recognition and discarded provisional words; the interrupted
