@@ -67,15 +67,20 @@ The staged order remains the required procedure for future releases; see
 
 ## 1a. The model update needs the Worker deployed before the UI ships
 
-**Status: OPEN — release sequencing (2026-10-15)**
+**Status: RESOLVED (2026-10-16/17); old IDs deliberately kept until the voice gate closes**
 
-The UI now sends `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`,
-`claude-fable-5-1` with effort up to `xhigh` and budgets up to 16000 tokens. The
-deployed Worker refuses those new IDs. Deploy the Worker from this release FIRST (it still
-accepts the old IDs, so the live page keeps working), confirm chat, then merge so Pages
-ships the UI. After that, one message per model must show its served-model stamp; until
-then live model access is **PROVISIONAL** (it is verified only against Anthropic's model
-reference and intercepted tests). Remove the old IDs from `ALLOWED_MODELS` afterwards.
+Brady pasted the PR #49 Worker into a fresh dashboard editor and deployed it on
+2026-10-16 (version `6110e34c-2363-41c5-a5f6-fab751ecb717`), then chat answered
+on the live page; PR #49 merged the same evening and the current UI was published
+to the custom domain on 2026-10-17. Codex's authenticated read of the live Worker
+source confirmed all four 5.x IDs are accepted. The pre-5.5 IDs stay in
+`ALLOWED_MODELS` on purpose (2026-10-22): the live voice lab
+(`work/desktop-voice-probe/probe.js`) still asks for `claude-sonnet-4-6`, and Brady is
+mid-way through its five-turn physical gate; changing the lab's model would
+contaminate that series. Retire the old IDs and move the lab to a 5.x model with an
+explicit low effort in one change after the gate closes. Saved dashboard preferences
+migrate through `MODEL_SUCCESSOR`. Still **PROVISIONAL**: a per-model served-model
+stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been recorded.
 
 ## 1b. Quo is offline
 
