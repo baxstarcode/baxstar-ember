@@ -1,5 +1,27 @@
 # Recorded voice rebuild — 2026-10-17
 
+**Mac Chrome physical pass — October 22, 2026 (America/Chicago):** Brady's v4
+report started at `2026-10-22T07:29:36.775Z` (02:29 CT), with notes “done on m4 mac
+in chrome. worked well.” One full microphone turn records Pass, mic indicator off
+and reply audible. Chrome 155 reported recognition end, complete streamed text,
+HTTP 200/audio (45792 bytes), and playback ending. First reply text arrived 806 ms
+after Send; playback began 971 ms after Play. Audio-session `unavailable` /
+`not-applicable` is expected on this desktop path, not a failure. This is **one Mac
+Chrome full pass**, separate from the two previous iPhone/CarPlay full passes.
+Repeated-turn and interruption/recovery gates remain open; no runtime change is
+justified by this success. The skull panel remains recording-only.
+
+**Outstanding phone interruption evidence:** the October 21 session beginning
+`13:02:27.399Z` stopped capture on tab hide and reported recognition end 48 ms later.
+No text or TTS request followed. Brady's notes say the recording light went out,
+but the saved result is Failed with both physical checkboxes false; retain that
+conflict rather than silently marking Pass. He subsequently reported failure on
+switching tabs/apps. No fresh Talk/Send/Play attempt after returning appears in that
+report, so expected cancellation is observed but recovery failure/success is not
+isolated. Next phone check: return to Safari and explicitly start a new turn without
+reloading. Do not add automatic listening or claim background voice is supported.
+
+
 **Second full v4 physical pass — 2026-10-21 UTC:** the supplied session began
 at `12:59:42.536Z`, with device notes “All worked well.” In the ongoing Safari/
 wireless-CarPlay test context, one microphone turn records `pass`,

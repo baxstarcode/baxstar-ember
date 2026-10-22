@@ -160,6 +160,12 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 22 update (America/Chicago):** one M4 Mac / Chrome 155 v4 full turn
+physically passed (mic off, reply audible). Keep this separate from phone passes.
+The October 21 phone interruption report stopped recognition on tab hide and made
+no text/TTS request. A fresh turn after return is absent; Brady reports switching
+apps/tabs failed, so recovery remains unresolved. See newest Voice Rebuild evidence.
+
 **Latest result, October 21:** another v4 microphone turn physically passed, with
 mic indicator off and audible reply; device notes say “All worked well.” This is
 two full turns across two sessions. The fixed voice-test sentences do not count
