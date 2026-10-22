@@ -1,5 +1,16 @@
 # Ember — Current State
 
+**v5 published:** implementation `e8c33d6` is on production. Cloudflare Pages
+`5af9f31e-d831-45b4-8686-e0123187e93d` completed successfully on October 22 at
+**03:08:18 America/Chicago** (`08:08:18 UTC`) with the custom-domain alias
+`https://ember.baxstarfishing.com`. Public workspace access returns HTTP 403 without
+a signed-in session, so physical v5 recovery is not yet verified. Next user check,
+when convenient: open Ember → Voice Lab, confirm v5, switch tabs after words appear,
+return and review/continue the retained draft, then explicitly Send/Play. No mic
+or speech restarts automatically. Worker, OAuth grants and main skull activation
+were unchanged. This is the safe stopping point requested while Brady sleeps.
+
+
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
 Brady clarified that text disappeared on return, leaving nothing to replay. v4's
 hide handler aborted recognition and discarded provisional words; the interrupted
