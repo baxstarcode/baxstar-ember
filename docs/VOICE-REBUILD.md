@@ -1,5 +1,78 @@
 # Recorded voice rebuild — 2026-10-17
 
+**Extended Mac report — October 22, 2026 (America/Chicago):** the pasted file
+extends the same `2026-10-22T07:29:36.775Z` session; do not count its first turn again.
+Brady says the computer tests worked very well until tab switching, which turned
+the mic off. Events preserve the first full turn's original Pass at 34840 ms and a
+later Failed recording at 191722 ms; the turn's latest observation overwrites its
+earlier Pass. Retain both observations. The first tab hide occurred after completed
+reply playback. After returning, a new speech-only request played and a new microphone
+session started, showing recognition restart without reload. A second tab hide
+then aborted that capture; recognition ended 1 ms later. No subsequent full
+Talk/Send/Play recovery cycle is present. The visible cutoff matches the lab's
+explicit `visibilitychange` → `stopAll` behavior, not proof of an OS/browser inability
+to run background audio. Background conversation remains outside this lab's scope.
+No new runtime repair or repeated tab-cutoff test is needed on this evidence.
+
+
+**Mac Chrome physical pass — October 22, 2026 (America/Chicago):** Brady's v4
+report started at `2026-10-22T07:29:36.775Z` (02:29 CT), with notes “done on m4 mac
+in chrome. worked well.” One full microphone turn records Pass, mic indicator off
+and reply audible. Chrome 155 reported recognition end, complete streamed text,
+HTTP 200/audio (45792 bytes), and playback ending. First reply text arrived 806 ms
+after Send; playback began 971 ms after Play. Audio-session `unavailable` /
+`not-applicable` is expected on this desktop path, not a failure. This is **one Mac
+Chrome full pass**, separate from the two previous iPhone/CarPlay full passes.
+Repeated-turn and interruption/recovery gates remain open; no runtime change is
+justified by this success. The skull panel remains recording-only.
+
+**Outstanding phone interruption evidence:** the October 21 session beginning
+`13:02:27.399Z` stopped capture on tab hide and reported recognition end 48 ms later.
+No text or TTS request followed. Brady's notes say the recording light went out,
+but the saved result is Failed with both physical checkboxes false; retain that
+conflict rather than silently marking Pass. He subsequently reported failure on
+switching tabs/apps. No fresh Talk/Send/Play attempt after returning appears in that
+report, so expected cancellation is observed but recovery failure/success is not
+isolated. Next phone check: return to Safari and explicitly start a new turn without
+reloading. Do not add automatic listening or claim background voice is supported.
+
+
+**Second full v4 physical pass — 2026-10-21 UTC:** the supplied session began
+at `12:59:42.536Z`, with device notes “All worked well.” In the ongoing Safari/
+wireless-CarPlay test context, one microphone turn records `pass`,
+`micIndicatorOff: true`, `replyAudible: true`. Recognition ended after the 750 ms
+grace, streamed text completed, and reply TTS returned HTTP 200/audio (33984 bytes).
+The browser accepted playback mode and emitted playing/ended, then requested auto.
+The separate fixed-sentence test also completed, but is not a microphone turn.
+There are now **two confirmed full v4 turns across two sessions**, not five repeated
+turns. Three additional complete turns are needed for the requested five-turn count;
+keep the same page open for the next turns to exercise repeated handoff. Active-turn
+cancellation, interruption and recovery still need evidence. Tab hiding in this
+report occurred before testing and after completed playback; it does not prove
+interruption recovery. No new runtime repair is warranted by this successful report.
+The integrated skull panel remains recording-only pending its release gates.
+
+
+**First full v4 physical pass — 2026-10-20 UTC:** after reporting silent playback
+in ChatGPT's in-app browser, Brady was asked to compare in standalone Safari and
+replied **“Worked”**, supplying the v4 session begun at `02:42:06.673Z`. The successful
+microphone turn explicitly records `result: pass`, `micIndicatorOff: true` and
+`replyAudible: true`. Recognition ended, the streamed text completed, and the reply
+returned HTTP 200/audio (75888 bytes), with accepted `playback` mode, playing/ended
+events and a request to restore `auto`. This is one user-confirmed complete spoken
+turn in the ongoing wireless-CarPlay test context. The report cannot identify the
+physical speaker route or independently distinguish embedded from standalone Safari.
+Do not attribute causality solely to either the browser switch or v4 mode request.
+
+The initial fixed-sentence test was paused and later cleared/cancelled before Talk;
+it is not a second full pass. Session state is unavailable in this browser, while
+type is reported; that alone is not an error. Use standalone Safari as the current
+successful test path. Next: four more complete turns for the five-turn gate, then
+cancellation/interruption/recovery checks. No further speculative audio fix is
+warranted by this successful report. Keep the main skull panel recording-only and
+repeated-device reliability PROVISIONAL until the release gates are met.
+
+
 ## CarPlay post-capture audibility — 2026-10-20
 
 **Wireless CarPlay handoff — 2026-10-20 UTC:** Brady's v3 report began at
