@@ -8,7 +8,8 @@ a signed-in session, so physical v5 recovery is not yet verified. Next user chec
 when convenient: open Ember → Voice Lab, confirm v5, switch tabs after words appear,
 return and review/continue the retained draft, then explicitly Send/Play. No mic
 or speech restarts automatically. Worker, OAuth grants and main skull activation
-were unchanged. This is the safe stopping point requested while Brady sleeps.
+were unchanged. The repair is complete and ready for the next physical check;
+Brady asked to continue building while he sleeps, so no immediate test was requested.
 
 
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
