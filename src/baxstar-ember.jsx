@@ -355,7 +355,7 @@ const PROJECTS = [
         outstanding: "Tech-camp page only — main site unbuilt", sessions: "~5" },
       { name: "bradybaxter.com (consulting)", pct: 85, platform: "Claude",
         links: [["site", "https://bradybaxter.com"], ["repo", "https://github.com/baxstarcode/bradybaxter-site"]],
-        outstanding: "LIVE 10-23 — portfolio chapter (5 exhibits), pricing demo, short addresses. Left: first client case study, fresh social card", sessions: "~1" },
+        outstanding: "LIVE 10-23 — portfolio chapter (6 exhibits), pricing demo, lightbox, Caption Studio runnable on the page, short addresses. Left: Brady's 4 pictures (camp, rod and reel, deck before/after → exhibit 07), pontoon video. Built in its own repo/session from here on", sessions: "~1" },
     ],
   },
   {
