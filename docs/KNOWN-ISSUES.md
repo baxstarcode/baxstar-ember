@@ -405,7 +405,11 @@ refresh costs two short Haiku calls.
 frame, no dock change), every card carries `Open in Gmail/Calendar ↗` and
 **Ask Ember** (hands the card to the composer unsent; `?ask=` deep link standalone).
 Escape inside the framed page closes the overlay because the page relays it; the
-same-origin frame is not subject to the cross-origin limit noted below.
+same-origin frame is not subject to the cross-origin limit noted below. The OPS
+Inbox and Schedule rows link to their Gmail message / Calendar event the same way
+(id and htmlLink returned by the sync; URL built or allowlisted by the page). If a
+live sync returns rows without links, Haiku omitted the id/htmlLink for that row;
+the row still renders, just without the link.
 
 ## Expected behavior that is not a bug
 

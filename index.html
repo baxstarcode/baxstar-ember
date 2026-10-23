@@ -779,7 +779,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-23 07:02Z".startsWith("__") ? "dev" : "2026-10-23 07:02Z";
+  const BUILD_STAMP = "2026-10-23 12:08Z".startsWith("__") ? "dev" : "2026-10-23 12:08Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -2338,8 +2338,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         };
         const shapes = {
           voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
-          emails: '"emails":[{"from":"","time":"","subject":""}]',
-          events: '"events":[{"time":"","title":"","detail":""}]'
+          emails: '"emails":[{"from":"","time":"","subject":"","id":"the Gmail message id exactly as the tool returned it"}]',
+          events: '"events":[{"time":"","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]'
         };
         const prompt = `${bradyContext()}
 
@@ -3795,6 +3795,10 @@ Check Gmail for anything newer.`;
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
         .ember-row .row-note { margin-top:3px; font-size:11.5px; line-height:1.4; color:var(--ink-dim); overflow-wrap:anywhere; }
+        .row-open { display:inline-flex; align-items:center; min-height:24px; padding:3px 8px; border-radius:8px; border:1px solid var(--line);
+          font-size:10.5px; font-weight:700; color:var(--brass); text-decoration:none; white-space:nowrap; }
+        .row-open:hover { border-color:var(--line-hot); color:var(--ink); }
+        @media (pointer:coarse) { .row-open { min-height:44px; padding:0 12px; } }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments \u2014 outer frame corners only, never behind text */
@@ -4514,9 +4518,9 @@ Check Gmail for anything newer.`;
         } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", disabled: taskSaving, onClick: (e) => {
           e.stopPropagation();
           openTaskDraft(m, "email", i);
-        } }, "Task draft"))
+        } }, "Task draft"), /* @__PURE__ */ React.createElement(SourceLink, { href: gmailLink(m.id), label: "Open in Gmail" }))
       ))
-    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }, calendarLink(e.link) && /* @__PURE__ */ React.createElement("div", { className: "mt-1.5" }, /* @__PURE__ */ React.createElement(SourceLink, { href: calendarLink(e.link), label: "Open in Calendar" }))))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
       "button",
       {
         key: t.url,
@@ -6125,6 +6129,22 @@ Check Gmail for anything newer.`;
     ))), /* @__PURE__ */ React.createElement("div", { className: `flex min-h-0 flex-1 flex-col ${scroll ? "overflow-y-auto" : ""}` }, children));
   }
   const ROW_TAG_MAX = 22;
+  function gmailLink(id) {
+    return typeof id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(id) ? `https://mail.google.com/mail/u/0/#all/${id}` : null;
+  }
+  function calendarLink(link) {
+    try {
+      const u = new URL(String(link || ""));
+      if (u.protocol !== "https:") return null;
+      if (u.hostname === "calendar.google.com" || u.hostname === "www.google.com" && u.pathname.startsWith("/calendar/")) return u.href;
+    } catch (e) {
+    }
+    return null;
+  }
+  function SourceLink({ href, label }) {
+    if (!href) return null;
+    return /* @__PURE__ */ React.createElement("a", { className: "row-open", href, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation() }, label, " \u2197");
+  }
   function Row({ who, when, children, onClick, selected }) {
     const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
     return /* @__PURE__ */ React.createElement(

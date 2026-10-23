@@ -2155,8 +2155,8 @@ export default function BaxstarEmber() {
       };
       const shapes = {
         voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
-        emails: '"emails":[{"from":"","time":"","subject":""}]',
-        events: '"events":[{"time":"","title":"","detail":""}]',
+        emails: '"emails":[{"from":"","time":"","subject":"","id":"the Gmail message id exactly as the tool returned it"}]',
+        events: '"events":[{"time":"","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]',
       };
       const prompt = `${bradyContext()}
 
@@ -3704,6 +3704,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
         .ember-row .row-title { font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
         .ember-row .row-note { margin-top:3px; font-size:11.5px; line-height:1.4; color:var(--ink-dim); overflow-wrap:anywhere; }
+        .row-open { display:inline-flex; align-items:center; min-height:24px; padding:3px 8px; border-radius:8px; border:1px solid var(--line);
+          font-size:10.5px; font-weight:700; color:var(--brass); text-decoration:none; white-space:nowrap; }
+        .row-open:hover { border-color:var(--line-hot); color:var(--ink); }
+        @media (pointer:coarse) { .row-open { min-height:44px; padding:0 12px; } }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments — outer frame corners only, never behind text */
@@ -4456,6 +4460,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <button className="chip ghost task-draft-button" disabled={taskSaving} onClick={(e) => { e.stopPropagation(); openTaskDraft(m, "email", i); }}>
                       Task draft
                     </button>
+                    <SourceLink href={gmailLink(m.id)} label="Open in Gmail" />
                   </div>
                 </Row>
               ))}
@@ -4464,7 +4469,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
               {data.events.length === 0 && <p className="feed-empty">No calendar events returned for today or tomorrow.</p>}
               {data.events.map((e, i) => (
-                <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail} />
+                <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail}>
+                  {calendarLink(e.link) && <div className="mt-1.5"><SourceLink href={calendarLink(e.link)} label="Open in Calendar" /></div>}
+                </Row>
               ))}
             </Panel>
           </div>
@@ -6343,6 +6350,26 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
    squeezed the title to one word per line (Brady, 2026-10-23). Short details stay
    as the tag; anything longer wraps on its own line under the title. */
 const ROW_TAG_MAX = 22;
+/* Source links on the OPS rows (2026-10-23). The model hands back a Gmail message id
+   and a Calendar htmlLink; the page builds the Gmail URL itself from an id that looks
+   like one, and accepts a Calendar link only on Google's own calendar hosts. Anything
+   else renders no link at all — a hostile value can never become a clickable href. */
+function gmailLink(id) {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(id) ? `https://mail.google.com/mail/u/0/#all/${id}` : null;
+}
+function calendarLink(link) {
+  try {
+    const u = new URL(String(link || ""));
+    if (u.protocol !== "https:") return null;
+    if (u.hostname === "calendar.google.com" || (u.hostname === "www.google.com" && u.pathname.startsWith("/calendar/"))) return u.href;
+  } catch (e) { /* not a URL */ }
+  return null;
+}
+function SourceLink({ href, label }) {
+  if (!href) return null;
+  return <a className="row-open" href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{label} ↗</a>;
+}
+
 function Row({ who, when, children, onClick, selected }) {
   const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
   return (

@@ -6,7 +6,12 @@ frame; the dock's six tiles are unchanged). Every card carries its action links:
 `Open in Gmail ↗` / `Open in Google Calendar ↗` in a new tab, and **Ask Ember**,
 which closes the overlay and places the card (title, summary, source fact, why, next
 step) in the composer unsent; standalone it is `index.html?ask=…`. Same-origin
-messages only (`ember-signal-ask`, `ember-signal-close`). Also: the Schedule panel's
+messages only (`ember-signal-ask`, `ember-signal-close`). The OPS Inbox and
+Schedule rows got the same treatment: the sync prompt now returns each message's
+Gmail id and each event's htmlLink, and a row shows `Open in Gmail ↗` /
+`Open in Calendar ↗` only when the page can build or allowlist the URL itself
+(Gmail id pattern; Google calendar hosts over https). Hostile values render no
+link; the dashboard check proves both. Also: the Schedule panel's
 one-word-per-line titles are fixed (PR #54, long calendar details wrap under the
 title). Verified here: dashboard 117/117, layout 87/87, UI 36/36, Signal Log 25
 browser scenarios + 31 contract tests. Worker, grants, voice and dock unchanged.
