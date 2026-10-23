@@ -122,8 +122,8 @@ try {
       const text = isSync
         ? JSON.stringify({
             voicemails: [{ from: "(218) 555-0000", line: "Fishing", time: "1:00 PM", note: "live sync landed", vm: "" }],
-            emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data" }],
-            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "" }, { time: "8:00 AM", title: "LongDetailEvent", detail: "Verify https://baxstaroutdoors.com loads over https, then check the Wix plan renewal and the Google Business profile before noon." }],
+            emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data", id: "18f2a9c7b3d4e5f6" }, { from: "HostileId", time: "1:02 PM", subject: "no link", id: "../evil#\"><img" }],
+            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "", link: "https://www.google.com/calendar/event?eid=abc123" }, { time: "8:00 AM", title: "LongDetailEvent", detail: "Verify https://baxstaroutdoors.com loads over https, then check the Wix plan renewal and the Google Business profile before noon.", link: "javascript:alert(1)" }, { time: "9:00 AM", title: "OffHostEvent", detail: "", link: "https://evil.example/calendar/event" }],
           })
         : "Two bookings today, Brady.";
       await route.fulfill({
@@ -178,6 +178,19 @@ try {
     check(`${name} valid-looking JSON without tool results cannot replace live panels`,
       afterUnverified.includes("LIVE SYNC LANDED") && afterUnverified.includes("LIVESYNCPROOF"));
     check(`${name} revenue panel present`, body.includes("TODAY'S REVENUE"));
+
+    const openGmail = page.locator(".ember-row").filter({ hasText: "LiveSyncProof" }).getByRole("link", { name: /Open in Gmail/ });
+    check(`${name} inbox row opens the message in Gmail from the returned id`,
+      (await openGmail.count()) === 1 && (await openGmail.getAttribute("href")) === "https://mail.google.com/mail/u/0/#all/18f2a9c7b3d4e5f6" &&
+      (await openGmail.getAttribute("target")) === "_blank" && /noopener/.test(await openGmail.getAttribute("rel") || ""));
+    check(`${name} a hostile message id renders no link`, (await page.locator(".ember-row").filter({ hasText: "HostileId" }).locator("a").count()) === 0);
+    const openCal = page.locator(".ember-row").filter({ hasText: "LiveSyncEvent" }).getByRole("link", { name: /Open in Calendar/ });
+    check(`${name} schedule row opens the event in Google Calendar`,
+      (await openCal.count()) === 1 && (await openCal.getAttribute("href")) === "https://www.google.com/calendar/event?eid=abc123");
+    check(`${name} javascript: and off-host calendar links render no link`,
+      (await page.locator(".ember-row").filter({ hasText: "LongDetailEvent" }).locator("a").count()) === 0 &&
+      (await page.locator(".ember-row").filter({ hasText: "OffHostEvent" }).locator("a").count()) === 0);
+    check(`${name} sync asks for the Gmail id and Calendar htmlLink`, /the Gmail message id exactly as the tool returned it/.test(JSON.stringify(syncRequest?.messages)) && /the event htmlLink exactly as the tool returned it/.test(JSON.stringify(syncRequest?.messages)));
 
     const links = await page.locator(".tool-link").count();
     check(`${name} tools rail rendered`, body.includes("YOUR TOOLS") && links === 12, `${links} links`);
