@@ -222,7 +222,7 @@ const TOOL_LINKS = [
     { label: "Caption Studio", url: "https://baxstarcode.github.io/caption-studio/", note: "standalone" },
     { label: "Pontoon Check-In", url: "https://baxstarcode.github.io/baxstar-pontoon/", note: "rentals" },
     { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" },
-    { label: "Signal Log", url: "https://ember.baxstarfishing.com/signal-log/", note: "ranked attention" },
+    { label: "Signal Log", url: "https://ember.baxstarfishing.com/signal-log/", note: "ranked attention", overlay: "signal" },
   ]},
   { group: "Back office", items: [
     { label: "FareHarbor", url: "https://fareharbor.com/dashboard/", note: "bookings" },
@@ -1564,6 +1564,23 @@ export default function BaxstarEmber() {
   const [promptRunning, setPromptRunning] = useState(null);  // which push-plate is running
   const [graphOpen, setGraphOpen] = useState(false);
   const closeGraph = useRef(() => setGraphOpen(false)).current;
+  // Signal Log rides in an overlay off the tools rail (Brady, 2026-10-22: the page is
+  // acceptable "especially if the buttons connect to relevant pages/apps"). The framed
+  // page hands a card to the composer by same-origin message; nothing else crosses.
+  const [signalOpen, setSignalOpen] = useState(false);
+  const closeSignal = useRef(() => setSignalOpen(false)).current;
+  useEffect(() => {
+    const onMessage = (e) => {
+      if (e.origin !== window.location.origin || !e.data || typeof e.data !== "object") return;
+      if (e.data.type === "ember-signal-ask" && typeof e.data.text === "string") {
+        setSignalOpen(false); setView("ops");
+        setCommand(e.data.text.slice(0, 2000));
+        setTimeout(() => cmdInputRef.current?.focus(), 50);
+      } else if (e.data.type === "ember-signal-close") setSignalOpen(false);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
   const [leverPending, setLeverPending] = useState(null); // pending-review pulse
   const [draftEdit, setDraftEdit] = useState(null);       // editable lever draft text
   const [draftCopied, setDraftCopied] = useState(false);
@@ -1791,6 +1808,16 @@ export default function BaxstarEmber() {
         /(^|[#/])caption/.test(hash);
       if (wantsCaption) { setView("studio"); setStudioTool("captions"); }
       if (qs.get("lean") === "1" || /lean/.test(hash)) { setLeanCaption(true); setView("studio"); setStudioTool("captions"); }
+      // ?ask=<text> lands in the composer, unsent — the standalone Signal Log's Ask Ember.
+      // The parameter is dropped from the address so a reload does not re-prefill.
+      const ask = qs.get("ask");
+      if (ask && ask.trim()) {
+        setCommand(ask.slice(0, 2000));
+        qs.delete("ask");
+        const query = qs.toString();
+        window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash || ""}`);
+        setTimeout(() => cmdInputRef.current?.focus(), 0);
+      }
     } catch (e) { /* no location — artifact/SSR */ }
 
     // Old builds stored a write-capable destination in localStorage. The server gateway
@@ -3661,6 +3688,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .kg-close:hover { filter:brightness(1.2); border-color:var(--ember-brass-bright); }
         .kg-body { position:relative; flex:1; min-height:0; }
         .kg-works { height:100%; overflow:auto; padding:10px; }
+        /* SIGNAL LOG overlay: the same sheet, holding the same-origin page in a frame. */
+        .sl-frame { display:block; width:100%; height:100%; border:0; background:#0b0806; }
+        .sl-full { margin-left:auto; display:inline-flex; align-items:center; min-height:36px; text-decoration:none; white-space:nowrap; }
+        .sl-overlay .kg-close { margin-left:0; }
+        button.tool-link { font-family:inherit; text-align:left; cursor:pointer; appearance:none; -webkit-appearance:none; color:inherit; }
         .kg-works .eco-rail { margin:0; }
         .kg-works .reveal { opacity:1; animation:none; }
         @media (max-width:760px) {
@@ -4454,7 +4486,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <div key={g.group} className="tools-group">
                   <div className="fieldlabel">{g.group}</div>
                   <div className="tools-links">
-                    {g.items.map((t) => (
+                    {g.items.map((t) => t.overlay === "signal" ? (
+                      <button key={t.url} type="button" className="tool-link" title={`${g.group} · ${t.note} · opens here`}
+                        onClick={() => setSignalOpen(true)} aria-haspopup="dialog">
+                        <span className="tool-name">{t.label}</span>
+                        <span className="tool-note">{t.note}</span>
+                      </button>
+                    ) : (
                       <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link" title={`${g.group} · ${t.note}`}>
                         <span className="tool-name">{t.label}</span>
                         <span className="tool-note">{t.note}</span>
@@ -5161,6 +5199,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         )}
       </div>
       <GraphOverlay open={graphOpen} onClose={closeGraph} />
+      <SignalOverlay open={signalOpen} onClose={closeSignal} />
     </div>
   );
 }
@@ -5966,6 +6005,45 @@ function GraphOverlay({ open, onClose }) {
         <div className="kg-body">
           {tab === "foundry" ? <FoundryAtlas motion={motion} reduced={reduced} />
             : <div className="kg-works"><EcoGraph defaultOpen /></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignalOverlay({ open, onClose }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.activeElement;
+    const shell = document.querySelector(".ember-shell");
+    shell?.setAttribute("inert", "");
+    closeRef.current?.focus();
+    // Escape inside the frame is relayed by the page itself (ember-signal-close).
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      shell?.removeAttribute("inert");
+      previous?.focus?.();
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="kg-overlay sl-overlay" role="dialog" aria-modal="true" aria-label="Signal Log"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="kg-sheet">
+        {["tl","tr","bl","br"].map((corner) => <span key={corner} className={`kg-rivet ${corner}`} aria-hidden="true"/>)}
+        <div className="kg-head">
+          <span className="kg-title font-display"><small>BAXSTAR EMBER · RANKED ATTENTION</small><span>Signal <em>Log</em></span></span>
+          <a className="fa-control sl-full" href="signal-log/" target="_blank" rel="noopener noreferrer">Open full page ↗</a>
+          <button ref={closeRef} type="button" className="kg-close" onClick={onClose} aria-label="Close Signal Log">✕</button>
+        </div>
+        <div className="kg-body">
+          <iframe className="sl-frame" src="signal-log/index.html" title="Signal Log" />
         </div>
       </div>
     </div>

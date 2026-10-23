@@ -296,8 +296,11 @@ try {
       await check(`${name} tools contain 12 valid safe links`, async () => {
         const links = await page.locator('.tools-rail .tool-link').evaluateAll((nodes) => nodes.map((node) => ({
           href: node.getAttribute('href'), target: node.target, rel: node.rel, text: node.textContent.trim(),
+          tag: node.tagName, popup: node.getAttribute('aria-haspopup'),
         })));
+        // Signal Log is the one in-page tool: a button that opens the overlay (aria-haspopup=dialog), no href.
         const invalid = links.filter((link) => {
+          if (link.tag === 'BUTTON') return !(link.popup === 'dialog' && link.text);
           try { const url = new URL(link.href); return !/^https?:$/.test(url.protocol) || !url.hostname || link.target !== '_blank' || !/\bnoopener\b/.test(link.rel) || !link.text; }
           catch { return true; }
         });

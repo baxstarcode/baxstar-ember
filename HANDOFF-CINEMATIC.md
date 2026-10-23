@@ -1,5 +1,10 @@
 # Ember — Living Cinematic Handoff
 
+**2026-10-23 — Signal Log rides inside the dashboard (Claude):** YOUR TOOLS → Signal
+Log opens an overlay (same-origin frame, same sheet as the Knowledge Graph); cards
+carry `Open in Gmail/Calendar ↗` and **Ask Ember** (card → composer, unsent). The
+Schedule panel title squeeze is fixed (PR #54). Details: `docs/CURRENT-STATE.md`.
+
 **Voice check v6 — 2026-10-22 (Claude):** switching apps mid-reply no longer cuts
 Ember off; only an already-playing reply continues (mic and requests still stop).
 Next physical check: start a spoken reply on CarPlay, switch to Maps, and report

@@ -285,6 +285,8 @@ try {
     assert.deepEqual(calls.map(x => x.provider).sort(), ['calendar', 'gmail']); assert(calls.every(x => x.model === 'claude-haiku-5-5' && x.effort === 'low' && !x.stream), 'bounded Haiku low-effort JSON calls');
     await gmail.getByRole('button', { name: 'Open signal ↓' }).click();
     assert.equal(await gmail.locator('.source-list a').getAttribute('href'), 'https://mail.google.com/mail/u/0/#all/gmail-message-1');
+    assert.equal(await gmail.locator('.card-link[href]').getAttribute('href'), 'https://mail.google.com/mail/u/0/#all/gmail-message-1'); assert.equal(await gmail.locator('.card-link[href]').textContent(), 'Open in Gmail ↗');
+    assert.equal(await event.locator('.card-link[href]').getAttribute('href'), 'https://www.google.com/calendar/event?eid=guided'); assert.equal(await event.locator('.card-link[href]').textContent(), 'Open in Google Calendar ↗');
     assert.match(await gmail.locator('.detail').textContent(), /Verified provider read/);
     const refresh = async mode => { gatewayMode = mode; await p.getByRole('button', { name: 'Refresh sources', exact: true }).click(); await p.locator('#refresh-sources:not(:disabled)').waitFor(); };
     await refresh('degraded'); assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read');
@@ -304,6 +306,31 @@ try {
     assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable');
     await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /only on ember.baxstarfishing.com/); await p.keyboard.press('Escape');
     assert.equal(await p.locator('.signal-card').count(), 8); await c.close();
+  });
+  await test('Ask Ember hands a card to the dashboard composer: a navigation standalone, a same-origin message when embedded', async () => {
+    const c = await context();
+    await c.route(`${origin}/index.html*`, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>dashboard stub</title>' }));
+    const p = await load(c);
+    const card = p.locator('.signal-card').first(), title = await card.locator('h3').textContent();
+    assert.equal(await card.locator('.card-link[href]').getAttribute('target'), '_blank');
+    await Promise.all([p.waitForURL(/\/index\.html\?ask=/), card.getByRole('button', { name: /Ask Ember about/ }).click()]);
+    const ask = new URL(p.url()).searchParams.get('ask'); assert(ask.includes(title), 'the ask carries the card title'); assert(ask.includes('Suggested next step')); assert(ask.length <= 2000);
+    await c.route(`${origin}/__embed`, route => route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><script>window.__msgs=[];addEventListener('message',e=>window.__msgs.push({origin:e.origin,data:e.data}))</script><iframe id="f" src="/signal-log/" style="width:1200px;height:900px;border:0"></iframe>` }));
+    const host = await c.newPage(); host.setDefaultTimeout(6000); await host.goto(`${origin}/__embed`);
+    const frame = host.frameLocator('#f'); await frame.locator('.signal-card').nth(7).waitFor();
+    assert(await frame.locator('body').evaluate(b => b.classList.contains('is-embedded')), 'embedded class');
+    assert.equal(await frame.locator('.topbar').evaluate(n => getComputedStyle(n).display), 'none', 'duplicate chrome hidden when framed');
+    await frame.locator('.signal-card').first().getByRole('button', { name: /Ask Ember about/ }).click();
+    let msgs = [];
+    for (let i = 0; i < 40 && msgs.length < 1; i++) { msgs = await host.evaluate(() => window.__msgs); if (msgs.length < 1) await host.waitForTimeout(25); }
+    assert.equal(msgs.length, 1); assert.equal(msgs[0].origin, origin); assert.equal(msgs[0].data.type, 'ember-signal-ask'); assert(msgs[0].data.text.includes(title));
+    assert.equal(new URL(host.url()).pathname, '/__embed', 'embedded Ask Ember never navigates the frame');
+    await frame.locator('#search').press('Escape');
+    // postMessage delivery is a separate task in the host; poll instead of asserting at once.
+    let relayed = [];
+    for (let i = 0; i < 40 && relayed.length < 2; i++) { relayed = await host.evaluate(() => window.__msgs); if (relayed.length < 2) await host.waitForTimeout(25); }
+    assert.equal(relayed.at(-1)?.data.type, 'ember-signal-close');
+    await c.close();
   });
   await test('storage denial is visible and never prevents importing or viewing', async () => {
     const c = await context(); await c.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { get() { throw new Error('Storage blocked for test'); } }); });

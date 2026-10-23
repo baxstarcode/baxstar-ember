@@ -71,7 +71,7 @@ automatically restores wake words, background capture, or automatic listening re
 | `scripts/stage-pages.mjs` | Copies only public runtime files into `dist/` |
 | `scripts/sync-standalone.py` | Generates the gitignored local `_preview.html` |
 | `work/desktop-voice-probe/` | Isolated desktop and opt-in iPhone voice reliability lab |
-| `signal-log/` | Signal Log page: ranked Gmail/Calendar attention cards, read through the same gateway (`ember-feed.mjs`) |
+| `signal-log/` | Signal Log page: ranked Gmail/Calendar attention cards, read through the same gateway (`ember-feed.mjs`); opens in a dashboard overlay, cards link to Gmail/Calendar and hand themselves to the composer via Ask Ember |
 | `docs/CURRENT-STATE.md` | Concise active briefing and remaining work |
 | `docs/KNOWN-ISSUES.md` | Current open risks and deliberate limitations |
 | `SOURCES-OF-TRUTH.md` | File authority, voice policy, and provenance |

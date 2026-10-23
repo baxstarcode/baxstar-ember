@@ -401,6 +401,12 @@ account label is the Worker's single configured Google grant, not a per-request
 attestation; card classification is the model's judgment of the source text; each
 refresh costs two short Haiku calls.
 
+2026-10-23: the page now opens in a dashboard overlay from YOUR TOOLS (same-origin
+frame, no dock change), every card carries `Open in Gmail/Calendar ↗` and
+**Ask Ember** (hands the card to the composer unsent; `?ask=` deep link standalone).
+Escape inside the framed page closes the overlay because the page relays it; the
+same-origin frame is not subject to the cross-origin limit noted below.
+
 ## Expected behavior that is not a bug
 
 - In the Knowledge Graph overlay, Escape closes it unless focus is inside the embedded
