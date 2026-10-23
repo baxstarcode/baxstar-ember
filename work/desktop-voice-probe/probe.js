@@ -137,7 +137,7 @@ function beginTurn(source) {
 
 function report() {
   return {
-    experiment: "Ember explicit-turn voice reliability lab", version: 5,
+    experiment: "Ember explicit-turn voice reliability lab", version: 6,
     status: "PROVISIONAL: browser events are not physical-device proof",
     startedAt: sessionStarted,
     environment: { userAgent: navigator.userAgent, secureContext: window.isSecureContext,
@@ -251,9 +251,26 @@ function preserveInterruptedDraft() {
   return true;
 }
 
-function stopAll(reason = "Stopped. Click Talk to start a new turn.", preserveDraft = false) {
+// A reply that is already audible keeps playing when Brady switches apps (CarPlay
+// → Maps is the common case). Only playback survives: the microphone, any
+// in-flight request and any not-yet-started audio still stop, and nothing
+// restarts on return. Brady's 2026-10-22 CarPlay report showed the old rule
+// cutting Ember off 2.6 s into a replay the moment he left Safari.
+function playbackInProgress() {
+  return Boolean(audioUrl) && !recognition && !request && activeSpeechAttempt?.result === "playing";
+}
+
+function stopAll(reason = "Stopped. Click Talk to start a new turn.", preserveDraft = false, keepPlayback = false) {
   const wasCapturing = Boolean(recognition);
   const keptDraft = preserveDraft && preserveInterruptedDraft();
+  if (keepPlayback && playbackInProgress()) {
+    // The current audio element's handlers check `generation`; keep it so the
+    // clip can still report playing/ended. No request or mic is active here.
+    mark("tab-hidden", "playback-kept");
+    log("Left the page while Ember was speaking — playback continues; mic stays off.");
+    controls();
+    return;
+  }
   mark("stop-all", document.hidden ? "tab-hidden" : "explicit-or-page-exit");
   generation += 1;
   request?.abort();
@@ -793,7 +810,7 @@ $("copy-report").addEventListener("click", async () => {
   }
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopAll("Stopped while the tab was hidden. Existing text stays below. Use Send transcript to retry an interrupted request, or Play response for a completed reply.", true);
+  if (document.hidden) stopAll("Stopped while the tab was hidden. Existing text stays below. Use Send transcript to retry an interrupted request, or Play response for a completed reply.", true, true);
   else { mark("tab-returned"); controls(); }
 });
 window.addEventListener("pagehide", () => stopAll("Page left. Nothing restarts automatically.", true));

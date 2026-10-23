@@ -1,5 +1,17 @@
 # Ember — Sources of Truth & Build Provenance
 
+**2026-10-22, Signal Log on main with a live feed:** `signal-log/` (built by Codex
+on `codex/ember-signal-log`, draft PR #50) is merged and now reads Gmail and
+Calendar through the existing gateway via `signal-log/ember-feed.mjs`; see
+[`signal-log/README.md`](signal-log/README.md). The page owns its HTML/CSS/modules
+and v1 import contract; the only application-source change is one `TOOL_LINKS`
+entry (YOUR TOOLS → Signal Log). Worker, OAuth, gateway allowlist, voice and dock
+are untouched. **2026-10-23:** that entry became an overlay button (`SignalOverlay`
+in `src/baxstar-ember.jsx`, a same-origin frame of `signal-log/index.html`); the page
+gained per-card action links and Ask Ember (`signal-log/app.mjs`, same-origin
+messages `ember-signal-ask` / `ember-signal-close`, `?ask=` deep link). The dock is
+still six tiles.
+
 Multiple AI tools are now touching this project. This document is the authority on
 **which file is canonical for what**, and **who built which phase**, so no session or
 tool has to guess.
@@ -40,6 +52,13 @@ of links to Brady's other properties.
 ---
 
 ## Provenance — who did what
+
+- **Claude (Fable 5.1), 2026-10-22 — Signal Log live feed:** took over the Ember
+  build from Codex; merged `codex/ember-signal-log` onto current main; added
+  `signal-log/ember-feed.mjs` (same-origin `/api/messages`, one provider per call,
+  Haiku 5.5 low effort, verification by paired `mcp_tool_result`, per-record v1
+  projection), the YOUR TOOLS link, feed contract/browser tests, and the docs.
+  Also closed KNOWN-ISSUES §1a and landed Codex's final voice-evidence commits.
 
 - **Codex, 2026-10-18 (America/Chicago) — local saves and mobile usability:**
   replaced Mission Control's unsafe cross-tab localStorage writes with revision-

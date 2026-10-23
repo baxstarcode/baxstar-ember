@@ -1,5 +1,50 @@
 # Recorded voice rebuild — 2026-10-17
 
+**CarPlay requirement correction and v6 report — 2026-10-23 UTC:** Brady supplied
+session `2026-10-23T22:16:28.237Z` and explicitly rejected both app-switch trials as
+successful: the microphone stayed active only briefly, then stopped. His acceptance
+requirement is continued listening while using another app such as Maps/Gmail, not
+merely recovering a draft after capture stops. Do not count brief background mic
+activity, recovered text or an audible later reply as meeting that requirement.
+Codex acknowledged the earlier interpretation was wrong. Stop requesting repeated
+trials of the same intentional stop-on-hide behavior.
+
+Report facts: first and third captures preserved provisional words on tab hide;
+recognition-ended followed the hide/abort events by 18 ms and 81 ms. These browser
+timestamps cannot measure the physical mic indicator or the delay before visibility
+notification. The second capture started, then failed with `audio-capture` after
+about 20 seconds. A third explicit attempt retained/reviewed the draft, completed
+streamed text and played HTTP 200/audio (49392 bytes); the exported observation is
+Limited with mic indicator off and reply audible. Those component observations
+remain evidence, but Brady's overall outcome is **FAILED for background listening**.
+No hide event occurred during that final playback, so this report does not validate
+v6's separate keep-playing-a-reply behavior.
+
+Current executable truth inspected at main `f9b74fe`: Claude's `2a6076f` added v6,
+which preserves only already-playing output on hide; recognition still stops.
+This local branch is synchronized with main, preserving Claude's Signal Log and
+other updates. No runtime change or production deployment was made for this report.
+Before another voice implementation, verify a supported path for background capture
+on the actual iPhone/browser/platform; do not infer support from removing the JS
+handler, a momentary live mic, or a playing event. Native-app feasibility can be
+assessed but no native build, paid account or entitlement change is implied.
+
+
+**Voice check v6 background playback — October 22, 2026 (Claude):**
+Brady's CarPlay report (session `2026-10-22T13:02:49Z`, iPhone Safari 27.0.1,
+v5) played the fixed test sentence through to the end (8.3 s), then replayed it
+from the native player and switched apps 2.6 s in; the hide handler's `stopAll`
+cut Ember off by design and he marked the attempt Failed (mic off, audible: yes).
+v6 keeps a reply that is **already playing** when the page is hidden: no pause,
+the `playback` audio session is kept so iOS can continue over CarPlay, and the
+session returns to `auto` when the clip ends. Everything else on hide is unchanged:
+the microphone still closes at once (and v5 keeps received words), any in-flight
+text or speech request still cancels, audio that has not started yet is not
+started, and nothing restarts on return. The report records `tab-hidden /
+playback-kept`. Not proven: whether iOS actually keeps a backgrounded Safari
+`<audio>` element playing through CarPlay — that is the next physical check.
+This was a speech-only test, so it does not count toward the five-turn gate.
+
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
 Brady clarified that text disappeared on return, leaving nothing to replay. v4's
 hide handler aborted recognition and discarded provisional words; the interrupted

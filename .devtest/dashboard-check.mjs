@@ -33,6 +33,7 @@ function startStaticServer() {
     const type = {
       ".html": "text/html; charset=utf-8",
       ".js": "text/javascript; charset=utf-8",
+      ".mjs": "text/javascript; charset=utf-8",
       ".css": "text/css; charset=utf-8",
       ".json": "application/json; charset=utf-8",
       ".webmanifest": "application/manifest+json",
@@ -121,8 +122,8 @@ try {
       const text = isSync
         ? JSON.stringify({
             voicemails: [{ from: "(218) 555-0000", line: "Fishing", time: "1:00 PM", note: "live sync landed", vm: "" }],
-            emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data" }],
-            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "" }],
+            emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data", id: "18f2a9c7b3d4e5f6" }, { from: "HostileId", time: "1:02 PM", subject: "no link", id: "../evil#\"><img" }],
+            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "", link: "https://www.google.com/calendar/event?eid=abc123" }, { time: "8:00 AM", title: "LongDetailEvent", detail: "Verify https://baxstaroutdoors.com loads over https, then check the Wix plan renewal and the Google Business profile before noon.", link: "javascript:alert(1)" }, { time: "9:00 AM", title: "OffHostEvent", detail: "", link: "https://evil.example/calendar/event" }],
           })
         : "Two bookings today, Brady.";
       await route.fulfill({
@@ -153,6 +154,20 @@ try {
       reactor ? `${Math.round(reactor.height)}px` : "missing");
     check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
     check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));
+    // A sentence-length calendar detail must wrap under the title, never squeeze
+    // the title to one word per line or push the panel sideways (Brady, 2026-10-23).
+    const longRow = await page.locator(".ember-row").filter({ hasText: "LongDetailEvent" }).first();
+    const rowGeom = await longRow.evaluate((row) => {
+      const title = row.querySelector(".row-title"), note = row.querySelector(".row-note");
+      const panel = row.closest(".panel");
+      return { rowW: row.getBoundingClientRect().width, titleW: title.getBoundingClientRect().width, titleLines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)),
+        noteText: note?.textContent || "", noteWraps: note ? note.getBoundingClientRect().height > parseFloat(getComputedStyle(note).lineHeight) * 1.5 : false,
+        // Every .panel carries a structural 8px of scrollWidth from its border-image; measure the row itself.
+        overflow: row.scrollWidth - row.clientWidth, panelOverflow: panel ? panel.scrollWidth - panel.clientWidth : 0 };
+    });
+    check(`${name} long calendar detail wraps under the title instead of squeezing it`,
+      rowGeom.titleW >= rowGeom.rowW * 0.5 && rowGeom.titleLines <= 2 && rowGeom.noteText.startsWith("Verify https") && rowGeom.overflow <= 1,
+      JSON.stringify(rowGeom));
     const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));
     check(`${name} sync requests connector names only`,
       JSON.stringify(syncRequest?.mcp_servers) === JSON.stringify([{ name: "quo" }, { name: "gmail" }, { name: "calendar" }]));
@@ -164,8 +179,21 @@ try {
       afterUnverified.includes("LIVE SYNC LANDED") && afterUnverified.includes("LIVESYNCPROOF"));
     check(`${name} revenue panel present`, body.includes("TODAY'S REVENUE"));
 
+    const openGmail = page.locator(".ember-row").filter({ hasText: "LiveSyncProof" }).getByRole("link", { name: /Open in Gmail/ });
+    check(`${name} inbox row opens the message in Gmail from the returned id`,
+      (await openGmail.count()) === 1 && (await openGmail.getAttribute("href")) === "https://mail.google.com/mail/u/0/#all/18f2a9c7b3d4e5f6" &&
+      (await openGmail.getAttribute("target")) === "_blank" && /noopener/.test(await openGmail.getAttribute("rel") || ""));
+    check(`${name} a hostile message id renders no link`, (await page.locator(".ember-row").filter({ hasText: "HostileId" }).locator("a").count()) === 0);
+    const openCal = page.locator(".ember-row").filter({ hasText: "LiveSyncEvent" }).getByRole("link", { name: /Open in Calendar/ });
+    check(`${name} schedule row opens the event in Google Calendar`,
+      (await openCal.count()) === 1 && (await openCal.getAttribute("href")) === "https://www.google.com/calendar/event?eid=abc123");
+    check(`${name} javascript: and off-host calendar links render no link`,
+      (await page.locator(".ember-row").filter({ hasText: "LongDetailEvent" }).locator("a").count()) === 0 &&
+      (await page.locator(".ember-row").filter({ hasText: "OffHostEvent" }).locator("a").count()) === 0);
+    check(`${name} sync asks for the Gmail id and Calendar htmlLink`, /the Gmail message id exactly as the tool returned it/.test(JSON.stringify(syncRequest?.messages)) && /the event htmlLink exactly as the tool returned it/.test(JSON.stringify(syncRequest?.messages)));
+
     const links = await page.locator(".tool-link").count();
-    check(`${name} tools rail rendered`, body.includes("YOUR TOOLS") && links === 11, `${links} links`);
+    check(`${name} tools rail rendered`, body.includes("YOUR TOOLS") && links === 12, `${links} links`);
     const firstLink = page.locator(".tool-link").first();
     check(`${name} tool links open in a new tab`,
       (await firstLink.getAttribute("target")) === "_blank" && /noopener/.test(await firstLink.getAttribute("rel") || ""));
@@ -235,6 +263,44 @@ try {
     await page.mouse.click(8, 8);
     check("clicking the backdrop closes it", await page.getByRole("dialog", { name: "Knowledge Graph" }).count() === 0);
     check("closing restores the dashboard", await page.evaluate(() => !document.querySelector(".ember-shell").hasAttribute("inert")));
+    await context.close();
+  }
+
+  {
+    const context = await offlineContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    await page.goto(`${ORIGIN}/index.html?ask=${encodeURIComponent("Signal: confirm the Fair Hills blurb")}`, { waitUntil: "load" });
+    console.log("\n===== SIGNAL LOG OVERLAY =====");
+    const composer = page.getByRole("textbox", { name: "Ask Ember" });
+    check("?ask= prefills the composer unsent and leaves the address clean",
+      (await composer.inputValue()) === "Signal: confirm the Fair Hills blurb" && !page.url().includes("ask="));
+    await page.locator(".tools-rail").getByRole("button", { name: /Signal Log/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Signal Log" });
+    await dialog.waitFor();
+    const frame = page.frameLocator(".sl-frame");
+    await frame.locator(".signal-card").first().waitFor({ timeout: 10000 });
+    check("overlay frames the same-origin Signal Log page",
+      (await page.locator(".sl-frame").getAttribute("src")) === "signal-log/index.html" && (await frame.locator(".signal-card").count()) > 0);
+    check("framed page hides its duplicate top bar", await frame.locator(".topbar").evaluate((n) => getComputedStyle(n).display === "none"));
+    check("overlay makes the dashboard inert", await page.evaluate(() => document.querySelector(".ember-shell").hasAttribute("inert")));
+    check("full-page link opens in a new tab",
+      (await dialog.getByRole("link", { name: /Open full page/ }).getAttribute("target")) === "_blank" &&
+      (await dialog.getByRole("link", { name: /Open full page/ }).getAttribute("href")) === "signal-log/");
+    const first = frame.locator(".signal-card").first();
+    const title = await first.locator("h3").textContent();
+    await first.getByRole("button", { name: /Ask Ember about/ }).click();
+    await dialog.waitFor({ state: "detached" });
+    const handed = await composer.inputValue();
+    check("Ask Ember closes the overlay and hands the card to the composer, unsent",
+      handed.startsWith("About this signal from my Signal Log") && handed.includes(title) &&
+      (await page.evaluate(() => !document.querySelector(".ember-shell").hasAttribute("inert"))) &&
+      (await page.locator('[data-status="streaming"]').count()) === 0);
+    await page.locator(".tools-rail").getByRole("button", { name: /Signal Log/ }).click();
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: "Close Signal Log" }).click();
+    check("the close button closes it", (await dialog.count()) === 0);
     await context.close();
   }
 

@@ -1,6 +1,72 @@
 # Ember — Current State
 
-**v5 published:** implementation `e8c33d6` is on production. Cloudflare Pages
+**CarPlay requirement correction and v6 report — 2026-10-23 UTC:** Brady supplied
+session `2026-10-23T22:16:28.237Z` and explicitly rejected both app-switch trials as
+successful: the microphone stayed active only briefly, then stopped. His acceptance
+requirement is continued listening while using another app such as Maps/Gmail, not
+merely recovering a draft after capture stops. Do not count brief background mic
+activity, recovered text or an audible later reply as meeting that requirement.
+Codex acknowledged the earlier interpretation was wrong. Stop requesting repeated
+trials of the same intentional stop-on-hide behavior.
+
+Report facts: first and third captures preserved provisional words on tab hide;
+recognition-ended followed the hide/abort events by 18 ms and 81 ms. These browser
+timestamps cannot measure the physical mic indicator or the delay before visibility
+notification. The second capture started, then failed with `audio-capture` after
+about 20 seconds. A third explicit attempt retained/reviewed the draft, completed
+streamed text and played HTTP 200/audio (49392 bytes); the exported observation is
+Limited with mic indicator off and reply audible. Those component observations
+remain evidence, but Brady's overall outcome is **FAILED for background listening**.
+No hide event occurred during that final playback, so this report does not validate
+v6's separate keep-playing-a-reply behavior.
+
+Current executable truth inspected at main `f9b74fe`: Claude's `2a6076f` added v6,
+which preserves only already-playing output on hide; recognition still stops.
+This local branch is synchronized with main, preserving Claude's Signal Log and
+other updates. No runtime change or production deployment was made for this report.
+Before another voice implementation, verify a supported path for background capture
+on the actual iPhone/browser/platform; do not infer support from removing the JS
+handler, a momentary live mic, or a playing event. Native-app feasibility can be
+assessed but no native build, paid account or entitlement change is implied.
+
+
+**Signal Log in the dashboard — 2026-10-23 (Claude):** YOUR TOOLS → Signal Log now
+opens the page in an overlay (same sheet as the Knowledge Graph, a same-origin
+frame; the dock's six tiles are unchanged). Every card carries its action links:
+`Open in Gmail ↗` / `Open in Google Calendar ↗` in a new tab, and **Ask Ember**,
+which closes the overlay and places the card (title, summary, source fact, why, next
+step) in the composer unsent; standalone it is `index.html?ask=…`. Same-origin
+messages only (`ember-signal-ask`, `ember-signal-close`). The OPS Inbox and
+Schedule rows got the same treatment: the sync prompt now returns each message's
+Gmail id and each event's htmlLink, and a row shows `Open in Gmail ↗` /
+`Open in Calendar ↗` only when the page can build or allowlist the URL itself
+(Gmail id pattern; Google calendar hosts over https). Hostile values render no
+link; the dashboard check proves both. The Signal Log gained a third reader, Quo
+(missed calls and voicemails, 48 h, both inboxes, `source: "quo"`), with its own
+health row; it reports Unavailable until the coordinator cutover restores the Quo
+grant and never blocks Gmail or Calendar. Also: the Schedule panel's
+one-word-per-line titles are fixed (PR #54, long calendar details wrap under the
+title). Verified here: dashboard 117/117, layout 87/87, UI 36/36, Signal Log 25
+browser scenarios + 31 contract tests. Worker, grants, voice and dock unchanged.
+
+**Voice check v6 — 2026-10-22 (Claude):** switching apps mid-reply no longer cuts
+Ember off; only an already-playing reply continues (mic and requests still stop).
+Next physical check: start a spoken reply on CarPlay, switch to Maps, and report
+whether she keeps talking. Details: `docs/VOICE-REBUILD.md`.
+
+**Signal Log live feed — 2026-10-22 (Claude, taking over from Codex):** Codex's
+`/signal-log/` page (draft PR #50) is merged onto main and now reads Gmail and
+Calendar by itself when opened signed in at ember.baxstarfishing.com: one
+`/api/messages` call per provider, Haiku 5.5 at low effort, bounded to 25 inbox
+messages from 7 days and 40 events from −2 to +14 days, verified only by a
+successful `mcp_tool_result` for that provider, projected per record into the
+page's v1 contract. YOUR TOOLS gained a Signal Log link (12 links; the rail still
+fits on one screen at 1440×900). Verified here: full release matrix green with the
+new feed tests (24 browser scenarios, 31 contract tests). PROVISIONAL: the
+signed-in read on the custom domain, recorded in Known Issues §9 once Brady
+confirms it. Worker, grants, voice and the dock are unchanged.
+
+**Historical v5 publication (superseded by v6):** implementation `e8c33d6` shipped to production. Cloudflare Pages
 `5af9f31e-d831-45b4-8686-e0123187e93d` completed successfully on October 22 at
 **03:08:18 America/Chicago** (`08:08:18 UTC`) with the custom-domain alias
 `https://ember.baxstarfishing.com`. Public workspace access returns HTTP 403 without
@@ -10,7 +76,6 @@ return and review/continue the retained draft, then explicitly Send/Play. No mic
 or speech restarts automatically. Worker, OAuth grants and main skull activation
 were unchanged. The repair is complete and ready for the next physical check;
 Brady asked to continue building while he sleeps, so no immediate test was requested.
-
 
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
 Brady clarified that text disappeared on return, leaving nothing to replay. v4's

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "workspaceId": "baxstar",
+  "accountId": "baxstar-fishing",
+  "source": "claude",
+  "signals": [
+    {
+      "id": "example-weekly-review",
+      "occurrenceAt": "2026-10-12T10:00:00Z",
+      "title": "Example only: review a weekly note",
+      "summary": "Example only. Replace this with a bounded summary from your selected weekly report.",
+      "categories": [
+        "fishing",
+        "rentals"
+      ],
+      "kind": "information",
+      "priority": "routine",
+      "impact": 2,
+      "effortMinutes": 5,
+      "confidence": 0.5,
+      "actionable": true,
+      "blocked": false,
+      "dueKind": "unknown",
+      "observedAt": "2026-10-12T11:00:00Z",
+      "sourceUpdatedAt": "2026-10-12T10:30:00Z",
+      "reviewAt": null,
+      "details": {
+        "signal": "Example only: no actual reminder or business record is included.",
+        "why": "A specific next step makes a report easier to use.",
+        "next": "If reviewing this report, open its full source and verify the current state.",
+        "prompt": "Help me identify one low-effort next step from the verified facts. Keep guesses separate."
+      },
+      "sources": [
+        {
+          "label": "Replace with your full report URL",
+          "url": "https://example.com/replace-with-source"
+        }
+      ]
+    }
+  ]
+}

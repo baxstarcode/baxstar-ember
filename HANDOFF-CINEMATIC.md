@@ -1,6 +1,54 @@
 # Ember — Living Cinematic Handoff
 
-**v5 published:** implementation `e8c33d6` is on production. Cloudflare Pages
+**CarPlay requirement correction and v6 report — 2026-10-23 UTC:** Brady supplied
+session `2026-10-23T22:16:28.237Z` and explicitly rejected both app-switch trials as
+successful: the microphone stayed active only briefly, then stopped. His acceptance
+requirement is continued listening while using another app such as Maps/Gmail, not
+merely recovering a draft after capture stops. Do not count brief background mic
+activity, recovered text or an audible later reply as meeting that requirement.
+Codex acknowledged the earlier interpretation was wrong. Stop requesting repeated
+trials of the same intentional stop-on-hide behavior.
+
+Report facts: first and third captures preserved provisional words on tab hide;
+recognition-ended followed the hide/abort events by 18 ms and 81 ms. These browser
+timestamps cannot measure the physical mic indicator or the delay before visibility
+notification. The second capture started, then failed with `audio-capture` after
+about 20 seconds. A third explicit attempt retained/reviewed the draft, completed
+streamed text and played HTTP 200/audio (49392 bytes); the exported observation is
+Limited with mic indicator off and reply audible. Those component observations
+remain evidence, but Brady's overall outcome is **FAILED for background listening**.
+No hide event occurred during that final playback, so this report does not validate
+v6's separate keep-playing-a-reply behavior.
+
+Current executable truth inspected at main `f9b74fe`: Claude's `2a6076f` added v6,
+which preserves only already-playing output on hide; recognition still stops.
+This local branch is synchronized with main, preserving Claude's Signal Log and
+other updates. No runtime change or production deployment was made for this report.
+Before another voice implementation, verify a supported path for background capture
+on the actual iPhone/browser/platform; do not infer support from removing the JS
+handler, a momentary live mic, or a playing event. Native-app feasibility can be
+assessed but no native build, paid account or entitlement change is implied.
+
+
+**2026-10-23 — Signal Log rides inside the dashboard (Claude):** YOUR TOOLS → Signal
+Log opens an overlay (same-origin frame, same sheet as the Knowledge Graph); cards
+carry `Open in Gmail/Calendar ↗` and **Ask Ember** (card → composer, unsent). The
+Schedule panel title squeeze is fixed (PR #54). Details: `docs/CURRENT-STATE.md`.
+
+**Voice check v6 — 2026-10-22 (Claude):** switching apps mid-reply no longer cuts
+Ember off; only an already-playing reply continues (mic and requests still stop).
+Next physical check: start a spoken reply on CarPlay, switch to Maps, and report
+whether she keeps talking. Details: `docs/VOICE-REBUILD.md`.
+
+**2026-10-22 — Claude took over the build from Codex; Signal Log is live:** read
+`docs/CURRENT-STATE.md` first. `/signal-log/` (YOUR TOOLS → Signal Log) now reads
+Gmail and Calendar through the existing gateway (`signal-log/ember-feed.mjs`);
+its signed-in production read is PROVISIONAL until Brady confirms it
+(`docs/KNOWN-ISSUES.md` §9). The voice five-turn gate (3 of 5 physical passes),
+the coordinator Worker cutover with fresh consent, and the voice AI binding remain
+the open items; none of them changed here. PR #50 is superseded by this merge.
+
+**Historical v5 publication (superseded by v6):** implementation `e8c33d6` shipped to production. Cloudflare Pages
 `5af9f31e-d831-45b4-8686-e0123187e93d` completed successfully on October 22 at
 **03:08:18 America/Chicago** (`08:08:18 UTC`) with the custom-domain alias
 `https://ember.baxstarfishing.com`. Public workspace access returns HTTP 403 without
@@ -10,7 +58,6 @@ return and review/continue the retained draft, then explicitly Send/Play. No mic
 or speech restarts automatically. Worker, OAuth grants and main skull activation
 were unchanged. The repair is complete and ready for the next physical check;
 Brady asked to continue building while he sleeps, so no immediate test was requested.
-
 
 **Voice check v5 interruption recovery — October 22, 2026 (America/Chicago):**
 Brady clarified that text disappeared on return, leaving nothing to replay. v4's

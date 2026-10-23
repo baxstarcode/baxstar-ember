@@ -215,7 +215,7 @@ async function run(label, viewport) {
   });
   check(`${label}: dock Projects button lands on the dashboard`,
     proj.cats.includes("Revenue Generating") && proj.cats.includes("Supporting"), JSON.stringify(proj.cats));
-  check(`${label}: 8 horizontal bars, each fill width matches its pct`, proj.bars === 8 && proj.allMatch, JSON.stringify(proj));
+  check(`${label}: 9 horizontal bars, each fill width matches its pct`, proj.bars === 9 && proj.allMatch, JSON.stringify(proj));
   check(`${label}: Zapier task usage strip present`, proj.zapier);
   const projOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check(`${label}: projects view has no horizontal overflow`, projOverflow <= 0, `${projOverflow}px`);

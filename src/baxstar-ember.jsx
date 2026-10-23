@@ -222,6 +222,7 @@ const TOOL_LINKS = [
     { label: "Caption Studio", url: "https://baxstarcode.github.io/caption-studio/", note: "standalone" },
     { label: "Pontoon Check-In", url: "https://baxstarcode.github.io/baxstar-pontoon/", note: "rentals" },
     { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" },
+    { label: "Signal Log", url: "https://ember.baxstarfishing.com/signal-log/", note: "ranked attention", overlay: "signal" },
   ]},
   { group: "Back office", items: [
     { label: "FareHarbor", url: "https://fareharbor.com/dashboard/", note: "bookings" },
@@ -329,7 +330,7 @@ const ECO_EDGES = [
 ];
 
 const PROJECTS_META = {
-  updated: "2026-08-24",
+  updated: "2026-10-23",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
 };
 
@@ -352,6 +353,9 @@ const PROJECTS = [
       { name: "Lakes Golf Simulator site", pct: 15, platform: "ChatGPT",
         links: [["site", "https://lakesgolfsim.com"]],
         outstanding: "Tech-camp page only — main site unbuilt", sessions: "~5" },
+      { name: "bradybaxter.com (consulting)", pct: 85, platform: "Claude",
+        links: [["site", "https://bradybaxter.com"], ["repo", "https://github.com/baxstarcode/bradybaxter-site"]],
+        outstanding: "LIVE 10-23 — portfolio chapter (6 exhibits), pricing demo, lightbox, Caption Studio runnable on the page, short addresses. Left: Brady's 4 pictures (camp, rod and reel, deck before/after → exhibit 07), pontoon video. Built in its own repo/session from here on", sessions: "~1" },
     ],
   },
   {
@@ -359,7 +363,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
         links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Desktop dashboard and chat reliability checks in progress. Desktop voice probe pending Mac verification.", sessions: "~0.5" },
+        outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Left: voice gate 3/5, coordinator cutover + consent (Brady), Quo back online", sessions: "~1" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",
@@ -1563,6 +1567,23 @@ export default function BaxstarEmber() {
   const [promptRunning, setPromptRunning] = useState(null);  // which push-plate is running
   const [graphOpen, setGraphOpen] = useState(false);
   const closeGraph = useRef(() => setGraphOpen(false)).current;
+  // Signal Log rides in an overlay off the tools rail (Brady, 2026-10-22: the page is
+  // acceptable "especially if the buttons connect to relevant pages/apps"). The framed
+  // page hands a card to the composer by same-origin message; nothing else crosses.
+  const [signalOpen, setSignalOpen] = useState(false);
+  const closeSignal = useRef(() => setSignalOpen(false)).current;
+  useEffect(() => {
+    const onMessage = (e) => {
+      if (e.origin !== window.location.origin || !e.data || typeof e.data !== "object") return;
+      if (e.data.type === "ember-signal-ask" && typeof e.data.text === "string") {
+        setSignalOpen(false); setView("ops");
+        setCommand(e.data.text.slice(0, 2000));
+        setTimeout(() => cmdInputRef.current?.focus(), 50);
+      } else if (e.data.type === "ember-signal-close") setSignalOpen(false);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
   const [leverPending, setLeverPending] = useState(null); // pending-review pulse
   const [draftEdit, setDraftEdit] = useState(null);       // editable lever draft text
   const [draftCopied, setDraftCopied] = useState(false);
@@ -1790,6 +1811,16 @@ export default function BaxstarEmber() {
         /(^|[#/])caption/.test(hash);
       if (wantsCaption) { setView("studio"); setStudioTool("captions"); }
       if (qs.get("lean") === "1" || /lean/.test(hash)) { setLeanCaption(true); setView("studio"); setStudioTool("captions"); }
+      // ?ask=<text> lands in the composer, unsent — the standalone Signal Log's Ask Ember.
+      // The parameter is dropped from the address so a reload does not re-prefill.
+      const ask = qs.get("ask");
+      if (ask && ask.trim()) {
+        setCommand(ask.slice(0, 2000));
+        qs.delete("ask");
+        const query = qs.toString();
+        window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash || ""}`);
+        setTimeout(() => cmdInputRef.current?.focus(), 0);
+      }
     } catch (e) { /* no location — artifact/SSR */ }
 
     // Old builds stored a write-capable destination in localStorage. The server gateway
@@ -2127,8 +2158,8 @@ export default function BaxstarEmber() {
       };
       const shapes = {
         voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
-        emails: '"emails":[{"from":"","time":"","subject":""}]',
-        events: '"events":[{"time":"","title":"","detail":""}]',
+        emails: '"emails":[{"from":"","time":"","subject":"","id":"the Gmail message id exactly as the tool returned it"}]',
+        events: '"events":[{"time":"","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]',
       };
       const prompt = `${bradyContext()}
 
@@ -3660,6 +3691,11 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .kg-close:hover { filter:brightness(1.2); border-color:var(--ember-brass-bright); }
         .kg-body { position:relative; flex:1; min-height:0; }
         .kg-works { height:100%; overflow:auto; padding:10px; }
+        /* SIGNAL LOG overlay: the same sheet, holding the same-origin page in a frame. */
+        .sl-frame { display:block; width:100%; height:100%; border:0; background:#0b0806; }
+        .sl-full { margin-left:auto; display:inline-flex; align-items:center; min-height:36px; text-decoration:none; white-space:nowrap; }
+        .sl-overlay .kg-close { margin-left:0; }
+        button.tool-link { font-family:inherit; text-align:left; cursor:pointer; appearance:none; -webkit-appearance:none; color:inherit; }
         .kg-works .eco-rail { margin:0; }
         .kg-works .reveal { opacity:1; animation:none; }
         @media (max-width:760px) {
@@ -3669,7 +3705,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
-        .ember-row .row-title { font-size:13.5px; line-height:1.25; }
+        .ember-row .row-title { font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
+        .ember-row .row-note { margin-top:3px; font-size:11.5px; line-height:1.4; color:var(--ink-dim); overflow-wrap:anywhere; }
+        .row-open { display:inline-flex; align-items:center; min-height:24px; padding:3px 8px; border-radius:8px; border:1px solid var(--line);
+          font-size:10.5px; font-weight:700; color:var(--brass); text-decoration:none; white-space:nowrap; }
+        .row-open:hover { border-color:var(--line-hot); color:var(--ink); }
+        @media (pointer:coarse) { .row-open { min-height:44px; padding:0 12px; } }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments — outer frame corners only, never behind text */
@@ -3812,7 +3853,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .tools-rail { width:100%; padding:7px 12px 10px; flex:none; }
         .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
           border-bottom:1px solid var(--ember-panel-line); }
-        .tools-groups { display:grid; grid-template-columns:repeat(11,minmax(0,1fr)); gap:7px; }
+        .tools-groups { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:7px; }
         .tools-group, .tools-links { display:contents; }
         .tools-group .fieldlabel, .tool-note { display:none; }
         .tool-link { display:flex; flex-direction:column; gap:1px; min-width:0;
@@ -4422,6 +4463,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     <button className="chip ghost task-draft-button" disabled={taskSaving} onClick={(e) => { e.stopPropagation(); openTaskDraft(m, "email", i); }}>
                       Task draft
                     </button>
+                    <SourceLink href={gmailLink(m.id)} label="Open in Gmail" />
                   </div>
                 </Row>
               ))}
@@ -4430,7 +4472,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
             <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
               {data.events.length === 0 && <p className="feed-empty">No calendar events returned for today or tomorrow.</p>}
               {data.events.map((e, i) => (
-                <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail} />
+                <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail}>
+                  {calendarLink(e.link) && <div className="mt-1.5"><SourceLink href={calendarLink(e.link)} label="Open in Calendar" /></div>}
+                </Row>
               ))}
             </Panel>
           </div>
@@ -4452,7 +4496,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <div key={g.group} className="tools-group">
                   <div className="fieldlabel">{g.group}</div>
                   <div className="tools-links">
-                    {g.items.map((t) => (
+                    {g.items.map((t) => t.overlay === "signal" ? (
+                      <button key={t.url} type="button" className="tool-link" title={`${g.group} · ${t.note} · opens here`}
+                        onClick={() => setSignalOpen(true)} aria-haspopup="dialog">
+                        <span className="tool-name">{t.label}</span>
+                        <span className="tool-note">{t.note}</span>
+                      </button>
+                    ) : (
                       <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="tool-link" title={`${g.group} · ${t.note}`}>
                         <span className="tool-name">{t.label}</span>
                         <span className="tool-note">{t.note}</span>
@@ -5159,6 +5209,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         )}
       </div>
       <GraphOverlay open={graphOpen} onClose={closeGraph} />
+      <SignalOverlay open={signalOpen} onClose={closeSignal} />
     </div>
   );
 }
@@ -5970,6 +6021,45 @@ function GraphOverlay({ open, onClose }) {
   );
 }
 
+function SignalOverlay({ open, onClose }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.activeElement;
+    const shell = document.querySelector(".ember-shell");
+    shell?.setAttribute("inert", "");
+    closeRef.current?.focus();
+    // Escape inside the frame is relayed by the page itself (ember-signal-close).
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      shell?.removeAttribute("inert");
+      previous?.focus?.();
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="kg-overlay sl-overlay" role="dialog" aria-modal="true" aria-label="Signal Log"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="kg-sheet">
+        {["tl","tr","bl","br"].map((corner) => <span key={corner} className={`kg-rivet ${corner}`} aria-hidden="true"/>)}
+        <div className="kg-head">
+          <span className="kg-title font-display"><small>BAXSTAR EMBER · RANKED ATTENTION</small><span>Signal <em>Log</em></span></span>
+          <a className="fa-control sl-full" href="signal-log/" target="_blank" rel="noopener noreferrer">Open full page ↗</a>
+          <button ref={closeRef} type="button" className="kg-close" onClick={onClose} aria-label="Close Signal Log">✕</button>
+        </div>
+        <div className="kg-body">
+          <iframe className="sl-frame" src="signal-log/index.html" title="Signal Log" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    THE ECOSYSTEM GRAPH — read-only picture of what touches what.
 
@@ -6258,14 +6348,41 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
   );
 }
 
+/* The right-hand mono tag was sized for "SLIP 3" and "4 GUESTS". Live calendar
+   details are sentences ("Verify https://… loads over…"), and a non-shrinking tag
+   squeezed the title to one word per line (Brady, 2026-10-23). Short details stay
+   as the tag; anything longer wraps on its own line under the title. */
+const ROW_TAG_MAX = 22;
+/* Source links on the OPS rows (2026-10-23). The model hands back a Gmail message id
+   and a Calendar htmlLink; the page builds the Gmail URL itself from an id that looks
+   like one, and accepts a Calendar link only on Google's own calendar hosts. Anything
+   else renders no link at all — a hostile value can never become a clickable href. */
+function gmailLink(id) {
+  return typeof id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(id) ? `https://mail.google.com/mail/u/0/#all/${id}` : null;
+}
+function calendarLink(link) {
+  try {
+    const u = new URL(String(link || ""));
+    if (u.protocol !== "https:") return null;
+    if (u.hostname === "calendar.google.com" || (u.hostname === "www.google.com" && u.pathname.startsWith("/calendar/"))) return u.href;
+  } catch (e) { /* not a URL */ }
+  return null;
+}
+function SourceLink({ href, label }) {
+  if (!href) return null;
+  return <a className="row-open" href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{label} ↗</a>;
+}
+
 function Row({ who, when, children, onClick, selected }) {
+  const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
   return (
     <div className={`ember-row border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`}
       style={{ borderColor: "rgba(255,90,60,.09)" }} onClick={onClick}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="row-title text-[13px] font-semibold">{who}</span>
-        {when && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}
+        <span className="row-title min-w-0 text-[13px] font-semibold">{who}</span>
+        {when && tag && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}
       </div>
+      {when && !tag && <p className="row-note">{when}</p>}
       {children}
     </div>
   );

@@ -165,6 +165,18 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**October 23 requirement correction:** Brady rejects both v6 app-switch trials:
+he needs continued listening while using another app, and the mic stopped. v6
+intentionally stops recognition on hide; it only preserves already-playing replies.
+Draft recovery and a later audible reply do not satisfy background listening.
+Report also contains one `audio-capture` failure. Stop repeating the same hide test;
+verify supported background capture before proposing another implementation.
+
+**October 22 background playback (v6):** switching apps no longer cuts off a reply
+that is already playing; the mic and in-flight requests still stop. Whether iOS
+keeps a backgrounded Safari reply audible over CarPlay is the next physical check.
+See the newest Voice Rebuild entry.
+
 **October 22 interruption fix:** v5 retains received provisional words as an editable
 interrupted draft, supports explicit Continue talking, and blocks late abort results
 from replacing it. Completed replies remain replayable after returning. No automatic
@@ -376,6 +388,38 @@ no file contents were read. This verifies honest failure/recovery behavior and b
 live provider reads, not uninterrupted availability of all four providers. Run the dedicated
 `/api/connectors/status` check before recording current per-provider state. Do not infer
 provider availability from local mocks, secret names, or an HTTP 200 from another route.
+
+## 9. Signal Log live feed is wired; the signed-in production read is unconfirmed
+
+**Status: SHIPPED 2026-10-22 — PROVISIONAL until Brady opens it signed in**
+
+`/signal-log/` (YOUR TOOLS → Signal Log) now reads Gmail and Calendar through the
+same Access → Pages → Worker gateway the dashboard uses, one provider per call,
+with Haiku 5.5 at low effort projecting bounded results into the page's v1 contract
+(`signal-log/ember-feed.mjs`). A provider is labelled `VERIFIED READ` only when the
+reply carried a successful `mcp_tool_result` for it; a connector-free fallback is
+reported as "no successful tool result" and prior cards are kept and labelled stale.
+Verified in this container with intercepted gateway replies (24 browser scenarios,
+31 contract tests). Not yet verified: one signed-in read on the custom domain —
+the container has no Access session. What a real read depends on: Gmail and
+Calendar connector health (same as OPS; Quo is not involved) and Haiku following
+the JSON contract; a malformed card is dropped, never the whole read. Limits: the
+account label is the Worker's single configured Google grant, not a per-request
+attestation; card classification is the model's judgment of the source text; each
+refresh costs two short Haiku calls.
+
+2026-10-23: the page now opens in a dashboard overlay from YOUR TOOLS (same-origin
+frame, no dock change), every card carries `Open in Gmail/Calendar ↗` and
+**Ask Ember** (hands the card to the composer unsent; `?ask=` deep link standalone).
+Escape inside the framed page closes the overlay because the page relays it; the
+same-origin frame is not subject to the cross-origin limit noted below. The OPS
+Inbox and Schedule rows link to their Gmail message / Calendar event the same way
+(id and htmlLink returned by the sync; URL built or allowlisted by the page). If a
+live sync returns rows without links, Haiku omitted the id/htmlLink for that row;
+the row still renders, just without the link. The Signal Log also reads **Quo**
+now (missed calls + voicemails, 48 h, both inboxes); per-provider health means the
+Quo row simply reads Unavailable until the coordinator cutover (§1b) brings the
+grant back, and Gmail/Calendar cards are unaffected.
 
 ## Expected behavior that is not a bug
 

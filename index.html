@@ -489,7 +489,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { group: "Tools", items: [
       { label: "Caption Studio", url: "https://baxstarcode.github.io/caption-studio/", note: "standalone" },
       { label: "Pontoon Check-In", url: "https://baxstarcode.github.io/baxstar-pontoon/", note: "rentals" },
-      { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" }
+      { label: "Classroom", url: "https://learn.lakesgolfsim.com", note: "live sessions" },
+      { label: "Signal Log", url: "https://ember.baxstarfishing.com/signal-log/", note: "ranked attention", overlay: "signal" }
     ] },
     { group: "Back office", items: [
       { label: "FareHarbor", url: "https://fareharbor.com/dashboard/", note: "bookings" },
@@ -610,7 +611,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     ["blog", "fishing"]
   ];
   const PROJECTS_META = {
-    updated: "2026-08-24",
+    updated: "2026-10-23",
     zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" }
   };
   const PROJECTS = [
@@ -656,6 +657,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           links: [["site", "https://lakesgolfsim.com"]],
           outstanding: "Tech-camp page only \u2014 main site unbuilt",
           sessions: "~5"
+        },
+        {
+          name: "bradybaxter.com (consulting)",
+          pct: 85,
+          platform: "Claude",
+          links: [["site", "https://bradybaxter.com"], ["repo", "https://github.com/baxstarcode/bradybaxter-site"]],
+          outstanding: "LIVE 10-23 \u2014 portfolio chapter (6 exhibits), pricing demo, lightbox, Caption Studio runnable on the page, short addresses. Left: Brady's 4 pictures (camp, rod and reel, deck before/after \u2192 exhibit 07), pontoon video. Built in its own repo/session from here on",
+          sessions: "~1"
         }
       ]
     },
@@ -667,8 +676,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           pct: 97,
           platform: "Claude + Codex",
           links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-          outstanding: "Desktop dashboard and chat reliability checks in progress. Desktop voice probe pending Mac verification.",
-          sessions: "~0.5"
+          outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Left: voice gate 3/5, coordinator cutover + consent (Brady), Quo back online",
+          sessions: "~1"
         },
         {
           name: "Agent OS logs + trimmers",
@@ -778,7 +787,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-19 02:33Z".startsWith("__") ? "dev" : "2026-10-19 02:33Z";
+  const BUILD_STAMP = "2026-10-23 17:34Z".startsWith("__") ? "dev" : "2026-10-23 17:34Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1803,6 +1812,24 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [promptRunning, setPromptRunning] = useState(null);
     const [graphOpen, setGraphOpen] = useState(false);
     const closeGraph = useRef(() => setGraphOpen(false)).current;
+    const [signalOpen, setSignalOpen] = useState(false);
+    const closeSignal = useRef(() => setSignalOpen(false)).current;
+    useEffect(() => {
+      const onMessage = (e) => {
+        if (e.origin !== window.location.origin || !e.data || typeof e.data !== "object") return;
+        if (e.data.type === "ember-signal-ask" && typeof e.data.text === "string") {
+          setSignalOpen(false);
+          setView("ops");
+          setCommand(e.data.text.slice(0, 2e3));
+          setTimeout(() => {
+            var _a2;
+            return (_a2 = cmdInputRef.current) == null ? void 0 : _a2.focus();
+          }, 50);
+        } else if (e.data.type === "ember-signal-close") setSignalOpen(false);
+      };
+      window.addEventListener("message", onMessage);
+      return () => window.removeEventListener("message", onMessage);
+    }, []);
     const [leverPending, setLeverPending] = useState(null);
     const [draftEdit, setDraftEdit] = useState(null);
     const [draftCopied, setDraftCopied] = useState(false);
@@ -1997,6 +2024,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           setLeanCaption(true);
           setView("studio");
           setStudioTool("captions");
+        }
+        const ask = qs.get("ask");
+        if (ask && ask.trim()) {
+          setCommand(ask.slice(0, 2e3));
+          qs.delete("ask");
+          const query = qs.toString();
+          window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash || ""}`);
+          setTimeout(() => {
+            var _a2;
+            return (_a2 = cmdInputRef.current) == null ? void 0 : _a2.focus();
+          }, 0);
         }
       } catch (e) {
       }
@@ -2308,8 +2346,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         };
         const shapes = {
           voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
-          emails: '"emails":[{"from":"","time":"","subject":""}]',
-          events: '"events":[{"time":"","title":"","detail":""}]'
+          emails: '"emails":[{"from":"","time":"","subject":"","id":"the Gmail message id exactly as the tool returned it"}]',
+          events: '"events":[{"time":"","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]'
         };
         const prompt = `${bradyContext()}
 
@@ -3749,6 +3787,11 @@ Check Gmail for anything newer.`;
         .kg-close:hover { filter:brightness(1.2); border-color:var(--ember-brass-bright); }
         .kg-body { position:relative; flex:1; min-height:0; }
         .kg-works { height:100%; overflow:auto; padding:10px; }
+        /* SIGNAL LOG overlay: the same sheet, holding the same-origin page in a frame. */
+        .sl-frame { display:block; width:100%; height:100%; border:0; background:#0b0806; }
+        .sl-full { margin-left:auto; display:inline-flex; align-items:center; min-height:36px; text-decoration:none; white-space:nowrap; }
+        .sl-overlay .kg-close { margin-left:0; }
+        button.tool-link { font-family:inherit; text-align:left; cursor:pointer; appearance:none; -webkit-appearance:none; color:inherit; }
         .kg-works .eco-rail { margin:0; }
         .kg-works .reveal { opacity:1; animation:none; }
         @media (max-width:760px) {
@@ -3758,7 +3801,12 @@ Check Gmail for anything newer.`;
         }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
-        .ember-row .row-title { font-size:13.5px; line-height:1.25; }
+        .ember-row .row-title { font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
+        .ember-row .row-note { margin-top:3px; font-size:11.5px; line-height:1.4; color:var(--ink-dim); overflow-wrap:anywhere; }
+        .row-open { display:inline-flex; align-items:center; min-height:24px; padding:3px 8px; border-radius:8px; border:1px solid var(--line);
+          font-size:10.5px; font-weight:700; color:var(--brass); text-decoration:none; white-space:nowrap; }
+        .row-open:hover { border-color:var(--line-hot); color:var(--ink); }
+        @media (pointer:coarse) { .row-open { min-height:44px; padding:0 12px; } }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments \u2014 outer frame corners only, never behind text */
@@ -3901,7 +3949,7 @@ Check Gmail for anything newer.`;
         .tools-rail { width:100%; padding:7px 12px 10px; flex:none; }
         .tools-head { display:flex; align-items:center; gap:7px; padding-bottom:9px; margin-bottom:11px;
           border-bottom:1px solid var(--ember-panel-line); }
-        .tools-groups { display:grid; grid-template-columns:repeat(11,minmax(0,1fr)); gap:7px; }
+        .tools-groups { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:7px; }
         .tools-group, .tools-links { display:contents; }
         .tools-group .fieldlabel, .tool-note { display:none; }
         .tool-link { display:flex; flex-direction:column; gap:1px; min-width:0;
@@ -4478,9 +4526,21 @@ Check Gmail for anything newer.`;
         } }, "Draft reply"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost task-draft-button", disabled: taskSaving, onClick: (e) => {
           e.stopPropagation();
           openTaskDraft(m, "email", i);
-        } }, "Task draft"))
+        } }, "Task draft"), /* @__PURE__ */ React.createElement(SourceLink, { href: gmailLink(m.id), label: "Open in Gmail" }))
       ))
-    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => /* @__PURE__ */ React.createElement("a", { key: t.url, href: t.url, target: "_blank", rel: "noopener noreferrer", className: "tool-link", title: `${g.group} \xB7 ${t.note}` }, /* @__PURE__ */ React.createElement("span", { className: "tool-name" }, t.label), /* @__PURE__ */ React.createElement("span", { className: "tool-note" }, t.note)))))))), view === "studio" && /* @__PURE__ */ React.createElement("div", { className: "studio-stack flex-1" }, !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "studio-tools-panel panel reveal px-5 py-4", style: { animationDelay: "0.08s" } }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "tool-grid" }, TOOLS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, className: `tool-tile ${studioTool === t.id ? "on" : ""}`, onClick: () => setStudioTool(t.id) }, /* @__PURE__ */ React.createElement("span", { className: "tic" }, t.id === "drive" || t.id === "github" ? /* @__PURE__ */ React.createElement(BrandMark, { tool: t.id, active: studioTool === t.id }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: t.icon })), t.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, studioTool === "captions" && /* @__PURE__ */ React.createElement("div", { className: "cap-grid flex-1" }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }, calendarLink(e.link) && /* @__PURE__ */ React.createElement("div", { className: "mt-1.5" }, /* @__PURE__ */ React.createElement(SourceLink, { href: calendarLink(e.link), label: "Open in Calendar" }))))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: t.url,
+        type: "button",
+        className: "tool-link",
+        title: `${g.group} \xB7 ${t.note} \xB7 opens here`,
+        onClick: () => setSignalOpen(true),
+        "aria-haspopup": "dialog"
+      },
+      /* @__PURE__ */ React.createElement("span", { className: "tool-name" }, t.label),
+      /* @__PURE__ */ React.createElement("span", { className: "tool-note" }, t.note)
+    ) : /* @__PURE__ */ React.createElement("a", { key: t.url, href: t.url, target: "_blank", rel: "noopener noreferrer", className: "tool-link", title: `${g.group} \xB7 ${t.note}` }, /* @__PURE__ */ React.createElement("span", { className: "tool-name" }, t.label), /* @__PURE__ */ React.createElement("span", { className: "tool-note" }, t.note)))))))), view === "studio" && /* @__PURE__ */ React.createElement("div", { className: "studio-stack flex-1" }, !leanCaption && /* @__PURE__ */ React.createElement("div", { className: "studio-tools-panel panel reveal px-5 py-4", style: { animationDelay: "0.08s" } }, /* @__PURE__ */ React.createElement("span", { className: "notch hot" }), /* @__PURE__ */ React.createElement("div", { className: "tool-grid" }, TOOLS.map((t) => /* @__PURE__ */ React.createElement("button", { key: t.id, className: `tool-tile ${studioTool === t.id ? "on" : ""}`, onClick: () => setStudioTool(t.id) }, /* @__PURE__ */ React.createElement("span", { className: "tic" }, t.id === "drive" || t.id === "github" ? /* @__PURE__ */ React.createElement(BrandMark, { tool: t.id, active: studioTool === t.id }) : /* @__PURE__ */ React.createElement(EmberIcon, { name: t.icon })), t.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex min-h-0 flex-1 flex-col" }, studioTool === "captions" && /* @__PURE__ */ React.createElement("div", { className: "cap-grid flex-1" }, /* @__PURE__ */ React.createElement(
       Panel,
       {
         notch: "warm",
@@ -5004,7 +5064,7 @@ Check Gmail for anything newer.`;
       /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "242.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement(DockMech, { kind: "furnace" })),
       /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Knowl", "\xAD", "edge Graph"),
       /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })
-    ), /* @__PURE__ */ React.createElement("a", { className: "dock-control", href: DRIVE_URL, target: "_blank", rel: "noopener noreferrer", title: "Open Google Drive in a new tab" }, /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "342.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement(DockMech, { kind: "drive" })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Google Drive"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })), /* @__PURE__ */ React.createElement("a", { className: "dock-control", href: FAREHARBOR_URL, target: "_blank", rel: "noopener noreferrer", title: "Open the FareHarbor dashboard in a new tab" }, /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "442.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement(DockMech, { kind: "wheel" })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Fare", /* @__PURE__ */ React.createElement("wbr", null), "Harbor"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })), /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "projects" ? "active" : ""}`, onClick: () => setView("projects") }, /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "542.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Projects"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" }))))), /* @__PURE__ */ React.createElement(GraphOverlay, { open: graphOpen, onClose: closeGraph }));
+    ), /* @__PURE__ */ React.createElement("a", { className: "dock-control", href: DRIVE_URL, target: "_blank", rel: "noopener noreferrer", title: "Open Google Drive in a new tab" }, /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "342.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement(DockMech, { kind: "drive" })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Google Drive"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })), /* @__PURE__ */ React.createElement("a", { className: "dock-control", href: FAREHARBOR_URL, target: "_blank", rel: "noopener noreferrer", title: "Open the FareHarbor dashboard in a new tab" }, /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "442.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement(DockMech, { kind: "wheel" })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Fare", /* @__PURE__ */ React.createElement("wbr", null), "Harbor"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" })), /* @__PURE__ */ React.createElement("button", { className: `dock-control ${view === "projects" ? "active" : ""}`, onClick: () => setView("projects") }, /* @__PURE__ */ React.createElement("span", { className: "dock-art", style: { "--panel-x": "542.857%" } }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/raster/command-console@2x.webp`, alt: "", "aria-hidden": "true" })), /* @__PURE__ */ React.createElement("span", { className: "dock-label" }, "Projects"), /* @__PURE__ */ React.createElement("span", { className: "dock-lamp" }))))), /* @__PURE__ */ React.createElement(GraphOverlay, { open: graphOpen, onClose: closeGraph }), /* @__PURE__ */ React.createElement(SignalOverlay, { open: signalOpen, onClose: closeSignal }));
   }
   function DockMech({ kind, pull }) {
     if (kind === "reactor") return /* @__PURE__ */ React.createElement("span", { className: "dock-reactor", "aria-hidden": "true" });
@@ -5810,6 +5870,44 @@ Check Gmail for anything newer.`;
       /* @__PURE__ */ React.createElement("div", { className: "kg-sheet" }, ["tl", "tr", "bl", "br"].map((corner) => /* @__PURE__ */ React.createElement("span", { key: corner, className: `kg-rivet ${corner}`, "aria-hidden": "true" })), /* @__PURE__ */ React.createElement("div", { className: "kg-head" }, /* @__PURE__ */ React.createElement("div", { className: "codex kg-tabs", role: "tablist", "aria-label": "Graph" }, /* @__PURE__ */ React.createElement("button", { role: "tab", "aria-selected": tab === "foundry", className: `seg sm ${tab === "foundry" ? "on" : ""}`, onClick: () => setTab("foundry") }, "Foundry"), /* @__PURE__ */ React.createElement("button", { role: "tab", "aria-selected": tab === "works", className: `seg sm ${tab === "works" ? "on" : ""}`, onClick: () => setTab("works") }, "The Works")), /* @__PURE__ */ React.createElement("span", { className: "kg-title font-display" }, /* @__PURE__ */ React.createElement("small", null, "BAXSTAR EMBER \xB7 SOURCE ATLAS"), /* @__PURE__ */ React.createElement("span", null, "Knowledge ", /* @__PURE__ */ React.createElement("em", null, tab === "foundry" ? "Foundry" : "Graph"))), tab === "foundry" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "fa-counts" }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, FOUNDRY_NODES.length), " NODES"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, FOUNDRY_LINKS.length), " CONDUITS"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", null, FOUNDRY_DOMAINS.length), " DOMAINS")), /* @__PURE__ */ React.createElement("button", { className: "fa-control fa-motion", "aria-pressed": motion && !reduced, disabled: reduced, onClick: () => setMotion((v) => !v) }, /* @__PURE__ */ React.createElement("span", { className: "fa-led", "aria-hidden": "true" }), reduced ? "Motion reduced" : motion ? "Pause motion" : "Resume motion")), /* @__PURE__ */ React.createElement("button", { ref: closeRef, type: "button", className: "kg-close", onClick: onClose, "aria-label": "Close Knowledge Graph" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "kg-body" }, tab === "foundry" ? /* @__PURE__ */ React.createElement(FoundryAtlas, { motion, reduced }) : /* @__PURE__ */ React.createElement("div", { className: "kg-works" }, /* @__PURE__ */ React.createElement(EcoGraph, { defaultOpen: true }))))
     );
   }
+  function SignalOverlay({ open, onClose }) {
+    const closeRef = useRef(null);
+    useEffect(() => {
+      var _a;
+      if (!open) return void 0;
+      const previous = document.activeElement;
+      const shell = document.querySelector(".ember-shell");
+      shell == null ? void 0 : shell.setAttribute("inert", "");
+      (_a = closeRef.current) == null ? void 0 : _a.focus();
+      const onKey = (e) => {
+        if (e.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      const overflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        var _a2;
+        window.removeEventListener("keydown", onKey);
+        document.body.style.overflow = overflow;
+        shell == null ? void 0 : shell.removeAttribute("inert");
+        (_a2 = previous == null ? void 0 : previous.focus) == null ? void 0 : _a2.call(previous);
+      };
+    }, [open, onClose]);
+    if (!open) return null;
+    return /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "kg-overlay sl-overlay",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": "Signal Log",
+        onClick: (e) => {
+          if (e.target === e.currentTarget) onClose();
+        }
+      },
+      /* @__PURE__ */ React.createElement("div", { className: "kg-sheet" }, ["tl", "tr", "bl", "br"].map((corner) => /* @__PURE__ */ React.createElement("span", { key: corner, className: `kg-rivet ${corner}`, "aria-hidden": "true" })), /* @__PURE__ */ React.createElement("div", { className: "kg-head" }, /* @__PURE__ */ React.createElement("span", { className: "kg-title font-display" }, /* @__PURE__ */ React.createElement("small", null, "BAXSTAR EMBER \xB7 RANKED ATTENTION"), /* @__PURE__ */ React.createElement("span", null, "Signal ", /* @__PURE__ */ React.createElement("em", null, "Log"))), /* @__PURE__ */ React.createElement("a", { className: "fa-control sl-full", href: "signal-log/", target: "_blank", rel: "noopener noreferrer" }, "Open full page \u2197"), /* @__PURE__ */ React.createElement("button", { ref: closeRef, type: "button", className: "kg-close", onClick: onClose, "aria-label": "Close Signal Log" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "kg-body" }, /* @__PURE__ */ React.createElement("iframe", { className: "sl-frame", src: "signal-log/index.html", title: "Signal Log" })))
+    );
+  }
   function ecoLayout(nodes, edges, W, H) {
     const N = nodes.length;
     const idx = new Map(nodes.map((n, i) => [n.id, i]));
@@ -6038,7 +6136,25 @@ Check Gmail for anything newer.`;
       count
     ))), /* @__PURE__ */ React.createElement("div", { className: `flex min-h-0 flex-1 flex-col ${scroll ? "overflow-y-auto" : ""}` }, children));
   }
+  const ROW_TAG_MAX = 22;
+  function gmailLink(id) {
+    return typeof id === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(id) ? `https://mail.google.com/mail/u/0/#all/${id}` : null;
+  }
+  function calendarLink(link) {
+    try {
+      const u = new URL(String(link || ""));
+      if (u.protocol !== "https:") return null;
+      if (u.hostname === "calendar.google.com" || u.hostname === "www.google.com" && u.pathname.startsWith("/calendar/")) return u.href;
+    } catch (e) {
+    }
+    return null;
+  }
+  function SourceLink({ href, label }) {
+    if (!href) return null;
+    return /* @__PURE__ */ React.createElement("a", { className: "row-open", href, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation() }, label, " \u2197");
+  }
   function Row({ who, when, children, onClick, selected }) {
+    const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
     return /* @__PURE__ */ React.createElement(
       "div",
       {
@@ -6046,7 +6162,8 @@ Check Gmail for anything newer.`;
         style: { borderColor: "rgba(255,90,60,.09)" },
         onClick
       },
-      /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { className: "row-title text-[13px] font-semibold" }, who), when && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, when)),
+      /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { className: "row-title min-w-0 text-[13px] font-semibold" }, who), when && tag && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, when)),
+      when && !tag && /* @__PURE__ */ React.createElement("p", { className: "row-note" }, when),
       children
     );
   }

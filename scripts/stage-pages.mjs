@@ -16,6 +16,16 @@ const DIST = path.join(ROOT, "dist");
 
 const files = [
   "index.html",
+  "signal-log/index.html",
+  "signal-log/style.css",
+  "signal-log/app.mjs",
+  "signal-log/core.mjs",
+  "signal-log/storage.mjs",
+  "signal-log/adapters.mjs",
+  "signal-log/ember-feed.mjs",
+  "signal-log/demo.json",
+  "signal-log/example.json",
+  "assets/ember/design-tokens.css",
   "manifest.webmanifest",
   "sw.js",
   "_routes.json",

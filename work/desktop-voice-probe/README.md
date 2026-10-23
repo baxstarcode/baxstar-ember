@@ -14,9 +14,26 @@ recognition and neural `/tts` contracts, plus the current app’s JSON/SSE reque
 format. On production it uses Access-protected same-origin `/api/messages` and
 `/api/tts`; API credentials remain in the bound Worker.
 
+## Keep talking through an app switch (Voice check v6)
+
+Brady's CarPlay report (session `2026-10-22T13:02:49Z`, iPhone Safari 27.0.1,
+v5) played the fixed test sentence through to the end (8.3 s), then replayed it
+from the native player and switched apps 2.6 s in; the hide handler's `stopAll`
+cut Ember off by design and he marked the attempt Failed (mic off, audible: yes).
+v6 keeps a reply that is **already playing** when the page is hidden: no pause,
+the `playback` audio session is kept so iOS can continue over CarPlay, and the
+session returns to `auto` when the clip ends. Everything else on hide is unchanged:
+the microphone still closes at once (and v5 keeps received words), any in-flight
+text or speech request still cancels, audio that has not started yet is not
+started, and nothing restarts on return. The report records `tab-hidden /
+playback-kept`. Not proven: whether iOS actually keeps a backgrounded Safari
+`<audio>` element playing through CarPlay — that is the next physical check.
+This was a speech-only test, so it does not count toward the five-turn gate.
+
 ## Keep received words after an interruption (Voice check v5)
 
-Switching tabs/apps still stops microphone capture, in-flight requests and playback.
+Switching tabs/apps stops microphone capture and in-flight requests (since v6, an
+already-playing reply continues; see above).
 v5 first keeps final and provisional recognition words already received in the editable
 transcript, capped at the existing 1000-character limit. The visible draft notice warns
 that words may be unfinished or inaccurate. After release, **Continue talking** appends
@@ -58,7 +75,7 @@ stop speculative fixes and compare that report with phone-only playback/routing.
 Brady's October 18 phone/CarPlay report reached a complete text response, then failed
 before audio preparation. Do not repeat microphone capture to diagnose that layer.
 
-Open the signed-in production page and confirm **Voice check v5** near the title.
+Open the signed-in production page and confirm **Voice check v6** near the title.
 On a phone, enable the experiment for this visit. Tap **Test Ember’s voice** for one
 fixed harmless sentence in the existing `en-US-JennyNeural` voice. This action starts
 no microphone, calls no AI chat model and uses no business connectors. It shares the
