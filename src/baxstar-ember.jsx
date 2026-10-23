@@ -330,7 +330,7 @@ const ECO_EDGES = [
 ];
 
 const PROJECTS_META = {
-  updated: "2026-08-24",
+  updated: "2026-10-23",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
 };
 
@@ -353,6 +353,9 @@ const PROJECTS = [
       { name: "Lakes Golf Simulator site", pct: 15, platform: "ChatGPT",
         links: [["site", "https://lakesgolfsim.com"]],
         outstanding: "Tech-camp page only — main site unbuilt", sessions: "~5" },
+      { name: "bradybaxter.com (consulting)", pct: 85, platform: "Claude",
+        links: [["site", "https://bradybaxter.com"], ["repo", "https://github.com/baxstarcode/bradybaxter-site"]],
+        outstanding: "LIVE 10-23 — portfolio chapter (5 exhibits), pricing demo, short addresses. Left: first client case study, fresh social card", sessions: "~1" },
     ],
   },
   {
@@ -360,7 +363,7 @@ const PROJECTS = [
     items: [
       { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
         links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Desktop dashboard and chat reliability checks in progress. Desktop voice probe pending Mac verification.", sessions: "~0.5" },
+        outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Left: voice gate 3/5, coordinator cutover + consent (Brady), Quo back online", sessions: "~1" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",

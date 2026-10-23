@@ -611,7 +611,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     ["blog", "fishing"]
   ];
   const PROJECTS_META = {
-    updated: "2026-08-24",
+    updated: "2026-10-23",
     zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" }
   };
   const PROJECTS = [
@@ -657,6 +657,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           links: [["site", "https://lakesgolfsim.com"]],
           outstanding: "Tech-camp page only \u2014 main site unbuilt",
           sessions: "~5"
+        },
+        {
+          name: "bradybaxter.com (consulting)",
+          pct: 85,
+          platform: "Claude",
+          links: [["site", "https://bradybaxter.com"], ["repo", "https://github.com/baxstarcode/bradybaxter-site"]],
+          outstanding: "LIVE 10-23 \u2014 portfolio chapter (5 exhibits), pricing demo, short addresses. Left: first client case study, fresh social card",
+          sessions: "~1"
         }
       ]
     },
@@ -668,8 +676,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           pct: 97,
           platform: "Claude + Codex",
           links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-          outstanding: "Desktop dashboard and chat reliability checks in progress. Desktop voice probe pending Mac verification.",
-          sessions: "~0.5"
+          outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Left: voice gate 3/5, coordinator cutover + consent (Brady), Quo back online",
+          sessions: "~1"
         },
         {
           name: "Agent OS logs + trimmers",
@@ -779,7 +787,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-23 12:08Z".startsWith("__") ? "dev" : "2026-10-23 12:08Z";
+  const BUILD_STAMP = "2026-10-23 12:42Z".startsWith("__") ? "dev" : "2026-10-23 12:42Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
