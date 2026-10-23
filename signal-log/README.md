@@ -214,7 +214,7 @@ client dependencies, software incidents/evaluation success and cost per successf
 outcome. No invented benchmarks. One-time consulting revenue is not MRR. Weather
 and ice signals always need human review.
 
-## Live feed — how Gmail and Calendar get in
+## Live feed — how Gmail, Calendar and Quo get in
 
 `ember-feed.mjs` registers one reader per provider through `registerAccountReader`
 (`adapters.mjs`) before `app.mjs` initialises, so the first load refreshes by itself.
@@ -224,14 +224,19 @@ signed-in browser at ember.baxstarfishing.com
   → POST /api/messages (same origin; Cloudflare Access cookie)
   → functions/api/[[path]].js exact host/path allowlist
   → EMBER_API service binding → proxy/cloudflare-worker.js
-  → server-owned read-only MCP toolset for ONE provider (gmail or calendar)
+  → server-owned read-only MCP toolset for ONE provider (gmail, calendar or quo)
   → Haiku 5.5, effort low, max_tokens 6000, JSON-only reply
 ```
 
 - **Bounds, fixed in the prompt:** Gmail — up to 25 inbox messages from the last
   7 days that need attention (newsletters, receipts and automated notices skipped
   unless they signal a problem or money). Calendar — up to 40 events from 2 days
-  ago to 14 days ahead. Timestamps are computed by the page and passed verbatim.
+  ago to 14 days ahead. Quo (added 2026-10-23) — up to 20 missed calls and
+  voicemails from the last 48 hours across both inboxes (Fishing and Pontoon),
+  voicemail text carried in the signal, source link = the Quo inbox (Quo has no
+  stable per-call deep link). Timestamps are computed by the page and passed
+  verbatim. Until the coordinator cutover restores the Quo grant, the Quo row
+  reports Unavailable and the other two providers are unaffected.
 - **Verification is the OPS standard:** a provider counts as read only when the
   reply carries a successful `mcp_tool_result` paired to that provider's own
   `mcp_tool_use`, and the Worker did not flag `x-ember-connectors: degraded`.

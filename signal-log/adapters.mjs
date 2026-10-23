@@ -1,9 +1,11 @@
 import { validateEnvelope, CONFIG } from './core.mjs';
 
+export const PROVIDERS = Object.freeze(['gmail', 'calendar', 'quo']);
+
 // The host owns authentication and identity. This module never opens consent,
 // reads tokens, calls a model, or treats a browser-selected account as authorization.
 export function createAccountAdapter({ workspaceId, accountId, provider, readVerifiedFeed }) {
-  if (!['gmail', 'calendar'].includes(provider)) throw new Error('Unsupported provider.');
+  if (!PROVIDERS.includes(provider)) throw new Error('Unsupported provider.');
   return Object.freeze({
     workspaceId, accountId, provider, configured: typeof readVerifiedFeed === 'function',
     async read() {
@@ -25,11 +27,11 @@ export function createAccountAdapter({ workspaceId, accountId, provider, readVer
 const readers = new Map();
 const readerKey = ({ workspaceId, accountId, provider }) => JSON.stringify([workspaceId, accountId, provider]);
 export function registerAccountReader(options) {
-  if (!['gmail', 'calendar'].includes(options.provider) || typeof options.readVerifiedFeed !== 'function') throw new Error('Register an approved provider with a reader function.');
+  if (!PROVIDERS.includes(options.provider) || typeof options.readVerifiedFeed !== 'function') throw new Error('Register an approved provider with a reader function.');
   const key = readerKey(options); readers.set(key, options.readVerifiedFeed);
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('ember-signal-readers-changed'));
   return () => { readers.delete(key); };
 }
 export function getAccountAdapters(scope = CONFIG) {
-  return ['gmail', 'calendar'].map(provider => createAccountAdapter({ ...scope, provider, readVerifiedFeed: readers.get(readerKey({ ...scope, provider })) }));
+  return PROVIDERS.map(provider => createAccountAdapter({ ...scope, provider, readVerifiedFeed: readers.get(readerKey({ ...scope, provider })) }));
 }

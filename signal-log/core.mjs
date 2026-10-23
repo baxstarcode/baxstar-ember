@@ -33,7 +33,7 @@ export function validateEnvelope(input, scope = CONFIG) {
   if (!input || input.version !== 1 || !Array.isArray(input.signals)) fail('Expected a version 1 Signal Log envelope with a signals array.');
   if (input.workspaceId !== scope.workspaceId || input.accountId !== scope.accountId) fail('Workspace/account mismatch. Import into the matching account only.');
   if (input.signals.length > CONFIG.maxSignals) fail(`Import at most ${CONFIG.maxSignals} signals at a time.`);
-  const source = enumValue(input.source, ['manual', 'claude', 'gmail', 'calendar', 'demo'], 'source');
+  const source = enumValue(input.source, ['manual', 'claude', 'gmail', 'calendar', 'quo', 'demo'], 'source');
   return input.signals.map((raw, index) => {
     const at = `Signal ${index + 1}`;
     if (!raw || typeof raw !== 'object') fail(`${at}: expected an object.`);

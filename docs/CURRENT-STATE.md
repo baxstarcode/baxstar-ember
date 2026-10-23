@@ -11,7 +11,10 @@ Schedule rows got the same treatment: the sync prompt now returns each message's
 Gmail id and each event's htmlLink, and a row shows `Open in Gmail ↗` /
 `Open in Calendar ↗` only when the page can build or allowlist the URL itself
 (Gmail id pattern; Google calendar hosts over https). Hostile values render no
-link; the dashboard check proves both. Also: the Schedule panel's
+link; the dashboard check proves both. The Signal Log gained a third reader, Quo
+(missed calls and voicemails, 48 h, both inboxes, `source: "quo"`), with its own
+health row; it reports Unavailable until the coordinator cutover restores the Quo
+grant and never blocks Gmail or Calendar. Also: the Schedule panel's
 one-word-per-line titles are fixed (PR #54, long calendar details wrap under the
 title). Verified here: dashboard 117/117, layout 87/87, UI 36/36, Signal Log 25
 browser scenarios + 31 contract tests. Worker, grants, voice and dock unchanged.

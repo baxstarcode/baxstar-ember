@@ -269,20 +269,23 @@ try {
       { type: 'text', text: JSON.stringify({ signals }) },
     ] });
     const gmailSignals = [{ id: 'gmail-message-1', link: 'https://mail.google.com/mail/u/0/#all/gmail-message-1', title: 'Fair Hills asks about August newsletter', summary: 'They want the feature confirmed by Friday.', signal: 'Email from Fair Hills Resort asks to confirm the August newsletter feature.', why: 'Partner exposure.', next: 'Reply yes and send the blurb.', categories: ['fishing'], kind: 'attention', priority: 'waiting', impact: 3, effortMinutes: 10, confidence: 0.8, actionable: true }];
+    const quoSignals = [{ id: 'call-77', link: 'https://app.quo.com', title: 'Voicemail · (701) 555-0142 · Pontoon', summary: 'Asks what is open the weekend of the 18th.', signal: 'Voicemail: 3-day pontoon rental for the weekend of the 18th.', why: 'Rental revenue.', next: 'Call back with availability.', categories: ['rentals'], kind: 'attention', priority: 'waiting', impact: 3, effortMinutes: 5, confidence: 0.8, actionable: true }];
     const calendarSignals = [{ id: 'evt-guided/2026-11-02T13:00:00Z', occurrenceAt: '2026-11-02T08:00:00-05:00', dueAt: '2026-11-02T08:00:00-05:00', link: 'https://www.google.com/calendar/event?eid=guided', title: 'Guided trip · Detroit Lake', summary: 'Party of 4, 6:00 AM launch.', signal: 'Calendar: guided trip, 4 guests.', why: 'Prep the boat.', next: 'Confirm bait and launch time the night before.', categories: ['fishing'], kind: 'information', priority: 'routine', impact: 2, effortMinutes: 5, confidence: 0.9, actionable: true }];
     await c.route('**/api/messages', async route => {
       const body = route.request().postDataJSON(); const provider = body.mcp_servers?.[0]?.name; calls.push({ provider, model: body.model, effort: body.output_config?.effort, stream: body.stream });
       if (gatewayMode === 'html') return route.fulfill({ status: 200, contentType: 'text/html', body: '<html><title>Sign in · Cloudflare Access</title></html>' });
       if (gatewayMode === 'degraded' && provider === 'gmail') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'x-ember-connectors': 'degraded' }, body: JSON.stringify({ type: 'message', content: [{ type: 'text', text: JSON.stringify({ signals: gmailSignals }) }] }) });
-      return route.fulfill({ status: 200, contentType: 'application/json', body: reply(provider, provider === 'gmail' ? gmailSignals : calendarSignals) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: reply(provider, provider === 'gmail' ? gmailSignals : provider === 'quo' ? quoSignals : calendarSignals) });
     });
     const p = await c.newPage(); p.setDefaultTimeout(8000); await p.goto(url);
-    const gmail = p.locator('[data-id="gmail-message-1"]'), event = p.locator('[data-id="evt-guided/2026-11-02T13:00:00Z"]');
-    await gmail.waitFor(); await event.waitFor(); await cards(p, 2);
-    assert.match(await gmail.textContent(), /VERIFIED READ/); assert.match(await event.textContent(), /VERIFIED READ/);
+    const gmail = p.locator('[data-id="gmail-message-1"]'), event = p.locator('[data-id="evt-guided/2026-11-02T13:00:00Z"]'), call = p.locator('[data-id="call-77"]');
+    await gmail.waitFor(); await event.waitFor(); await call.waitFor(); await cards(p, 3);
+    assert.match(await gmail.textContent(), /VERIFIED READ/); assert.match(await event.textContent(), /VERIFIED READ/); assert.match(await call.textContent(), /VERIFIED READ/);
+    assert.equal(await call.locator('.card-link[href]').getAttribute('href'), 'https://app.quo.com/'); assert.equal(await call.locator('.card-link[href]').textContent(), 'Open Quo ↗');
+    assert.equal(await p.locator('#health-quo').textContent(), 'Verified read');
     assert.equal(await p.locator('#mode-label').textContent(), 'MY LOG · SOURCE RECORDS');
     assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read'); assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read');
-    assert.deepEqual(calls.map(x => x.provider).sort(), ['calendar', 'gmail']); assert(calls.every(x => x.model === 'claude-haiku-5-5' && x.effort === 'low' && !x.stream), 'bounded Haiku low-effort JSON calls');
+    assert.deepEqual(calls.map(x => x.provider).sort(), ['calendar', 'gmail', 'quo']); assert(calls.every(x => x.model === 'claude-haiku-5-5' && x.effort === 'low' && !x.stream), 'bounded Haiku low-effort JSON calls');
     await gmail.getByRole('button', { name: 'Open signal ↓' }).click();
     assert.equal(await gmail.locator('.source-list a').getAttribute('href'), 'https://mail.google.com/mail/u/0/#all/gmail-message-1');
     assert.equal(await gmail.locator('.card-link[href]').getAttribute('href'), 'https://mail.google.com/mail/u/0/#all/gmail-message-1'); assert.equal(await gmail.locator('.card-link[href]').textContent(), 'Open in Gmail ↗');
@@ -292,10 +295,10 @@ try {
     await refresh('degraded'); assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read');
     assert.match(await gmail.textContent(), /STALE READ/);
     await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /no successful tool result/); await p.keyboard.press('Escape');
-    await refresh('html'); assert.equal(await p.locator('#health-calendar').textContent(), 'Unavailable');
+    await refresh('html'); assert.equal(await p.locator('#health-calendar').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-quo').textContent(), 'Unavailable');
     await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /Sign in to Ember/); await p.keyboard.press('Escape');
-    await cards(p, 2);
-    await refresh('ok'); assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read'); assert.match(await gmail.textContent(), /VERIFIED READ/);
+    await cards(p, 3);
+    await refresh('ok'); assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read'); assert.equal(await p.locator('#health-quo').textContent(), 'Verified read'); assert.match(await gmail.textContent(), /VERIFIED READ/);
     await c.close();
   });
   await test('outside production the live readers stay inert: no gateway request, honest labels, demo intact', async () => {
@@ -303,8 +306,8 @@ try {
     await c.route('**/api/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 404, body: 'nope' }); });
     const p = await load(c);
     assert.deepEqual(requests, []);
-    assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable');
-    await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /only on ember.baxstarfishing.com/); await p.keyboard.press('Escape');
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-quo').textContent(), 'Unavailable');
+    await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /only on ember.baxstarfishing.com/); assert.match(await p.locator('#dialog-body').textContent(), /Quo · unavailable/); await p.keyboard.press('Escape');
     assert.equal(await p.locator('.signal-card').count(), 8); await c.close();
   });
   await test('Ask Ember hands a card to the dashboard composer: a navigation standalone, a same-origin message when embedded', async () => {

@@ -409,7 +409,10 @@ same-origin frame is not subject to the cross-origin limit noted below. The OPS
 Inbox and Schedule rows link to their Gmail message / Calendar event the same way
 (id and htmlLink returned by the sync; URL built or allowlisted by the page). If a
 live sync returns rows without links, Haiku omitted the id/htmlLink for that row;
-the row still renders, just without the link.
+the row still renders, just without the link. The Signal Log also reads **Quo**
+now (missed calls + voicemails, 48 h, both inboxes); per-provider health means the
+Quo row simply reads Unavailable until the coordinator cutover (§1b) brings the
+grant back, and Gmail/Calendar cards are unaffected.
 
 ## Expected behavior that is not a bug
 

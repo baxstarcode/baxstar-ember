@@ -1,4 +1,4 @@
-// Live Gmail and Calendar readers for Signal Log.
+// Live Gmail, Calendar and Quo readers for Signal Log.
 //
 // Transport is the one Ember already trusts: the signed-in browser posts to the
 // same-origin /api/messages gateway (Cloudflare Access → Pages Function →
@@ -12,7 +12,7 @@
 // Pure helpers (prompt, projection, verification) are exported for node tests;
 // registration happens only in a browser.
 import { CONFIG, validateEnvelope, safeUrl } from './core.mjs';
-import { registerAccountReader } from './adapters.mjs';
+import { registerAccountReader, PROVIDERS } from './adapters.mjs';
 
 export const FEED = Object.freeze({
   endpoint: '/api/messages',
@@ -22,10 +22,13 @@ export const FEED = Object.freeze({
   productionHosts: ['ember.baxstarfishing.com'],
   gmail: { hours: 168, max: 25 },
   calendar: { pastHours: 48, aheadDays: 14, max: 40 },
-  links: { gmail: 'Open in Gmail', calendar: 'Open in Google Calendar' },
+  // Quo: missed calls and voicemails from both inboxes. Quo has no stable per-call
+  // deep link, so the source link is the inbox itself.
+  quo: { hours: 48, max: 20, inboxes: 'Fishing 218-325-6857 and Pontoon 218-325-9846', link: 'https://app.quo.com/' },
+  links: { gmail: 'Open in Gmail', calendar: 'Open in Google Calendar', quo: 'Open Quo' },
+  names: { gmail: 'Gmail', calendar: 'Calendar', quo: 'Quo' },
 });
 
-const PROVIDERS = ['gmail', 'calendar'];
 const CATEGORY_GUIDE = [
   'fishing = Baxstar Fishing guided trips, guide bookings, FareHarbor fishing items, bait/boat/launch logistics',
   'rentals = pontoon and boat rentals, ice houses / Ice Castle, rental customers, slips, turnovers',
@@ -54,7 +57,9 @@ const number = (value, min, max, fallback) => {
 
 export function buildPrompt(provider, now = new Date()) {
   const ms = now.getTime();
-  const rules = provider === 'gmail'
+  const rules = provider === 'quo'
+    ? `Use ONLY the Quo tools. Read missed calls and voicemails from BOTH inboxes (${FEED.quo.inboxes}) created after ${new Date(ms - FEED.quo.hours * 3600000).toISOString()} — pass createdAfter with that exact timestamp. Include the voicemail transcript in "signal" when one exists; a missed call with no voicemail is information unless the number has called more than once. At most ${FEED.quo.max} records. "id" is the call or conversation id exactly as the tool returned it; "link" is ${FEED.quo.link}; "sourceUpdatedAt" is the call time as ISO 8601. Never invent a caller name; use the number when that is all the tool gives.`
+    : provider === 'gmail'
     ? `Use ONLY the Gmail tool. Read messages received after ${new Date(ms - FEED.gmail.hours * 3600000).toISOString()} (the last ${FEED.gmail.hours / 24} days) that are unread OR starred OR in the inbox and plainly need Brady's attention; skip newsletters, receipts and automated notices unless they signal a problem or money. At most ${FEED.gmail.max} messages. "id" is the Gmail message id exactly as the tool returned it; "link" is https://mail.google.com/mail/u/0/#all/<that id>; "sourceUpdatedAt" is the message date as ISO 8601.`
     : `Use ONLY the Calendar tool. Read events starting between ${new Date(ms - FEED.calendar.pastHours * 3600000).toISOString()} and ${new Date(ms + FEED.calendar.aheadDays * 86400000).toISOString()} — pass these exact timestamps to the tool. At most ${FEED.calendar.max} events. "id" is the event id (append "/" + original start for a recurring instance); "link" is the event's htmlLink; "occurrenceAt" is the event start as ISO 8601 with timezone; "dueAt" is the same start when it is in the future, otherwise null. An event that is only a reminder of past work is information, not a task.`;
   return `You are Ember's Signal Log reader for Brady Baxter (Detroit Lakes, MN; Baxstar Fishing, pontoon and ice-house rentals, Lakes Golf Sim, AI consulting, his own software). Current time: ${now.toISOString()}.
@@ -106,6 +111,7 @@ function sourceLink(provider, raw, occurrenceAt) {
   const given = safeUrl(raw.link) || safeUrl(raw.url) || safeUrl(raw.htmlLink);
   if (given) return given;
   if (provider === 'gmail') return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(String(raw.id))}`;
+  if (provider === 'quo') return FEED.quo.link;
   const day = occurrenceAt ? occurrenceAt.slice(0, 10).split('-') : null;
   return day ? `https://calendar.google.com/calendar/u/0/r/day/${day[0]}/${Number(day[1])}/${Number(day[2])}` : 'https://calendar.google.com/calendar/u/0/r';
 }
@@ -163,7 +169,7 @@ export function feedAllowed(loc = globalThis.location, win = globalThis.window) 
 
 export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = new Date() } = {}) {
   if (!PROVIDERS.includes(provider)) throw reason('Unsupported provider.');
-  if (!feedAllowed()) throw reason('Live Gmail and Calendar reads run only on ember.baxstarfishing.com. Preview and local pages keep the demo and manual import.');
+  if (!feedAllowed()) throw reason('Live Gmail, Calendar and Quo reads run only on ember.baxstarfishing.com. Preview and local pages keep the demo and manual import.');
   const body = {
     model: FEED.model, max_tokens: FEED.maxTokens, output_config: { effort: FEED.effort },
     mcp_servers: [{ name: provider }],
@@ -190,7 +196,7 @@ export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = n
     throw reason(detail || `Ember request failed (HTTP ${res.status}).`);
   }
   if (res.headers.get('x-ember-connectors') === 'degraded' || !succeededConnectors(data).has(provider)) {
-    throw reason(`${provider === 'gmail' ? 'Gmail' : 'Calendar'} returned no successful tool result — the connector is offline or needs a new sign-in. Check the OPS lights.`);
+    throw reason(`${FEED.names[provider]} returned no successful tool result — the connector is offline or needs a new sign-in. Check the OPS lights.`);
   }
   const { signals, dropped } = projectSignals(provider, extractJSON(data), now);
   return {

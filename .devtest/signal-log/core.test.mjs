@@ -175,7 +175,20 @@ test('feed prompt is bounded, provider-specific and demands JSON only', () => {
   const gmail = feed.buildPrompt('gmail', feedNow), calendar = feed.buildPrompt('calendar', feedNow);
   assert.match(gmail, /ONLY the Gmail tool/); assert.match(gmail, /2026-10-14T18:00:00.000Z/); assert.match(gmail, /At most 25 messages/);
   assert.match(calendar, /ONLY the Calendar tool/); assert.match(calendar, /2026-10-19T18:00:00.000Z/); assert.match(calendar, /2026-11-04T18:00:00.000Z/); assert.match(calendar, /At most 40 events/);
-  for (const p of [gmail, calendar]) { assert.match(p, /ONLY valid JSON/); assert.match(p, /Never invent facts/); }
+  const quo = feed.buildPrompt('quo', feedNow);
+  assert.match(quo, /ONLY the Quo tools/); assert.match(quo, /createdAfter with that exact timestamp/); assert.match(quo, /2026-10-19T18:00:00.000Z/); assert.match(quo, /At most 20 records/); assert.match(quo, /218-325-6857/); assert.match(quo, /218-325-9846/);
+  for (const p of [gmail, calendar, quo]) { assert.match(p, /ONLY valid JSON/); assert.match(p, /Never invent facts/); }
+});
+test('quo projection links to the inbox, keeps voicemail text in the signal and validates as a quo envelope', () => {
+  const { signals, dropped } = feed.projectSignals('quo', { signals: [
+    { id: 'call-77', title: 'Voicemail · (701) 555-0142 · Pontoon', summary: 'Asks what is open the weekend of the 18th.', signal: 'Voicemail: "Looking at a 3-day pontoon rental for the weekend of the 18th — what is still open?"', why: 'Rental revenue.', next: 'Call back with availability.', categories: ['rentals'], kind: 'attention', priority: 'waiting', impact: 3, effortMinutes: 5, confidence: 0.8, actionable: true, sourceUpdatedAt: '2026-10-21T01:41:00Z', link: 'javascript:alert(1)' },
+    { id: 'call-78', title: 'Missed call · (218) 555-0977 · Fishing', summary: 'No voicemail.', kind: 'information', actionable: false, categories: ['fishing'] },
+  ] }, feedNow);
+  assert.equal(dropped, 0); assert.equal(signals.length, 2);
+  assert.deepEqual(signals[0].sources, [{ label: 'Open Quo', url: 'https://app.quo.com/' }]); assert.match(signals[0].details.signal, /3-day pontoon rental/);
+  assert.equal(signals[1].actionable, false); assert.equal(signals[1].sources[0].url, 'https://app.quo.com/');
+  assert.doesNotThrow(() => validateEnvelope({ version: 1, workspaceId: 'baxstar', accountId: 'baxstar-fishing', source: 'quo', signals }));
+  assert.throws(() => validateEnvelope({ version: 1, workspaceId: 'baxstar', accountId: 'baxstar-fishing', source: 'sms', signals }), /unsupported/);
 });
 test('a provider is verified only by its own successful tool result', () => {
   assert(feed.succeededConnectors(reply('gmail', [])).has('gmail'));
@@ -218,6 +231,7 @@ test('readFeed refuses non-production hosts, Access login pages, errors and unve
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', [], { ok: false })) }), /no successful tool result/);
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', []), { headers: { 'x-ember-connectors': 'degraded' } }) }), /no successful tool result/);
   await assert.rejects(feed.readFeed('calendar', { fetchImpl: respond(reply('gmail', [])) }), /no successful tool result/);
+  await assert.rejects(feed.readFeed('quo', { fetchImpl: respond(reply('gmail', [])) }), /Quo returned no successful tool result/);
   let sent;
   const result = await feed.readFeed('gmail', { now: feedNow, fetchImpl: async (url, init) => { sent = { url, body: JSON.parse(init.body) }; return new Response(JSON.stringify(reply('gmail', [{ id: 'm1', title: 'Hi', summary: 'Hello', kind: 'information', categories: ['software'] }, { nope: true }])), { status: 200, headers: { 'content-type': 'application/json' } }); } });
   assert.equal(sent.url, '/api/messages'); assert.equal(sent.body.model, 'claude-haiku-5-5'); assert.deepEqual(sent.body.mcp_servers, [{ name: 'gmail' }]); assert.deepEqual(sent.body.output_config, { effort: 'low' }); assert.equal(sent.body.max_tokens, 6000);
