@@ -779,7 +779,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-22 08:53Z".startsWith("__") ? "dev" : "2026-10-22 08:53Z";
+  const BUILD_STAMP = "2026-10-23 05:52Z".startsWith("__") ? "dev" : "2026-10-23 05:52Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -3759,7 +3759,8 @@ Check Gmail for anything newer.`;
         }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
-        .ember-row .row-title { font-size:13.5px; line-height:1.25; }
+        .ember-row .row-title { font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
+        .ember-row .row-note { margin-top:3px; font-size:11.5px; line-height:1.4; color:var(--ink-dim); overflow-wrap:anywhere; }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments \u2014 outer frame corners only, never behind text */
@@ -6039,7 +6040,9 @@ Check Gmail for anything newer.`;
       count
     ))), /* @__PURE__ */ React.createElement("div", { className: `flex min-h-0 flex-1 flex-col ${scroll ? "overflow-y-auto" : ""}` }, children));
   }
+  const ROW_TAG_MAX = 22;
   function Row({ who, when, children, onClick, selected }) {
+    const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
     return /* @__PURE__ */ React.createElement(
       "div",
       {
@@ -6047,7 +6050,8 @@ Check Gmail for anything newer.`;
         style: { borderColor: "rgba(255,90,60,.09)" },
         onClick
       },
-      /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { className: "row-title text-[13px] font-semibold" }, who), when && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, when)),
+      /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { className: "row-title min-w-0 text-[13px] font-semibold" }, who), when && tag && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, when)),
+      when && !tag && /* @__PURE__ */ React.createElement("p", { className: "row-note" }, when),
       children
     );
   }

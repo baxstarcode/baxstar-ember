@@ -3670,7 +3670,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         }
 
         .ember-row { padding-top:8px!important; padding-bottom:8px!important; }
-        .ember-row .row-title { font-size:13.5px; line-height:1.25; }
+        .ember-row .row-title { font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
+        .ember-row .row-note { margin-top:3px; font-size:11.5px; line-height:1.4; color:var(--ink-dim); overflow-wrap:anywhere; }
         .panel h3 { font-size:12px!important; color:var(--ember-text-soft)!important; }
 
         /* pipe-junction ornaments — outer frame corners only, never behind text */
@@ -6259,14 +6260,21 @@ function Panel({ notch, title, count, countColor, children, delay, grow, scroll 
   );
 }
 
+/* The right-hand mono tag was sized for "SLIP 3" and "4 GUESTS". Live calendar
+   details are sentences ("Verify https://… loads over…"), and a non-shrinking tag
+   squeezed the title to one word per line (Brady, 2026-10-23). Short details stay
+   as the tag; anything longer wraps on its own line under the title. */
+const ROW_TAG_MAX = 22;
 function Row({ who, when, children, onClick, selected }) {
+  const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
   return (
     <div className={`ember-row border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`}
       style={{ borderColor: "rgba(255,90,60,.09)" }} onClick={onClick}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="row-title text-[13px] font-semibold">{who}</span>
-        {when && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}
+        <span className="row-title min-w-0 text-[13px] font-semibold">{who}</span>
+        {when && tag && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}
       </div>
+      {when && !tag && <p className="row-note">{when}</p>}
       {children}
     </div>
   );

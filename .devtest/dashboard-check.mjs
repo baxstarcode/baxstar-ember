@@ -122,7 +122,7 @@ try {
         ? JSON.stringify({
             voicemails: [{ from: "(218) 555-0000", line: "Fishing", time: "1:00 PM", note: "live sync landed", vm: "" }],
             emails: [{ from: "LiveSyncProof", time: "1:01 PM", subject: "real data" }],
-            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "" }],
+            events: [{ time: "3:00 PM", title: "LiveSyncEvent", detail: "" }, { time: "8:00 AM", title: "LongDetailEvent", detail: "Verify https://baxstaroutdoors.com loads over https, then check the Wix plan renewal and the Google Business profile before noon." }],
           })
         : "Two bookings today, Brady.";
       await route.fulfill({
@@ -153,6 +153,20 @@ try {
       reactor ? `${Math.round(reactor.height)}px` : "missing");
     check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
     check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));
+    // A sentence-length calendar detail must wrap under the title, never squeeze
+    // the title to one word per line or push the panel sideways (Brady, 2026-10-23).
+    const longRow = await page.locator(".ember-row").filter({ hasText: "LongDetailEvent" }).first();
+    const rowGeom = await longRow.evaluate((row) => {
+      const title = row.querySelector(".row-title"), note = row.querySelector(".row-note");
+      const panel = row.closest(".panel");
+      return { rowW: row.getBoundingClientRect().width, titleW: title.getBoundingClientRect().width, titleLines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)),
+        noteText: note?.textContent || "", noteWraps: note ? note.getBoundingClientRect().height > parseFloat(getComputedStyle(note).lineHeight) * 1.5 : false,
+        // Every .panel carries a structural 8px of scrollWidth from its border-image; measure the row itself.
+        overflow: row.scrollWidth - row.clientWidth, panelOverflow: panel ? panel.scrollWidth - panel.clientWidth : 0 };
+    });
+    check(`${name} long calendar detail wraps under the title instead of squeezing it`,
+      rowGeom.titleW >= rowGeom.rowW * 0.5 && rowGeom.titleLines <= 2 && rowGeom.noteText.startsWith("Verify https") && rowGeom.overflow <= 1,
+      JSON.stringify(rowGeom));
     const syncRequest = requests.find((request) => /ONLY valid JSON/.test(JSON.stringify(request.messages)));
     check(`${name} sync requests connector names only`,
       JSON.stringify(syncRequest?.mcp_servers) === JSON.stringify([{ name: "quo" }, { name: "gmail" }, { name: "calendar" }]));
