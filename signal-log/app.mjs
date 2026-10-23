@@ -13,6 +13,24 @@ const el = (tag, text, attrs = {}) => {
 };
 const button = (text, action, attrs = {}) => { const b = el('button', text, { type: 'button', ...attrs }); b.addEventListener('click', action); return b; };
 const link = (text, href) => el('a', text, { href, target: '_blank', rel: 'noopener noreferrer' });
+// Inside the Ember dashboard the page runs in a same-origin frame: the chrome that
+// duplicates the dashboard's is hidden, Ask Ember hands the card to the composer by
+// message instead of navigating, and Escape asks the dashboard to close the overlay.
+const EMBEDDED = (() => { try { return window.parent !== window; } catch { return false; } })();
+const ASK_MAX = 2000;
+function askText(s) {
+  const d = s.details || {};
+  return `About this signal from my Signal Log: "${s.title}". ${s.summary || ''}\nSource says: ${d.signal || '—'}\nWhy it matters: ${d.why || '—'}\nSuggested next step: ${d.next || '—'}\nHelp me decide what to do next, in a few lines.`.slice(0, ASK_MAX);
+}
+function askEmber(s) {
+  const text = askText(s);
+  if (EMBEDDED) { window.parent.postMessage({ type: 'ember-signal-ask', text, title: s.title }, location.origin); return; }
+  location.href = `../index.html?ask=${encodeURIComponent(text)}`;
+}
+if (EMBEDDED) {
+  document.body.classList.add('is-embedded');
+  window.addEventListener('keydown', event => { if (event.key === 'Escape' && !$('dialog').open) window.parent.postMessage({ type: 'ember-signal-close' }, location.origin); });
+}
 let demo = [], imported = [], mode = 'demo', focusMode = 'triage', categories = new Set(), extra = '', views = [], store;
 const meta = new Map(), expanded = new Set(), pending = new Map();
 let undoAction = null, lastDialogFocus;
@@ -154,6 +172,11 @@ function card(s, index, selected) {
   if (status === 'open') actions.append(button('Resolve', () => change(s, { status: 'done', read: true, snoozeUntil: null }), { 'data-focus': `resolve-${s.key}` }));
   else actions.append(button('Reopen', () => change(s, { status: 'open', snoozeUntil: null }), { 'data-focus': `reopen-${s.key}` }));
   actions.append(button('More…', () => stateDialog(s), { 'aria-label': `More actions for ${s.title}`, 'data-focus': `more-${s.key}` })); bottom.append(actions); article.append(bottom);
+  // Where the signal lives and who can help: the source app, and Ember herself.
+  const links = el('div', null, { class: 'card-links' });
+  for (const source of s.sources || []) if (source?.url) links.append(el('a', `${source.label} ↗`, { class: 'card-link', href: source.url, target: '_blank', rel: 'noopener noreferrer' }));
+  links.append(button('Ask Ember', () => askEmber(s), { class: 'card-link ask', 'aria-label': `Ask Ember about ${s.title}`, 'data-focus': `ask-${s.key}` }));
+  article.append(links);
   if (expanded.has(s.key)) {
     const detail = el('div', null, { class: 'detail', id: `detail-${s.key}` });
     for (const [key, label] of [['signal', 'Signal · source-reported fact'], ['why', 'Why it matters · interpretation'], ['next', 'What must be done · suggested next step']]) {

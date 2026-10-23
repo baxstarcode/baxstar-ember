@@ -6,7 +6,11 @@ Calendar through the existing gateway via `signal-log/ember-feed.mjs`; see
 [`signal-log/README.md`](signal-log/README.md). The page owns its HTML/CSS/modules
 and v1 import contract; the only application-source change is one `TOOL_LINKS`
 entry (YOUR TOOLS → Signal Log). Worker, OAuth, gateway allowlist, voice and dock
-are untouched.
+are untouched. **2026-10-23:** that entry became an overlay button (`SignalOverlay`
+in `src/baxstar-ember.jsx`, a same-origin frame of `signal-log/index.html`); the page
+gained per-card action links and Ask Ember (`signal-log/app.mjs`, same-origin
+messages `ember-signal-ask` / `ember-signal-close`, `?ask=` deep link). The dock is
+still six tiles.
 
 Multiple AI tools are now touching this project. This document is the authority on
 **which file is canonical for what**, and **who built which phase**, so no session or

@@ -654,6 +654,50 @@ h1,h2,h3 {
 .read-button {
   color:var(--ember-text-soft)
 }
+.card-links {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:10px
+}
+.card-link {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:36px;
+  padding:5px 12px;
+  border:1px solid var(--ember-brass-bright);
+  border-radius:999px;
+  background:transparent;
+  color:var(--ember-brass-bright);
+  font:600 11px/1 inherit;
+  font-family:inherit;
+  letter-spacing:.04em;
+  text-decoration:none;
+  cursor:pointer
+}
+.card-link:hover {
+  background:rgba(214,179,106,.12)
+}
+.card-link.ask {
+  border-color:var(--ember-ember,#ff6a4d);
+  color:#ffd2c5
+}
+.card-link:focus-visible {
+  outline:2px solid #ffce85;
+  outline-offset:2px
+}
+.is-embedded .topbar,.is-embedded .instrument {
+  display:none
+}
+.is-embedded .hero {
+  padding-top:18px
+}
+@media (pointer:coarse) {
+  .card-link {
+    min-height:44px
+  }
+}
 .detail {
   margin-top:16px;
   border-top:1px dashed var(--signal-line);
@@ -1263,6 +1307,9 @@ dialog select {
   .card-bottom button {
     min-height:40px;
     font-size:11px
+  }
+  .card-link {
+    min-height:44px
   }
 }
 .journal-tools { display:flex; gap:8px; flex-shrink:0; }

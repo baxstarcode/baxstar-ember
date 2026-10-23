@@ -1,5 +1,16 @@
 # Ember — Current State
 
+**Signal Log in the dashboard — 2026-10-23 (Claude):** YOUR TOOLS → Signal Log now
+opens the page in an overlay (same sheet as the Knowledge Graph, a same-origin
+frame; the dock's six tiles are unchanged). Every card carries its action links:
+`Open in Gmail ↗` / `Open in Google Calendar ↗` in a new tab, and **Ask Ember**,
+which closes the overlay and places the card (title, summary, source fact, why, next
+step) in the composer unsent; standalone it is `index.html?ask=…`. Same-origin
+messages only (`ember-signal-ask`, `ember-signal-close`). Also: the Schedule panel's
+one-word-per-line titles are fixed (PR #54, long calendar details wrap under the
+title). Verified here: dashboard 117/117, layout 87/87, UI 36/36, Signal Log 25
+browser scenarios + 31 contract tests. Worker, grants, voice and dock unchanged.
+
 **Voice check v6 — 2026-10-22 (Claude):** switching apps mid-reply no longer cuts
 Ember off; only an already-playing reply continues (mic and requests still stop).
 Next physical check: start a spoken reply on CarPlay, switch to Maps, and report

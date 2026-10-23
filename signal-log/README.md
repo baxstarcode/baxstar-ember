@@ -52,6 +52,17 @@ and tests are not staged. The existing root `index.html` remains generated from
   Restoring decisions requires a separate choice; no source text is silently stored.
 - Registered account-attested readers populate/update the log. Each provider has
   independent health; transient errors retain its prior records with stale labels.
+- Every card carries its action links (2026-10-23): the source app (`Open in Gmail ↗`,
+  `Open in Google Calendar ↗`, or the record's own label) in a new tab, and **Ask
+  Ember**, which hands the card's title, summary, source fact, why and next step to
+  the dashboard composer as an unsent draft. Standalone, that is a navigation to
+  `../index.html?ask=…`; framed inside the dashboard it is a same-origin
+  `postMessage` (`ember-signal-ask`). Nothing is sent to a model until Brady
+  presses RUN.
+- Framed by the dashboard (YOUR TOOLS → Signal Log opens it in an overlay), the page
+  detects `window.parent !== window`, hides its duplicate top bar and instrument,
+  and relays Escape as `ember-signal-close`. The dashboard accepts those two message
+  types only, and only from its own origin.
 
 The initial **DEMO** dataset is synthetic and uses a fixed illustrative clock
 (`2026-10-18T15:00:00Z`). It is separate from **My log**. It does not represent a

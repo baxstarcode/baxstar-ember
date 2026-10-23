@@ -33,6 +33,7 @@ function startStaticServer() {
     const type = {
       ".html": "text/html; charset=utf-8",
       ".js": "text/javascript; charset=utf-8",
+      ".mjs": "text/javascript; charset=utf-8",
       ".css": "text/css; charset=utf-8",
       ".json": "application/json; charset=utf-8",
       ".webmanifest": "application/manifest+json",
@@ -249,6 +250,44 @@ try {
     await page.mouse.click(8, 8);
     check("clicking the backdrop closes it", await page.getByRole("dialog", { name: "Knowledge Graph" }).count() === 0);
     check("closing restores the dashboard", await page.evaluate(() => !document.querySelector(".ember-shell").hasAttribute("inert")));
+    await context.close();
+  }
+
+  {
+    const context = await offlineContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    await page.goto(`${ORIGIN}/index.html?ask=${encodeURIComponent("Signal: confirm the Fair Hills blurb")}`, { waitUntil: "load" });
+    console.log("\n===== SIGNAL LOG OVERLAY =====");
+    const composer = page.getByRole("textbox", { name: "Ask Ember" });
+    check("?ask= prefills the composer unsent and leaves the address clean",
+      (await composer.inputValue()) === "Signal: confirm the Fair Hills blurb" && !page.url().includes("ask="));
+    await page.locator(".tools-rail").getByRole("button", { name: /Signal Log/ }).click();
+    const dialog = page.getByRole("dialog", { name: "Signal Log" });
+    await dialog.waitFor();
+    const frame = page.frameLocator(".sl-frame");
+    await frame.locator(".signal-card").first().waitFor({ timeout: 10000 });
+    check("overlay frames the same-origin Signal Log page",
+      (await page.locator(".sl-frame").getAttribute("src")) === "signal-log/index.html" && (await frame.locator(".signal-card").count()) > 0);
+    check("framed page hides its duplicate top bar", await frame.locator(".topbar").evaluate((n) => getComputedStyle(n).display === "none"));
+    check("overlay makes the dashboard inert", await page.evaluate(() => document.querySelector(".ember-shell").hasAttribute("inert")));
+    check("full-page link opens in a new tab",
+      (await dialog.getByRole("link", { name: /Open full page/ }).getAttribute("target")) === "_blank" &&
+      (await dialog.getByRole("link", { name: /Open full page/ }).getAttribute("href")) === "signal-log/");
+    const first = frame.locator(".signal-card").first();
+    const title = await first.locator("h3").textContent();
+    await first.getByRole("button", { name: /Ask Ember about/ }).click();
+    await dialog.waitFor({ state: "detached" });
+    const handed = await composer.inputValue();
+    check("Ask Ember closes the overlay and hands the card to the composer, unsent",
+      handed.startsWith("About this signal from my Signal Log") && handed.includes(title) &&
+      (await page.evaluate(() => !document.querySelector(".ember-shell").hasAttribute("inert"))) &&
+      (await page.locator('[data-status="streaming"]').count()) === 0);
+    await page.locator(".tools-rail").getByRole("button", { name: /Signal Log/ }).click();
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: "Close Signal Log" }).click();
+    check("the close button closes it", (await dialog.count()) === 0);
     await context.close();
   }
 
