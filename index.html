@@ -736,8 +736,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   };
   const EFFORT_SUCCESSOR = { standard: "medium" };
   const DEFAULT_MODEL = "claude-opus-5-5";
-  const DEFAULT_EFFORT = "low";
-  const PREFS_V = 3;
+  const DEFAULT_EFFORT = "medium";
+  const PREFS_V = 4;
   const EFFORT = {
     low: { label: "Low", api: "low", budget: 4e3, note: "\nEffort: LOW \u2014 shortest useful answer. No elaboration." },
     medium: { label: "Med", api: "medium", budget: 8e3, note: "" },
@@ -787,7 +787,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-23 17:34Z".startsWith("__") ? "dev" : "2026-10-23 17:34Z";
+  const BUILD_STAMP = "2026-10-24 02:08Z".startsWith("__") ? "dev" : "2026-10-24 02:08Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1993,10 +1993,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (b == null ? void 0 : b.choice) setBg(b);
         if (prefs) {
           if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
-          if (prefs.v >= PREFS_V) {
+          if (prefs.v >= 3) {
             const model = MODEL_SUCCESSOR[prefs.chatModel] || prefs.chatModel;
-            const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
             if (MODELS.some((m) => m.id === model)) setChatModel(model);
+          }
+          if (prefs.v >= PREFS_V) {
+            const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
             if (Object.hasOwn(EFFORT, effort)) setChatEffort(effort);
           }
           if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);

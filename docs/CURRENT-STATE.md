@@ -1,5 +1,13 @@
 # Ember — Current State
 
+**Main chat defaults to Medium — 2026-10-23 (Codex):** Brady requested Medium
+effort. Opus 5.5 remains the default model. Preference version 4 applies Medium
+once to older saved effort settings while preserving model choices from version 3.
+Later manual effort choices still persist. Dashboard sync remains Haiku 5.5/Low;
+the separate Voice Lab is unchanged. Build/Pages staging and 14 streaming-effort
+checks pass. Browser checks verified fresh phone defaults, existing desktop
+preference migration, and a saved override, including subsequent choice/reload.
+
 **Signal Log in the dashboard — 2026-10-23 (Claude):** YOUR TOOLS → Signal Log now
 opens the page in an overlay (same sheet as the Knowledge Graph, a same-origin
 frame; the dock's six tiles are unchanged). Every card carries its action links:

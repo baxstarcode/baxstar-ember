@@ -427,12 +427,11 @@ const EFFORT_SUCCESSOR = { standard: "medium" };
 // Preserve Brady's chosen model default. Failed requests require an explicit
 // retry or model change; silently retrying can repeat connector work.
 const DEFAULT_MODEL = "claude-opus-5-5";
-// Low, since 2026-08-28: effort genuinely rides the API now, and Brady's verdict
-// on High-by-default was "slow as hell". High stays one tap away for hard asks.
-const DEFAULT_EFFORT = "low";
-// Bump when a default above changes: stored model/effort prefs from an older
-// version are dropped once so the new default actually lands on his phone.
-const PREFS_V = 3;
+// Medium is Brady's requested main-chat default (2026-10-23).
+const DEFAULT_EFFORT = "medium";
+// v4 applies the new effort default once on existing devices. Preserve model
+// choices accepted since v3; subsequent effort selections remain persistent.
+const PREFS_V = 4;
 
 // `api` is the real output_config.effort level. All four current models accept
 // low/medium/high/xhigh, and Opus 5.5 and Haiku 5.5 default to medium when it is
@@ -1776,10 +1775,12 @@ export default function BaxstarEmber() {
       if (b?.choice) setBg(b);
       if (prefs) {
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
-        if (prefs.v >= PREFS_V) {
+        if (prefs.v >= 3) {
           const model = MODEL_SUCCESSOR[prefs.chatModel] || prefs.chatModel;
-          const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
           if (MODELS.some((m) => m.id === model)) setChatModel(model);
+        }
+        if (prefs.v >= PREFS_V) {
+          const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
           if (Object.hasOwn(EFFORT, effort)) setChatEffort(effort);
         }
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
