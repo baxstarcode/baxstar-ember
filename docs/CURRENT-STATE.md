@@ -1,5 +1,15 @@
 # Ember — Current State
 
+**Approved next work — foreground voice and large-skull UI:** See
+[`HANDOFF-FOREGROUND-VOICE.md`](HANDOFF-FOREGROUND-VOICE.md) before resuming. Brady
+wants the tested lab conversation integrated into the skull, using main chat and
+Jenny, plus a screen-awake request. The skull must remain large after messages;
+brief phrases press inward with an orange hot-brand flare and ivory lettering;
+four to six smaller readable lines remain in a scrolling box below. Preserve the
+pinned bottom dock. Background conversations, native apps and calling integrations
+are out of scope. The layout cause has been located; implementation has **not**
+started. This handoff supersedes older requests for background/app-switch tests.
+
 **Main chat defaults to Medium — 2026-10-23 (Codex):** Brady requested Medium
 effort. Opus 5.5 remains the default model. Preference version 4 applies Medium
 once to older saved effort settings while preserving model choices from version 3.
