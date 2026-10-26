@@ -897,6 +897,12 @@ dialog .field input {
   width:100%;
   margin-top:6px
 }
+dialog summary {
+  min-height:44px;
+  padding:12px 0;
+  cursor:pointer;
+  color:var(--ember-brass-bright)
+}
 dialog .error {
   color:#ffb9a1;
   white-space:pre-wrap

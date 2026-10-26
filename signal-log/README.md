@@ -48,6 +48,8 @@ and tests are not staged. The existing root `index.html` remains generated from
 - Native keyboard controls, focus outlines, dialog focus containment and Escape
   return, responsive layout, non-color status labels, reduced-motion support.
 - Local JSON import for Claude and other reports. No reminder is created or changed.
+- Whole weekly-report import: task/run identity, revision updates, full-report
+  links, provenance in backup/restore and a copyable Claude prompt in Import signals.
 - Explicit private JSON backup download and restore, including read/action states.
   Restoring decisions requires a separate choice; no source text is silently stored.
 - Registered account-attested readers populate/update the log. Each provider has
@@ -95,6 +97,46 @@ Imported text is treated only as data: DOM `textContent`/textarea values, never
 `innerHTML`, `eval`, executable instructions or AI tool calls. A strict CSP permits
 only same-origin assets/scripts; source links accept credential-free HTTPS only,
 with `noopener noreferrer`. An import is all-or-nothing after validation.
+
+## Claude / weekly reports — functional manual route
+
+Open **Import signals → Prepare a Claude / weekly report**, copy the prompt into
+the Claude conversation containing the report, then paste its JSON response or
+choose its JSON file. Copying only uses the clipboard; the page does not call Claude.
+One complete `json` code block is accepted; surrounding instructions are rejected.
+The import remains atomic, account-scoped and unverified. No reminder is activated,
+edited or marked complete.
+
+The [`ember-weekly-report` example](weekly-example.json) is entirely synthetic.
+Its source URL is a placeholder; real reports need the actual full-report HTTPS
+link. The format has `version: 1`, `workspaceId`, `accountId`, `report` and `signals`.
+It accepts at most 50 signals within 256 KiB. Existing v1 imports/backups still work.
+
+| Report field | Meaning |
+| --- | --- |
+| `platform` | `claude`, `chatgpt` or `manual`; a claimed source, not authenticated delivery |
+| `taskId` | Stable native ID or owner-assigned slug, up to 48 letters/digits/dots/underscores/hyphens |
+| `occurrenceAt` | Original scheduled run as an ISO instant with timezone; retain for revisions |
+| `publishedAt` | Actual report/revision publication time; retain on reimport, advance for a revision |
+| `sourceUrl` | Credential-free HTTPS link to the full report; required |
+
+Each signal uses the normal fields below, with a stable `id` of at most 40
+letters/digits/dots/underscores/hyphens. The importer namespaces it by platform and
+task and assigns the report occurrence. The same task/run/item updates one card;
+another task or next week's run is separate. `publishedAt` controls which revision
+wins and the freshness clock; reimporting an old report cannot make it fresh.
+Manual `canonicalSignalId` overrides are discarded for this format. Cross-channel
+duplicates still require an explicitly reconciled mapping; similar titles are
+never enough. Keep publication timestamps accurate when correcting a report.
+
+The full-report link is added to every card; up to four additional source links
+are allowed. The normal summary ≤200 / combined details+prompt ≤750 bounds apply.
+Report metadata survives private backup/restore while verified-provider claims do
+not. Imported source content stays in memory; action metadata remains device-local.
+
+This route does not prove every weekly reminder is covered or enable automated
+Claude delivery. The current Claude scheduled-task export is still needed for a
+complete inventory and an approved supported output route is needed for automation.
 
 ## Import contract v1
 

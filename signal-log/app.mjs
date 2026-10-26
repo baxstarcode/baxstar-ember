@@ -1,4 +1,4 @@
-import { CONFIG, clamp, parseTransfer, createBackup, validateEnvelope, deduplicate, identity, metadataKey, ranking, deadlineState, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
+import { CONFIG, clamp, parseTransfer, claudeReportPrompt, createBackup, validateEnvelope, deduplicate, identity, metadataKey, ranking, deadlineState, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
 import { openStore } from './storage.mjs';
 import { getAccountAdapters, PROVIDERS } from './adapters.mjs';
 // Registers the live Gmail/Calendar readers before this module initialises.
@@ -187,6 +187,7 @@ function card(s, index, selected) {
     const refs = el('div', null, { class: 'source-list' }); for (const source of s.sources) refs.append(link(`↗ Full source: ${source.label}`, source.url)); detail.append(refs);
     detail.append(el('p', `${s.provenance}. Observed ${formatDate(s.observedAt)}. ${s.reviewAt ? `Suggested review ${formatDate(s.reviewAt)}; not a deadline.` : 'No review date suggested.'}`, { class: 'explanation' }));
     detail.append(el('p', `Source updated: ${s.sourceUpdatedAt ? formatDate(s.sourceUpdatedAt) : 'unknown'}.${s.occurrenceAt ? ` Occurrence: ${formatDate(s.occurrenceAt)}.` : ''}${s.supersedes ? ` Supersedes reference: ${s.supersedes}.` : ''}${s.resolves ? `Resolves reference: ${s.resolves} (review manually; no automatic completion).` : ''}`, { class: 'explanation' }));
+    if (s.report) detail.append(el('p', `Report: ${s.report.platform} · ${s.report.taskId} · Run ${formatDate(s.report.occurrenceAt)}. Manual delivery; automation not verified.`, { class: 'explanation' }));
     if (m.observedAt && m.observedAt !== s.observedAt) detail.append(el('p', 'Source has changed since your last action. Review the update; your decision has been preserved.', { class: 'explanation' }));
     detail.append(el('p', r.explanation, { class: 'explanation' }), el('p', 'Summary ≤200 characters · Expanded sections + prompt ≤750 total. Source facts are imported claims until verified.', { class: 'explanation' })); article.append(detail);
   }
@@ -288,12 +289,20 @@ $('export').onclick = () => {
 $('import').onclick = () => {
   const body = openDialog('Import signals');
   body.append(el('p', 'Baxstar · Fishing account. Import a Signal Log v1 report (256 KiB) or restore a private backup (3 MiB), at most 200 signals. Never paste a full inbox, credentials, or private attachments.'));
+  const prepare = el('details'), promptLabel = el('label', 'Claude report prompt', { class: 'field' }), prompt = el('textarea', claudeReportPrompt(), { readonly: true, spellcheck: false, 'aria-label': 'Claude report prompt' });
+  promptLabel.append(prompt);
+  prepare.append(el('summary', 'Prepare a Claude / weekly report'), el('p', 'Copy this prompt into the Claude conversation holding your report, then paste its JSON below. No reminder is changed. Stable task and run identities keep revisions together and separate next week’s report.'), promptLabel,
+    button('Copy Claude report prompt', async () => {
+      try { await navigator.clipboard.writeText(prompt.value); notify('Report prompt copied. Paste it into Claude when ready.'); }
+      catch { prompt.focus(); prompt.select(); notify('Copy unavailable. The prompt is selected for manual copy.'); }
+    }));
+  body.append(prepare);
   body.append(link('Download the Claude/manual import example', 'https://github.com/baxstarcode/baxstar-ember/blob/main/signal-log/example.json'));
   const label = el('label', 'Signal Log JSON', { class: 'field' }), input = el('textarea', '', { spellcheck: false, maxlength: CONFIG.maxBackupBytes, placeholder: '{"version":1,"workspaceId":"baxstar","accountId":"baxstar-fishing",…}' }); label.append(input); body.append(label);
   const fileLabel = el('label', 'Choose JSON file', { class: 'field' }), file = el('input', null, { type: 'file', accept: '.json,application/json' }); fileLabel.append(file); body.append(fileLabel);
   const error = el('p', '', { class: 'error', role: 'alert' }); body.append(error);
   file.onchange = async () => { const f = file.files[0]; if (!f) return; if (f.size > CONFIG.maxBackupBytes) { error.textContent = 'File exceeds 3 MiB. Nothing was loaded.'; return; } input.value = await f.text(); error.textContent = ''; };
-  body.append(el('p', 'Imports are unverified source claims. Duplicate provider/account/record IDs update to the latest observation. Read and resolved states remain; text stays in memory only.', { class: 'constraint-note' }));
+  body.append(el('p', 'Imports are unverified source claims. Weekly reports accept up to 50 signals and require the full report link, stable task ID, run time and publication time. Plain JSON or one JSON code block works. Revisions preserve decisions; each new run is separate. Text stays in memory only.', { class: 'constraint-note' }));
   body.append(button('Validate & import', async () => {
     try {
       const transfer = parseTransfer(input.value);

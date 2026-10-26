@@ -12,8 +12,9 @@ private cloud state and account expansion remain open. The local/manual first
 release can be used without treating those requested capabilities as complete.
 
 The current isolated follow-up starts at `main` commit `5d911ba` on branch
-`codex/signal-feed-reliability`. It hardens bounded reads and freshness only;
-shared Worker/auth/config, grants, reminders and deployment are unchanged.
+`codex/signal-feed-reliability` ([draft PR #59](https://github.com/baxstarcode/baxstar-ember/pull/59)).
+It hardens bounded reads/freshness and adds the whole-report Claude manual route.
+Shared Worker/auth/config, grants, reminders and deployment are unchanged.
 
 [README](README.md) owns the data contract and the live-feed description;
 [CONNECTOR-HANDOFF](CONNECTOR-HANDOFF.md) is the original transport seam, kept as
@@ -53,7 +54,7 @@ If a provider shows **Unavailable**, "View connection details" names the cause
 | Gmail/Calendar/Quo | Production reader code through the existing gateway; local synthetic transport tests | Signed-in real-data acceptance; explicit server identity mapping before additional accounts; Quo's separate coordinator/grant work |
 | Persistence | Device-local hashed decision metadata; source text in memory; explicit private JSON backup | Private authenticated server storage, retention/deletion policy, sync/conflict protocol and cross-device verification |
 | Weekly reports | Prior inventory identified pricing/review and risk-watch report families | Complete authoritative inventory, per-item transport mapping and measured coverage; do not infer every weekly reminder is known |
-| Claude automation | Working manual JSON import | Verified supported automated delivery, authenticated ingress and replay controls, if selected and authorized |
+| Claude delivery | Working whole-report JSON import and copyable prompt; stable run/revision identity and source provenance | Verified supported automated delivery, authenticated ingress and replay controls, if selected and authorized |
 | Additional accounts | Account fields and rejection tests; one configured Baxstar Fishing alias | Server-owned memberships/grant mappings, account switching and cross-account isolation tests |
 | Release | First release merged on main; current hardening remains a separate review branch | Real-data acceptance, private-state/account completion, approval and live verification of later releases |
 
@@ -93,6 +94,21 @@ The Signal Log builder must not edit them until scope is explicitly assigned.
 bounded read scope and any required authorizations are recorded.
 
 ### 2. Inventory all intended weekly inputs — NOT COMPLETE
+
+**October 26 read-only checkpoint:** the accessible ChatGPT task listing returned
+8 tasks and no further cursor: 2 enabled non-weekly items and 6 disabled items.
+None is currently eligible for this weekly set. This is a scoped listing, not proof
+of every account/platform. The Agent OS Activation Index and October 4 handoff
+identify 2 historical weekly candidates, but explicitly lack current Claude task
+verification. No callable native Claude scheduler listing/export exists here.
+Coverage: **eligible 0 / verified 0 / excluded 8 within the accessible set;
+unknown global coverage remains unknown**. Do not report `U = 0`.
+
+The exact item IDs, evidence references and exclusions are in the private audit
+`/workspace/signal-weekly-evidence/inventory-2026-10-26.json`, outside Git. The
+missing step is a current read-only native Claude scheduled-task listing/export
+with enabled state, IDs, cadence/timezone and output links, followed by reconciling
+other platforms. Do not reactivate a retired relay or disabled sweep to fill gaps.
 
 Use read-only authoritative listings from each relevant reminder/automation
 platform and account. Obtain exports from the authorized operator when a listing
@@ -134,9 +150,9 @@ bootstrap. The steps below remain acceptance criteria and account-expansion
 requirements. Its current account alias maps to the Worker's single configured
 grant; per-request server attestation is not yet implemented.
 
-1. Implement the owner's selected transport. A proposed page bootstrap such as
-   `signal-log/ember-reader.mjs` may register both providers independently; that
-   filename is a future target, not an existing production integration.
+1. Preserve the existing `signal-log/ember-feed.mjs` bootstrap and selected
+   same-origin gateway. A different transport needs an owner-assigned change;
+   do not create the originally proposed second bootstrap.
 2. Use `registerAccountReader({workspaceId, accountId, provider,
    readVerifiedFeed})` from `adapters.mjs`. Return `{verifiedAccount,
    endToEndVerified, envelope}` exactly as described in the connector handoff.
@@ -167,6 +183,13 @@ correct account's cards through the authenticated path, with source links and
 safe failure behavior. Evidence must distinguish provider reads from fixtures.
 
 ### 4. Complete Claude and weekly-output routing — PARTIAL
+
+**Manual route implemented October 26 in PR #59:** Import signals exposes a
+copyable Claude prompt and accepts `ember-weekly-report` v1, including one complete
+JSON code block. Task/run/item identity, per-run revisions, account validation,
+50-record/256-KiB limits, required full-report link, preserved decisions and backup
+provenance are covered by local tests. See [weekly import evidence](evidence/WEEKLY-IMPORT.md).
+This is data-only import, not an authenticated automation or proof of full coverage.
 
 The functional interim route is manual v1 JSON: selected summaries, stable IDs,
 occurrence timestamps and source links, validated by `core.mjs` and imported via
@@ -333,6 +356,8 @@ Shared handoff write completed or outstanding:
 **Current checkpoint (October 26):** first-release code includes the UI/manual
 workflow, provider readers and dashboard overlay. The isolated reliability
 follow-up has local synthetic evidence in [FEED-RELIABILITY](evidence/FEED-RELIABILITY.md).
+The whole-report manual Claude path is implemented in the same draft PR; its
+current evidence is [WEEKLY-IMPORT](evidence/WEEKLY-IMPORT.md).
 Inventory completeness, automated weekly delivery, private cloud state/account
 expansion and signed-in acceptance remain outstanding. Next independent work is
 phase 2 inventory and route mapping. No grant, automation, shared Drive handoff,

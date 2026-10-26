@@ -1,5 +1,8 @@
 # Signal Log bounded-read follow-up — October 26, 2026
 
+Later checkpoint in the same PR: [weekly import and full local release evidence](WEEKLY-IMPORT.md).
+The counts and scoped-only release note below describe the earlier reliability checkpoint.
+
 Base: `5d911babdc77bf1f62789a9fe285bc7423d974ff` (`main`).
 Branch: `codex/signal-feed-reliability`. Local synthetic verification only;
 this task does not merge, deploy, change grants or use live provider/model calls.
