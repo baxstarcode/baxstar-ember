@@ -4032,6 +4032,13 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .ops-fit .tools-rail { flex:none; }
           .ops-fit .ops-data-note, .ops-fit .ops-error { max-height:32px; overflow:auto; font-size:11px; }
         }
+        /* The 32px cockpit plates are for a mouse. A touch pointer at desktop width
+           (tablet landscape) gets the 44px floor back, as chat-controls did in #46,
+           and the skull's height budget gives up the same 12px so OPS still fits. */
+        @media (min-width:1021px) and (pointer:coarse) {
+          .ops-fit .core-row .prompt-plate { min-height:44px; }
+          .ops-fit .reactor-stage { width:min(360px,100cqw,calc(100cqh - 92px)); }
+        }
 
         /* YOUR TOOLS: one slim row with its label inline. */
         .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }

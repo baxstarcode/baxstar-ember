@@ -11,7 +11,7 @@ availability dependency. Full replies are kept in chat; spoken excerpts are labe
 when the current endpoint's 1000-character limit is exceeded.
 
 
-Last updated from the working repository on **2026-10-18 (America/Chicago)**. Recorded production
+Last updated from the working repository on **2026-10-26 (America/Chicago)**. Recorded production
 verification remains dated 2026-09-20 unless stated otherwise. This is the active
 ledger; Git history and the Ember Handoff Log preserve the closed issue record.
 
@@ -424,6 +424,20 @@ the row still renders, just without the link. The Signal Log also reads **Quo**
 now (missed calls + voicemails, 48 h, both inboxes); per-provider health means the
 Quo row simply reads Unavailable until the coordinator cutover (§1b) brings the
 grant back, and Gmail/Calendar cards are unaffected.
+
+## 10. Touch at desktop width: the model/effort rail is 28px
+
+**Status: OPEN (2026-10-26) — found while restoring the prompt-plate release check**
+
+#46 gave `.chat-controls` buttons a 44px minimum under `(pointer:coarse)`. The
+2026-10-26 no-scroll cockpit's `.ops-fit .chat-controls .seg { min-height:28px }`
+is more specific, so on a touch pointer at ≥1021px wide (tablet landscape) the
+Haiku…Fable and Low…Xtra buttons measure 28px (measured at 1440×900 with touch
+emulation). Mouse desktops are unaffected, as are phones (<1021px). The prompt plates
+next to them were fixed the same way on 2026-10-26 (`docs/CURRENT-STATE.md`). The
+likely fix is the same coarse-only override. The rail sits in the chamber's 58px
+bottom padding at `bottom:5px`, so 44px buttons should fit. That needs a five-size
+fit check and a test before it ships; it was left out to keep this change scoped.
 
 ## Expected behavior that is not a bug
 
