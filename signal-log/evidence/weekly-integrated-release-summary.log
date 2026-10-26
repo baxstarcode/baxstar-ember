@@ -1,0 +1,70 @@
+Local integrated release summary — 2026-10-26
+Runtime tree: 89b7154 (preserves main fb6500e)
+Command: CHROME_PATH=/usr/bin/chromium SIGNAL_FAST=1 npm run test:release
+Observed exit code: 0
+Synthetic providers; no signed-in production or physical-device acceptance.
+Full output retained in /workspace/signal-weekly-evidence/integrated-release.log
+
+> baxstar-ember@4.1.0 test:release
+> baxstar-ember@4.1.0 test
+> baxstar-ember@4.1.0 test:core
+> baxstar-ember@4.1.0 test:worker
+ℹ tests 5
+ℹ pass 5
+ℹ fail 0
+ℹ skipped 0
+239/239 passed
+> baxstar-ember@4.1.0 test:tokens
+ℹ tests 27
+ℹ pass 27
+ℹ fail 0
+ℹ skipped 0
+> baxstar-ember@4.1.0 test:pages
+ℹ tests 38
+ℹ pass 38
+ℹ fail 0
+ℹ skipped 0
+> baxstar-ember@4.1.0 test:outbox
+27/27 passed
+> baxstar-ember@4.1.0 test:posttime
+24/24 passed
+> baxstar-ember@4.1.0 test:browser
+> baxstar-ember@4.1.0 test:chat
+Chat regression: 26/26 passed.
+> baxstar-ember@4.1.0 test:dashboard
+132/132 passed
+> baxstar-ember@4.1.0 test:local-state
+24 passed; 0 failed
+> baxstar-ember@4.1.0 test:mobile
+45 mobile checks passed; 0 failed.
+> baxstar-ember@4.1.0 test:layout
+LAYOUT / TRUTH PASS: 87/87 checks passed.
+> baxstar-ember@4.1.0 test:streaming
+14/14 passed
+> baxstar-ember@4.1.0 test:ecosystem
+> baxstar-ember@4.1.0 test:ui
+36/36 passed · shots in .devtest/ui-shots/
+> baxstar-ember@4.1.0 test:alternative
+122/122 alternative checks passed
+> baxstar-ember@4.1.0 test:caption
+46/46 passed
+> baxstar-ember@4.1.0 test:voice-probe
+> baxstar-ember@4.1.0 test:voice-grace
+ℹ tests 32
+ℹ pass 32
+ℹ fail 0
+ℹ skipped 0
+50/50 offline checks passed. Real Mac/iPhone microphone, service, neural audio, speaker, interruptions and handoff remain PROVISIONAL.
+> baxstar-ember@4.1.0 test:voice-recording
+ℹ tests 11
+ℹ pass 11
+ℹ fail 0
+ℹ skipped 0
+> baxstar-ember@4.1.0 test:voice-foreground
+Foreground voice: 66 checks passed.
+> baxstar-ember@4.1.0 test:signal-log
+ℹ tests 44
+ℹ pass 44
+ℹ fail 0
+ℹ skipped 0
+28 browser scenarios passed; no uncaught errors or external requests. Screenshots: /workspace/signal-weekly-evidence/screenshots

@@ -4,6 +4,12 @@ Branch `codex/signal-feed-reliability`, [draft PR #59](https://github.com/baxsta
 based on verified default `main` `5d911babdc77bf1f62789a9fe285bc7423d974ff`.
 This continues the bounded-read change in the same PR. No merge or deployment.
 
+Main advanced during validation to `fb6500eed96a817e6ff51bdff77e4a9a11576d1b`
+(foreground voice). It was merged into this feature branch in `89b7154`; the only
+conflict was `docs/CURRENT-STATE.md`, resolved by retaining both updates. Shared
+application, Worker/config, gateway and foreground-voice files match the new main.
+This branch integration is not a merge of PR #59 into main.
+
 ## Working manual route
 
 Import signals now supplies a copyable Claude report prompt and accepts
@@ -28,7 +34,8 @@ report/backup paths remain compatible. See the [synthetic example](../weekly-exa
   covers 1440×1000, 390×844, 375×812, 320×740 and 844×390; the new dialog is checked
   at 375×812 and 1440×1000. Phone controls include 44px targets. No uncaught browser
   errors or external browser requests.
-- `CHROME_PATH=/usr/bin/chromium SIGNAL_FAST=1 npm run test:release`: **exit 0**.
+- Initial `CHROME_PATH=/usr/bin/chromium SIGNAL_FAST=1 npm run test:release`:
+  **exit 0** on the original base before the incoming foreground-voice change.
   Includes Worker 239 + TTS 5, token coordinator 27, Pages 38, outbox 27,
   post-time 24, chat 26, dashboard 127, local-state 24, mobile 45, layout 87,
   streaming 14, UI 36, alternative 122, caption 46, voice grace 32 + probe 50,
@@ -40,6 +47,10 @@ report/backup paths remain compatible. See the [synthetic example](../weekly-exa
   now checks CRLF and a long unterminated whitespace input. Signal Log 44/28 and
   the Pages build were rerun after this narrow change; the other release files
   stayed unchanged.
+- After integrating `fb6500e`, the **full local release command passed again,
+  exit 0**, on the combined runtime tree. Dashboard is now 132/132; foreground
+  voice is 66/66. Signal Log remains 44 contract tests and 28 browser scenarios.
+  All other suites also completed. [Integrated release summary](weekly-integrated-release-summary.log).
 - All nine staged runtime files match source byte for byte. The new example and
   documentation stay outside the public runtime bundle. Root generated HTML's
   incidental timestamp was restored; shared application/Worker/auth/config untouched.

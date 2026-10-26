@@ -15,6 +15,9 @@ The current isolated follow-up starts at `main` commit `5d911ba` on branch
 `codex/signal-feed-reliability` ([draft PR #59](https://github.com/baxstarcode/baxstar-ember/pull/59)).
 It hardens bounded reads/freshness and adds the whole-report Claude manual route.
 Shared Worker/auth/config, grants, reminders and deployment are unchanged.
+Default `main` advanced to `fb6500e` during this work; that foreground-voice
+implementation is preserved in the branch via merge `89b7154`. Full local release
+checks pass on the combined version (see weekly import evidence).
 
 [README](README.md) owns the data contract and the live-feed description;
 [CONNECTOR-HANDOFF](CONNECTOR-HANDOFF.md) is the original transport seam, kept as
