@@ -1,5 +1,16 @@
 # Ember — Current State
 
+**Signal Log continuation — 2026-10-26 (Codex, draft PR #59; not deployed):**
+`codex/signal-feed-reliability` started from `main` `5d911ba` and now preserves `fb6500e` foreground voice. Bounded reads
+now cover the response body, enforce provider record/byte caps, expose partial
+results and preserve stale cards/decisions with attempt/success timestamps. The
+manual Claude route adds a copyable prompt and whole-report JSON import with stable
+task/run/item identity, revision handling and full-report provenance in backups.
+`signal-log/ROADMAP.md` and its evidence own completion status. Read-only inventory
+found no enabled weekly item in the 8 accessible ChatGPT tasks; current Claude
+scheduled-task coverage is unverified and needs the native listing/export. Shared
+Worker/auth/config, grants, automations and deployment are outside this follow-up.
+
 **Foreground voice integrated into the large skull (Codex):** `useEmberVoice` now
 reuses the lab's browser recognition and same-origin Jenny `/api/tts` path; the old
 recording-only modal has been removed. Tap the mouth, speak, finish/review, then

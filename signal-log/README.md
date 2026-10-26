@@ -5,11 +5,11 @@ reuses Ember's design tokens, iron texture, reactor bezel and icon, and does not
 touch the dock, the Worker, the gateway allowlist or any OAuth configuration.
 
 **Live since 2026-10-22:** signed in at `ember.baxstarfishing.com`, the page reads
-Gmail and Calendar by itself on load and on **Refresh sources** — through Ember's
+Gmail, Calendar and Quo by itself on load and on **Refresh sources** — through Ember's
 own gateway, one provider per call, with Haiku 5.5 at low effort turning the bounded
 results into cards (`ember-feed.mjs`, below). Anywhere else (previews, localhost)
 the readers stay inert and the page keeps the demo and manual JSON import. Each
-refresh is two short model calls on Ember's existing key; nothing is marked read,
+refresh is three short model calls on Ember's existing key; nothing is marked read,
 completed or sent. **Start/resume here: [end-to-end roadmap](ROADMAP.md).**
 
 The visual finish combines Argon's small-corner outlined buttons with current
@@ -48,6 +48,8 @@ and tests are not staged. The existing root `index.html` remains generated from
 - Native keyboard controls, focus outlines, dialog focus containment and Escape
   return, responsive layout, non-color status labels, reduced-motion support.
 - Local JSON import for Claude and other reports. No reminder is created or changed.
+- Whole weekly-report import: task/run identity, revision updates, full-report
+  links, provenance in backup/restore and a copyable Claude prompt in Import signals.
 - Explicit private JSON backup download and restore, including read/action states.
   Restoring decisions requires a separate choice; no source text is silently stored.
 - Registered account-attested readers populate/update the log. Each provider has
@@ -95,6 +97,46 @@ Imported text is treated only as data: DOM `textContent`/textarea values, never
 `innerHTML`, `eval`, executable instructions or AI tool calls. A strict CSP permits
 only same-origin assets/scripts; source links accept credential-free HTTPS only,
 with `noopener noreferrer`. An import is all-or-nothing after validation.
+
+## Claude / weekly reports — functional manual route
+
+Open **Import signals → Prepare a Claude / weekly report**, copy the prompt into
+the Claude conversation containing the report, then paste its JSON response or
+choose its JSON file. Copying only uses the clipboard; the page does not call Claude.
+One complete `json` code block is accepted; surrounding instructions are rejected.
+The import remains atomic, account-scoped and unverified. No reminder is activated,
+edited or marked complete.
+
+The [`ember-weekly-report` example](weekly-example.json) is entirely synthetic.
+Its source URL is a placeholder; real reports need the actual full-report HTTPS
+link. The format has `version: 1`, `workspaceId`, `accountId`, `report` and `signals`.
+It accepts at most 50 signals within 256 KiB. Existing v1 imports/backups still work.
+
+| Report field | Meaning |
+| --- | --- |
+| `platform` | `claude`, `chatgpt` or `manual`; a claimed source, not authenticated delivery |
+| `taskId` | Stable native ID or owner-assigned slug, up to 48 letters/digits/dots/underscores/hyphens |
+| `occurrenceAt` | Original scheduled run as an ISO instant with timezone; retain for revisions |
+| `publishedAt` | Actual report/revision publication time; retain on reimport, advance for a revision |
+| `sourceUrl` | Credential-free HTTPS link to the full report; required |
+
+Each signal uses the normal fields below, with a stable `id` of at most 40
+letters/digits/dots/underscores/hyphens. The importer namespaces it by platform and
+task and assigns the report occurrence. The same task/run/item updates one card;
+another task or next week's run is separate. `publishedAt` controls which revision
+wins and the freshness clock; reimporting an old report cannot make it fresh.
+Manual `canonicalSignalId` overrides are discarded for this format. Cross-channel
+duplicates still require an explicitly reconciled mapping; similar titles are
+never enough. Keep publication timestamps accurate when correcting a report.
+
+The full-report link is added to every card; up to four additional source links
+are allowed. The normal summary ≤200 / combined details+prompt ≤750 bounds apply.
+Report metadata survives private backup/restore while verified-provider claims do
+not. Imported source content stays in memory; action metadata remains device-local.
+
+This route does not prove every weekly reminder is covered or enable automated
+Claude delivery. The current Claude scheduled-task export is still needed for a
+complete inventory and an approved supported output route is needed for automation.
 
 ## Import contract v1
 
@@ -228,15 +270,24 @@ signed-in browser at ember.baxstarfishing.com
   → Haiku 5.5, effort low, max_tokens 6000, JSON-only reply
 ```
 
-- **Bounds, fixed in the prompt:** Gmail — up to 25 inbox messages from the last
-  7 days that need attention (newsletters, receipts and automated notices skipped
-  unless they signal a problem or money). Calendar — up to 40 events from 2 days
+- **Bounds:** Gmail — up to 25 relevant messages from the last 7 days, including
+  weekly reports and positive business news without an action. Unrelated
+  newsletters, receipts and automated notices are skipped. Calendar — up to 40 events from 2 days
   ago to 14 days ahead. Quo (added 2026-10-23) — up to 20 missed calls and
   voicemails from the last 48 hours across both inboxes (Fishing and Pontoon),
   voicemail text carried in the signal, source link = the Quo inbox (Quo has no
   stable per-call deep link). Timestamps are computed by the page and passed
   verbatim. Until the coordinator cutover restores the Quo grant, the Quo row
   reports Unavailable and the other two providers are unaffected.
+- **Read reliability (2026-10-26 follow-up, not deployed by this task):** the
+  75-second limit covers headers and body; response bytes are capped at 512 KiB.
+  The 25/40/20 record caps are enforced in code as well as requested in the prompt.
+  A missing/non-array list or a wholly unusable result fails instead of appearing
+  as an empty success. Partial results show skipped/over-limit counts. An explicit
+  empty list is valid; older cards remain stale, never automatically resolved.
+  Connection details separate last attempt from last successful read. Failures
+  use fixed guidance without copying raw upstream errors. There is no automatic
+  retry or background polling that could silently repeat paid model calls.
 - **Verification is the OPS standard:** a provider counts as read only when the
   reply carries a successful `mcp_tool_result` paired to that provider's own
   `mcp_tool_use`, and the Worker did not flag `x-ember-connectors: degraded`.
@@ -246,8 +297,9 @@ signed-in browser at ember.baxstarfishing.com
   the v1 envelope (text fitted to the 90/200/750 limits, numbers clamped, unknown
   categories dropped, past event starts never turned into deadlines, Gmail links
   built from the message id when the model omits one). Each record is validated on
-  its own, so one malformed card never discards the read; the drop count is
-  returned. Identity is `provider + id` (Gmail message id; Calendar event id plus
+  its own, so a malformed card does not discard other usable cards; partial counts
+  are shown. Provider-labelled links allow only their provider hosts/paths, with
+  a safe provider fallback. Identity is `provider + id` (Gmail message id; Calendar event id plus
   original start for recurring instances), so decisions survive refreshes.
 - **What the labels mean:** `VERIFIED READ` = the provider answered through Ember's
   gateway this session. The account alias (`baxstar-fishing`) is the Worker's single

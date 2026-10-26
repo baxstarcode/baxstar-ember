@@ -19,7 +19,11 @@ export function createAccountAdapter({ workspaceId, accountId, provider, readVer
       }
       const signals = validateEnvelope(result.envelope, { workspaceId, accountId });
       if (result.envelope.source !== provider) throw new Error('Provider mismatch.');
-      return { state: 'verified', signals: signals.map(s => ({ ...s, verifiedRead: true, sourceReadStale: false, provenance: 'Verified provider read' })) };
+      const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
+      const dropped = count(result.dropped), truncated = count(result.truncated);
+      return { state: dropped || truncated ? 'partial' : 'verified', dropped, truncated,
+        reason: dropped || truncated ? `Partial read: ${dropped} invalid record(s) skipped; ${truncated} over-limit record(s) omitted. Earlier records were retained.` : undefined,
+        signals: signals.map(s => ({ ...s, verifiedRead: true, sourceReadStale: false, provenance: 'Verified provider read' })) };
     },
   });
 }

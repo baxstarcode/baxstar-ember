@@ -19,6 +19,7 @@ export const FEED = Object.freeze({
   // Haiku at low effort: turning two bounded tool reads into JSON is mechanical
   // work, and the thinking budget must not eat the output budget.
   model: 'claude-haiku-5-5', effort: 'low', maxTokens: 6000, timeoutMs: 75000,
+  maxResponseBytes: 512 * 1024,
   productionHosts: ['ember.baxstarfishing.com'],
   gmail: { hours: 168, max: 25 },
   calendar: { pastHours: 48, aheadDays: 14, max: 40 },
@@ -60,7 +61,7 @@ export function buildPrompt(provider, now = new Date()) {
   const rules = provider === 'quo'
     ? `Use ONLY the Quo tools. Read missed calls and voicemails from BOTH inboxes (${FEED.quo.inboxes}) created after ${new Date(ms - FEED.quo.hours * 3600000).toISOString()} — pass createdAfter with that exact timestamp. Include the voicemail transcript in "signal" when one exists; a missed call with no voicemail is information unless the number has called more than once. At most ${FEED.quo.max} records. "id" is the call or conversation id exactly as the tool returned it; "link" is ${FEED.quo.link}; "sourceUpdatedAt" is the call time as ISO 8601. Never invent a caller name; use the number when that is all the tool gives.`
     : provider === 'gmail'
-    ? `Use ONLY the Gmail tool. Read messages received after ${new Date(ms - FEED.gmail.hours * 3600000).toISOString()} (the last ${FEED.gmail.hours / 24} days) that are unread OR starred OR in the inbox and plainly need Brady's attention; skip newsletters, receipts and automated notices unless they signal a problem or money. At most ${FEED.gmail.max} messages. "id" is the Gmail message id exactly as the tool returned it; "link" is https://mail.google.com/mail/u/0/#all/<that id>; "sourceUpdatedAt" is the message date as ISO 8601.`
+    ? `Use ONLY the Gmail tool. Read messages received after ${new Date(ms - FEED.gmail.hours * 3600000).toISOString()} (the last ${FEED.gmail.hours / 24} days) that are unread, starred or in the inbox and relevant to Brady's businesses. Include relevant weekly reports and meaningful positive business news even when no action is needed. Skip unrelated newsletters, receipts and automated notices. Never manufacture an action or urgency for good news. At most ${FEED.gmail.max} messages. "id" is the Gmail message id exactly as the tool returned it; "link" is https://mail.google.com/mail/u/0/#all/<that id>; "sourceUpdatedAt" is the message date as ISO 8601.`
     : `Use ONLY the Calendar tool. Read events starting between ${new Date(ms - FEED.calendar.pastHours * 3600000).toISOString()} and ${new Date(ms + FEED.calendar.aheadDays * 86400000).toISOString()} — pass these exact timestamps to the tool. At most ${FEED.calendar.max} events. "id" is the event id (append "/" + original start for a recurring instance); "link" is the event's htmlLink; "occurrenceAt" is the event start as ISO 8601 with timezone; "dueAt" is the same start when it is in the future, otherwise null. An event that is only a reminder of past work is information, not a task.`;
   return `You are Ember's Signal Log reader for Brady Baxter (Detroit Lakes, MN; Baxstar Fishing, pontoon and ice-house rentals, Lakes Golf Sim, AI consulting, his own software). Current time: ${now.toISOString()}.
 
@@ -109,7 +110,11 @@ export function extractJSON(data) {
 
 function sourceLink(provider, raw, occurrenceAt) {
   const given = safeUrl(raw.link) || safeUrl(raw.url) || safeUrl(raw.htmlLink);
-  if (given) return given;
+  if (given) {
+    const url = new URL(given);
+    if (provider === 'gmail' && url.hostname === 'mail.google.com' && !url.port) return given;
+    if (provider === 'calendar' && !url.port && (url.hostname === 'calendar.google.com' || (url.hostname === 'www.google.com' && url.pathname.startsWith('/calendar/')))) return given;
+  }
   if (provider === 'gmail') return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(String(raw.id))}`;
   if (provider === 'quo') return FEED.quo.link;
   const day = occurrenceAt ? occurrenceAt.slice(0, 10).split('-') : null;
@@ -119,11 +124,14 @@ function sourceLink(provider, raw, occurrenceAt) {
 // Model output → strict v1 contract. Each record is validated on its own so one
 // malformed card never discards a whole read; the count of drops is reported.
 export function projectSignals(provider, parsed, now = new Date()) {
+  if (!PROVIDERS.includes(provider)) throw reason('Unsupported provider.');
+  if (!parsed || !Array.isArray(parsed.signals)) throw reason('The reader returned an invalid signals list. Existing records were retained.');
   const observedAt = now.toISOString();
-  const list = Array.isArray(parsed?.signals) ? parsed.signals : [];
+  const list = parsed.signals;
+  const limit = Math.min(FEED[provider].max, CONFIG.maxSignals);
   const signals = [], seen = new Set();
   let dropped = 0;
-  for (const raw of list.slice(0, CONFIG.maxSignals)) {
+  for (const raw of list.slice(0, limit)) {
     try {
       if (!raw || typeof raw !== 'object') throw new Error('not an object');
       const id = fit(String(raw.id ?? ''), 100);
@@ -160,14 +168,42 @@ export function projectSignals(provider, parsed, now = new Date()) {
       seen.add(id); signals.push(candidate);
     } catch { dropped += 1; }
   }
-  return { signals, dropped };
+  if (list.length && !signals.length) throw reason('The reader returned no usable records. Existing records were retained.');
+  return { signals, dropped, truncated: Math.max(0, list.length - limit) };
 }
 
 export function feedAllowed(loc = globalThis.location, win = globalThis.window) {
   return !!loc && (FEED.productionHosts.includes(loc.hostname) || win?.__emberSignalFeedAnyHost === true);
 }
 
-export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = new Date() } = {}) {
+async function readBoundedJSON(res, signal) {
+  const reader = res.body?.getReader();
+  if (!reader) throw reason('Ember returned an unreadable reply.');
+  const chunks = [];
+  let bytes = 0;
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener('abort', cancel, { once: true });
+  if (signal.aborted) cancel();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > FEED.maxResponseBytes) {
+        void reader.cancel().catch(() => {});
+        throw reason('Ember returned more data than this feed accepts. Existing records were retained.');
+      }
+      chunks.push(value);
+    }
+  } finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
+  const body = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  try { return JSON.parse(new TextDecoder().decode(body)); }
+  catch { throw reason('Ember returned an unreadable reply.'); }
+}
+
+export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = new Date(), timeoutMs = FEED.timeoutMs } = {}) {
   if (!PROVIDERS.includes(provider)) throw reason('Unsupported provider.');
   if (!feedAllowed()) throw reason('Live Gmail, Calendar and Quo reads run only on ember.baxstarfishing.com. Preview and local pages keep the demo and manual import.');
   const body = {
@@ -176,35 +212,51 @@ export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = n
     messages: [{ role: 'user', content: buildPrompt(provider, now) }],
   };
   const control = new AbortController();
-  const timer = setTimeout(() => control.abort(), FEED.timeoutMs);
-  let res;
+  // Bound the whole read, including a stalled response body. Race the operation
+  // as well as aborting it so even a transport that ignores abort cannot hang UI.
+  const duration = number(timeoutMs, 1, FEED.timeoutMs, FEED.timeoutMs);
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(reason(`The ${provider} read timed out. Existing records were retained; refresh when ready.`));
+      control.abort();
+    }, duration);
+  });
   try {
-    res = await fetchImpl(FEED.endpoint, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: control.signal });
-  } catch {
-    throw reason(control.signal.aborted ? `The ${provider} read timed out after ${FEED.timeoutMs / 1000} seconds.` : "Can't reach Ember's same-origin gateway.");
+    return await Promise.race([deadline, (async () => {
+      const res = await fetchImpl(FEED.endpoint, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: control.signal });
+      const type = (res.headers.get('content-type') || '').toLowerCase();
+      if (!type.includes('application/json')) {
+        throw reason(res.redirected || type.includes('text/html')
+          ? 'Sign in to Ember (Cloudflare Access) in this tab, then refresh sources.'
+          : `Ember's gateway answered HTTP ${res.status} without JSON.`);
+      }
+      const data = await readBoundedJSON(res, control.signal);
+      if (!res.ok || data?.error || data?.type === 'error') {
+        // Upstream error strings can contain source text or operational details.
+        // Show fixed recovery guidance rather than reflecting them into the page.
+        throw reason(res.status === 429 ? 'Ember is rate limited. Wait before refreshing; no automatic retry was sent.'
+          : [401, 403].includes(res.status) ? 'Sign in to Ember, then refresh sources. If this continues, check the connection with its owner.'
+          : `Ember request failed (HTTP ${res.status}). Existing records were retained.`);
+      }
+      if (res.headers.get('x-ember-connectors') === 'degraded' || !succeededConnectors(data).has(provider)) {
+        throw reason(`${FEED.names[provider]} returned no successful tool result — the connector is offline or needs a new sign-in. Check the OPS lights.`);
+      }
+      let parsed;
+      try { parsed = extractJSON(data); }
+      catch { throw reason('The reader returned unreadable signal JSON. Existing records were retained.'); }
+      const { signals, dropped, truncated } = projectSignals(provider, parsed, now);
+      return {
+        verifiedAccount: scope(provider),
+        endToEndVerified: true,
+        dropped, truncated,
+        envelope: { version: 1, workspaceId: CONFIG.workspaceId, accountId: CONFIG.accountId, source: provider, signals },
+      };
+    })()]);
+  } catch (error) {
+    if (typeof error?.reason === 'string') throw error;
+    throw reason("Can't read Ember's same-origin gateway. Existing records were retained.");
   } finally { clearTimeout(timer); }
-  const type = (res.headers.get('content-type') || '').toLowerCase();
-  if (!type.includes('application/json')) {
-    throw reason(res.redirected || type.includes('text/html')
-      ? 'Sign in to Ember (Cloudflare Access) in this tab, then refresh sources.'
-      : `Ember's gateway answered HTTP ${res.status} without JSON.`);
-  }
-  let data;
-  try { data = await res.json(); } catch { throw reason('Ember returned an unreadable reply.'); }
-  if (!res.ok || data?.error || data?.type === 'error') {
-    const detail = typeof data?.error === 'string' ? data.error : data?.error?.message;
-    throw reason(detail || `Ember request failed (HTTP ${res.status}).`);
-  }
-  if (res.headers.get('x-ember-connectors') === 'degraded' || !succeededConnectors(data).has(provider)) {
-    throw reason(`${FEED.names[provider]} returned no successful tool result — the connector is offline or needs a new sign-in. Check the OPS lights.`);
-  }
-  const { signals, dropped } = projectSignals(provider, extractJSON(data), now);
-  return {
-    verifiedAccount: scope(provider),
-    endToEndVerified: true,
-    dropped,
-    envelope: { version: 1, workspaceId: CONFIG.workspaceId, accountId: CONFIG.accountId, source: provider, signals },
-  };
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {

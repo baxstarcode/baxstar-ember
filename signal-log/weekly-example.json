@@ -1,0 +1,39 @@
+{
+  "format": "ember-weekly-report",
+  "version": 1,
+  "workspaceId": "baxstar",
+  "accountId": "baxstar-fishing",
+  "report": {
+    "platform": "claude",
+    "taskId": "synthetic-weekly",
+    "occurrenceAt": "2026-10-12T12:00:00Z",
+    "publishedAt": "2026-10-12T13:00:00Z",
+    "sourceUrl": "https://example.invalid/replace-with-full-report-url"
+  },
+  "signals": [
+    {
+      "id": "season-note",
+      "title": "Synthetic weekly report example",
+      "summary": "Example only: a positive update can appear without creating a task.",
+      "categories": [
+        "fishing",
+        "rentals"
+      ],
+      "kind": "good",
+      "priority": "routine",
+      "impact": 2,
+      "effortMinutes": null,
+      "confidence": 0.7,
+      "actionable": false,
+      "blocked": false,
+      "dueKind": "none",
+      "details": {
+        "signal": "Synthetic report: a repeat customer left positive feedback.",
+        "why": "Encouraging information worth noticing.",
+        "next": "No action needed.",
+        "prompt": ""
+      },
+      "dueAt": null
+    }
+  ]
+}

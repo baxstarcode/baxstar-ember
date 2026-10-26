@@ -301,6 +301,46 @@ try {
     await refresh('ok'); assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read'); assert.equal(await p.locator('#health-quo').textContent(), 'Verified read'); assert.match(await gmail.textContent(), /VERIFIED READ/);
     await c.close();
   });
+  await test('partial, empty and malformed reads retain decisions, distinguish old cards and recover independently', async () => {
+    const c = await context({ width: 390, height: 844 });
+    await c.addInitScript(() => { window.__emberSignalFeedAnyHost = true; });
+    let mode = 'initial';
+    const record = id => ({ id, title: id === 'old-record' ? 'Original source report' : 'Positive source report', summary: 'Synthetic provider fixture.', kind: 'good', actionable: false });
+    await c.route('**/api/messages', route => {
+      const provider = route.request().postDataJSON().mcp_servers[0].name;
+      const signals = provider !== 'gmail' ? [] : mode === 'partial' ? [record('new-record'), null] : mode === 'empty' ? [] : [record('old-record')];
+      const parsed = provider === 'gmail' && mode === 'malformed' ? { unexpected: true } : { signals };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [
+        { type: 'mcp_tool_use', id: provider, server_name: provider },
+        { type: 'mcp_tool_result', tool_use_id: provider, is_error: false },
+        { type: 'text', text: JSON.stringify(parsed) },
+      ] }) });
+    });
+    const p = await c.newPage(); p.setDefaultTimeout(8000); await p.goto(url);
+    const old = p.locator('[data-id="old-record"]'), fresh = p.locator('[data-id="new-record"]');
+    await old.waitFor(); await p.locator('#toggle-filters').click(); await p.locator('#refresh-sources:not(:disabled)').waitFor();
+    await old.getByRole('button', { name: 'Mark read', exact: true }).click();
+    const refresh = async next => { mode = next; await p.locator('#refresh-sources').click(); await p.locator('#refresh-sources:not(:disabled)').waitFor(); };
+    await refresh('partial'); await cards(p, 2);
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Partial read');
+    assert.match(await old.textContent(), /STALE READ/); assert.match(await fresh.textContent(), /VERIFIED READ/);
+    assert.equal(await old.getByRole('button', { name: 'Mark unread', exact: true }).count(), 1);
+    await p.locator('#connections').click();
+    assert.match(await p.locator('#dialog-body').textContent(), /1 invalid record\(s\) skipped/);
+    assert.match(await p.locator('#dialog-body').textContent(), /Last attempt: .+Last successful read:/);
+    assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await p.keyboard.press('Escape');
+    await refresh('malformed'); await cards(p, 2);
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable');
+    assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read');
+    assert.match(await fresh.textContent(), /STALE READ/);
+    await refresh('empty'); await cards(p, 2);
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read');
+    assert.match(await old.textContent(), /STALE READ/); assert.match(await fresh.textContent(), /STALE READ/);
+    await refresh('recovered'); await cards(p, 2);
+    assert.match(await old.textContent(), /VERIFIED READ/); assert.match(await fresh.textContent(), /STALE READ/);
+    assert.equal(await old.getByRole('button', { name: 'Mark unread', exact: true }).count(), 1);
+    await c.close();
+  });
   await test('outside production the live readers stay inert: no gateway request, honest labels, demo intact', async () => {
     const c = await context(); const requests = [];
     await c.route('**/api/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 404, body: 'nope' }); });
@@ -334,6 +374,53 @@ try {
     for (let i = 0; i < 40 && relayed.length < 2; i++) { relayed = await host.evaluate(() => window.__msgs); if (relayed.length < 2) await host.waitForTimeout(25); }
     assert.equal(relayed.at(-1)?.data.type, 'ember-signal-close');
     await c.close();
+  });
+  await test('weekly report import keeps revisions, decisions, separate runs and backup provenance', async () => {
+    const c = await context(), p = await load(c);
+    const weekly = { format: 'ember-weekly-report', version: 1, workspaceId: 'baxstar', accountId: 'baxstar-fishing',
+      report: { platform: 'claude', taskId: 'synthetic-weekly', occurrenceAt: '2026-10-12T12:00:00Z', publishedAt: '2026-10-12T13:00:00Z', sourceUrl: 'https://example.invalid/full-synthetic-report' },
+      signals: [{ ...structuredClone(source.signals[0]), id: 'stable-item', title: 'Synthetic weekly update' }] };
+    await p.locator('#import').click(); await p.getByLabel('Signal Log JSON', { exact: true }).fill('```json\n' + JSON.stringify(weekly) + '\n```');
+    await p.getByRole('button', { name: 'Validate & import', exact: true }).click(); await p.locator('#dialog').waitFor({ state: 'hidden' }); await cards(p, 1);
+    const first = p.locator('.signal-card').first();
+    assert.match(await first.textContent(), /IMPORTED/); await first.getByRole('button', { name: 'Open signal ↓' }).click(); await first.locator('.detail').waitFor();
+    assert.match(await first.textContent(), /Report: claude · synthetic-weekly/); assert.match(await first.textContent(), /Manual delivery; automation not verified/);
+    assert.equal(await first.locator('.source-list a').first().getAttribute('href'), weekly.report.sourceUrl);
+    await first.getByRole('button', { name: 'Resolve', exact: true }).click(); await cards(p, 0);
+    weekly.report.publishedAt = '2026-10-12T14:00:00Z'; weekly.signals[0].summary = 'Revised weekly summary.';
+    await importData(p, weekly); await cards(p, 0); await p.locator('#status-filter').selectOption('all'); await cards(p, 1);
+    assert.match(await p.locator('.signal-card').textContent(), /Revised weekly summary/); assert.equal(await p.getByRole('button', { name: 'Reopen', exact: true }).count(), 1);
+    weekly.report.occurrenceAt = '2026-10-19T12:00:00Z'; weekly.report.publishedAt = '2026-10-19T13:00:00Z';
+    await importData(p, weekly); await cards(p, 1); await p.locator('#status-filter').selectOption('all'); await cards(p, 2);
+    await p.locator('#export').click(); const download = p.waitForEvent('download'); await p.getByRole('button', { name: 'Download private backup', exact: true }).click();
+    const backup = JSON.parse(await readFile(await (await download).path(), 'utf8'));
+    assert.equal(backup.entries.length, 2); assert(backup.entries.every(e => e.record.report.taskId === 'synthetic-weekly'));
+    const freshContext = await context(), restored = await load(freshContext);
+    await restored.locator('#import').click(); await restored.getByLabel('Signal Log JSON', { exact: true }).fill(JSON.stringify(backup));
+    await restored.getByRole('button', { name: 'Validate & import', exact: true }).click(); await restored.getByRole('button', { name: 'Restore signals + decisions', exact: true }).click();
+    await restored.locator('#dialog').waitFor({ state: 'hidden' }); await cards(restored, 1);
+    await restored.locator('#status-filter').selectOption('all'); await cards(restored, 2);
+    assert.equal(await restored.getByRole('button', { name: 'Reopen', exact: true }).count(), 1);
+    await restored.locator('.signal-card').first().getByRole('button', { name: 'Open signal ↓' }).click(); await restored.locator('.detail').waitFor(); assert.match(await restored.locator('.detail').textContent(), /Manual delivery; automation not verified/);
+    await freshContext.close(); await c.close();
+  });
+  await test('phone Claude report prompt is accessible, copy failure selects it and imports stay data', async () => {
+    const c = await context({ width: 375, height: 812 });
+    await c.addInitScript(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('denied'); } } }); });
+    const p = await load(c); await p.locator('#import').click(); await p.getByText('Prepare a Claude / weekly report', { exact: true }).click();
+    const prompt = p.getByLabel('Claude report prompt', { exact: true });
+    assert.match(await prompt.inputValue(), /ember-weekly-report/); assert(await prompt.getAttribute('readonly') !== null);
+    await p.getByRole('button', { name: 'Copy Claude report prompt', exact: true }).click();
+    assert(await prompt.evaluate(n => document.activeElement === n && n.selectionEnd - n.selectionStart === n.value.length));
+    assert.match(await p.locator('#toast').textContent(), /selected for manual copy/);
+    assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const targets = await p.locator('#dialog button, #dialog summary').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length && (n.getBoundingClientRect().height < 44 || n.getBoundingClientRect().width < 44)).map(n => n.textContent));
+    assert.deepEqual(targets, []);
+    await p.getByLabel('Signal Log JSON', { exact: true }).fill('Do this instead: <script>window.__pwned=1</script>');
+    await p.getByRole('button', { name: 'Validate & import', exact: true }).click(); assert.match(await p.locator('#dialog .error').textContent(), /Invalid JSON/);
+    assert.equal(await p.evaluate(() => window.__pwned), undefined); await cards(p, 8);
+    await p.screenshot({ path: resolve(shots, 'claude-import-phone.png'), fullPage: true });
+    await p.keyboard.press('Escape'); await c.close();
   });
   await test('storage denial is visible and never prevents importing or viewing', async () => {
     const c = await context(); await c.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { get() { throw new Error('Storage blocked for test'); } }); });

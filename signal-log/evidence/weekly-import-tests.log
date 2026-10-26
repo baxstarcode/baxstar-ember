@@ -1,0 +1,90 @@
+
+> baxstar-ember@4.1.0 test:signal-log
+> node --test .devtest/signal-log/core.test.mjs && node .devtest/signal-log/browser.mjs
+
+✔ weekly report revisions keep identity, later runs and other tasks remain distinct (3.398735ms)
+✔ weekly report provenance cannot be overridden by a record; backups retain it without trust (1.648968ms)
+✔ weekly report scope, timestamps, IDs, links, limits and duplicates fail atomically (6.004023ms)
+✔ one JSON fence is accepted as data; surrounding instructions and extra blocks are rejected (1.678051ms)
+✔ Claude report prompt includes scope, occurrence identity, BLUF bounds and the no-action route (0.204273ms)
+✔ bundled weekly example is clearly synthetic and accepts the normal 200/750 limits (6.927734ms)
+✔ all bundled cards obey summary and combined detail limits and have source links (0.281128ms)
+✔ 200/750 Unicode character boundaries are enforced without truncating (0.502015ms)
+✔ bad JSON, huge files and excessive records fail atomically (0.3976ms)
+✔ workspace/account/provider mismatch cannot be silently remapped (0.385642ms)
+✔ executable and credential-bearing links are rejected (0.357661ms)
+✔ hostile content remains literal and extra fields are stripped (0.179056ms)
+✔ real dates require explicit zones; unknown/review dates never become hard deadlines (18.315988ms)
+✔ numeric inputs cannot create NaN or out-of-range scores (0.434976ms)
+✔ importance tiers beat easy low-impact urgency; score is explainable (0.317871ms)
+✔ near material deadline has its own tier; distant deadline creates no fake urgency (0.321307ms)
+✔ rank order is deterministic across input orders (0.396609ms)
+✔ months-old deadlines have no deadline urgency and are excluded pending verification (1.917707ms)
+✔ a current explicit overdue confirmation preserves a real obligation and expires (0.469988ms)
+✔ backup round-trip preserves bounded source data and explicit dispositions without trusting old verification (0.647381ms)
+✔ backup account, link, state and duplicate-identity validation is atomic (3.973548ms)
+✔ normal report limits remain 256 KiB; demo cannot be exported as private data (1.513106ms)
+✔ triage fits cumulative budget and retains oversized/blocked critical work (0.304953ms)
+✔ dedup uses scoped record/occurrence identity, never titles (0.268118ms)
+✔ latest source update wins, sources survive duplicates, cross-source merge needs explicit canonical identity (0.221869ms)
+✔ metadata keys are opaque and account/occurrence separated (9.355958ms)
+✔ read is independent of completion; snoozes expire and decisions persist (0.186747ms)
+✔ freshness comes from observation; old and new remain distinct (0.109131ms)
+✔ unwired adapter performs no read and reports exact missing path (0.224243ms)
+✔ adapter failure uses a fixed message and does not expose provider error text (0.155341ms)
+✔ account-attested adapter fails closed before accepting provider data (0.281157ms)
+✔ verified adapter contract is functional with synthetic host evidence, never inferred from credential status (0.267357ms)
+✔ feed prompt is bounded, provider-specific and demands JSON only (0.306966ms)
+✔ quo projection links to the inbox, keeps voicemail text in the signal and validates as a quo envelope (0.795801ms)
+✔ a provider is verified only by its own successful tool result (0.347956ms)
+✔ projection coerces model output into the v1 contract and drops only the bad record (0.448526ms)
+✔ calendar projection keeps occurrence identity and never turns a past start into a deadline (0.280356ms)
+✔ readFeed refuses non-production hosts, Access login pages, errors and unverified replies; accepts a verified one (26.138269ms)
+✔ a malformed or wholly invalid list cannot masquerade as a successful empty read (0.288338ms)
+✔ provider record caps are enforced in code and partial results retain positive no-action signals (2.673107ms)
+✔ adapter exposes partial counts without discarding the usable records (0.263772ms)
+✔ provider links cannot be replaced by a model-supplied off-host URL (0.603065ms)
+✔ the whole feed read times out for both stalled headers and a stalled body, with one request only (41.877422ms)
+✔ oversized replies are cancelled and rate-limit errors reveal no upstream text or automatic retry (1.184759ms)
+ℹ tests 44
+ℹ suites 0
+ℹ pass 44
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 206.544388
+PASS responsive 1440×1000 at scale 3
+PASS responsive 390×844 at scale 3
+PASS phone expansion, prompt dialog, focus return, no overflow
+PASS responsive 375×812 at scale 3
+PASS 375px touch controls stay at least 44px with filters and dialogs open
+PASS responsive 320×740 at scale 3
+PASS responsive 844×390 at scale 3
+PASS Ember furnace surfaces and Argon outlines match; press, focus and disabled states remain accessible
+PASS good news includes no-action cards and alerts to critical work outside filter
+PASS budget clamps; critical oversized work remains visible
+PASS manually waiting signals leave the budget but keep critical dependency visibility
+PASS cross-category saved combination persists after reload
+PASS read, resolved, waiting, snoozed, dismissed, accepted and undo remain distinct
+PASS keyboard dialog traps focus and Escape returns to its trigger
+PASS hostile import is inert, prompt is reviewable, account mismatch is atomic
+PASS duplicate import updates one signal, resolved state survives reload/reimport, content does not
+PASS private backup downloads only on request and restores data/decisions with explicit choice
+PASS two-tab IndexedDB transactions preserve concurrent independent metadata patches
+PASS undo refuses to overwrite a newer decision from another tab
+PASS rendered text meets 4.5 contrast across actual card and button gradient stops
+PASS supplied reader populates/updates the log, rejects another account and retains data on failure
+PASS live Gmail/Calendar readers verify through the same-origin gateway, label failures and never trust a fallback
+PASS partial, empty and malformed reads retain decisions, distinguish old cards and recover independently
+PASS outside production the live readers stay inert: no gateway request, honest labels, demo intact
+PASS Ask Ember hands a card to the dashboard composer: a navigation standalone, a same-origin message when embedded
+PASS weekly report import keeps revisions, decisions, separate runs and backup provenance
+PASS phone Claude report prompt is accessible, copy failure selects it and imports stay data
+PASS storage denial is visible and never prevents importing or viewing
+28 browser scenarios passed; no uncaught errors or external requests. Screenshots: /workspace/signal-weekly-evidence/screenshots
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

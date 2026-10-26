@@ -1,4 +1,4 @@
-import { CONFIG, clamp, parseTransfer, createBackup, validateEnvelope, deduplicate, identity, metadataKey, ranking, deadlineState, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
+import { CONFIG, clamp, parseTransfer, claudeReportPrompt, createBackup, validateEnvelope, deduplicate, identity, metadataKey, ranking, deadlineState, rankSignals, triage, effectiveStatus, freshness, formatDate } from './core.mjs';
 import { openStore } from './storage.mjs';
 import { getAccountAdapters, PROVIDERS } from './adapters.mjs';
 // Registers the live Gmail/Calendar readers before this module initialises.
@@ -187,6 +187,7 @@ function card(s, index, selected) {
     const refs = el('div', null, { class: 'source-list' }); for (const source of s.sources) refs.append(link(`↗ Full source: ${source.label}`, source.url)); detail.append(refs);
     detail.append(el('p', `${s.provenance}. Observed ${formatDate(s.observedAt)}. ${s.reviewAt ? `Suggested review ${formatDate(s.reviewAt)}; not a deadline.` : 'No review date suggested.'}`, { class: 'explanation' }));
     detail.append(el('p', `Source updated: ${s.sourceUpdatedAt ? formatDate(s.sourceUpdatedAt) : 'unknown'}.${s.occurrenceAt ? ` Occurrence: ${formatDate(s.occurrenceAt)}.` : ''}${s.supersedes ? ` Supersedes reference: ${s.supersedes}.` : ''}${s.resolves ? `Resolves reference: ${s.resolves} (review manually; no automatic completion).` : ''}`, { class: 'explanation' }));
+    if (s.report) detail.append(el('p', `Report: ${s.report.platform} · ${s.report.taskId} · Run ${formatDate(s.report.occurrenceAt)}. Manual delivery; automation not verified.`, { class: 'explanation' }));
     if (m.observedAt && m.observedAt !== s.observedAt) detail.append(el('p', 'Source has changed since your last action. Review the update; your decision has been preserved.', { class: 'explanation' }));
     detail.append(el('p', r.explanation, { class: 'explanation' }), el('p', 'Summary ≤200 characters · Expanded sections + prompt ≤750 total. Source facts are imported claims until verified.', { class: 'explanation' })); article.append(detail);
   }
@@ -218,7 +219,7 @@ function render() {
   $('mode-note').textContent = mode === 'demo' ? 'Signed in at ember.baxstarfishing.com, Gmail, Calendar and Quo load into My log by themselves. Demo clock: Oct 18, 2026.' : 'Source verification is labeled on each card. Text stays in this tab; export a private backup before closing.';
   $('data-mode').textContent = mode === 'demo' ? 'Open my log' : 'View demo';
   $('export').disabled = imported.length === 0;
-  for (const provider of PROVIDERS) $(`health-${provider}`).textContent = ({ verified: 'Verified read', unavailable: 'Unavailable', 'not-connected': 'Not connected' })[health.get(provider).state] || 'Unknown';
+  for (const provider of PROVIDERS) $(`health-${provider}`).textContent = ({ verified: 'Verified read', partial: 'Partial read', unavailable: 'Unavailable', 'not-connected': 'Not connected' })[health.get(provider).state] || 'Unknown';
   $('result-count').textContent = `${sorted.length} of ${current().length} signals`;
   $('plan').replaceChildren();
   if (focusMode === 'good') $('plan').append(el('p', 'Worth noticing, even when there is nothing to do. No streaks. No invented wins.'));
@@ -288,12 +289,20 @@ $('export').onclick = () => {
 $('import').onclick = () => {
   const body = openDialog('Import signals');
   body.append(el('p', 'Baxstar · Fishing account. Import a Signal Log v1 report (256 KiB) or restore a private backup (3 MiB), at most 200 signals. Never paste a full inbox, credentials, or private attachments.'));
+  const prepare = el('details'), promptLabel = el('label', 'Claude report prompt', { class: 'field' }), prompt = el('textarea', claudeReportPrompt(), { readonly: true, spellcheck: false, 'aria-label': 'Claude report prompt' });
+  promptLabel.append(prompt);
+  prepare.append(el('summary', 'Prepare a Claude / weekly report'), el('p', 'Copy this prompt into the Claude conversation holding your report, then paste its JSON below. No reminder is changed. Stable task and run identities keep revisions together and separate next week’s report.'), promptLabel,
+    button('Copy Claude report prompt', async () => {
+      try { await navigator.clipboard.writeText(prompt.value); notify('Report prompt copied. Paste it into Claude when ready.'); }
+      catch { prompt.focus(); prompt.select(); notify('Copy unavailable. The prompt is selected for manual copy.'); }
+    }));
+  body.append(prepare);
   body.append(link('Download the Claude/manual import example', 'https://github.com/baxstarcode/baxstar-ember/blob/main/signal-log/example.json'));
   const label = el('label', 'Signal Log JSON', { class: 'field' }), input = el('textarea', '', { spellcheck: false, maxlength: CONFIG.maxBackupBytes, placeholder: '{"version":1,"workspaceId":"baxstar","accountId":"baxstar-fishing",…}' }); label.append(input); body.append(label);
   const fileLabel = el('label', 'Choose JSON file', { class: 'field' }), file = el('input', null, { type: 'file', accept: '.json,application/json' }); fileLabel.append(file); body.append(fileLabel);
   const error = el('p', '', { class: 'error', role: 'alert' }); body.append(error);
   file.onchange = async () => { const f = file.files[0]; if (!f) return; if (f.size > CONFIG.maxBackupBytes) { error.textContent = 'File exceeds 3 MiB. Nothing was loaded.'; return; } input.value = await f.text(); error.textContent = ''; };
-  body.append(el('p', 'Imports are unverified source claims. Duplicate provider/account/record IDs update to the latest observation. Read and resolved states remain; text stays in memory only.', { class: 'constraint-note' }));
+  body.append(el('p', 'Imports are unverified source claims. Weekly reports accept up to 50 signals and require the full report link, stable task ID, run time and publication time. Plain JSON or one JSON code block works. Revisions preserve decisions; each new run is separate. Text stays in memory only.', { class: 'constraint-note' }));
   body.append(button('Validate & import', async () => {
     try {
       const transfer = parseTransfer(input.value);
@@ -308,13 +317,21 @@ async function refreshSources() {
   let loaded = 0;
   try {
     for (const adapter of getAccountAdapters()) {
+      const previous = health.get(adapter.provider), lastAttempt = new Date().toISOString();
       let result;
       try {
         result = await adapter.read();
-        if (result.state === 'verified') { await acceptRecords(result.signals, undefined, false); loaded += result.signals.length; }
+        if (['verified', 'partial'].includes(result.state)) {
+          // A bounded or empty result is not evidence that older cards were
+          // reread, deleted or resolved. Only returned identities become fresh.
+          imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · not returned by latest bounded read' } : s);
+          await acceptRecords(result.signals, undefined, false); loaded += result.signals.length;
+          result.lastSuccess = new Date().toISOString();
+        }
       } catch { result = { state: 'unavailable', reason: 'Read validation failed. Existing records were retained.' }; }
-      health.set(adapter.provider, result);
-      if (result.state !== 'verified') imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · refresh unavailable' } : s);
+      health.set(adapter.provider, { ...result, lastAttempt, lastSuccess: result.lastSuccess || previous.lastSuccess });
+      if (!['verified', 'partial'].includes(result.state)) imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · refresh unavailable' } : s);
+      render();
     }
     render(); notify(loaded ? `${loaded} source records received. Verification and health are labeled separately.` : [...health.values()].every(h => h.state === 'unavailable') ? `${[...health.values()][0].reason}` : 'No new source records. Existing records retained; inspect connection details.');
   } finally {
@@ -327,8 +344,12 @@ window.addEventListener('ember-signal-readers-changed', refreshSources);
 $('connections').onclick = async () => {
   const body = openDialog('Connection truth');
   body.append(el('p', 'Gmail, Calendar and Quo are read through Ember’s own signed-in gateway (Cloudflare Access → Pages → Worker → the read-only connector), one provider at a time, with Haiku turning the bounded results into cards. A provider shows Verified read only when the reply carried a successful tool result for it; a connector-free fallback answer never counts. Reads run on ember.baxstarfishing.com only.'));
-  for (const provider of PROVIDERS) { const result = health.get(provider); body.append(el('h3', `${PROVIDER_NAMES[provider]} · ${result.state}`), el('p', result.reason || 'Account-attested provider read completed. Retained records are still labeled if an earlier refresh failed.')); }
-  body.append(el('h3', 'Bounds and cost'), el('p', 'Gmail: up to 25 inbox messages from the last 7 days that need attention. Calendar: up to 40 events from 2 days ago to 14 days ahead. Quo: up to 20 missed calls and voicemails from the last 48 hours across both inboxes. Each refresh is three short Haiku calls through Ember’s existing API key; this page never changes an OAuth grant, marks mail read, returns a call or edits a calendar.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
+  for (const provider of PROVIDERS) {
+    const result = health.get(provider);
+    body.append(el('h3', `${PROVIDER_NAMES[provider]} · ${result.state}`), el('p', result.reason || 'Provider read completed. Cards absent from the latest bounded read remain stale; they are not automatically resolved.'),
+      el('p', `Last attempt: ${result.lastAttempt ? formatDate(result.lastAttempt) : 'Not yet'} · Last successful read: ${result.lastSuccess ? formatDate(result.lastSuccess) : 'Not yet'}`));
+  }
+  body.append(el('h3', 'Bounds and cost'), el('p', 'Gmail: up to 25 relevant messages from the last 7 days, including weekly reports and positive business news. Calendar: up to 40 events from 2 days ago to 14 days ahead. Quo: up to 20 missed calls and voicemails from the last 48 hours across both inboxes. Each refresh is three short Haiku calls through Ember’s existing API key; this page never changes an OAuth grant, marks mail read, returns a call or edits a calendar.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
 };
 const references = [
   ['Importance before urgency', 'https://academic.oup.com/jcr/article-abstract/45/3/673/4847790?login=true', 'The mere urgency effect motivates separating importance and time pressure. Parent-supplied research; publisher text was inaccessible here. This scoring formula is a design inference, not a validated model.'],
