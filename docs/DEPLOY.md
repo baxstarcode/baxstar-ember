@@ -188,6 +188,11 @@ back to legacy refreshes. One object owns each provider/client/consent grant; Go
 three connectors share that object. Changing the Google client secret retains the
 owner; fresh consent creates a new owner. Bind this namespace only to Ember.
 
+Since 2026-10-26 the same file also sets `EMBER_VOICE_ENABLED = "true"` and the
+`[ai]` binding `EMBER_VOICE_AI` (`docs/VOICE-REBUILD.md`), so one full
+`npx wrangler deploy` from `proxy/` ships the coordinator and the speech routes
+together.
+
 The owner stores access and refresh tokens server-side, serializes refreshes, and
 commits a refresh-intent marker before calling the provider. It saves the replacement
 before returning access. If the provider reply is lost, malformed, rejected, or times

@@ -378,6 +378,11 @@ remain: previews and public `workers.dev` cannot call the new speech endpoints.
 
 ## Activation and release blockers
 
+**2026-10-26:** per Brady's Quo-reconnection handoff, `proxy/wrangler.toml` now
+carries both settings below, so they ship in the same full Worker deployment as the
+coordinator cutover (`docs/DEPLOY.md`, "Durable token owner"). The paragraphs below
+describe the state before that release.
+
 No live Worker or secret was changed. New speech routes return 503 unless both
 `EMBER_VOICE_ENABLED=true` and an `EMBER_VOICE_AI` Workers AI binding are present.
 There is no new API key to paste into the browser or a Shortcut. Neither activation

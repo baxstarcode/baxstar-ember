@@ -31,6 +31,13 @@ ALLOWED_ORIGINS = "https://ember.baxstarfishing.com"
 OAUTH_REDIRECT_URI = "https://ember-claude-proxy.brady-9d1.workers.dev/oauth/callback"
 # Never replay legacy secrets if this binding is missing or temporarily down.
 TOKEN_COORDINATOR_REQUIRED = "true"
+# Speech routes return 503 unless this AND the [ai] binding below exist
+# (docs/VOICE-REBUILD.md "Activation and release blockers").
+EMBER_VOICE_ENABLED = "true"
+
+# Workers AI binding for /api/voice/transcribe and /api/voice/speak.
+[ai]
+binding = "EMBER_VOICE_AI"
 
 # Secrets are NOT set here — they would end up in git.
 # Set them with: npx wrangler secret put <NAME>
