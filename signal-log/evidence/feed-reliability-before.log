@@ -1,0 +1,72 @@
+✖ a malformed or wholly invalid list cannot masquerade as a successful empty read (2.105847ms)
+✖ provider record caps are enforced in code and partial results retain positive no-action signals (1.48152ms)
+✖ adapter exposes partial counts without discarding the usable records (0.970391ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 0
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 63.385361
+
+✖ failing tests:
+
+test at ../../tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:244:1
+✖ a malformed or wholly invalid list cannot masquerade as a successful empty read (2.105847ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:246:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+      at run (node:internal/test_runner/harness:398:12)
+      at test (node:internal/test_runner/harness:407:12)
+      at file:///tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:244:1 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /invalid signals list|no usable records/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at ../../tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:251:1
+✖ provider record caps are enforced in code and partial results retain positive no-action signals (1.48152ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  27 !== 24
+  
+      at TestContext.<anonymous> (file:///tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:257:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 27,
+    expected: 24,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:262:1
+✖ adapter exposes partial counts without discarding the usable records (0.970391ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'verified'
+  - 'partial'
+  
+      at TestContext.<anonymous> (file:///tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:268:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'verified',
+    expected: 'partial',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

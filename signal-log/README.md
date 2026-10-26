@@ -5,11 +5,11 @@ reuses Ember's design tokens, iron texture, reactor bezel and icon, and does not
 touch the dock, the Worker, the gateway allowlist or any OAuth configuration.
 
 **Live since 2026-10-22:** signed in at `ember.baxstarfishing.com`, the page reads
-Gmail and Calendar by itself on load and on **Refresh sources** — through Ember's
+Gmail, Calendar and Quo by itself on load and on **Refresh sources** — through Ember's
 own gateway, one provider per call, with Haiku 5.5 at low effort turning the bounded
 results into cards (`ember-feed.mjs`, below). Anywhere else (previews, localhost)
 the readers stay inert and the page keeps the demo and manual JSON import. Each
-refresh is two short model calls on Ember's existing key; nothing is marked read,
+refresh is three short model calls on Ember's existing key; nothing is marked read,
 completed or sent. **Start/resume here: [end-to-end roadmap](ROADMAP.md).**
 
 The visual finish combines Argon's small-corner outlined buttons with current
@@ -228,15 +228,24 @@ signed-in browser at ember.baxstarfishing.com
   → Haiku 5.5, effort low, max_tokens 6000, JSON-only reply
 ```
 
-- **Bounds, fixed in the prompt:** Gmail — up to 25 inbox messages from the last
-  7 days that need attention (newsletters, receipts and automated notices skipped
-  unless they signal a problem or money). Calendar — up to 40 events from 2 days
+- **Bounds:** Gmail — up to 25 relevant messages from the last 7 days, including
+  weekly reports and positive business news without an action. Unrelated
+  newsletters, receipts and automated notices are skipped. Calendar — up to 40 events from 2 days
   ago to 14 days ahead. Quo (added 2026-10-23) — up to 20 missed calls and
   voicemails from the last 48 hours across both inboxes (Fishing and Pontoon),
   voicemail text carried in the signal, source link = the Quo inbox (Quo has no
   stable per-call deep link). Timestamps are computed by the page and passed
   verbatim. Until the coordinator cutover restores the Quo grant, the Quo row
   reports Unavailable and the other two providers are unaffected.
+- **Read reliability (2026-10-26 follow-up, not deployed by this task):** the
+  75-second limit covers headers and body; response bytes are capped at 512 KiB.
+  The 25/40/20 record caps are enforced in code as well as requested in the prompt.
+  A missing/non-array list or a wholly unusable result fails instead of appearing
+  as an empty success. Partial results show skipped/over-limit counts. An explicit
+  empty list is valid; older cards remain stale, never automatically resolved.
+  Connection details separate last attempt from last successful read. Failures
+  use fixed guidance without copying raw upstream errors. There is no automatic
+  retry or background polling that could silently repeat paid model calls.
 - **Verification is the OPS standard:** a provider counts as read only when the
   reply carries a successful `mcp_tool_result` paired to that provider's own
   `mcp_tool_use`, and the Worker did not flag `x-ember-connectors: degraded`.
@@ -246,8 +255,9 @@ signed-in browser at ember.baxstarfishing.com
   the v1 envelope (text fitted to the 90/200/750 limits, numbers clamped, unknown
   categories dropped, past event starts never turned into deadlines, Gmail links
   built from the message id when the model omits one). Each record is validated on
-  its own, so one malformed card never discards the read; the drop count is
-  returned. Identity is `provider + id` (Gmail message id; Calendar event id plus
+  its own, so a malformed card does not discard other usable cards; partial counts
+  are shown. Provider-labelled links allow only their provider hosts/paths, with
+  a safe provider fallback. Identity is `provider + id` (Gmail message id; Calendar event id plus
   original start for recurring instances), so decisions survive refreshes.
 - **What the labels mean:** `VERIFIED READ` = the provider answered through Ember's
   gateway this session. The account alias (`baxstar-fishing`) is the Worker's single

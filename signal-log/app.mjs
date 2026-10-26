@@ -218,7 +218,7 @@ function render() {
   $('mode-note').textContent = mode === 'demo' ? 'Signed in at ember.baxstarfishing.com, Gmail, Calendar and Quo load into My log by themselves. Demo clock: Oct 18, 2026.' : 'Source verification is labeled on each card. Text stays in this tab; export a private backup before closing.';
   $('data-mode').textContent = mode === 'demo' ? 'Open my log' : 'View demo';
   $('export').disabled = imported.length === 0;
-  for (const provider of PROVIDERS) $(`health-${provider}`).textContent = ({ verified: 'Verified read', unavailable: 'Unavailable', 'not-connected': 'Not connected' })[health.get(provider).state] || 'Unknown';
+  for (const provider of PROVIDERS) $(`health-${provider}`).textContent = ({ verified: 'Verified read', partial: 'Partial read', unavailable: 'Unavailable', 'not-connected': 'Not connected' })[health.get(provider).state] || 'Unknown';
   $('result-count').textContent = `${sorted.length} of ${current().length} signals`;
   $('plan').replaceChildren();
   if (focusMode === 'good') $('plan').append(el('p', 'Worth noticing, even when there is nothing to do. No streaks. No invented wins.'));
@@ -308,13 +308,21 @@ async function refreshSources() {
   let loaded = 0;
   try {
     for (const adapter of getAccountAdapters()) {
+      const previous = health.get(adapter.provider), lastAttempt = new Date().toISOString();
       let result;
       try {
         result = await adapter.read();
-        if (result.state === 'verified') { await acceptRecords(result.signals, undefined, false); loaded += result.signals.length; }
+        if (['verified', 'partial'].includes(result.state)) {
+          // A bounded or empty result is not evidence that older cards were
+          // reread, deleted or resolved. Only returned identities become fresh.
+          imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · not returned by latest bounded read' } : s);
+          await acceptRecords(result.signals, undefined, false); loaded += result.signals.length;
+          result.lastSuccess = new Date().toISOString();
+        }
       } catch { result = { state: 'unavailable', reason: 'Read validation failed. Existing records were retained.' }; }
-      health.set(adapter.provider, result);
-      if (result.state !== 'verified') imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · refresh unavailable' } : s);
+      health.set(adapter.provider, { ...result, lastAttempt, lastSuccess: result.lastSuccess || previous.lastSuccess });
+      if (!['verified', 'partial'].includes(result.state)) imported = imported.map(s => s.source === adapter.provider && s.verifiedRead ? { ...s, sourceReadStale: true, provenance: 'Prior verified read · refresh unavailable' } : s);
+      render();
     }
     render(); notify(loaded ? `${loaded} source records received. Verification and health are labeled separately.` : [...health.values()].every(h => h.state === 'unavailable') ? `${[...health.values()][0].reason}` : 'No new source records. Existing records retained; inspect connection details.');
   } finally {
@@ -327,8 +335,12 @@ window.addEventListener('ember-signal-readers-changed', refreshSources);
 $('connections').onclick = async () => {
   const body = openDialog('Connection truth');
   body.append(el('p', 'Gmail, Calendar and Quo are read through Ember’s own signed-in gateway (Cloudflare Access → Pages → Worker → the read-only connector), one provider at a time, with Haiku turning the bounded results into cards. A provider shows Verified read only when the reply carried a successful tool result for it; a connector-free fallback answer never counts. Reads run on ember.baxstarfishing.com only.'));
-  for (const provider of PROVIDERS) { const result = health.get(provider); body.append(el('h3', `${PROVIDER_NAMES[provider]} · ${result.state}`), el('p', result.reason || 'Account-attested provider read completed. Retained records are still labeled if an earlier refresh failed.')); }
-  body.append(el('h3', 'Bounds and cost'), el('p', 'Gmail: up to 25 inbox messages from the last 7 days that need attention. Calendar: up to 40 events from 2 days ago to 14 days ahead. Quo: up to 20 missed calls and voicemails from the last 48 hours across both inboxes. Each refresh is three short Haiku calls through Ember’s existing API key; this page never changes an OAuth grant, marks mail read, returns a call or edits a calendar.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
+  for (const provider of PROVIDERS) {
+    const result = health.get(provider);
+    body.append(el('h3', `${PROVIDER_NAMES[provider]} · ${result.state}`), el('p', result.reason || 'Provider read completed. Cards absent from the latest bounded read remain stale; they are not automatically resolved.'),
+      el('p', `Last attempt: ${result.lastAttempt ? formatDate(result.lastAttempt) : 'Not yet'} · Last successful read: ${result.lastSuccess ? formatDate(result.lastSuccess) : 'Not yet'}`));
+  }
+  body.append(el('h3', 'Bounds and cost'), el('p', 'Gmail: up to 25 relevant messages from the last 7 days, including weekly reports and positive business news. Calendar: up to 40 events from 2 days ago to 14 days ahead. Quo: up to 20 missed calls and voicemails from the last 48 hours across both inboxes. Each refresh is three short Haiku calls through Ember’s existing API key; this page never changes an OAuth grant, marks mail read, returns a call or edits a calendar.'), el('h3', 'Claude and weekly reminders'), el('p', 'Manual JSON import works now. There is no verified cross-platform reminder API. A reminder firing is not completion. Existing reminders and disabled sweeps are unchanged.'), el('h3', 'Future workspaces'), el('p', 'Adapters require workspace, account, and provider identity. A workspace selector alone never grants access. More accounts require their own authorized server mapping.'));
 };
 const references = [
   ['Importance before urgency', 'https://academic.oup.com/jcr/article-abstract/45/3/673/4847790?login=true', 'The mere urgency effect motivates separating importance and time pressure. Parent-supplied research; publisher text was inaccessible here. This scoring formula is a design inference, not a validated model.'],

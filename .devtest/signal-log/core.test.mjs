@@ -174,6 +174,7 @@ const reply = (provider, signals, { ok = true, text = JSON.stringify({ signals }
 test('feed prompt is bounded, provider-specific and demands JSON only', () => {
   const gmail = feed.buildPrompt('gmail', feedNow), calendar = feed.buildPrompt('calendar', feedNow);
   assert.match(gmail, /ONLY the Gmail tool/); assert.match(gmail, /2026-10-14T18:00:00.000Z/); assert.match(gmail, /At most 25 messages/);
+  assert.match(gmail, /weekly reports and meaningful positive business news even when no action is needed/);
   assert.match(calendar, /ONLY the Calendar tool/); assert.match(calendar, /2026-10-19T18:00:00.000Z/); assert.match(calendar, /2026-11-04T18:00:00.000Z/); assert.match(calendar, /At most 40 events/);
   const quo = feed.buildPrompt('quo', feedNow);
   assert.match(quo, /ONLY the Quo tools/); assert.match(quo, /createdAfter with that exact timestamp/); assert.match(quo, /2026-10-19T18:00:00.000Z/); assert.match(quo, /At most 20 records/); assert.match(quo, /218-325-6857/); assert.match(quo, /218-325-9846/);
@@ -227,7 +228,7 @@ test('readFeed refuses non-production hosts, Access login pages, errors and unve
   globalThis.window = { __emberSignalFeedAnyHost: true }; globalThis.location = { hostname: '127.0.0.1' };
   const respond = (body, { status = 200, headers = {} } = {}) => async () => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond('<html>login</html>', { headers: { 'content-type': 'text/html' } }) }), /Sign in to Ember/);
-  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond({ error: { message: 'Model not allowed.' } }, { status: 400 }) }), /Model not allowed/);
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond({ error: { message: 'private upstream detail' } }, { status: 400 }) }), error => /HTTP 400/.test(error.message) && !error.message.includes('private upstream detail'));
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', [], { ok: false })) }), /no successful tool result/);
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', []), { headers: { 'x-ember-connectors': 'degraded' } }) }), /no successful tool result/);
   await assert.rejects(feed.readFeed('calendar', { fetchImpl: respond(reply('gmail', [])) }), /no successful tool result/);
@@ -238,4 +239,76 @@ test('readFeed refuses non-production hosts, Access login pages, errors and unve
   assert.equal(result.endToEndVerified, true); assert.deepEqual(result.verifiedAccount, { workspaceId: 'baxstar', accountId: 'baxstar-fishing', provider: 'gmail' });
   assert.equal(result.envelope.source, 'gmail'); assert.equal(result.envelope.signals.length, 1); assert.equal(result.dropped, 1);
   delete globalThis.window; delete globalThis.location;
+});
+
+test('a malformed or wholly invalid list cannot masquerade as a successful empty read', () => {
+  for (const parsed of [null, {}, { signals: null }, { signals: {} }, { signals: [null, {}, 'bad'] }]) {
+    assert.throws(() => feed.projectSignals('gmail', parsed, feedNow), /invalid signals list|no usable records/);
+  }
+  assert.deepEqual(feed.projectSignals('gmail', { signals: [] }, feedNow), { signals: [], dropped: 0, truncated: 0 });
+});
+
+test('provider record caps are enforced in code and partial results retain positive no-action signals', () => {
+  for (const provider of ['gmail', 'calendar', 'quo']) {
+    const max = feed.FEED[provider].max;
+    const raw = Array.from({ length: max + 3 }, (_, i) => ({ id: `record-${i}`, title: 'Good news', summary: 'A positive source report.', kind: 'good', actionable: false }));
+    raw[1] = null;
+    const result = feed.projectSignals(provider, { signals: raw }, feedNow);
+    assert.equal(result.signals.length, max - 1); assert.equal(result.dropped, 1); assert.equal(result.truncated, 3);
+    assert(result.signals.every(s => s.kind === 'good' && !s.actionable && s.effortMinutes === null));
+  }
+});
+
+test('adapter exposes partial counts without discarding the usable records', async () => {
+  const adapter = createAccountAdapter({ ...CONFIG, provider: 'gmail', readVerifiedFeed: async () => ({
+    verifiedAccount: { workspaceId: CONFIG.workspaceId, accountId: CONFIG.accountId, provider: 'gmail' }, endToEndVerified: true,
+    envelope: data({}, { source: 'gmail' }), dropped: 1, truncated: 3,
+  }) });
+  const result = await adapter.read();
+  assert.equal(result.state, 'partial'); assert.equal(result.signals.length, 1);
+  assert.equal(result.dropped, 1); assert.equal(result.truncated, 3); assert.match(result.reason, /Partial read/);
+});
+
+test('provider links cannot be replaced by a model-supplied off-host URL', () => {
+  for (const provider of ['gmail', 'calendar', 'quo']) {
+    for (const link of ['https://example.invalid/private-payload', 'https://mail.google.com.evil.invalid/', 'https://www.google.com/url?q=private', 'https://calendar.google.com:8443/']) {
+      const { signals } = feed.projectSignals(provider, { signals: [{ id: 'safe-id', title: 'Test source', summary: 'Synthetic', link }] }, feedNow);
+      const url = new URL(signals[0].sources[0].url);
+      assert.equal(url.hostname, { gmail: 'mail.google.com', calendar: 'calendar.google.com', quo: 'app.quo.com' }[provider]);
+      assert.equal(url.port, ''); assert(!url.href.includes('private'));
+    }
+  }
+});
+
+test('the whole feed read times out for both stalled headers and a stalled body, with one request only', { timeout: 2000 }, async () => {
+  globalThis.window = { __emberSignalFeedAnyHost: true }; globalThis.location = { hostname: '127.0.0.1' };
+  try {
+    let calls = 0, requestSignal;
+    await assert.rejects(feed.readFeed('gmail', { timeoutMs: 20, fetchImpl: async (_, init) => {
+      calls++; requestSignal = init.signal; return new Promise(() => {});
+    } }), /timed out/);
+    assert.equal(calls, 1); assert(requestSignal.aborted);
+    let cancelled = false;
+    await assert.rejects(feed.readFeed('gmail', { timeoutMs: 20, fetchImpl: async () => {
+      calls++;
+      return new Response(new ReadableStream({ cancel() { cancelled = true; } }), { headers: { 'content-type': 'application/json' } });
+    } }), /timed out/);
+    assert.equal(calls, 2); assert(cancelled, 'the stalled body is cancelled, not just abandoned');
+  } finally { delete globalThis.window; delete globalThis.location; }
+});
+
+test('oversized replies are cancelled and rate-limit errors reveal no upstream text or automatic retry', async () => {
+  globalThis.window = { __emberSignalFeedAnyHost: true }; globalThis.location = { hostname: '127.0.0.1' };
+  try {
+    let cancelled = false;
+    await assert.rejects(feed.readFeed('calendar', { fetchImpl: async () => new Response(new ReadableStream({
+      start(c) { c.enqueue(new Uint8Array(feed.FEED.maxResponseBytes + 1)); }, cancel() { cancelled = true; },
+    }), { headers: { 'content-type': 'application/json' } }) }), /more data/);
+    assert(cancelled);
+    let calls = 0;
+    await assert.rejects(feed.readFeed('gmail', { fetchImpl: async () => {
+      calls++; return new Response(JSON.stringify({ error: { message: 'private source text and operational details' } }), { status: 429, headers: { 'content-type': 'application/json' } });
+    } }), error => /rate limited/.test(error.message) && !error.message.includes('private source'));
+    assert.equal(calls, 1);
+  } finally { delete globalThis.window; delete globalThis.location; }
 });

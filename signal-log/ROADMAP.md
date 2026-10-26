@@ -1,20 +1,33 @@
 # Signal Log — end-to-end completion roadmap
 
-**Status (2026-10-22): live Gmail/Calendar feed shipped on `main`; signed-in
-production read pending Brady's confirmation.** Codex built the page, ranking,
+**Status (2026-10-26): first release shipped; full requested build unfinished.**
+Gmail/Calendar feed code shipped on `main` October 22, with Quo and the dashboard
+overlay added October 23. Signed-in
+production read remains pending Brady's confirmation. Codex built the page, ranking,
 decisions, import/export and tests (draft PR #50, 2026-10-18). Claude merged it
 onto current `main`, supplied the readers (`ember-feed.mjs`), added the YOUR TOOLS
-link and the feed tests, and merged the result. Phases 1 and 3 below are done;
-2, 4 and 5 remain future work and are not required for daily use.
+link and the feed tests, and merged the result. Reader implementation exists;
+real-account acceptance is pending. Complete weekly coverage, Claude automation,
+private cloud state and account expansion remain open. The local/manual first
+release can be used without treating those requested capabilities as complete.
+
+The current isolated follow-up starts at `main` commit `5d911ba` on branch
+`codex/signal-feed-reliability`. It hardens bounded reads and freshness only;
+shared Worker/auth/config, grants, reminders and deployment are unchanged.
 
 [README](README.md) owns the data contract and the live-feed description;
 [CONNECTOR-HANDOFF](CONNECTOR-HANDOFF.md) is the original transport seam, kept as
-history. A screenshot or a credential indicator still proves nothing; the page's
-own `VERIFIED READ` label is the evidence of a provider read.
+history. `VERIFIED READ` means the response contained a successful provider tool
+result; it is not independent proof of account identity or every model summary.
 
 ## Exact next action
 
-Brady opens https://ember.baxstarfishing.com/signal-log/ signed in. Expected: the
+**Builder work can continue:** complete the authoritative weekly-input inventory
+in phase 2, map every eligible item to a delivery route, and implement the selected
+phase-4/5 contracts within the assigned scope. Keep private inventory data out of
+the public repo. The signed-in check does not block this independent work.
+
+**Production acceptance:** Brady opens https://ember.baxstarfishing.com/signal-log/ signed in. Expected: the
 banner switches to **MY LOG · SOURCE RECORDS**, Gmail and Calendar read
 **Verified read** under Source connections, and cards carry `VERIFIED READ`.
 If a provider shows **Unavailable**, "View connection details" names the cause
@@ -30,19 +43,19 @@ If a provider shows **Unavailable**, "View connection details" names the cause
 | Ranking and time-budget triage | Tested: deterministic impact/deadline/effort/confidence ranking, explanations, waiting/dependency exclusions, overdue verification, positive no-action signals. |
 | Local decisions | Tested: read, resolve, snooze, waiting, dismiss, accept risk, undo and cross-tab conflict protection for metadata. |
 | Manual Claude/report import | Functional: bounded v1 JSON, account validation, inert text, safe links, explicit dedup, provenance/freshness and private backup/restore. |
-| Accessibility and responsive checks | 26 contract tests and 22 browser scenarios pass; keyboard/focus, sampled contrast, 44px phone controls, 375px/390px and desktop layouts. Not a full WCAG audit or physical iPhone sign-off. |
-| Local build | Pages build passes; eight staged runtime files match source. [Evidence](evidence/VALIDATION.md), [visual comparison](evidence/STYLE-COMPARISON.md). |
+| Accessibility and responsive checks | Current scoped checks and limits: [feed reliability evidence](evidence/FEED-RELIABILITY.md). Keyboard/focus, sampled contrast, 44px phone controls, 375px/390px and desktop layouts. Not a full WCAG audit or physical iPhone sign-off. |
+| Local build | Pages build passes; nine staged runtime files match source. [Original evidence](evidence/VALIDATION.md), [visual comparison](evidence/STYLE-COMPARISON.md). |
 
 ## Contracts/scaffolding versus missing implementation
 
 | Surface | What exists | What is still missing |
 | --- | --- | --- |
-| Gmail/Calendar | `registerAccountReader` and validated ingestion through the page, tested with synthetic callbacks | Supplied production readers, trusted account attestation, bounded provider projection and real end-to-end evidence |
+| Gmail/Calendar/Quo | Production reader code through the existing gateway; local synthetic transport tests | Signed-in real-data acceptance; explicit server identity mapping before additional accounts; Quo's separate coordinator/grant work |
 | Persistence | Device-local hashed decision metadata; source text in memory; explicit private JSON backup | Private authenticated server storage, retention/deletion policy, sync/conflict protocol and cross-device verification |
 | Weekly reports | Prior inventory identified pricing/review and risk-watch report families | Complete authoritative inventory, per-item transport mapping and measured coverage; do not infer every weekly reminder is known |
 | Claude automation | Working manual JSON import | Verified supported automated delivery, authenticated ingress and replay controls, if selected and authorized |
 | Additional accounts | Account fields and rejection tests; one configured Baxstar Fishing alias | Server-owned memberships/grant mappings, account switching and cross-account isolation tests |
-| Release | Durable draft commits and local evidence | Real-data acceptance, release-blocker resolution, owner approval, merge/deployment and live verification |
+| Release | First release merged on main; current hardening remains a separate review branch | Real-data acceptance, private-state/account completion, approval and live verification of later releases |
 
 Imported text disappearing after a reload is an explicit current limit, not
 durable cloud storage. A successful synthetic callback is not a live connection.
@@ -50,7 +63,13 @@ The no-feed demo must never be described as the completed connected build.
 
 ## Ordered implementation phases
 
-### 1. Reconcile ownership and authorized transport — DONE 2026-10-22 (Claude owns the build; transport = existing `/api/messages`)
+### 1. Reconcile ownership and authorized transport — transport selected; refresh ownership for each scope
+
+Claude supplied the first feed implementation October 22. The current October 26
+Codex assignment is bounded to Signal Log source/tests/docs on its isolated branch;
+it does not claim or modify the shared Worker/coordinator deployment. Registry
+remains stale; it was read, not claimed or written. Relay is retired; current
+coordination is the Handoff Log. No shared Drive record was written by this task.
 
 1. Complete the next action above. Read `AGENTS.md`, `docs/CURRENT-STATE.md`,
    `docs/DEPLOY.md`, `docs/VOICE-REBUILD.md`, open PRs and current handoffs first.
@@ -108,7 +127,12 @@ occurrence updates it. Positive information remains eligible without an action.
 an evidence date and reasons. “All weekly reminders covered” requires `U = 0`
 and a verified route for every eligible item, not merely a filled demo.
 
-### 3. Supply real Gmail and Calendar readers — DONE 2026-10-22 (`signal-log/ember-feed.mjs`)
+### 3. Supply real Gmail and Calendar readers — IMPLEMENTED; signed-in acceptance pending
+
+`signal-log/ember-feed.mjs` is the existing reader; do not create a duplicate
+bootstrap. The steps below remain acceptance criteria and account-expansion
+requirements. Its current account alias maps to the Worker's single configured
+grant; per-request server attestation is not yet implemented.
 
 1. Implement the owner's selected transport. A proposed page bootstrap such as
    `signal-log/ember-reader.mjs` may register both providers independently; that
@@ -216,13 +240,14 @@ operational evidence. Public fixtures, screenshots and logs remain synthetic.
   checks. Test the actual phone/Safari workflow, including source links and import/
   export; Chromium screenshots alone are not physical-device evidence.
 - Run scoped local suites for each change. Before release run the required local
-  build and full release matrix for the integrated candidate. The known Mission
-  Control concurrent-save failure reproduced on the base remains a separate
-  release blocker for its owner; repeated green reruns are not a repair.
+  build and full release matrix for the integrated candidate. The October 18
+  Mission Control failure is historical; Claude recorded a later full release
+  pass October 22. Recheck the integrated candidate instead of carrying that old
+  failure forward as a current blocker or claiming a new full pass from scoped tests.
 
 **Release gate:** obtain explicit approval for the exact reviewed commit, target,
 private access boundary, integration scope and operational owner. Merge and
-deployment are **not authorized by this roadmap or the current docs-only task**.
+deployment are **not authorized by this roadmap or the current follow-up task**.
 Keep `[skip ci]` on commits and verify workflow triggers before pushing; do not
 dispatch Actions, enable paid CI or consume Actions minutes. If a future release
 needs a build, use the approved local/cloud mechanism and cost boundary.
@@ -305,8 +330,10 @@ Rollback/recovery checkpoint:
 Shared handoff write completed or outstanding:
 ```
 
-**Current checkpoint:** UI/manual workflows and synthetic adapter path pass locally
-at `dc8105c`; inventory completeness, real readers, private cloud state and release
-remain outstanding. Connector-owner acknowledgement is the immediate blocker.
-The current change creates this roadmap and its two inbound links only; no runtime,
-grant, integration, automation, shared handoff or deployment is changed.
+**Current checkpoint (October 26):** first-release code includes the UI/manual
+workflow, provider readers and dashboard overlay. The isolated reliability
+follow-up has local synthetic evidence in [FEED-RELIABILITY](evidence/FEED-RELIABILITY.md).
+Inventory completeness, automated weekly delivery, private cloud state/account
+expansion and signed-in acceptance remain outstanding. Next independent work is
+phase 2 inventory and route mapping. No grant, automation, shared Drive handoff,
+merge or deployment is changed by this follow-up.

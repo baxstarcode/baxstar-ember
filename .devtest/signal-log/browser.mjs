@@ -301,6 +301,46 @@ try {
     await refresh('ok'); assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read'); assert.equal(await p.locator('#health-quo').textContent(), 'Verified read'); assert.match(await gmail.textContent(), /VERIFIED READ/);
     await c.close();
   });
+  await test('partial, empty and malformed reads retain decisions, distinguish old cards and recover independently', async () => {
+    const c = await context({ width: 390, height: 844 });
+    await c.addInitScript(() => { window.__emberSignalFeedAnyHost = true; });
+    let mode = 'initial';
+    const record = id => ({ id, title: id === 'old-record' ? 'Original source report' : 'Positive source report', summary: 'Synthetic provider fixture.', kind: 'good', actionable: false });
+    await c.route('**/api/messages', route => {
+      const provider = route.request().postDataJSON().mcp_servers[0].name;
+      const signals = provider !== 'gmail' ? [] : mode === 'partial' ? [record('new-record'), null] : mode === 'empty' ? [] : [record('old-record')];
+      const parsed = provider === 'gmail' && mode === 'malformed' ? { unexpected: true } : { signals };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [
+        { type: 'mcp_tool_use', id: provider, server_name: provider },
+        { type: 'mcp_tool_result', tool_use_id: provider, is_error: false },
+        { type: 'text', text: JSON.stringify(parsed) },
+      ] }) });
+    });
+    const p = await c.newPage(); p.setDefaultTimeout(8000); await p.goto(url);
+    const old = p.locator('[data-id="old-record"]'), fresh = p.locator('[data-id="new-record"]');
+    await old.waitFor(); await p.locator('#toggle-filters').click(); await p.locator('#refresh-sources:not(:disabled)').waitFor();
+    await old.getByRole('button', { name: 'Mark read', exact: true }).click();
+    const refresh = async next => { mode = next; await p.locator('#refresh-sources').click(); await p.locator('#refresh-sources:not(:disabled)').waitFor(); };
+    await refresh('partial'); await cards(p, 2);
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Partial read');
+    assert.match(await old.textContent(), /STALE READ/); assert.match(await fresh.textContent(), /VERIFIED READ/);
+    assert.equal(await old.getByRole('button', { name: 'Mark unread', exact: true }).count(), 1);
+    await p.locator('#connections').click();
+    assert.match(await p.locator('#dialog-body').textContent(), /1 invalid record\(s\) skipped/);
+    assert.match(await p.locator('#dialog-body').textContent(), /Last attempt: .+Last successful read:/);
+    assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await p.keyboard.press('Escape');
+    await refresh('malformed'); await cards(p, 2);
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable');
+    assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read');
+    assert.match(await fresh.textContent(), /STALE READ/);
+    await refresh('empty'); await cards(p, 2);
+    assert.equal(await p.locator('#health-gmail').textContent(), 'Verified read');
+    assert.match(await old.textContent(), /STALE READ/); assert.match(await fresh.textContent(), /STALE READ/);
+    await refresh('recovered'); await cards(p, 2);
+    assert.match(await old.textContent(), /VERIFIED READ/); assert.match(await fresh.textContent(), /STALE READ/);
+    assert.equal(await old.getByRole('button', { name: 'Mark unread', exact: true }).count(), 1);
+    await c.close();
+  });
   await test('outside production the live readers stay inert: no gateway request, honest labels, demo intact', async () => {
     const c = await context(); const requests = [];
     await c.route('**/api/**', route => { requests.push(route.request().url()); return route.fulfill({ status: 404, body: 'nope' }); });
