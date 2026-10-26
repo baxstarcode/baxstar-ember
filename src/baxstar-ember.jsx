@@ -19,7 +19,7 @@ import { useState, useEffect, useRef } from "react";
 /* ---------- CONFIG ---------- */
 
 // Foreground voice uses the physically tested lab recognition and Jenny endpoints.
-// Background listening and automatic microphone rearming are intentionally absent.
+// A mouth tap starts a foreground conversation; Stop/hidden-page ends the session.
 
 const MCP_SERVERS = [
   // The browser requests names only. The Worker owns destinations, credentials,
@@ -426,11 +426,10 @@ const EFFORT_SUCCESSOR = { standard: "medium" };
 // Preserve Brady's chosen model default. Failed requests require an explicit
 // retry or model change; silently retrying can repeat connector work.
 const DEFAULT_MODEL = "claude-opus-5-5";
-// Medium is Brady's requested main-chat default (2026-10-23).
-const DEFAULT_EFFORT = "medium";
-// v4 applies the new effort default once on existing devices. Preserve model
-// choices accepted since v3; subsequent effort selections remain persistent.
-const PREFS_V = 4;
+// Opus 5.5 / High is Brady's requested conversation default.
+const DEFAULT_EFFORT = "high";
+// v5 applies Opus / High once; subsequent explicit selections persist.
+const PREFS_V = 5;
 
 // `api` is the real output_config.effort level. All four current models accept
 // low/medium/high/xhigh, and Opus 5.5 and Haiku 5.5 default to medium when it is
@@ -1316,10 +1315,10 @@ function emberPhrases(text) {
   return pieces;
 }
 function useEmberVoice({ onSend, blocked, enabled }) {
-  const [state, setState] = useState({ open: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
+  const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
   options.current = { onSend, blocked, enabled };
-  const control = useRef({ live: true, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0 });
+  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0 });
   const c = control.current;
   const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const production = location.hostname === "ember.baxstarfishing.com";
@@ -1354,13 +1353,17 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     patch({ audioReady: false, phrase: "" });
   }
   function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = null; }
+  function pauseConversation() { c.conversation = false; patch({ conversation: false }); }
   function released(rec) {
     if (c.rec !== rec) return;
     detach(rec); c.rec = null; c.mic = "off"; clearTimers();
     const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
     c.releaseNote = ""; patch({ phase: "ready", note });
+    if (c.conversation && c.draft.trim() && !c.partial && !document.hidden) { send(); }
+    else if (c.conversation) { pauseConversation(); releaseWake(); patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn’t catch any words. Tap the mouth to resume." }); }
   }
   function abortMic() {
+    pauseConversation();
     const rec = c.rec;
     if (!rec || ["releasing", "unconfirmed"].includes(c.mic)) return;
     c.mic = "releasing"; detach(rec); rec.onend = () => released(rec);
@@ -1369,7 +1372,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     try { rec.abort(); } catch {}
   }
   function stop(note = "Stopped. Your words and replies are still here.") {
-    c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers();
+    pauseConversation(); c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers();
     if (c.rec && c.draft.trim()) c.interrupted = true;
     // Preserve the mic-release gate even when Stop is pressed more than once.
     if (c.rec && ["releasing", "unconfirmed"].includes(c.mic)) {
@@ -1384,21 +1387,22 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     timer("finish", () => { if (c.rec === rec) abortMic(); }, 3000);
     try { rec.stop(); } catch { abortMic(); }
   }
-  function start() {
+  function start(continuing = false) {
+    if (continuing === true && !c.conversation) return;
     if (c.rec || c.request || options.current.blocked || !options.current.enabled || document.hidden) return;
     patch({ open: true });
     if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
-    stop(); c.releaseNote = ""; c.blob = null; c.answer = "";
+    stop(); c.conversation = true; c.partial = false; patch({ conversation: true }); c.releaseNote = ""; c.blob = null; c.answer = "";
     const prefix = c.interrupted ? c.draft.trim() : "";
     c.draft = prefix; patch({ draft: prefix, answer: "", partial: false });
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let rec;
-    try { rec = new Recognition(); } catch { patch({ note: "The browser could not start speech recognition. Try again when ready." }); return; }
+    try { rec = new Recognition(); } catch { pauseConversation(); patch({ note: "The browser could not start speech recognition. Try again when ready." }); return; }
     c.rec = rec; c.mic = "starting"; keepAwake(); session("auto");
     rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
     rec.onstart = () => {
       if (c.rec !== rec || c.mic !== "starting") return;
-      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: "Listening. Tap Finish when you’re done." });
+      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: "Listening. Pause when you’re done; I’ll answer aloud." });
       timer("turn", finish, 30000);
     };
     rec.onsoundstart = rec.onspeechstart = () => { if (c.rec === rec) clearTimeout(c.timers.grace); };
@@ -1407,9 +1411,10 @@ function useEmberVoice({ onSend, blocked, enabled }) {
       clearTimeout(c.timers.grace);
       const results = Array.from(event.results), words = results.map(r => r[0]?.transcript || "").join(" ").trim();
       c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2000);
-      patch({ draft: c.draft, partial: results.some(r => !r.isFinal) });
+      c.partial = results.some(r => !r.isFinal);
+      patch({ draft: c.draft, partial: c.partial });
       const changed = results.slice(Number.isInteger(event.resultIndex) ? event.resultIndex : 0);
-      if (c.mic === "listening" && words && !results.some(r => !r.isFinal) && changed.some(r => r.isFinal)) timer("grace", finish, 750);
+      if (c.mic === "listening" && words && !results.some(r => !r.isFinal) && changed.some(r => r.isFinal)) timer("grace", finish, 1100);
     };
     rec.onerror = event => {
       if (c.rec !== rec) return;
@@ -1421,7 +1426,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     rec.onend = () => released(rec);
     patch({ phase: "starting", note: "Allow the microphone if prompted. Waiting for the browser…" });
     timer("start", () => { if (c.rec === rec) { abortMic(); releaseWake(); patch({ note: "Microphone start timed out. Check permissions before retrying." }); } }, 15000);
-    try { rec.start(); } catch { released(rec); releaseWake(); patch({ note: "The microphone could not start. Try again when ready." }); }
+    try { rec.start(); } catch { pauseConversation(); released(rec); releaseWake(); patch({ note: "The microphone could not start. Try again when ready." }); }
   }
   function phraseAt(time, duration) {
     if (!c.phrases.length || c.phase !== "playing") return;
@@ -1458,7 +1463,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
       if (!c.live || epoch !== c.epoch) return;
       c.blob = blob; c.request = null;
       await playReply(epoch);
-    } catch (error) { if (c.live && epoch === c.epoch) { releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
+    } catch (error) { if (c.live && epoch === c.epoch) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   async function send() {
@@ -1471,9 +1476,9 @@ function useEmberVoice({ onSend, blocked, enabled }) {
       const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal });
       if (!c.live || epoch !== c.epoch) return;
       c.request = null;
-      if (!result) { releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
+      if (!result) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
       c.answer = result; patch({ answer: result }); await speak();
-    } catch { if (c.live && epoch === c.epoch) { releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
+    } catch { if (c.live && epoch === c.epoch) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   function playing() {
@@ -1484,7 +1489,13 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Your microphone is off." });
     phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
-  function ended() { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: c.answer.length > 1000 ? "Spoken excerpt finished. The full reply is in the conversation below." : "Reply finished. Tap the mouth for another turn." }); }
+  function ended() {
+    session("auto");
+    if (!c.url || !c.conversation || document.hidden || !options.current.enabled) { releaseWake(); patch({ phase: "ready", phrase: "" }); return; }
+    const epoch = c.epoch;
+    patch({ phase: "ready", phrase: "", note: "Your turn…" });
+    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, 450);
+  }
   useEffect(() => {
     c.live = true;
     const hidden = () => { if (document.hidden) stop("Paused when Ember left the screen. Review your words before continuing."); };
@@ -1495,27 +1506,29 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   }, []);
   useEffect(() => { if (!enabled) { stop(); patch({ open: false }); } }, [enabled]);
   return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
-    mouth: () => c.rec ? (["starting", "listening"].includes(c.mic) ? finish() : patch({ open: true })) : c.request || c.phase === "playing" ? stop() : start(),
+    mouth: () => c.conversation || c.rec || c.request || c.phase === "playing" ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
     close: () => { stop(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
-    edit: value => { c.draft = value; patch({ draft: value, partial: false }); },
+    edit: value => { c.draft = value; c.partial = false; patch({ draft: value, partial: false }); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
     paused: () => { if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
-    audioError: () => { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
+    audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
 function ForegroundVoice({ voice, chatBusy }) {
   return <section className="foreground-voice" aria-label="Ember voice controls" hidden={!voice.open} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); voice.close(); } }}>
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
-      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Finish talking</button> : <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>{voice.draft ? "Talk again" : "Talk"}</button>}
+      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.answer && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>{voice.draft ? "Talk again" : "Talk"}</button>}
       <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
-      {voice.answer && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
+      <button className="chip ghost" onClick={() => { voice.close(); requestAnimationFrame(() => document.querySelector('.chat-composer textarea')?.focus()); }}>Type instead</button>
+      {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
     </div>
-    <div className="voice-review" hidden={!!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
-    {voice.partial && <small>These words may be unfinished. Review before sending.</small>}
+    <div className="voice-review" hidden={voice.conversation || !!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
+    {voice.conversation && !voice.answer && voice.draft && <p className="voice-live-words" aria-label="Heard words">{voice.draft}</p>}
+    {voice.partial && !voice.conversation && <small>These words may be unfinished. Review before sending.</small>}
     <audio ref={voice.audioRef} controls playsInline preload="none" hidden={!voice.audioReady} aria-label="Ember reply" onPlaying={voice.playing} onPause={voice.paused} onEnded={voice.ended} onError={voice.audioError} onTimeUpdate={e => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration)}/>
-    <div className="voice-footnote"><span data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake…", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" })[voice.wake]}</span><span>Keep Ember visible · mic starts only when you tap.</span></div>
+    <div className="voice-footnote"><span data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake…", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" })[voice.wake]}</span><span>Keep Ember visible · mouth starts/stops conversation.</span></div>
     {!voice.production && <small>Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com.</small>}
   </section>;
 }
@@ -1749,7 +1762,7 @@ export default function BaxstarEmber() {
       if (b?.choice) setBg(b);
       if (prefs) {
         if (prefs.surfaces && typeof prefs.surfaces === "object") setSurfaces((s0) => ({ ...s0, ...prefs.surfaces }));
-        if (prefs.v >= 3) {
+        if (prefs.v >= PREFS_V) {
           const model = MODEL_SUCCESSOR[prefs.chatModel] || prefs.chatModel;
           if (MODELS.some((m) => m.id === model)) setChatModel(model);
         }
@@ -1981,6 +1994,7 @@ export default function BaxstarEmber() {
   /* ---------- OPS: COMMAND PIPELINE ---------- */
 
   async function sendCommand(text, { retryId, voiceSignal } = {}) {
+    if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
     // Ref guard is synchronous: two clicks in one render cannot launch two requests.
     if (activeChatRef.current || !chatReady || voiceSignal?.aborted) return null;
     const current = chatMsgsRef.current;
@@ -3919,6 +3933,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .voice-status[data-phase="listening"] { color:#ffbc81; }
         .voice-actions { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
         .foreground-voice button { min-height:44px; min-width:44px; }
+        .voice-live-words { font-size:12px; line-height:1.4; max-height:34px; overflow:auto; margin:4px 0; color:var(--ink-dim); }
         .voice-review[hidden] { display:none; }
         .voice-review { display:flex; gap:8px; align-items:stretch; }
         .voice-review textarea { width:100%; min-width:0; min-height:60px; resize:vertical; padding:8px; border-radius:8px;
@@ -4365,7 +4380,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   ref={cmdInputRef}
                   rows={2} value={command}
                   onChange={(e) => setCommand(e.target.value)}
-                  onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+                  onFocus={() => { if (voice.conversation) voice.stop("Switched to typed chat."); setFocused(true); }} onBlur={() => setFocused(false)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) { e.preventDefault(); if (!e.repeat) sendCommand(); }
                     if (e.key === "Escape" && activeChatRef.current) { e.preventDefault(); stopChat(); }

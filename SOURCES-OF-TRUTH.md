@@ -1,5 +1,16 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Conversation mode update — October 26, 2026:** mouth-started voice now automatically
+sends finalized speech, speaks with Jenny and listens again within the active
+foreground session. The user's new instruction supersedes older mandatory
+review/Send and no-rearm requirements below. Stop/close/hidden-page/typing ends the
+session; unfinished or failed turns pause for recovery. Typed questions stay
+text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
+one-time migration; subsequent choices persist. Desktop no-scroll and the pinned
+dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
+sources, implementation boundaries and the outstanding physical-device proof.
+
+
 **Desktop layout authority, October 26, 2026:** Brady requires OPS to fit the
 desktop viewport without page scrolling. Preserve the pinned dock, use compact
 recent feeds and side-by-side conversation, and keep skull size independent of

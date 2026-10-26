@@ -316,6 +316,9 @@ try {
       body: JSON.stringify({ content: [{ type: "text", text: "noted" }] }) }));
     await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
     await page.waitForSelector(".core-chamber");
+    // This fixture deliberately returns non-sync JSON. Let its error banner settle
+    // before comparing geometry; otherwise the async banner changes viewport space.
+    await page.locator('.ops-error').waitFor();
     const geo = () => page.evaluate(() => {
       const r = (q) => document.querySelector(q)?.getBoundingClientRect();
       const core = r(".core-chamber"), controls = r(".chat-controls"), tools = r(".tools-rail"), dock = r(".console-dock");
