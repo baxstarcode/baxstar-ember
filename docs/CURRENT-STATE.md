@@ -1,5 +1,14 @@
 # Ember — Current State
 
+**Quo reconnected — October 26, 2026 (Claude Code):** the coordinator cutover is live.
+Worker `47108b31-7ae5-46af-982c-337eaf15eb4e` (from main `b10b1d1`, PR #60, plus
+Brady's two fresh consent seeds) runs the `EmberTokenCoordinator` in required mode and
+the `EMBER_VOICE_AI` binding. At 15:32 CDT Brady's signed-in page showed QUO / GMAIL /
+CALENDAR lit, LIVE, a real Quo missed call, and live Inbox and Schedule rows. He
+reported that the Signal Log, chat and a spoken reply all worked, and that sync is
+slow (not critical). PROVISIONAL: Quo still reading Verified read after the first
+access token expires. Details: `docs/DEPLOY.md` "Durable token owner".
+
 **Conversation mode update — October 26, 2026:** mouth-started voice now automatically
 sends finalized speech, speaks with Jenny and listens again within the active
 foreground session. The user's new instruction supersedes older mandatory

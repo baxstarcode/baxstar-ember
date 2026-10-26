@@ -329,7 +329,7 @@ const ECO_EDGES = [
 ];
 
 const PROJECTS_META = {
-  updated: "2026-10-23",
+  updated: "2026-10-26",
   zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" },
 };
 
@@ -360,9 +360,9 @@ const PROJECTS = [
   {
     cat: "Supporting",
     items: [
-      { name: "Ember / Mission Control", pct: 97, platform: "Claude + Codex",
+      { name: "Ember / Mission Control", pct: 98, platform: "Claude + Codex",
         links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-        outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Left: voice gate 3/5, coordinator cutover + consent (Brady), Quo back online", sessions: "~1" },
+        outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Quo back online 10-26 (coordinator cutover + fresh consent). Left: voice gate 3/5, Quo 1-hour recheck, slow sync", sessions: "~1" },
       { name: "Agent OS logs + trimmers", pct: 90, platform: "Claude",
         outstanding: "Confirm first unattended nightly trim", sessions: "~1" },
       { name: "Asset pipeline docs", pct: 100, platform: "—",

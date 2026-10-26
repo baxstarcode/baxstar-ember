@@ -95,7 +95,14 @@ stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been reco
 
 ## 1b. Quo is offline
 
-**Status: OPEN (2026-10-15)**
+**Status: FIXED 2026-10-26. The persistence recheck after token expiry is PROVISIONAL.**
+The coordinator cutover went live (Worker `0283d68b`, then `47108b31` with both fresh
+consent seeds; see `docs/DEPLOY.md`, "Durable token owner"). Brady's signed-in page at
+15:32 CDT showed the Quo light lit and a real Quo missed call, and he reported the
+Signal Log check passed. Open: confirm Quo still reads Verified read after the first
+access token expires. The history below is kept for the record.
+
+**Original status: OPEN (2026-10-15)**
 
 Brady's signed-in `/api/connectors/status`: gmail, calendar, gdrive connected; quo
 offline. Quo's account had run out of credits around the same time and was topped up
@@ -108,7 +115,7 @@ OPS syncs per feed, so Quo being down no longer blanks Inbox and Schedule.
 
 ## 1c. A token-store read failure replays a retired refresh token
 
-**Status: COORDINATED REPAIR VERIFIED LOCALLY — rollout/consent pending (2026-10-16)**
+**Status: COORDINATED REPAIR DEPLOYED 2026-10-26 with fresh consent (Worker `47108b31`); see 1b**
 
 Before the repair, `currentRefresh` caught `EMBER_TOKENS.get` failures and returned
 the original secret. After rotation, `tokenCache` held the replacement refresh token, so that fallback
@@ -260,6 +267,11 @@ Future Google consent asks only for Gmail read, Calendar list/event/free-busy re
 and Drive read. The current refresh grant was created under the older broad scope set;
 changing scope strings in source does not narrow an already-issued token.
 
+**2026-10-26:** Brady's fresh Google consent requested only the narrow scopes above. Its
+seed (`MCP_COORDINATED_REFRESH_GOOGLE`) is now the grant the Worker uses. The older grant
+was not revoked, and its `MCP_REFRESH_*` secrets remain on the Worker unused, so this item
+stays open until that revoke is done and verified.
+
 Until Brady revokes and re-consents, the Worker's explicit read-only tool allowlist is
 the active write barrier. It disables all unreviewed/new provider tools by default.
 Do not describe the existing token itself as least-privilege until the revoke/re-consent
@@ -395,7 +407,7 @@ provider availability from local mocks, secret names, or an HTTP 200 from anothe
 
 ## 9. Signal Log live feed is wired; the signed-in production read is unconfirmed
 
-**Status: SHIPPED 2026-10-22 — PROVISIONAL until Brady opens it signed in**
+**Status: SHIPPED 2026-10-22. On 2026-10-26 Brady reported the signed-in Signal Log check passed after the Quo reconnection (no Signal Log screenshot was captured).**
 
 `/signal-log/` (YOUR TOOLS → Signal Log) now reads Gmail and Calendar through the
 same Access → Pages → Worker gateway the dashboard uses, one provider per call,

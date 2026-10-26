@@ -179,7 +179,23 @@ Required/used secrets and variables stay in Cloudflare, never Git:
 Static `MCP_TOKEN_*` values remain compatibility fallbacks in source but short-lived
 refresh-token minting is the intended production path.
 
-### Durable token owner — rollout pending (2026-10-16)
+### Durable token owner — deployed 2026-10-26
+
+**Cutover record, 2026-10-26 (Claude Code, Brady's Quo-reconnection handoff):**
+before the change, live was `f8d6ac15-844d-4e59-b0ed-20f8822dcf09` at 100%, with 2
+vars (both identical in `wrangler.toml`) and 10 secrets, plus no KV/DO/service/AI
+bindings, crons or custom domains. One full `npx wrangler deploy` from merged main
+`b10b1d1` (PR #60) produced `0283d68b-553e-4b09-9b14-896445227cde`, which carries the
+coordinator, migration `ember-token-coordinator-v1`, `EMBER_VOICE_AI` and all 10
+secrets. Brady completed fresh consent and saved both seeds in the dashboard. Cloudflare
+auto-deployed `4d824627` (Google seed, 20:19 UTC) and then
+`47108b31-7ae5-46af-982c-337eaf15eb4e` (Quo seed, 20:25 UTC), keeping every binding.
+At 15:32 CDT Brady's signed-in page showed QUO / GMAIL / CALENDAR lit, LIVE, a real
+Quo missed call, live Gmail and Calendar rows, and a chat reply. He reported that
+the Signal Log and a spoken reply also worked. Anonymous `workers.dev` API routes
+still return 404. **PROVISIONAL:** the step-4 recheck after access-token expiry. The
+legacy `MCP_REFRESH_*` secrets remain on the Worker unused (required mode never reads
+them); deleting them and revoking the old grants is Brady's call.
 
 `proxy/wrangler.toml` now declares `EMBER_TOKEN_COORDINATOR`, a SQLite-backed
 `EmberTokenCoordinator` Durable Object, and migration `ember-token-coordinator-v1`.

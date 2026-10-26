@@ -380,8 +380,12 @@ remain: previews and public `workers.dev` cannot call the new speech endpoints.
 
 **2026-10-26:** per Brady's Quo-reconnection handoff, `proxy/wrangler.toml` now
 carries both settings below, so they ship in the same full Worker deployment as the
-coordinator cutover (`docs/DEPLOY.md`, "Durable token owner"). The paragraphs below
-describe the state before that release.
+coordinator cutover (`docs/DEPLOY.md`, "Durable token owner"). That release went live
+the same day as Worker `0283d68b`, now `47108b31` after the consent seeds were saved, so
+`/api/voice/transcribe` and `/api/voice/speak` no longer return 503 for lack of a binding.
+No shipped UI calls them yet. The dashboard voice uses browser recognition plus
+`/api/tts` (Jenny). Actual Whisper/Aura output, failure recovery and Workers AI usage
+remain unverified. The paragraphs below describe the state before that release.
 
 No live Worker or secret was changed. New speech routes return 503 unless both
 `EMBER_VOICE_ENABLED=true` and an `EMBER_VOICE_AI` Workers AI binding are present.

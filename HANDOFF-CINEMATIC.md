@@ -1,5 +1,10 @@
 # Ember — Living Cinematic Handoff
 
+**2026-10-26 — Quo is back (Claude):** the token-coordinator Worker cutover and the
+voice AI binding are live (Worker `47108b31`), and Brady completed fresh Google and Quo
+consent. His signed-in page shows Quo, Gmail and Calendar lit, with a real Quo missed
+call. A recheck after token expiry is PROVISIONAL. Details: `docs/CURRENT-STATE.md`.
+
 **2026-10-23 — Signal Log rides inside the dashboard (Claude):** YOUR TOOLS → Signal
 Log opens an overlay (same-origin frame, same sheet as the Knowledge Graph); cards
 carry `Open in Gmail/Calendar ↗` and **Ask Ember** (card → composer, unsent). The
