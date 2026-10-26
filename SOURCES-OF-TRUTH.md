@@ -77,6 +77,13 @@ of links to Brady's other properties.
 
 ## Provenance — who did what
 
+- **Claude Code, 2026-10-26 — Quo reconnected (coordinator cutover):** per Brady's
+  handoff, PR #60 added the voice AI binding to `proxy/wrangler.toml`. A full Worker
+  deploy from main `b10b1d1` replaced `f8d6ac15` with `0283d68b`, which carries the
+  coordinator, `EMBER_VOICE_AI` and all secrets. Brady completed fresh Google and Quo
+  consent, which produced Worker `47108b31`. Quo is live again, confirmed on his
+  signed-in page; the recheck after token expiry is PROVISIONAL. Record:
+  `docs/DEPLOY.md` "Durable token owner"; `docs/KNOWN-ISSUES.md` 1b.
 - **Claude (Fable 5.1), 2026-10-22 — Signal Log live feed:** took over the Ember
   build from Codex; merged `codex/ember-signal-log` onto current main; added
   `signal-log/ember-feed.mjs` (same-origin `/api/messages`, one provider per call,

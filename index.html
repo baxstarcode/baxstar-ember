@@ -610,7 +610,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     ["blog", "fishing"]
   ];
   const PROJECTS_META = {
-    updated: "2026-10-23",
+    updated: "2026-10-26",
     zapierTasks: { used: null, cap: 1500, note: "check zapier.com/app/tasks" }
   };
   const PROJECTS = [
@@ -672,10 +672,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       items: [
         {
           name: "Ember / Mission Control",
-          pct: 97,
+          pct: 98,
           platform: "Claude + Codex",
           links: [["app", "https://ember.baxstarfishing.com"], ["repo", "https://github.com/baxstarcode/baxstar-ember"], ["cloudflare", "https://dash.cloudflare.com/"]],
-          outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Left: voice gate 3/5, coordinator cutover + consent (Brady), Quo back online",
+          outstanding: "Signal Log live (Gmail + Calendar + Quo reader) with overlay + Ask Ember; OPS rows link to source. Quo back online 10-26 (coordinator cutover + fresh consent). Left: voice gate 3/5, Quo 1-hour recheck, slow sync",
           sessions: "~1"
         },
         {
@@ -786,7 +786,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-26 19:43Z".startsWith("__") ? "dev" : "2026-10-26 19:43Z";
+  const BUILD_STAMP = "2026-10-26 20:37Z".startsWith("__") ? "dev" : "2026-10-26 20:37Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
