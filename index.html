@@ -786,7 +786,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-26 18:07Z".startsWith("__") ? "dev" : "2026-10-26 18:07Z";
+  const BUILD_STAMP = "2026-10-26 19:43Z".startsWith("__") ? "dev" : "2026-10-26 19:43Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -4223,6 +4223,13 @@ Check Gmail for anything newer.`;
           .ops-fit .voice-footnote span:last-child { display:none; }
           .ops-fit .tools-rail { flex:none; }
           .ops-fit .ops-data-note, .ops-fit .ops-error { max-height:32px; overflow:auto; font-size:11px; }
+        }
+        /* The 32px cockpit plates are for a mouse. A touch pointer at desktop width
+           (tablet landscape) gets the 44px floor back, as chat-controls did in #46,
+           and the skull's height budget gives up the same 12px so OPS still fits. */
+        @media (min-width:1021px) and (pointer:coarse) {
+          .ops-fit .core-row .prompt-plate { min-height:44px; }
+          .ops-fit .reactor-stage { width:min(360px,100cqw,calc(100cqh - 92px)); }
         }
 
         /* YOUR TOOLS: one slim row with its label inline. */

@@ -26,6 +26,25 @@ Validation: Pages build, 76 voice/desktop-fit checks, 132 dashboard checks, 87
 layout/truth checks, 45 mobile checks and 26 chat checks pass. Desktop renders
 were inspected at 1024×700, 1100×640, 1280×720, 1440×900 and 1920×1080.
 
+**Release check green again — October 26, 2026 (Claude):** `fb6500e`, `9437856`
+and `db4d7b3` reached main without a PR, so the `release` check never ran on them,
+and `npm run test:release` then failed one assertion (35/36 in
+`.devtest/ui-rework-check.mjs`, desktop-1440 prompt plates). The plates never
+overlapped the reactor (1440×900: reactor y 159–519, plates y 525–557); the check
+failed only because the cockpit plates are 32px tall. Fix keeps no-scroll desktop:
+mouse desktops keep 32px plates and render pixel-identical to `db4d7b3`; a touch
+pointer at desktop width (`(min-width:1021px) and (pointer:coarse)`) gets the 44px
+floor back, and the skull's height budget gives up the same 12px. This follows #46,
+which scoped the chat-controls 44px minimum to `(pointer:coarse)`. 44px for every
+desktop was measured and rejected: page scroll stayed 0 at all five sizes, but at
+1024×700, 1100×640 and 1280×720 the skull column overflowed its frame by 2px unless
+the skull shrank 12px for mouse users too. The test's overlap clause is unchanged.
+Its size floor is now 44px on phones and coarse pointers and 32px on fine-pointer
+desktops. A new touch pass checks 44px plates, no page scroll and the skull column
+inside its frame at all five desktop sizes; it fails on `db4d7b3`'s src. Full
+`npm run test:release` exits 0 (UI 46/46). Touch desktops still get 28px model/effort
+buttons; see `docs/KNOWN-ISSUES.md` §10.
+
 
 
 **Foreground voice integrated into the large skull (Codex):** `useEmberVoice` now
