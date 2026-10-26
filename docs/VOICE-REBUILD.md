@@ -1,4 +1,54 @@
-# Recorded voice rebuild — 2026-10-17
+# Ember voice — current foreground integration and historical evidence
+
+## Current integration
+
+Brady explicitly authorized the foreground-only integration and large-skull visual
+handoff. The app now uses `useEmberVoice`/`ForegroundVoice` in the canonical JSX,
+reusing lab recognition and `/api/tts` with `en-US-JennyNeural`. It does not activate
+`/api/voice/transcribe`, `/api/voice/speak`, a new AI binding, or the coordinator.
+The former `EMBER_VOICE_RELEASED=false` recording-only path was replaced, not enabled.
+
+Tap the mouth to start one bounded speech-recognition turn. Finish manually or let
+the tested 750ms final-phrase grace end it; review the received words, then Send.
+Main `sendCommand` supplies conversation persistence, selected model/effort and
+read-only connectors. Jenny plays after a complete reply. A native audio player
+handles browser-required playback taps. Read reply retries speech only, reusing
+cached audio when available. Replies over the existing 1000-character TTS limit
+are explicitly labeled as spoken excerpts; all text remains in chat.
+
+No microphone auto-start/rearm. Stop, close, page hiding and workspace changes
+cancel requests/playback, preserve received drafts and completed chat, and release
+screen wake lock. Mic-release uncertainty stays gated pending user confirmation.
+A missing/denied wake lock does not block conversation or claim the screen is held.
+Late recognition, requests and wake grants cannot revive cancelled work.
+
+The 360px maximum skull is independent of history. Its inward hot-brand phrases
+follow approximate audio progress, with a reduced-motion fallback; no exact word
+alignment is claimed. Normal history scrolls below in a compact 148px region.
+The pinned dock is preserved. Short viewports scroll to expose all controls.
+
+Engineering checks live in `.devtest/foreground-voice-check.mjs` and run through
+`npm run test:voice-foreground`. They use simulated recognition/wake locks and
+intercepted providers with real HTML audio decoding; they are **not physical iPhone
+or CarPlay proof**. The removed recording-modal test is superseded by these checks;
+`test:voice-recording` still covers the unused server adapters plus the new UI.
+
+Current validation: 66 foreground checks pass, including repeated turns, denied
+permissions, stale/cancelled responses, unconfirmed mic release, failed speech,
+cached replay, blocked autoplay, wake denial/late grants, long replies, keyboard
+exit, and reduced motion. The 132-check dashboard suite and related chat/mobile/
+layout suites pass. Desktop and 3x phone screenshots plus the branding impact
+frame were visually inspected. Playback returns the face to view after Send;
+subsequent scrolling remains user-controlled. No signed-in or physical hardware
+test was performed by the automated fixture.
+
+Remaining physical check after publication: while parked with Ember visible, tap
+the skull, speak, review/Send, hear Jenny, and verify the skull stays large. No new
+background/app-switch test is requested. Existing device reports remain historical
+evidence. The following entries describe prior experiments, not the current scope.
+
+## Historical experiments
+
 
 **Voice check v6 background playback — October 22, 2026 (Claude):**
 Brady's CarPlay report (session `2026-10-22T13:02:49Z`, iPhone Safari 27.0.1,

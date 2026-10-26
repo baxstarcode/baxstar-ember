@@ -146,17 +146,17 @@ async function run(label, viewport) {
   check(`${label}: reactor crown replaces the skull arch`, crown && crown.skulls === 0 &&
     crown.display !== "none" && crown.visibility !== "hidden" &&
     // Sized by the viewport since 2026-10-15 (bigger on tall screens), always round.
-    crown.w >= (mobile ? 160 : 240) && crown.w <= 330 && Math.abs(crown.w - crown.h) <= 2, JSON.stringify(crown));
+    crown.w >= (mobile ? 160 : 240) && crown.w <= 360 && Math.abs(crown.w - crown.h) <= 2, JSON.stringify(crown));
   const plates = await page.evaluate(() => {
     const r = document.querySelector(".reactor-stage").getBoundingClientRect();
     const [l, rt] = [...document.querySelectorAll(".prompt-plate")].map((p) => p.getBoundingClientRect());
-    return { ok: !!l && !!rt && l.right <= r.left && rt.left >= r.right && l.width >= 44 && l.height >= 44,
+    return { ok: !!l && !!rt && ((l.right <= r.left && rt.left >= r.right) || (l.top >= r.bottom && rt.top >= r.bottom && l.right <= rt.left)) && l.width >= 44 && l.height >= 44,
       // Engraved serials are decoration. Assert the actual command label and
       // accessibility separation without folding aria-hidden art into the name.
       labels: [...document.querySelectorAll(".prompt-plate .plate-label")].map((p) => p.innerText.replace(/\s+/g, " ").trim()),
       decorativeSerials: [...document.querySelectorAll(".prompt-plate .plate-index")].every((p) => p.getAttribute("aria-hidden") === "true") };
   });
-  check(`${label}: WHAT'D I MISS left and BRIEF MY DAY right of the reactor, clear of it`,
+  check(`${label}: prompt plates stay clear of the large reactor, beside it or below on phones`,
     plates.ok && plates.decorativeSerials && plates.labels[0] === "WHAT'D I MISS" && plates.labels[1] === "BRIEF MY DAY", JSON.stringify(plates));
 
   if (mobile) {

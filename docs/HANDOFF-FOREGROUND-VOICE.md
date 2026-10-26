@@ -4,9 +4,10 @@
 
 Brady authorized either this handoff or continuing implementation after the latest
 voice conversation. This checkpoint records the approved work for a text-mode
-continuation using his preferred model/effort. **The new voice integration and
-visual treatment have not been implemented or deployed.** Inspection is complete
-enough to start focused implementation; do not restart platform research.
+continuation using his preferred model/effort. **Implementation checkpoint:** the foreground integration and visual treatment
+are now implemented on `codex/ember-foreground-voice`. See `docs/CURRENT-STATE.md`
+and `docs/VOICE-REBUILD.md` for current behavior and verification. The remaining
+physical check is on the integrated UI; do not restart platform research.
 
 Repository: `baxstarcode/baxstar-ember`.
 Executable base: main `5d911ba` (`Default Ember chat to Medium effort`).
@@ -73,8 +74,9 @@ to real playback events and avoid animating a successful spoken reply when TTS f
 - Latest verbal clarification: on his computer, voice continued across browser tabs,
   but stopped on switching to another program. Keep that observation; do not rewrite
   it as universal behavior or use it to reopen background-support research.
-- The skull currently opens a different, recording-only modal. In source,
-  `EMBER_VOICE_RELEASED=false`. **Simply turning that flag on is not the integration.**
+- At the handoff base, the skull opened a different, recording-only modal gated by
+  `EMBER_VOICE_RELEASED=false`. The implementation replaces that modal with the
+  lab-derived path; the unused recording/transcription backend was not activated.
 - Main chat defaults to **Opus 5.5 / Medium**, published at `5d911ba`. Preferences v4
   apply Medium once while preserving v3 model choices; later user choices persist.
 - Dashboard syncing deliberately remains Haiku 5.5 / Low. The isolated lab still

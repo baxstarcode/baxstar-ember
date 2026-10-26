@@ -267,12 +267,12 @@ try {
         await page.locator('.home-thread').getByText(reply, { exact: false }).waitFor({ state: 'visible' });
         return { pass: chatRequests > 0, detail: `${chatRequests} mocked chat request(s)` };
       });
-      await check(`${name} reply thread is readable and not clipped`, async () => {
+      await check(`${name} compact reply thread is readable and not clipped`, async () => {
         const thread = page.locator('.home-thread');
         await thread.scrollIntoViewIfNeeded();
         const box = await bounds(thread);
         const minWidth = phone ? 250 : 300;
-        return { pass: box.width >= minWidth && box.height >= 220 && box.visibleWidth >= minWidth && box.visibleHeight >= 220, detail: JSON.stringify(box) };
+        return { pass: box.width >= minWidth && box.height >= 130 && box.height <= 170 && box.visibleWidth >= minWidth && box.visibleHeight >= 130, detail: JSON.stringify(box) };
       });
       await check(`${name} input reserves text space for RUN`, async () => {
         const result = await page.locator('.core-chamber .cmd-input').evaluate((input, minWidth) => {

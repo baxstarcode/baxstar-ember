@@ -18,9 +18,8 @@ import { useState, useEffect, useRef } from "react";
 
 /* ---------- CONFIG ---------- */
 
-// Recorded-audio checks are released; live transcription/speech awaits the
-// separate Worker activation and physical-device gate, including on production.
-const EMBER_VOICE_RELEASED = false;
+// Foreground voice uses the physically tested lab recognition and Jenny endpoints.
+// Background listening and automatic microphone rearming are intentionally absent.
 
 const MCP_SERVERS = [
   // The browser requests names only. The Worker owns destinations, credentials,
@@ -1303,247 +1302,222 @@ const ALTERNATIVE_CSS = `
   }
 `;
 
-/* ---------- VOICE: bounded recorded turns; legacy provenance in docs/VOICE-REBUILD.md ---------- */
-function EmberVoice({ onClose, onSend, chatBusy }) {
-  const [state, setState] = useState({ phase: "idle", note: "Tap Record, then Finish when you are done." });
-  const [text, setText] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [recorded, setRecorded] = useState(false);
-  const [audioKind, setAudioKind] = useState("");
-  const audioRef = useRef(null), dialogRef = useRef(null), sendRef = useRef(onSend);
-  sendRef.current = onSend;
-  const control = useRef({ epoch: 0, live: true, stream: null, recorder: null, request: null, timers: [], url: "", blob: null, events: [] });
-  const preview = !EMBER_VOICE_RELEASED || location.hostname !== "ember.baxstarfishing.com";
-  const capable = window.isSecureContext && !!navigator.mediaDevices?.getUserMedia && !!window.MediaRecorder;
-  const busy = ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(state.phase);
-  function mark(event) { const c = control.current; c.events.push({ event, ms: Math.round(performance.now()) }); if (c.events.length > 160) c.events.shift(); }
-  function show(phase, note) { control.current.phase = phase; if (control.current.live) setState({ phase, note }); }
-  function sessionType(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
-  function restoreSession() { sessionType(control.current.originalSession || "auto"); }
-  function release() {
-    const c = control.current;
-    c.stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
-    c.stream = null;
-    mark("tracks-stopped");
-    restoreSession();
+/* ---------- FOREGROUND VOICE — lab-derived explicit turns, Jenny, normal chat ---------- */
+function emberPhrases(text) {
+  const pieces = [];
+  let phrase = "";
+  for (const word of String(text).trim().split(/\s+/)) {
+    if (phrase && (phrase.length + word.length > 23 || phrase.split(" ").length >= 4)) { pieces.push(phrase); phrase = ""; }
+    // Very long tokens must not push outside the mouth.
+    if (word.length > 23) { if (phrase) pieces.push(phrase); phrase = ""; pieces.push(...word.match(/.{1,23}/gu)); }
+    else phrase = phrase ? `${phrase} ${word}` : word;
   }
-  function clearPlayback() {
-    const c = control.current, audio = audioRef.current;
+  if (phrase) pieces.push(phrase);
+  return pieces;
+}
+function useEmberVoice({ onSend, blocked, enabled }) {
+  const [state, setState] = useState({ open: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
+  const audioRef = useRef(null), options = useRef(null);
+  options.current = { onSend, blocked, enabled };
+  const control = useRef({ live: true, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0 });
+  const c = control.current;
+  const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const production = location.hostname === "ember.baxstarfishing.com";
+  function patch(values) { if (values.phase) c.phase = values.phase; if (c.live) setState(s => ({ ...s, ...values })); }
+  function timer(name, fn, delay) { clearTimeout(c.timers[name]); c.timers[name] = setTimeout(fn, delay); }
+  function clearTimers() { Object.values(c.timers).forEach(clearTimeout); c.timers = {}; }
+  function session(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
+  function releaseWake() {
+    c.active = false; c.wakeEpoch++;
+    const lock = c.wake; c.wake = null;
+    try { lock?.release()?.catch?.(() => {}); } catch {}
+    patch({ wake: "off" });
+  }
+  async function keepAwake() {
+    c.active = true;
+    if (c.wake || c.wakePending === c.wakeEpoch) return;
+    if (!navigator.wakeLock?.request) { patch({ wake: "unavailable" }); return; }
+    const epoch = ++c.wakeEpoch; c.wakePending = epoch; patch({ wake: "requesting" });
+    try {
+      const lock = await navigator.wakeLock.request("screen");
+      if (!c.live || !c.active || document.hidden || epoch !== c.wakeEpoch) { await lock.release(); return; }
+      c.wake = lock; patch({ wake: "held" });
+      lock.addEventListener("release", () => { if (c.wake === lock) { c.wake = null; patch({ wake: "released" }); } }, { once: true });
+    } catch { if (c.live && epoch === c.wakeEpoch) patch({ wake: "unavailable" }); }
+    finally { if (c.wakePending === epoch) c.wakePending = null; }
+  }
+  function clearAudio() {
+    const audio = audioRef.current;
     if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
     if (c.url) URL.revokeObjectURL(c.url);
-    c.url = "";
-    if (c.live) setAudioKind("");
-    restoreSession();
+    c.url = ""; c.phraseIndex = -1; session("auto");
+    patch({ audioReady: false, phrase: "" });
   }
-  function cancel(note = "Stopped. Tap Record when you are ready.") {
-    const c = control.current;
-    c.epoch++; c.request?.abort(); c.request = null;
-    c.timers.forEach(clearTimeout); c.timers = [];
-    const recorder = c.recorder; c.recorder = null;
-    if (recorder) { recorder.ondataavailable = recorder.onstop = recorder.onerror = null; try { if (recorder.state !== "inactive") recorder.stop(); } catch {} }
-    release(); clearPlayback(); mark("cancel"); show("idle", note);
+  function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = null; }
+  function released(rec) {
+    if (c.rec !== rec) return;
+    detach(rec); c.rec = null; c.mic = "off"; clearTimers();
+    const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
+    c.releaseNote = ""; patch({ phase: "ready", note });
   }
-  async function play(blob, kind) {
-    clearPlayback();
-    const c = control.current, epoch = c.epoch, audio = audioRef.current;
-    if (!audio || !c.live) return;
-    c.url = URL.createObjectURL(blob); audio.src = c.url; setAudioKind(kind);
-    sessionType("playback");
-    try { await audio.play(); if (c.live && c.epoch === epoch) show("playing", kind === "recording" ? "Listen for your recording through the speaker you expect." : "Ember is speaking. Your microphone is off."); }
-    catch { if (c.live && c.epoch === epoch) { mark("play-needs-tap"); restoreSession(); show("ready", "Audio is ready. Tap Play on the audio player below."); } }
+  function abortMic() {
+    const rec = c.rec;
+    if (!rec || ["releasing", "unconfirmed"].includes(c.mic)) return;
+    c.mic = "releasing"; detach(rec); rec.onend = () => released(rec);
+    patch({ phase: "releasing" });
+    timer("release", () => { if (c.rec === rec) { c.mic = "unconfirmed"; patch({ phase: "unconfirmed", note: "Mic release was not confirmed. Check the device indicator before continuing." }); } }, 3000);
+    try { rec.abort(); } catch {}
   }
-  async function request(path, body) {
-    const c = control.current;
-    if (preview) throw new Error("This preview supports recording checks. Live voice needs the production rollout.");
-    const controller = new AbortController(); c.request = controller;
-    const timer = setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(path, { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal,
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!response.ok) throw new Error(response.status === 503 || response.status === 404 ? "Voice service is not enabled yet. Your recording and text are still here."
-        : response.status === 401 || response.status === 403 ? "Sign in to Ember again, then retry this turn."
-        : response.status === 422 ? "No usable speech was found. Try a shorter recording."
-        : "Voice service could not finish this turn. Nothing was retried automatically.");
-      const type = response.headers.get("content-type") || "";
-      if (path.endsWith("transcribe")) {
-        if (!type.includes("application/json")) throw new Error("Sign in to Ember again, then retry this turn.");
-        const data = await response.json();
-        if (typeof data.text !== "string" || !data.text.trim() || data.text.length > 2000) throw new Error("No usable transcript was returned. Try another recording.");
-        return data.text;
-      }
-      if (!type.startsWith("audio/")) throw new Error("The speech service returned no playable audio. Your reply is still visible.");
-      const blob = await response.blob();
-      if (!blob.size || blob.size > 2 * 1024 * 1024) throw new Error("The speech service returned invalid audio. Your reply is still visible.");
-      return blob;
-    } finally { clearTimeout(timer); if (c.request === controller) c.request = null; }
-  }
-  async function transcribe(blob = control.current.blob) {
-    if (!blob || preview || ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(control.current.phase)) return;
-    const c = control.current, epoch = ++c.epoch;
-    clearPlayback(); show("transcribing", "Turning your recording into text…"); mark("transcribe-start");
-    try {
-      const buffer = new Uint8Array(await blob.arrayBuffer());
-      if (!c.live || c.epoch !== epoch) return;
-      let binary = ""; for (let i = 0; i < buffer.length; i += 8192) binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
-      const transcript = await request("/api/voice/transcribe", { audio: btoa(binary), mime: blob.type });
-      if (!c.live || c.epoch !== epoch) return;
-      setText(transcript); mark("transcribe-complete"); show("ready", "Check your words, then Send to Ember.");
-    } catch (error) { if (c.live && c.epoch === epoch) { mark("transcribe-failed"); show("ready", error.name === "AbortError" ? "Transcription timed out. Tap Transcribe to retry when ready." : error.message); } }
+  function stop(note = "Stopped. Your words and replies are still here.") {
+    c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers();
+    if (c.rec && c.draft.trim()) c.interrupted = true;
+    // Preserve the mic-release gate even when Stop is pressed more than once.
+    if (c.rec && ["releasing", "unconfirmed"].includes(c.mic)) {
+      if (c.mic === "releasing") timer("release", () => { if (c.rec) { c.mic = "unconfirmed"; patch({ phase: "unconfirmed", note: "Check the device mic indicator before continuing." }); } }, 3000);
+    } else abortMic();
+    clearAudio(); releaseWake(); patch({ phase: c.rec ? c.mic : "ready", note });
   }
   function finish() {
-    const c = control.current, recorder = c.recorder;
-    if (!recorder || recorder.state !== "recording") return;
-    c.timers.forEach(clearTimeout); c.timers = [];
-    show("finishing", "Finishing your recording. Microphone off."); mark("finish");
-    try { recorder.stop(); } catch { cancel("Recording could not finish. Tap Record to try again."); return; }
-    release();
-    c.timers.push(setTimeout(() => { if (c.recorder === recorder) cancel("The recorder did not finish. Try a new recording."); }, 4000));
+    const rec = c.rec;
+    if (!rec || !["starting", "listening"].includes(c.mic)) return;
+    clearTimers(); c.mic = "stopping"; patch({ phase: "stopping", note: "Finishing your words…" });
+    timer("finish", () => { if (c.rec === rec) abortMic(); }, 3000);
+    try { rec.stop(); } catch { abortMic(); }
   }
-  async function record() {
-    const c = control.current;
-    if (!capable || c.stream || c.recorder || c.request || ["permission", "finishing", "transcribing", "thinking", "preparing"].includes(c.phase)) return;
-    cancel(); const epoch = c.epoch;
-    show("permission", "Allow microphone access if your browser asks."); mark("permission-request");
-    const timeout = setTimeout(() => { if (c.epoch === epoch) cancel("Microphone permission is still pending. Check the browser prompt, then tap Record again."); }, 15000);
-    c.timers.push(timeout);
+  function start() {
+    if (c.rec || c.request || options.current.blocked || !options.current.enabled || document.hidden) return;
+    patch({ open: true });
+    if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
+    stop(); c.releaseNote = ""; c.blob = null; c.answer = "";
+    const prefix = c.interrupted ? c.draft.trim() : "";
+    c.draft = prefix; patch({ draft: prefix, answer: "", partial: false });
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let rec;
+    try { rec = new Recognition(); } catch { patch({ note: "The browser could not start speech recognition. Try again when ready." }); return; }
+    c.rec = rec; c.mic = "starting"; keepAwake(); session("auto");
+    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    rec.onstart = () => {
+      if (c.rec !== rec || c.mic !== "starting") return;
+      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: "Listening. Tap Finish when you’re done." });
+      timer("turn", finish, 30000);
+    };
+    rec.onsoundstart = rec.onspeechstart = () => { if (c.rec === rec) clearTimeout(c.timers.grace); };
+    rec.onresult = event => {
+      if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
+      clearTimeout(c.timers.grace);
+      const results = Array.from(event.results), words = results.map(r => r[0]?.transcript || "").join(" ").trim();
+      c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2000);
+      patch({ draft: c.draft, partial: results.some(r => !r.isFinal) });
+      const changed = results.slice(Number.isInteger(event.resultIndex) ? event.resultIndex : 0);
+      if (c.mic === "listening" && words && !results.some(r => !r.isFinal) && changed.some(r => r.isFinal)) timer("grace", finish, 750);
+    };
+    rec.onerror = event => {
+      if (c.rec !== rec) return;
+      c.interrupted = Boolean(c.draft); clearTimers(); abortMic(); releaseWake();
+      const notes = { "not-allowed": "Microphone permission was denied. Allow it in browser and device settings, then retry.", "audio-capture": "The microphone is unavailable. Finish any other recording or call, then retry.", "no-speech": "No speech was detected. Tap the mouth to retry.", "network": "Speech recognition lost its connection. Your received words are still here.", "service-not-allowed": "The browser’s speech service is unavailable. Check Safari/Siri settings or use typed chat." };
+      c.releaseNote = notes[event.error] || "Speech recognition was interrupted. Your received words are still here.";
+      patch({ note: c.releaseNote });
+    };
+    rec.onend = () => released(rec);
+    patch({ phase: "starting", note: "Allow the microphone if prompted. Waiting for the browser…" });
+    timer("start", () => { if (c.rec === rec) { abortMic(); releaseWake(); patch({ note: "Microphone start timed out. Check permissions before retrying." }); } }, 15000);
+    try { rec.start(); } catch { released(rec); releaseWake(); patch({ note: "The microphone could not start. Try again when ready." }); }
+  }
+  function phraseAt(time, duration) {
+    if (!c.phrases.length || c.phase !== "playing") return;
+    const index = Number.isFinite(duration) && duration > 0 ? Math.min(c.phrases.length - 1, Math.floor(time / duration * c.phrases.length)) : 0;
+    if (index !== c.phraseIndex) { c.phraseIndex = index; patch({ phrase: c.phrases[index], phraseKey: ++c.phraseKey }); }
+  }
+  async function playReply(epoch) {
+    if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
+    const audio = audioRef.current;
+    clearAudio(); c.url = URL.createObjectURL(c.blob); audio.src = c.url; audio.load();
+    patch({ audioReady: true, phase: "ready", note: "Jenny is ready. Tap Play if playback does not start." });
+    session("playback");
     try {
-      sessionType("play-and-record");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
-      clearTimeout(timeout);
-      if (!c.live || c.epoch !== epoch) { stream.getTracks().forEach(track => track.stop()); return; }
-      c.stream = stream;
-      const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find(type => MediaRecorder.isTypeSupported(type));
-      if (!mime) throw new Error("format");
-      const recorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
-      c.recorder = recorder;
-      const chunks = []; let size = 0;
-      recorder.ondataavailable = event => {
-        if (c.epoch !== epoch || !event.data?.size) return;
-        size += event.data.size;
-        if (size > 2 * 1024 * 1024) { cancel("Recording reached its size limit. Try a shorter question."); return; }
-        chunks.push(event.data);
-      };
-      recorder.onerror = () => { if (c.epoch === epoch) cancel("Recording was interrupted. Tap Record to try again."); };
-      recorder.onstop = () => {
-        if (!c.live || c.epoch !== epoch) return;
-        c.timers.forEach(clearTimeout); c.timers = []; c.recorder = null; release();
-        if (!size) { show("idle", "No audio was recorded. Tap Record to try again."); return; }
-        c.blob = new Blob(chunks, { type: recorder.mimeType || mime }); c.mime = c.blob.type;
-        setRecorded(true); mark("recording-ready");
-        show("ready", preview ? "Recording ready. Play it back and check the actual microphone indicator is off." : "Recording ready. Play it back or Transcribe it to talk to Ember.");
-      };
-      stream.getAudioTracks().forEach(track => { track.onended = () => { if (c.epoch === epoch) cancel("The microphone disconnected. Reconnect it, then tap Record."); }; });
-      recorder.start(250); c.blob = null; c.replyAudio = null; setRecorded(false); setText(""); setAnswer("");
-      mark("recording-start"); show("recording", "Listening. Tap Finish when you are done. Maximum 40 seconds.");
-      c.timers.push(setTimeout(finish, 40000));
-    } catch (error) {
-      if (!c.live || c.epoch !== epoch) return;
-      const note = error.name === "NotAllowedError" ? "Microphone access was denied. Allow it in this browser’s site settings, then tap Record. No Shortcut is required."
-        : error.name === "NotFoundError" ? "No microphone was found. Check your audio connection, then try again."
-        : error.name === "NotReadableError" ? "The microphone is busy or unavailable. End the other recording or call, then try again."
-        : "This browser could not start a supported recording. Try Safari or use the text box.";
-      cancel(note); mark("recording-failed");
-    }
+      await Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5000))]);
+    } catch { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } }
+    finally { clearTimeout(c.timers.play); }
   }
-  async function prepareReply(result, epoch) {
-    const c = control.current;
-    show("preparing", "Preparing Ember’s voice…");
-    const audio = c.replyAudio || await request("/api/voice/speak", { text: result });
-    if (!c.live || c.epoch !== epoch) return;
-    c.replyAudio = audio; mark("speech-ready"); await play(audio, "reply");
-  }
-  async function readReply() {
-    const c = control.current;
-    if (!answer || answer.length > 2000 || preview || ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(c.phase)) return;
-    clearPlayback(); const epoch = ++c.epoch;
-    try { await prepareReply(answer, epoch); }
-    catch (error) { if (c.live && c.epoch === epoch) show("ready", error.name === "AbortError" ? "Speech took too long. Your reply is still here." : error.message); }
+  async function speak() {
+    if (!c.answer || c.rec || c.request || !production || document.hidden) return;
+    const epoch = ++c.epoch; keepAwake();
+    const long = c.answer.length > 1000;
+    const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "…" : c.answer;
+    c.phrases = emberPhrases(spoken);
+    if (c.blob) { await playReply(epoch); return; }
+    const controller = new AbortController(); c.request = controller;
+    patch({ phase: "preparing", note: "Preparing Jenny’s voice…" });
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: "en-US-JennyNeural" }) });
+      if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+      if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
+      const blob = await response.blob();
+      if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
+      if (!c.live || epoch !== c.epoch) return;
+      c.blob = blob; c.request = null;
+      await playReply(epoch);
+    } catch (error) { if (c.live && epoch === c.epoch) { releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
+    finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   async function send() {
-    if (chatBusy || preview || !text.trim() || ["permission", "recording", "finishing", "transcribing", "thinking", "preparing"].includes(control.current.phase)) return;
-    const c = control.current, epoch = ++c.epoch;
-    clearPlayback(); c.replyAudio = null; setAnswer(""); show("thinking", "Ember is thinking…"); mark("chat-start");
-    const controller = new AbortController(); c.request = controller;
-    const chatTimer = setTimeout(() => controller.abort(), 45000);
+    if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
+    const epoch = ++c.epoch, controller = new AbortController(); c.request = controller;
+    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake();
+    patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
+    const timeout = setTimeout(() => controller.abort(), 60000);
     try {
-      const result = await sendRef.current(text.trim(), { voiceSignal: controller.signal });
-      clearTimeout(chatTimer);
-      if (!c.live || c.epoch !== epoch) return;
-      if (!result) { show("ready", controller.signal.aborted ? "Ember took too long. Your words are still here; retry when ready." : "The reply did not finish. Your words are still here; check the chat message before retrying."); return; }
-      setAnswer(result); mark("chat-complete");
-      if (result.length > 2000) { show("ready", "This reply is too long to read aloud in one turn. It is saved in chat; ask Ember for a shorter answer."); return; }
-      await prepareReply(result, epoch);
-    } catch (error) { if (c.live && c.epoch === epoch) { mark("reply-audio-failed"); show("ready", error.name === "AbortError" ? "Voice took too long. Your reply remains in chat." : error.message); } }
-    finally { clearTimeout(chatTimer); if (c.request === controller) c.request = null; }
+      const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal });
+      if (!c.live || epoch !== c.epoch) return;
+      c.request = null;
+      if (!result) { releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
+      c.answer = result; patch({ answer: result }); await speak();
+    } catch { if (c.live && epoch === c.epoch) { releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
+    finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
-  async function copyReport() {
-    const c = control.current, epoch = c.epoch;
-    const report = JSON.stringify({ feature: "ember-recorded-voice-v1", verification: "PROVISIONAL — events do not prove audibility or hardware routing", browser: navigator.userAgent, origin: location.origin, preview, recordingType: c.mime || null, events: c.events }, null, 2);
-    try { await navigator.clipboard.writeText(report); if (c.live && c.epoch === epoch) show(c.phase, "Test report copied. It contains device details and events, without recordings or conversation text."); }
-    catch { if (c.live && c.epoch === epoch) show(c.phase, "Clipboard access was blocked. Describe what you heard and which step failed in this chat."); }
+  function playing() {
+    if (c.rec || document.hidden || !options.current.enabled || !c.url) { audioRef.current?.pause(); return; }
+    // Sending from the phone's controls can leave the mouth above the viewport.
+    // Bring the speaking face back once; later scrolling stays under user control.
+    if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
+    session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Your microphone is off." });
+    phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
+  function ended() { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: c.answer.length > 1000 ? "Spoken excerpt finished. The full reply is in the conversation below." : "Reply finished. Tap the mouth for another turn." }); }
   useEffect(() => {
-    const c = control.current; c.originalSession = navigator.audioSession?.type || "auto";
-    const previous = document.activeElement, shell = document.querySelector(".ember-shell");
-    const overflow = document.body.style.overflow; document.body.style.overflow = "hidden";
-    shell?.setAttribute("inert", ""); dialogRef.current?.focus();
-    const hidden = () => { if (document.hidden) cancel("Paused when Ember left the screen. Tap Record to start again."); };
-    const exit = () => cancel("Paused. Tap Record to start again.");
-    const interrupted = () => { if (navigator.audioSession?.state === "interrupted") cancel("Audio was interrupted. Finish the call or alert, then tap Record."); };
-    document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit);
-    navigator.audioSession?.addEventListener?.("statechange", interrupted);
-    return () => {
-      c.live = false; cancel(); c.blob = null; c.replyAudio = null;
-      document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit);
-      navigator.audioSession?.removeEventListener?.("statechange", interrupted);
-      shell?.removeAttribute("inert"); document.body.style.overflow = overflow; previous?.focus?.();
-    };
+    c.live = true;
+    const hidden = () => { if (document.hidden) stop("Paused when Ember left the screen. Review your words before continuing."); };
+    const exit = () => stop("Voice stopped. Your completed conversation is saved.");
+    const interrupt = () => { if (navigator.audioSession?.state === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth."); };
+    document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit); navigator.audioSession?.addEventListener?.("statechange", interrupt);
+    return () => { c.live = false; stop(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", interrupt); };
   }, []);
-  function keys(event) {
-    if (event.key === "Escape") { event.preventDefault(); onClose(); }
-    if (event.key === "Tab") {
-      const items = [...dialogRef.current.querySelectorAll('button:not(:disabled),textarea:not(:disabled),audio[controls],a[href]')].filter(el => el.getClientRects().length);
-      const first = items[0], last = items[items.length - 1];
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-    }
-  }
-  return <div className="voice-overlay" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section ref={dialogRef} className="voice-console" role="dialog" aria-modal="true" aria-label="Talk to Ember" tabIndex={-1} onKeyDown={keys}>
-      <style>{`
-        .voice-overlay{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:18px;background:#050403d9;backdrop-filter:blur(9px)}
-        .voice-console{width:min(600px,100%);max-height:calc(100dvh - 36px);overflow:auto;border:1px solid #b18a4c;border-radius:22px;background:radial-gradient(ellipse at top,#3e2018 0,transparent 55%),#100d0b;box-shadow:0 24px 100px #000, inset 0 0 0 4px #6d4d281f;color:#f6ebde;padding:24px}
-        .voice-console header{display:flex;justify-content:space-between;align-items:center;gap:16px}.voice-console h2{font:700 25px Cinzel,serif;margin:4px 0}.voice-console p{font-size:14px;line-height:1.6;margin:12px 0;color:#e4d5c2}
-        .voice-console small{color:#deb76f;letter-spacing:.14em;font-size:10px}.voice-console button{min-height:46px;padding:10px 17px;border:1px solid #b5874b;border-radius:10px;background:linear-gradient(#33241a,#19110d);color:#f9ead6;font-weight:700;box-shadow:inset 0 1px #e4c18b40,0 3px #060403;cursor:pointer}
-        .voice-console button:active:not(:disabled){box-shadow:inset 0 3px 7px #000;transform:translateY(2px)}.voice-console button:disabled{opacity:.42;cursor:default}.voice-console .voice-main{background:linear-gradient(#ed7955,#9c321f);border-color:#ffad7e;color:white}
-        .voice-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}.voice-console textarea{width:100%;min-height:100px;resize:vertical;background:#070605;border:1px solid #876437;border-radius:10px;padding:12px;font-size:16px;color:#fff3e2}.voice-console label{display:block;margin:18px 0 8px;font-size:13px;font-weight:600}.voice-console audio{width:100%;margin:8px 0;color-scheme:dark}.voice-console audio:not([src]){display:none}
-        .voice-status{display:flex;align-items:center;gap:10px;padding:13px 15px;margin-top:18px;border:1px solid #8f623b80;border-radius:12px;background:#090706}.voice-led{width:10px;height:10px;border-radius:50%;background:#947c58;flex-shrink:0}.voice-status[data-phase="recording"] .voice-led{background:#ff7146;box-shadow:0 0 18px #ff6422;animation:voice-breathe 1.1s ease-in-out infinite}.voice-status span:last-child{font-size:14px;line-height:1.5}.voice-answer{white-space:pre-wrap;border-left:2px solid #e77d55;padding-left:14px;max-height:180px;overflow:auto}.voice-preview{border-left:2px solid #bc9356;padding-left:12px}
-        @keyframes voice-breathe{50%{opacity:.45}}@media(prefers-reduced-motion:reduce){.voice-led{animation:none!important}.voice-console button:active{transform:none!important}}@media(max-width:480px){.voice-overlay{padding:10px}.voice-console{padding:18px;max-height:calc(100dvh - 20px)}.voice-actions button{flex:1 1 auto}}
-      `}</style>
-      <header><div><small>EMBER · VOICE PREVIEW</small><h2>Talk to Ember</h2></div><button onClick={onClose} aria-label="Close voice">✕</button></header>
-      {preview && <p className="voice-preview">Try your microphone and speaker here. Conversation and spoken AI replies will unlock after the production voice rollout.</p>}
-      <p>One turn at a time. Record → Finish → Transcribe → Send. Your microphone stays off while Ember replies.</p>
-      {!capable && <p role="alert">Recording needs an HTTPS page and a browser that supports microphone recording. You can still type in Ember’s chat.</p>}
-      <div className="voice-status" data-phase={state.phase} role="status"><span className="voice-led" aria-hidden="true"/><span>{state.note}</span></div>
-      <div className="voice-actions">
-        {state.phase === "recording" ? <button className="voice-main" onClick={finish}>Finish recording</button> : <button className="voice-main" disabled={!capable || busy || chatBusy} onClick={record}>Record</button>}
-        <button onClick={() => cancel()} disabled={state.phase === "idle" && !audioKind}>Stop everything</button>
-        <button disabled={!recorded || busy} onClick={() => play(control.current.blob, "recording")}>Play my recording</button>
-      </div>
-      <audio ref={audioRef} controls playsInline preload="none" aria-label={audioKind === "recording" ? "Your recording" : "Ember reply"}
-        onPlay={() => { sessionType("playback"); mark("player-play"); show("playing", "Playing audio. Your microphone is off."); }}
-        onPause={() => { if (control.current.phase === "playing") { restoreSession(); show("ready", "Playback paused. Your microphone is off."); } }}
-        onEnded={() => { restoreSession(); mark("player-ended"); show("ready", "Playback ended. Tap Record for another turn."); }}
-        onError={() => { restoreSession(); mark("player-error"); show("ready", "Audio could not play. Your recording or reply is still available."); }}/>
-      <div className="voice-actions"><button disabled={!recorded || busy || preview} onClick={() => transcribe()}>Transcribe</button></div>
-      <label htmlFor="voice-words">Your words</label><textarea id="voice-words" value={text} maxLength={2000} disabled={busy || preview} onChange={event => setText(event.target.value)} placeholder="Your transcript appears here for a quick check."/>
-      <div className="voice-actions"><button className="voice-main" disabled={busy || chatBusy || preview || !text.trim()} onClick={send}>Send to Ember</button></div>
-      {answer && <p className="voice-answer">{answer}</p>}
-      {answer && <div className="voice-actions"><button disabled={busy || preview || answer.length > 2000} onClick={readReply}>Read reply</button></div>}
-      <p>Recordings stay in this tab until you choose Transcribe. Transcription and speech use Cloudflare AI; sent words and replies join your regular Ember conversation. Closing this panel discards the recording.</p>
-      <details><summary>iPhone & truck check</summary><p>Start in Safari. No Shortcut is needed. While parked, connect CarPlay, record a harmless sentence, finish, and play it back. Check which microphone and speaker actually work. Repeat five times, then try an interruption. This preview does not promise background use or a CarPlay dashboard button.</p><button onClick={copyReport} disabled={busy}>Copy test report</button><p>Device and event details only; no recording, transcript, or reply is included.</p></details>
-    </section>
-  </div>;
+  useEffect(() => { if (!enabled) { stop(); patch({ open: false }); } }, [enabled]);
+  return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
+    mouth: () => c.rec ? (["starting", "listening"].includes(c.mic) ? finish() : patch({ open: true })) : c.request || c.phase === "playing" ? stop() : start(),
+    close: () => { stop(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
+    edit: value => { c.draft = value; patch({ draft: value, partial: false }); },
+    confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
+    paused: () => { if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
+    audioError: () => { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
+  };
+}
+function ForegroundVoice({ voice, chatBusy }) {
+  return <section className="foreground-voice" aria-label="Ember voice controls" hidden={!voice.open} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); voice.close(); } }}>
+    <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
+    <div className="voice-actions">
+      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Finish talking</button> : <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>{voice.draft ? "Talk again" : "Talk"}</button>}
+      <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
+      {voice.answer && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
+      {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
+    </div>
+    <div className="voice-review" hidden={!!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
+    {voice.partial && <small>These words may be unfinished. Review before sending.</small>}
+    <audio ref={voice.audioRef} controls playsInline preload="none" hidden={!voice.audioReady} aria-label="Ember reply" onPlaying={voice.playing} onPause={voice.paused} onEnded={voice.ended} onError={voice.audioError} onTimeUpdate={e => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration)}/>
+    <div className="voice-footnote"><span data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake…", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" })[voice.wake]}</span><span>Keep Ember visible · mic starts only when you tap.</span></div>
+    {!voice.production && <small>Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com.</small>}
+  </section>;
 }
 
 export default function BaxstarEmber() {
@@ -1660,11 +1634,11 @@ export default function BaxstarEmber() {
   const [leanCaption, setLeanCaption] = useState(false);
 
   // ---- CLAUDE CHAT state (the thread lives on the OPS home page) ----
-  const [voiceOpen, setVoiceOpen] = useState(false);
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
   const [chatReady, setChatReady] = useState(false);
+  const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
   const [chatError, setChatError] = useState("");
   const [chatConnectors, setChatConnectors] = useState("");
   const [chatFeedback, setChatFeedback] = useState("");
@@ -3905,98 +3879,88 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .tool-tile { min-height:50px; }
         }
 
-        /* ---------- ONE-SCREEN OPS (Brady, 2026-10-15) ----------
-           On a desktop-sized window the OPS view is exactly one viewport tall:
-           header, the three columns, YOUR TOOLS and the fixed dock all show at once,
-           and the panels scroll inside themselves instead of the page scrolling.
-           Measured before: 1440x900 ran to 1144px with YOUR TOOLS hidden under the
-           dock. Short or narrow windows keep the normal scrolling layout. */
-        .ops-error { margin:0 4px; color:#ff8074; font-size:12px; font-weight:600; line-height:1.4; }
-        /* Truncate to one line only where a pointer can hover for the full text. */
-        @media (min-width:1021px) and (hover:hover){
-          .ops-error { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        /* Stable skull: history scrolls in its own six-line window. Size depends
+           on the viewport/container only, never on message count or voice state. */
+        .ops-error { margin:0 4px; color:#ff8074; font-size:12px; font-weight:600; }
+        .core-wrap { width:100%; container-type:inline-size; flex:none; }
+        .core-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; justify-items:center; }
+        .core-row .reactor-stage, .core-row .scope-bezel { grid-column:1 / -1; grid-row:1; }
+        .reactor-stage { width:min(360px,calc(100cqw - 12px)); height:auto; aspect-ratio:1; margin:0 auto; container-type:inline-size; }
+        .reactor-stage:focus-visible { outline:2px solid var(--ember-brass-bright); outline-offset:4px; border-radius:50%; }
+        .core-row .prompt-plate { grid-row:2; width:auto; min-height:44px; padding:8px 13px; flex-direction:row; gap:8px; justify-self:end; }
+        .core-row .prompt-plate:last-child { justify-self:start; }
+        .core-row .plate-index { display:none; }
+        .core-row .plate-label { flex-direction:row; gap:4px; }
+        @container (min-width:540px) {
+          .core-row { grid-template-columns:78px minmax(0,1fr) 78px; }
+          .core-row .reactor-stage, .core-row .scope-bezel { grid-column:2; }
+          .core-row .reactor-stage { width:min(360px,100%); }
+          .core-row .prompt-plate { grid-row:1; grid-column:1; justify-self:center; flex-direction:column; width:78px; padding:10px 5px; }
+          .core-row .prompt-plate:last-child { grid-column:3; justify-self:center; }
+          .core-row .plate-label { flex-direction:column; }
         }
-        .core-wrap { width:100%; container-type:inline-size; }
-        .reactor-stage {
-          /* Height-led: everything else in the centre column is ~270px fixed. */
-          --r: clamp(140px, calc(100dvh - 630px), 330px);
-          width:min(var(--r), calc(100cqw - 2 * clamp(74px,6.4vw,98px) - 2 * clamp(10px,2.2vw,34px)));
-          height:auto; aspect-ratio:1;
-        }
-        .core-chamber.has-thread .reactor-stage { --r: clamp(96px, calc(100dvh - 760px), 170px); height:auto; }
-        @media (max-width:760px){
-          .prompt-plate { width:58px; min-height:70px; padding:8px 3px; gap:5px; }
-          .plate-label { font-size:9px; letter-spacing:.05em; }
-          .core-row { gap:6px; }
-          .reactor-stage { --r:240px; width:min(var(--r), calc(100cqw - 2 * 58px - 2 * 6px)); }
-        }
-        @media (min-width:1021px) and (min-height:640px){
-          .ember-shell.ops-fit { height:100dvh; min-height:0; overflow:hidden; }
-          .ops-fit .main-grid { flex:1 1 0; min-height:0; grid-template-rows:minmax(0,1fr); }
-          .ops-fit .ops-side, .ops-fit .ops-core { min-height:0; }
-          .ops-fit .ops-core { display:flex; flex-direction:column; }
-          .ops-fit .core-chamber { min-height:0; }
-          .ops-fit .home-thread { flex:1 1 0; height:auto; min-height:80px; }
-          .ops-fit .chat-composer, .ops-fit .chat-hint, .ops-fit .chat-controls { flex:none; }
-          .ops-fit .chat-hint { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-          /* Model and Effort share one row. */
-          .ops-fit .chat-controls { flex-wrap:nowrap; max-width:none; column-gap:8px; }
-          .ops-fit .chat-controls > div { gap:5px; }
-          .ops-fit .chat-controls .codex { flex-wrap:nowrap; padding:1px 4px; gap:3px; }
-          .ops-fit .chat-controls .seg.sm { padding:4px 9px; font-size:10px; }
-          .ops-fit .chat-controls .fieldlabel { letter-spacing:.12em; }
-        }
-        /* A conversation is open: the thread gets the room. The reactor shrinks,
-           the push-plates become one-line pills, and the greeting and ENIGMA/SCOPE
-           rows step aside until the thread is cleared. */
-        @media (min-width:1021px) and (min-height:640px){
-          .ops-fit .core-chamber.has-thread .reactor-stage { --r: clamp(64px, calc(100dvh - 810px), 150px); }
-          .ops-fit .core-chamber.has-thread .greet-row,
-          .ops-fit .core-chamber.has-thread .core-wrap > .mt-2 { display:none; }
-          .ops-fit .core-chamber.has-thread .prompt-plate { flex-direction:row; width:auto; min-height:0; padding:7px 12px; gap:7px; }
-          .ops-fit .core-chamber.has-thread .plate-index { display:none; }
-          .ops-fit .core-chamber.has-thread .plate-label { flex-direction:row; gap:4px; }
-          .ops-fit .core-chamber.has-thread .chat-composer .cmd-input { min-height:56px; }
-        }
-        /* No conversation open: the reactor row takes exactly the room the panel
-           has left once greeting, composer, hint and controls are placed, and the
-           reactor sizes itself to that room (container query units) rather than to
-           a guess from the window height. A guess overflowed at 1024x700 and
-           1100x640, where narrow columns wrap the controls onto two rows. */
-        @media (min-width:1021px) and (min-height:640px){
-          .ops-fit .core-chamber:not(.has-thread) .core-wrap { flex:1 1 0; min-height:0; container-type:size; justify-content:center; }
-          .ops-fit .core-chamber:not(.has-thread) .reactor-stage {
-            width:min(330px, calc(100cqw - 2 * clamp(74px,6.4vw,98px) - 2 * clamp(10px,2.2vw,34px)), calc(100cqh - 44px));
-          }
-          .ops-fit .core-chamber:not(.has-thread) .prompt-plate { min-height:min(clamp(78px,7vw,98px), calc(100cqh - 44px)); }
-        }
-        /* SCOPE shares the row with the push-plates, so it must be able to shrink. */
-        .core-row .scope-bezel { flex:0 1 auto; min-width:0; margin-top:6px; margin-bottom:6px; }
+        .core-row .scope-bezel { width:min(300px,100%); }
         .core-row .scope-bezel canvas { width:100%; height:auto; }
-        /* Short laptop windows: the composer starts at two lines, not three. */
-        @media (min-width:1021px) and (min-height:640px) and (max-height:800px){
-          .ops-fit .chat-composer .cmd-input { min-height:56px; padding:9px 12px; }
-          .ops-fit .core-wrap > .mt-2 { margin-top:2px; }
-          .ops-fit .core-chamber { gap:6px!important; padding-top:6px!important; padding-bottom:8px!important; }
+        .home-thread { height:148px; min-height:148px; max-height:148px; flex:none; gap:6px; padding:8px;
+          border:1px solid #71543280; border-radius:12px; background:#080706bd; box-shadow:inset 0 2px 12px #0008; }
+        .chat-bubble { font-size:13px; line-height:1.55; padding:7px 10px; }
+        .chat-text p { margin-bottom:6px; }
+        .chat-message-actions { margin-top:3px; }
+        .chat-composer .cmd-input { min-height:56px; padding:8px 10px; }
+        .chat-controls { gap:6px!important; }
+        .chat-controls .seg.sm { padding:5px 7px; }
+        .core-chamber { min-height:0; }
+        .core-chamber .core-wrap > .mt-2 { margin-top:6px; }
+        .foreground-voice { width:100%; padding:10px; border:1px solid #9e753e80; border-radius:12px;
+          background:linear-gradient(160deg,#27190fdd,#0b0907); }
+        .foreground-voice[hidden] { display:none; }
+        .voice-topline { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+        .voice-status { font-size:12px; line-height:1.5; color:#f5dec0; }
+        .voice-status[data-phase="listening"] { color:#ffbc81; }
+        .voice-actions { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+        .foreground-voice button { min-height:44px; min-width:44px; }
+        .voice-review[hidden] { display:none; }
+        .voice-review { display:flex; gap:8px; align-items:stretch; }
+        .voice-review textarea { width:100%; min-width:0; min-height:60px; resize:vertical; padding:8px; border-radius:8px;
+          border:1px solid #8e6c3e; background:#090706; color:#fff0d9; font-size:16px; line-height:1.4; }
+        .foreground-voice audio { display:block; width:100%; height:38px; margin:8px 0; color-scheme:dark; }
+        .foreground-voice audio[hidden] { display:none; }
+        .foreground-voice small, .voice-footnote { font-size:11px; color:#c9b597; line-height:1.5; }
+        .voice-footnote { display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; margin-top:7px; }
+        .voice-footnote [data-wake="held"] { color:#eacb8c; }
+        .mouth-brand { position:absolute; z-index:5; inset:34% 20% 30%; display:grid; place-items:center;
+          perspective:450px; pointer-events:none; text-align:center; }
+        .brand-phrase { position:relative; display:block; max-width:100%; padding:8px 2px; color:#fff4dc;
+          font-family:Cinzel,Georgia,serif; font-size:clamp(14px,6cqw,22px); font-weight:800; line-height:1.25;
+          overflow-wrap:anywhere; text-wrap:balance; animation:brand-press 2800ms ease-out both;
+          text-shadow:0 1px 2px #170800,0 0 5px #ffb36d,0 0 16px #e84215,0 0 28px #a72908;
+          filter:drop-shadow(0 3px 3px #000); }
+        .brand-phrase::before { content:""; position:absolute; inset:-14px -10px; z-index:-1;
+          border-radius:50%; background:radial-gradient(ellipse,#130a04eb 10%,#160902b8 45%,transparent 73%); }
+        .brand-sparks { position:absolute; inset:-8px; pointer-events:none; opacity:0;
+          background:radial-gradient(circle at 10% 65%,#ffe9a4 0 1px,transparent 2px),radial-gradient(circle at 82% 22%,#ffad60 0 1.5px,transparent 3px),radial-gradient(circle at 65% 72%,#ffce84 0 1px,transparent 2px),radial-gradient(circle at 25% 15%,#ff763a 0 1px,transparent 2px);
+          animation:brand-embers 1400ms 180ms ease-out both; }
+        .is-speaking .reactor-core-orb { animation:ember-speaking 1700ms ease-in-out infinite; }
+        @keyframes brand-press {
+          0% { opacity:0; transform:translateZ(90px) scale(1.12); filter:blur(3px); }
+          13% { opacity:1; transform:translateZ(0) scale(.98); color:#fffbed; filter:blur(0); text-shadow:0 0 5px #fff1bd,0 0 15px #ff9b32,0 0 28px #ff4c15; }
+          24%,79% { opacity:1; transform:scale(1); color:#fff4dc; }
+          100% { opacity:0; transform:scale(1); }
         }
-        /* Narrower centre columns: the field labels give their room to the buttons
-           (the buttons still name themselves; the row stays one row). */
-        .ops-core { container-type:inline-size; }
-        @container (max-width:600px){
-          .ops-fit .chat-controls .fieldlabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
-          .ops-fit .chat-controls { column-gap:8px; }
-          .ops-fit .chat-controls .seg.sm { padding:4px 7px; font-size:9.5px; }
+        @keyframes brand-embers { 10% { opacity:.9; transform:translateY(0) scale(.9); } 100% { opacity:0; transform:translateY(-20px) scale(1.2); } }
+        @keyframes ember-speaking { 50% { box-shadow:0 0 34px #ff642788,0 0 60px #ff641c22; } }
+        @media(max-width:760px) {
+          .core-row .prompt-plate { padding:7px 10px; }
+          .core-row .plate-label { font-size:10px; }
+          .chat-controls .seg.sm { min-height:44px; }
+          .chat-controls .fieldlabel { font-size:9px; }
+          .home-thread { height:148px; min-height:148px; max-height:148px; }
+          .chat-hint { font-size:11px; }
         }
-        @container (max-width:470px){
-          .ops-fit .chat-controls { column-gap:5px; }
-          .ops-fit .chat-controls .codex { padding:1px 2px; gap:2px; }
-          .ops-fit .chat-controls .seg.sm { padding:4px 5px; font-size:9px; }
-        }
-        .chat-controls > .chip { white-space:nowrap; }
-        /* Short windows with a conversation open: the hint line steps aside
-           (still announced to screen readers) so the thread keeps its room. */
-        @media (min-width:1021px) and (min-height:640px) and (max-height:799px){
-          .ops-fit .core-chamber.has-thread .chat-hint { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+        @media(prefers-reduced-motion:reduce) {
+          .brand-phrase { animation:none; transform:none; filter:none; text-shadow:0 1px 2px #000,0 0 5px #d66e32; }
+          .brand-sparks { display:none; }
+          .is-speaking .reactor-core-orb { animation:none; }
         }
         /* YOUR TOOLS: one slim row with its label inline. */
         .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }
@@ -4019,7 +3983,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       `}</style>
       <style>{ALTERNATIVE_CSS}</style>
       <style>{FOUNDRY_CSS}</style>
-      {voiceOpen && <EmberVoice onClose={() => setVoiceOpen(false)} onSend={sendCommand} chatBusy={thinking || !chatReady} />}
 
       {/* background layer (behind everything) */}
       {bgActive && (
@@ -4265,8 +4228,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <PromptPlate side="left" lines={["WHAT'D", "I MISS"]} running={thinking && promptRunning === "miss"}
                   disabled={thinking} onPress={() => runPrompt("miss")} />
                 {coreMode === "enigma" ? (
-                  <div className="reactor-stage" onClick={() => setVoiceOpen(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setVoiceOpen(true); } }} tabIndex={0} role="button" aria-label="Talk to Ember" aria-haspopup="dialog">
+                  <div className={`reactor-stage ${voice.phase === "playing" ? "is-speaking" : ""}`} data-voice-phase={voice.phase} onClick={voice.mouth} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); voice.mouth(); } }} tabIndex={0} role="button" aria-label="Talk to Ember" aria-expanded={voice.open}>
                     <img src={`${ASSETS}/raster/reactor-bezel@2x.webp`} alt="" aria-hidden="true" className="reactor-bezel" />
+                    <div className="mouth-brand" aria-hidden="true">{voice.phrase && <span className="brand-phrase" key={voice.phraseKey}><span>{voice.phrase}</span><i className="brand-sparks"/></span>}</div>
                     <div className="reactor-core-orb">
                       <img src={`${ASSETS}/svg/controls/mic-orb-shell.svg`} alt="" aria-hidden="true" className="orb-shell" />
                       <div ref={gasRef} className="gas-wrap">
@@ -4276,7 +4240,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                     </div>
                   </div>
                 ) : (
-                  <div className="scope-bezel mx-auto my-6" onClick={() => setVoiceOpen(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setVoiceOpen(true); } }} tabIndex={0} role="button" aria-label="Talk to Ember" aria-haspopup="dialog">
+                  <div className="scope-bezel mx-auto my-6" onClick={voice.mouth} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); voice.mouth(); } }} tabIndex={0} role="button" aria-label="Talk to Ember" aria-expanded={voice.open}>
                     <span className="scope-screw" style={{ top: "5px", left: "6px" }} />
                     <span className="scope-screw" style={{ top: "5px", right: "6px" }} />
                     <span className="scope-screw" style={{ bottom: "5px", left: "6px" }} />
@@ -4294,7 +4258,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                   <span className="font-mono-x text-[9.5px] tracking-[0.25em]"
                     style={{ color: thinking || syncing ? "var(--ember-orange)" : "var(--ink-faint)" }}>
-                    {thinking ? "THINKING…" : syncing ? "SYNCING…" : live ? feedState : "READY"}
+                    {voice.phase === "playing" ? "SPEAKING…" : voice.phase === "listening" ? "LISTENING…" : thinking ? "THINKING…" : syncing ? "SYNCING…" : live ? feedState : "READY"}
                   </span>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
@@ -4331,6 +4295,8 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <div ref={chatEndRef} />
                 </div>
               )}
+
+              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} />
 
               {chatConnectors && <div className="chat-connectors" role="status">{chatConnectors}</div>}
               {chatError && <div className="chat-error" role="alert">{chatError}</div>}

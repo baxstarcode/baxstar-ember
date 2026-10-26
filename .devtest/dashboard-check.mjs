@@ -150,7 +150,7 @@ try {
     check(`${name} no skull ornament`, await page.locator(".skull-arch").count() === 0);
     check(`${name} core chamber present`, await page.locator(".core-host").count() > 0);
     const reactor = await page.locator(".reactor-stage").first().boundingBox();
-    check(`${name} reactor sized to the screen`, !!reactor && reactor.height >= (name === "PHONE" ? 160 : 240) && reactor.height <= 330,
+    check(`${name} reactor stays prominent and fits the screen`, !!reactor && reactor.height >= (name === "PHONE" ? 250 : 240) && reactor.height <= 361,
       reactor ? `${Math.round(reactor.height)}px` : "missing");
     check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
     check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));
@@ -304,9 +304,9 @@ try {
     await context.close();
   }
 
-  // Small laptop windows and SCOPE mode (final review, 2026-10-15): nothing spills
-  // out of the centre panel, nothing hides under the dock, the plates stay whole.
-  for (const [w, h] of [[1024, 700], [1100, 640], [1280, 720]]) {
+  // Small windows may scroll to preserve the large skull. Controls must remain
+  // inside the panel and reachable above the dock; plates must never overlap it.
+  for (const [w, h] of [[1024, 700], [1100, 640], [1280, 720], [1440, 900]]) {
     const name = `${w}x${h}`;
     const context = await offlineContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
     const page = await context.newPage();
@@ -320,22 +320,31 @@ try {
       const r = (q) => document.querySelector(q)?.getBoundingClientRect();
       const core = r(".core-chamber"), controls = r(".chat-controls"), tools = r(".tools-rail"), dock = r(".console-dock");
       const L = r(".prompt-plate.left"), R = r(".prompt-plate.right"), face = r(".reactor-stage") || r(".scope-bezel");
-      return { scroll: document.documentElement.scrollHeight - innerHeight, controlsIn: controls.bottom <= core.bottom - 8,
-        toolsAboveDock: tools.bottom <= dock.top, platesWhole: L.left >= core.left + 10 && R.right <= core.right - 10,
-        platesClear: L.right <= face.left + 1 && R.left >= face.right - 1 };
+      const clear = p => p.right <= face.left + 1 || p.left >= face.right - 1 || p.top >= face.bottom - 1 || p.bottom <= face.top + 1;
+      return { faceHeight: face.height, controlsIn: controls.bottom <= core.bottom - 8,
+        controlsReachable: controls.top >= 0 && controls.bottom <= dock.top,
+        toolsReachable: tools.top >= 0 && tools.bottom <= dock.top,
+        platesWhole: L.left >= core.left + 10 && R.right <= core.right - 10,
+        platesClear: clear(L) && clear(R) };
     });
     console.log(`\n===== ${name} =====`);
     for (const mode of ["ENIGMA", "SCOPE"]) {
       await page.getByRole("button", { name: mode, exact: true }).click();
       await page.waitForTimeout(150);
       const g = await geo();
-      check(`${name} ${mode}: one screen, controls inside the panel, tools above the dock`, g.scroll <= 1 && g.controlsIn && g.toolsAboveDock, JSON.stringify(g));
+      await page.locator('.chat-controls').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const controls = await geo();
+      await page.locator('.tools-rail').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const tools = await geo();
+      check(`${name} ${mode}: controls and tools reachable above the dock`, controls.controlsIn && controls.controlsReachable && tools.toolsReachable, JSON.stringify({ controls, tools }));
       check(`${name} ${mode}: push-plates whole and clear of the instrument`, g.platesWhole && g.platesClear, JSON.stringify(g));
     }
     await page.getByRole("button", { name: "ENIGMA", exact: true }).click();
+    const beforeTyping = await geo();
     await page.getByRole("textbox", { name: "Ask Ember" }).fill(Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n"));
+    await page.locator('.chat-controls').evaluate(el => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const typed = await geo();
-    check(`${name} typing 30 lines keeps Model/Effort in view`, typed.controlsIn && typed.scroll <= 1, JSON.stringify(typed));
+    check(`${name} typing 30 lines keeps the skull stable and Model/Effort reachable`, typed.controlsIn && typed.controlsReachable && Math.abs(typed.faceHeight - beforeTyping.faceHeight) < 1, JSON.stringify(typed));
     await context.close();
   }
 

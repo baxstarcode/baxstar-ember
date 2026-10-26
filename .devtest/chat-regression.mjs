@@ -615,7 +615,7 @@ try {
   }, { ...taskOptions, viewport: { width: 390, height: 844 } });
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
-    await test(`${viewport.width}x${viewport.height} chat targets fit and remain voice-free`, async (f) => {
+    await test(`${viewport.width}x${viewport.height} compact chat targets fit without starting voice`, async (f) => {
       await f.plan(reply(`Readable long code:\n\n\`\`\`text\n${'long_output_'.repeat(35)}\n\`\`\`\n\n- First item\n- Second item`));
       await f.send('Geometry fixture');
       await f.settle();
@@ -625,7 +625,7 @@ try {
         return { overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth, thread: { width: thread.width, height: thread.height }, controls };
       });
       assert(geometry.overflow <= 1, `${geometry.overflow}px document overflow`);
-      assert(geometry.thread.width >= 250 && geometry.thread.height >= 220, JSON.stringify(geometry.thread));
+      assert(geometry.thread.width >= 250 && geometry.thread.height >= 130 && geometry.thread.height <= 170, JSON.stringify(geometry.thread));
       assert(geometry.controls.every((control) => control.width >= 44 && control.height >= 44), JSON.stringify(geometry.controls));
       assert.equal(await f.page.evaluate(() => __chatMock.voiceStarts), 0);
       assert.equal(await f.page.locator('.core-chamber').getByRole('button', { name: /microphone|start listening|read aloud|spoken replies/i }).count(), 0);

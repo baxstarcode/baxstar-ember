@@ -1,5 +1,13 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Current voice authority:** Brady explicitly approved the foreground voice handoff
+and implementation, superseding the historical integration hold below. Canonical
+`useEmberVoice`/`ForegroundVoice` in `src/baxstar-ember.jsx` now integrate the tested
+lab recognition and Jenny `/api/tts` path with normal chat. No background/native/
+telephony work or Worker cutover is included. Read `docs/CURRENT-STATE.md` and
+`docs/VOICE-REBUILD.md`; physical verification of the new UI remains provisional.
+
+
 **2026-10-22, Signal Log on main with a live feed:** `signal-log/` (built by Codex
 on `codex/ember-signal-log`, draft PR #50) is merged and now reads Gmail and
 Calendar through the existing gateway via `signal-log/ember-feed.mjs`; see

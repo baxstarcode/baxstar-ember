@@ -30,8 +30,9 @@
     "test:local-state": "node .devtest/local-state-check.mjs",
     "test:mobile": "node .devtest/mobile-usability-check.mjs",
     "test:alternative": "node .devtest/alternative-check.mjs",
-    "test:voice-recording": "node --test proxy/voice.test.mjs && node .devtest/voice-recording-check.mjs",
-    "test:signal-log": "node --test .devtest/signal-log/core.test.mjs && node .devtest/signal-log/browser.mjs"
+    "test:voice-recording": "node --test proxy/voice.test.mjs && npm run test:voice-foreground",
+    "test:signal-log": "node --test .devtest/signal-log/core.test.mjs && node .devtest/signal-log/browser.mjs",
+    "test:voice-foreground": "node .devtest/foreground-voice-check.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",
