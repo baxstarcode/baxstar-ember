@@ -34,9 +34,9 @@ test at ../../tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:244:1
 test at ../../tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:251:1
 ✖ provider record caps are enforced in code and partial results retain positive no-action signals (1.48152ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
+
   27 !== 24
-  
+
       at TestContext.<anonymous> (file:///tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:257:12)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1382:25)
@@ -56,10 +56,10 @@ test at ../../tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:262:1
 ✖ adapter exposes partial counts without discarding the usable records (0.970391ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
   + actual - expected
-  
+
   + 'verified'
   - 'partial'
-  
+
       at TestContext.<anonymous> (file:///tmp/signal-feed-before/.devtest/signal-log/core.test.mjs:268:10)
       at async Test.run (node:internal/test_runner/test:1389:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
