@@ -1,7 +1,7 @@
 # Ember — Current State
 
 **Signal Log continuation — 2026-10-26 (Codex, draft PR #59; not deployed):**
-`codex/signal-feed-reliability` starts from current `main` `5d911ba`. Bounded reads
+`codex/signal-feed-reliability` started from `main` `5d911ba` and now preserves `fb6500e` foreground voice. Bounded reads
 now cover the response body, enforce provider record/byte caps, expose partial
 results and preserve stale cards/decisions with attempt/success timestamps. The
 manual Claude route adds a copyable prompt and whole-report JSON import with stable
@@ -10,6 +10,38 @@ task/run/item identity, revision handling and full-report provenance in backups.
 found no enabled weekly item in the 8 accessible ChatGPT tasks; current Claude
 scheduled-task coverage is unverified and needs the native listing/export. Shared
 Worker/auth/config, grants, automations and deployment are outside this follow-up.
+
+**Foreground voice integrated into the large skull (Codex):** `useEmberVoice` now
+reuses the lab's browser recognition and same-origin Jenny `/api/tts` path; the old
+recording-only modal has been removed. Tap the mouth, speak, finish/review, then
+Send. The reply enters regular persistent chat using the selected model/effort and
+plays in Jenny's voice; blocked autoplay exposes the native Play control. No mic
+starts on load or rearms after a reply. Stop/close/hidden-page/workspace changes
+cancel voice, preserve received words/completed chat, and release screen wake lock.
+Screen-awake acquisition/denial is visible. Long replies retain full text and label
+the spoken first part explicitly to respect the existing 1000-character TTS cap.
+
+The skull is up to 360px wide and no longer shrinks when history appears. Brief
+phrases press inward with an orange hot-brand flare and ivory lettering; the
+conversation scrolls in a 148px window below. Phrase timing is approximate using
+clip progress, not word-level alignment. Reduced motion removes the branding
+transform/particles. Phone prompt plates move below the skull to preserve its size;
+the six-item pinned dock is unchanged. Short screens can scroll rather than crush
+or hide the skull. Backend, OAuth, voice provider, model defaults and booking app
+are untouched. This is a Pages-only release.
+
+Validation: Pages build passes; 66 foreground voice checks, 132 dashboard checks,
+26 chat, 45 mobile, 87 layout/truth, 122 alternative/graph/dock, 14 streaming-effort,
+36 UI and 38 Pages gateway checks pass. Desktop and phone rendering were inspected,
+including the branding impact frame. Recognition, wake locks and providers are
+simulated in the browser checks; these counts do not establish physical audibility.
+
+See [`HANDOFF-FOREGROUND-VOICE.md`](HANDOFF-FOREGROUND-VOICE.md) for the approved
+scope and `docs/VOICE-REBUILD.md` for current verification. Existing foreground lab
+passes are retained; the integrated phone/CarPlay surface remains **PROVISIONAL**
+until Brady performs one brief foreground check. Background/app-switch/lock tests
+are explicitly out of scope; older five-turn and backend-activation gates below
+are historical and do not describe this approved reuse of the tested lab path.
 
 **Main chat defaults to Medium — 2026-10-23 (Codex):** Brady requested Medium
 effort. Opus 5.5 remains the default model. Preference version 4 applies Medium

@@ -1,5 +1,12 @@
 # Deploying Ember
 
+**Foreground voice integration:** the approved large-skull release is Pages-only.
+It reuses the already-live `/api/messages` and Jenny `/api/tts` routes, replacing
+the recording-only modal. Do not deploy the Worker, coordinator, or unused
+`/api/voice/*` adapters for this change. Earlier recording-only gates below are
+historical. The integrated phone/CarPlay surface still requires one foreground
+physical check; no background test or new provider activation is part of release.
+
 **Speech-only hotfix, 2026-10-18 (America/Chicago):** the phone's v3 check confirms HTTP 502 with
 `provider-refused`, before audio preparation. The deployed v1 connection token
 differs from the current edge-tts 7.3.1 v2 protocol (published October 13). The

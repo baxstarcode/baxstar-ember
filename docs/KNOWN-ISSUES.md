@@ -1,5 +1,16 @@
 # Ember — Known Issues and Deliberate Limits
 
+**Current foreground voice boundary:** the main skull now uses the tested lab path
+and Jenny, with an explicit review/Send step and visible wake-lock state. Browser
+and regression checks cover the integration; the new physical phone/CarPlay check
+remains provisional. Background listening is not supported or required. The old
+recording-only modal, full Worker activation requirement, and five-turn integration
+hold below are historical; Brady authorized the narrower foreground integration.
+See `docs/VOICE-REBUILD.md`. Jenny's unofficial Edge TTS service remains an existing
+availability dependency. Full replies are kept in chat; spoken excerpts are labeled
+when the current endpoint's 1000-character limit is exceeded.
+
+
 Last updated from the working repository on **2026-10-18 (America/Chicago)**. Recorded production
 verification remains dated 2026-09-20 unless stated otherwise. This is the active
 ledger; Git history and the Ember Handoff Log preserve the closed issue record.
