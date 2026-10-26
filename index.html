@@ -786,7 +786,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-26 03:04Z".startsWith("__") ? "dev" : "2026-10-26 03:04Z";
+  const BUILD_STAMP = "2026-10-26 05:24Z".startsWith("__") ? "dev" : "2026-10-26 05:24Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -4128,6 +4128,62 @@ Check Gmail for anything newer.`;
           .brand-sparks { display:none; }
           .is-speaking .reactor-core-orb { animation:none; }
         }
+
+        .conversation-workspace { display:contents; }
+        /* Desktop cockpit, recovered from 5d911ba: the viewport is the frame.
+           Side-by-side chat preserves the skull instead of shrinking on replies. */
+        @media (min-width:1021px) {
+          .ember-root:has(.ops-fit) .tank-wrap { width:26px; }
+          .ops-fit .ember-row:not(.row-on) .feed-excerpt { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; padding-top:2px; padding-bottom:2px; }
+          .ember-shell.ops-fit { height:100dvh; min-height:0; overflow:hidden; padding:10px 28px 112px; gap:7px; }
+          .ops-fit .main-grid { flex:1 1 0; min-height:0; grid-template-columns:minmax(180px,.8fr) minmax(490px,2.4fr) minmax(180px,.8fr); gap:8px; grid-template-rows:minmax(0,1fr); }
+          .ops-fit .ops-side, .ops-fit .ops-core { min-height:0; }
+          .ops-fit .ops-side { gap:7px!important; }
+          .ops-fit .ops-side > .panel { padding:8px!important; }
+          .ops-fit .ops-side > .panel:last-child { flex:0 1 32%; min-height:90px; }
+          .ops-fit .ops-side .ember-row { padding:5px 0!important; }
+          .ops-fit .ops-side .row-title { font-size:12px; }
+          .ops-fit .ops-side .chip, .ops-fit .ops-side .row-open { padding:4px 7px!important; min-height:28px; font-size:10px; white-space:nowrap; }
+          .ops-fit .ops-side .ember-row > .mt-2 { flex-wrap:wrap; gap:4px; margin-top:4px; }
+          .ops-fit .ops-side .ember-row > .mt-1, .ops-fit .ops-side .ember-row > .mt-1.5 { font-size:11px; line-height:1.35; }
+          .ops-fit .core-chamber { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(0,1fr); grid-template-rows:minmax(0,1fr); padding:8px 8px 58px!important; align-items:stretch; gap:8px!important; }
+          .ops-fit .greet-row { display:none; }
+          .ops-fit .core-wrap { grid-column:1; grid-row:1; container-type:size; align-self:stretch; justify-content:center; min-height:0; }
+          .ops-fit .core-row { width:100%; gap:6px; }
+          .ops-fit .reactor-stage { width:min(360px,100cqw,calc(100cqh - 80px)); }
+          .ops-fit .scope-bezel { width:min(280px,100%); margin:0; }
+          .ops-fit .core-row .prompt-plate { grid-row:2; min-height:32px; padding:5px 6px; width:auto; }
+          .ops-fit .plate-label { font-size:9px; flex-direction:row; gap:3px; white-space:nowrap; letter-spacing:0; }
+          .ops-fit .core-wrap > .mt-2 { gap:4px; }
+          .ops-fit .core-wrap .seg { padding:5px 7px; white-space:nowrap; font-size:9px; }
+          .ops-fit .conversation-workspace { display:flex; flex-direction:column; grid-column:2; grid-row:1; min-width:0; min-height:0; gap:6px; overflow-y:auto; padding:2px; }
+          .ops-fit .home-thread { flex:1 1 110px; height:auto; min-height:90px; max-height:180px; padding:5px; gap:4px; }
+          .ops-fit .chat-bubble { padding:5px 7px; font-size:12px; line-height:1.4; }
+          .ops-fit .chat-message-actions .chip { min-height:26px; padding:3px 7px; }
+          .ops-fit .chat-composer { flex:none; }
+          .ops-fit .chat-composer .cmd-input { min-height:44px; max-height:64px; padding:6px 8px; font-size:12px; }
+          .ops-fit .chat-hint { display:none; }
+          .ops-fit .chat-controls { position:absolute; bottom:5px; left:8px; width:calc(100% - 16px); flex-wrap:nowrap; gap:4px!important; }
+          .ops-fit .chat-controls > div { gap:4px; }
+          .ops-fit .chat-controls .fieldlabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+          .ops-fit .chat-controls .codex { padding:2px; gap:2px; flex-wrap:nowrap; }
+          .ops-fit .chat-controls .seg { padding:4px 6px; font-size:10px; min-height:28px; white-space:nowrap; }
+          .ops-fit .chat-controls > .chip { padding:4px 8px; min-height:28px; white-space:nowrap; }
+          .ops-fit .foreground-voice { padding:6px; flex:none; }
+          .ops-fit .voice-status { font-size:11px; line-height:1.3; }
+          .ops-fit .voice-actions { gap:4px; margin:5px 0; }
+          .ops-fit .foreground-voice button { min-height:30px; padding:4px 7px; font-size:10px; white-space:nowrap; }
+          .ops-fit .voice-review textarea { min-height:44px; height:44px; font-size:12px; }
+          .ops-fit .voice-footnote { font-size:9px; gap:3px; }
+          .ops-fit .foreground-voice audio { height:32px; margin:4px 0; }
+          .ops-fit .conversation-workspace:has(.foreground-voice:not([hidden])) > .chat-composer { display:none; }
+          .ops-fit .ember-header { min-height:44px; padding:5px 12px; }
+          .ops-fit .greet-row .chip { min-height:28px; padding:4px 8px!important; }
+          .ops-fit .voice-footnote span:last-child { display:none; }
+          .ops-fit .tools-rail { flex:none; }
+          .ops-fit .ops-data-note, .ops-fit .ops-error { max-height:32px; overflow:auto; font-size:11px; }
+        }
+
         /* YOUR TOOLS: one slim row with its label inline. */
         .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }
         .tools-rail .tools-head { flex:none; border:none; padding:0; margin:0; }
@@ -4277,7 +4333,7 @@ Check Gmail for anything newer.`;
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), error && /* @__PURE__ */ React.createElement("p", { className: "ops-error", role: "alert", title: error }, error), view === "ops" && opsNote && /* @__PURE__ */ React.createElement("p", { className: "ops-data-note", role: "status" }, opsNote), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "main-grid flex-1" }, /* @__PURE__ */ React.createElement("div", { ref: callsColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Calls & Voicemail", count: `${data.voicemails.length} ITEMS`, countColor: "var(--ember-orange)", delay: "0.15s", grow: true }, data.voicemails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No missed calls or voicemails returned for the last 48 hours."), data.voicemails.map((v, i) => /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), error && /* @__PURE__ */ React.createElement("p", { className: "ops-error", role: "alert", title: error }, error), view === "ops" && opsNote && /* @__PURE__ */ React.createElement("p", { className: "ops-data-note", role: "status" }, opsNote), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "main-grid flex-1" }, /* @__PURE__ */ React.createElement("div", { ref: callsColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Calls & Voicemail", count: `${data.voicemails.length > 4 ? "4 / " : ""}${data.voicemails.length} ITEMS`, countColor: "var(--ember-orange)", delay: "0.15s", grow: true }, data.voicemails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No missed calls or voicemails returned for the last 48 hours."), data.voicemails.slice(0, 4).map((v, i) => /* @__PURE__ */ React.createElement(
       Row,
       {
         key: i,
@@ -4289,7 +4345,8 @@ Check Gmail for anything newer.`;
       v.vm ? /* @__PURE__ */ React.createElement(
         "div",
         {
-          className: "mt-1.5 rounded-r-lg px-3 py-2 text-[11.5px] italic leading-relaxed",
+          title: v.vm,
+          className: "feed-excerpt mt-1.5 rounded-r-lg px-3 py-2 text-[11.5px] italic leading-relaxed",
           style: { background: "rgba(255,158,61,.06)", borderLeft: "2px solid var(--ember-orange)", color: "var(--ink-dim)" }
         },
         '"',
@@ -4365,7 +4422,7 @@ Check Gmail for anything newer.`;
         style: { color: thinking || syncing ? "var(--ember-orange)" : "var(--ink-faint)" }
       },
       voice.phase === "playing" ? "SPEAKING\u2026" : voice.phase === "listening" ? "LISTENING\u2026" : thinking ? "THINKING\u2026" : syncing ? "SYNCING\u2026" : live ? feedState : "READY"
-    ), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE"), /* @__PURE__ */ React.createElement("a", { className: "seg sm voice-lab-link", href: "/work/desktop-voice-probe/", target: "_blank", rel: "noopener noreferrer" }, "VOICE LAB ", /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", width: "10", height: "10", viewBox: "0 0 12 12", fill: "none", stroke: "currentColor", strokeWidth: "1.5" }, /* @__PURE__ */ React.createElement("path", { d: "M2 10 10 2M3 2h7v7" }))))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE"), /* @__PURE__ */ React.createElement("a", { className: "seg sm voice-lab-link", href: "/work/desktop-voice-probe/", target: "_blank", rel: "noopener noreferrer" }, "VOICE LAB ", /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", width: "10", height: "10", viewBox: "0 0 12 12", fill: "none", stroke: "currentColor", strokeWidth: "1.5" }, /* @__PURE__ */ React.createElement("path", { d: "M2 10 10 2M3 2h7v7" }))))), /* @__PURE__ */ React.createElement("div", { className: "conversation-workspace" }, chatMsgs.length > 0 && /* @__PURE__ */ React.createElement(
       "div",
       {
         ref: chatThreadRef,
@@ -4379,7 +4436,7 @@ Check Gmail for anything newer.`;
         },
         style: { animationDelay: "0.45s" }
       },
-      chatMsgs.map((m) => m.role === "user" ? /* @__PURE__ */ React.createElement(
+      chatMsgs.slice(-4).map((m) => m.role === "user" ? /* @__PURE__ */ React.createElement(
         "div",
         {
           key: m.id,
@@ -4440,7 +4497,7 @@ Check Gmail for anything newer.`;
         style: { background: "linear-gradient(90deg,var(--ember-red),#ff6a4d)" }
       },
       thinking ? "Stop" : "RUN"
-    )), /* @__PURE__ */ React.createElement("div", { id: "chat-input-hint", className: "chat-hint", title: "Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled." }, "Enter to send \xB7 Shift+Enter for a new line \xB7 connectors are read-only; nothing is sent for you."), /* @__PURE__ */ React.createElement("div", { className: "chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2", style: { animationDelay: "0.6s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Model"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, MODELS.map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, disabled: thinking, "aria-pressed": chatModel === m.id, title: `${m.name} \xB7 ${m.id}`, className: `seg sm ${chatModel === m.id ? "on" : ""}`, onClick: () => setChatModel(m.id) }, m.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Effort"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, Object.entries(EFFORT).map(([k, e]) => /* @__PURE__ */ React.createElement("button", { key: k, disabled: thinking, "aria-pressed": chatEffort === k, className: `seg sm ${chatEffort === k ? "on" : ""}`, onClick: () => setChatEffort(k) }, e.label)))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: clearChat }, "Clear thread")), draftEdit !== null && /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { id: "chat-input-hint", className: "chat-hint", title: "Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled." }, "Enter to send \xB7 Shift+Enter for a new line \xB7 connectors are read-only; nothing is sent for you."), draftEdit !== null && /* @__PURE__ */ React.createElement(
       "div",
       {
         className: "w-full max-w-sm rounded-xl border px-4 py-3",
@@ -4533,19 +4590,19 @@ Check Gmail for anything newer.`;
         setLeverPending(null);
         setTaskError("");
       } }, "Discard"))
-    ))), /* @__PURE__ */ React.createElement("div", { ref: inboxColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2", style: { animationDelay: "0.6s" } }, /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Model"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, MODELS.map((m) => /* @__PURE__ */ React.createElement("button", { key: m.id, disabled: thinking, "aria-pressed": chatModel === m.id, title: `${m.name} \xB7 ${m.id}`, className: `seg sm ${chatModel === m.id ? "on" : ""}`, onClick: () => setChatModel(m.id) }, m.label)))), /* @__PURE__ */ React.createElement("div", { className: "flex max-w-full items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "fieldlabel" }, "Effort"), /* @__PURE__ */ React.createElement("div", { className: "codex" }, Object.entries(EFFORT).map(([k, e]) => /* @__PURE__ */ React.createElement("button", { key: k, disabled: thinking, "aria-pressed": chatEffort === k, className: `seg sm ${chatEffort === k ? "on" : ""}`, onClick: () => setChatEffort(k) }, e.label)))), chatMsgs.length > 0 && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: clearChat }, "Clear thread")))), /* @__PURE__ */ React.createElement("div", { ref: inboxColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(
       Panel,
       {
         notch: "hot",
         title: "Inbox",
-        count: `${data.emails.length} UNREAD`,
+        count: `${data.emails.length > 4 ? "4 / " : ""}${data.emails.length} UNREAD`,
         countColor: "#ff8074",
         delay: "0.2s",
         grow: true,
         action: /* @__PURE__ */ React.createElement("button", { type: "button", className: "panel-link", disabled: thinking, onClick: () => runPrompt("triage") }, "Triage Inbox \u203A")
       },
       data.emails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No unread email returned for the last 24 hours."),
-      data.emails.map((m, i) => /* @__PURE__ */ React.createElement(
+      data.emails.slice(0, 4).map((m, i) => /* @__PURE__ */ React.createElement(
         Row,
         {
           key: i,
@@ -4554,7 +4611,7 @@ Check Gmail for anything newer.`;
           selected: (selectedComm == null ? void 0 : selectedComm.type) === "email" && selectedComm.i === i,
           onClick: () => setSelectedComm((selectedComm == null ? void 0 : selectedComm.type) === "email" && selectedComm.i === i ? null : { type: "email", i })
         },
-        /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-xs leading-relaxed", style: { color: "var(--ink-dim)" } }, m.subject),
+        /* @__PURE__ */ React.createElement("div", { title: m.subject, className: "feed-excerpt mt-1 text-xs leading-relaxed", style: { color: "var(--ink-dim)" } }, m.subject),
         /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", disabled: thinking || !!leverBusy, onClick: (e) => {
           e.stopPropagation();
           draftReply(m, "email", i);
@@ -4563,7 +4620,7 @@ Check Gmail for anything newer.`;
           openTaskDraft(m, "email", i);
         } }, "Task draft"), /* @__PURE__ */ React.createElement(SourceLink, { href: gmailLink(m.id), label: "Open in Gmail" }))
       ))
-    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }, calendarLink(e.link) && /* @__PURE__ */ React.createElement("div", { className: "mt-1.5" }, /* @__PURE__ */ React.createElement(SourceLink, { href: calendarLink(e.link), label: "Open in Calendar" }))))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length > 4 ? "4 / " : ""}${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.slice(0, 4).map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }, calendarLink(e.link) && /* @__PURE__ */ React.createElement("div", { className: "mt-1.5" }, /* @__PURE__ */ React.createElement(SourceLink, { href: calendarLink(e.link), label: "Open in Calendar" }))))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
       "button",
       {
         key: t.url,
@@ -6195,7 +6252,14 @@ Check Gmail for anything newer.`;
       {
         className: `ember-row border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`,
         style: { borderColor: "rgba(255,90,60,.09)" },
-        onClick
+        onClick,
+        tabIndex: onClick ? 0 : void 0,
+        onKeyDown: (e) => {
+          if (onClick && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            onClick();
+          }
+        }
       },
       /* @__PURE__ */ React.createElement("div", { className: "flex items-baseline justify-between gap-3" }, /* @__PURE__ */ React.createElement("span", { className: "row-title min-w-0 text-[13px] font-semibold" }, who), when && tag && /* @__PURE__ */ React.createElement("span", { className: "font-mono-x shrink-0 text-[9.5px]", style: { color: "var(--ink-faint)" } }, when)),
       when && !tag && /* @__PURE__ */ React.createElement("p", { className: "row-note" }, when),

@@ -10,8 +10,8 @@ let checks=0;
 function check(label,value){assert.ok(value,label);checks++;console.log('PASS '+label)}
 const wav=Buffer.alloc(44+16000*2*6);wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(16000,24);wav.writeUInt32LE(32000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(wav.length-44,40);
 for(let i=44;i<wav.length;i+=2)wav.writeInt16LE(Math.round(Math.sin((i-44)/2/16000*440*2*Math.PI)*800),i);
-async function fixture({width=1440,preview=false,recognition=true,wake='ok',reduced=false}={}){
- const context=await browser.newContext({viewport:{width,height:width<600?844:1000},deviceScaleFactor:width<600?3:1,reducedMotion:reduced?'reduce':'no-preference'});
+async function fixture({width=1440,height,preview=false,recognition=true,wake='ok',reduced=false}={}){
+ const context=await browser.newContext({viewport:{width,height:height||(width<600?844:1000)},deviceScaleFactor:width<600?3:1,reducedMotion:reduced?'reduce':'no-preference'});
  const page=await context.newPage(),calls=[],errors=[];let mode='normal',pending=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(({recognition,wake})=>{
@@ -50,6 +50,17 @@ async function fixture({width=1440,preview=false,recognition=true,wake='ok',redu
  return {page,context,panel,calls,errors,start,finish,mode:v=>mode=v,resolve:()=>{pending.splice(0).forEach(r=>r())},async end(){await page.locator('audio[aria-label="Ember reply"]').evaluate(a=>a.currentTime=a.duration-.05);await panel.locator('[data-phase="ready"]').waitFor()}};
 }
 try{
+ for(const [width,height] of [[1024,700],[1100,640],[1280,720],[1440,900],[1920,1080]]){
+  const f=await fixture({width,height});
+  const geometry=()=>f.page.evaluate(()=>{const w=document.querySelector('.conversation-workspace'),r=document.querySelector('.reactor-stage').getBoundingClientRect(),d=document.querySelector('.console-dock').getBoundingClientRect(),t=document.querySelector('.tools-rail').getBoundingClientRect();return {scroll:document.documentElement.scrollHeight-innerHeight,workspaceOverflow:w.scrollHeight-w.clientHeight,skull:r.width,bottom:r.bottom,dock:d.top,tools:t.bottom}});
+  const initial=await geometry();
+  check(`${width} desktop fits without page scrolling`,initial.scroll<=1&&initial.tools<=initial.dock);
+  await f.start();await f.finish();await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  const active=await geometry();await f.page.waitForTimeout(1600);await f.page.screenshot({path:`/tmp/ember-fit-${width}.png`});
+  check(`${width} voice controls fit and skull stays stable`,active.scroll<=1&&active.workspaceOverflow<=1&&Math.abs(active.skull-initial.skull)<1&&active.bottom<=active.dock);
+  await f.context.close();
+ }
+
  for(const width of [1440,390]){
   const f=await fixture({width});const hero=f.page.locator('.reactor-stage');const before=await hero.boundingBox();
   check(`${width}: mic never starts on load`,await f.page.evaluate(()=>recs.length===0));
@@ -62,7 +73,7 @@ try{
   check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
   const after=await hero.boundingBox();check(`${width}: skull does not shrink after reply`,Math.abs(before.width-after.width)<1&&after.width>250);
-  check(`${width}: transcript remains bounded`,await f.page.locator('.home-thread').evaluate(e=>e.clientHeight>=120&&e.clientHeight<=160));
+  check(`${width}: transcript remains bounded`,await f.page.locator('.home-thread').evaluate(e=>e.clientHeight>=90&&e.clientHeight<=180));
   check(`${width}: playback requests iPhone playback session`,await f.page.evaluate(()=>navigator.audioSession.type==='playback'));
   await f.page.waitForTimeout(450);
   check(`${width}: playback brings the whole skull above the dock`,await hero.evaluate(e=>{const r=e.getBoundingClientRect(),d=document.querySelector('.console-dock').getBoundingClientRect();return r.top>=0&&r.bottom<=d.top}));

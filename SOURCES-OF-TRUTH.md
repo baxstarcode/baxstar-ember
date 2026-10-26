@@ -1,5 +1,10 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Desktop layout authority, October 26, 2026:** Brady requires OPS to fit the
+desktop viewport without page scrolling. Preserve the pinned dock, use compact
+recent feeds and side-by-side conversation, and keep skull size independent of
+message count. This overrides the older foreground handoff scrolling exception.
+
 **Current voice authority:** Brady explicitly approved the foreground voice handoff
 and implementation, superseding the historical integration hold below. Canonical
 `useEmberVoice`/`ForegroundVoice` in `src/baxstar-ember.jsx` now integrate the tested

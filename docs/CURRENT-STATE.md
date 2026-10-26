@@ -1,5 +1,22 @@
 # Ember — Current State
 
+**Desktop fit correction — October 26, 2026:** Brady clarified the standing
+requirement: **OPS must fit the desktop viewport without page scrolling**. This
+supersedes the prior foreground handoff's permission to scroll short desktops.
+Recovered the viewport frame from `5d911ba` and its earlier one-screen layout
+(`a890a93` / `224afe7`), retaining the new voice flow. Desktop now places chat beside
+the skull, uses one bottom model/effort rail, and compacts feed previews. Four recent
+messages and four returned entries per feed are rendered; saved conversation and
+provider context are retained. Select a feed row to expand its excerpt. Phone
+stacking and the pinned dock remain intact. The skull adapts to available space
+but never shrinks because a reply arrives. No backend changes.
+
+Validation: Pages build, 76 voice/desktop-fit checks, 132 dashboard checks, 87
+layout/truth checks, 45 mobile checks and 26 chat checks pass. Desktop renders
+were inspected at 1024×700, 1100×640, 1280×720, 1440×900 and 1920×1080.
+
+
+
 **Foreground voice integrated into the large skull (Codex):** `useEmberVoice` now
 reuses the lab's browser recognition and same-origin Jenny `/api/tts` path; the old
 recording-only modal has been removed. Tap the mouth, speak, finish/review, then
@@ -15,8 +32,8 @@ phrases press inward with an orange hot-brand flare and ivory lettering; the
 conversation scrolls in a 148px window below. Phrase timing is approximate using
 clip progress, not word-level alignment. Reduced motion removes the branding
 transform/particles. Phone prompt plates move below the skull to preserve its size;
-the six-item pinned dock is unchanged. Short screens can scroll rather than crush
-or hide the skull. Backend, OAuth, voice provider, model defaults and booking app
+the six-item pinned dock is unchanged. Phone screens can scroll; the desktop fit correction above supersedes the
+previous desktop scrolling exception. Backend, OAuth, voice provider, model defaults and booking app
 are untouched. This is a Pages-only release.
 
 Validation: Pages build passes; 66 foreground voice checks, 132 dashboard checks,

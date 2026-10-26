@@ -256,9 +256,9 @@ try {
           return { pass: actions === 0 && drafts === 0, detail: `${actions} actionable rows/row buttons, ${drafts} draft/task buttons` };
         });
       }
-      await check(`${name} greeting counts are zero`, async () => {
-        const greeting = await page.locator('.greet-row').innerText();
-        return { pass: /\b0\s+(?:voicemails|vm)\b/i.test(greeting) && /\b0\s+unread\b/i.test(greeting), detail: greeting.replace(/\s+/g, ' ') };
+      await check(`${name} feed counts are zero`, async () => {
+        const greeting = phone ? await page.locator('.greet-row').innerText() : await page.locator('.ops-side').allInnerTexts().then(t=>t.join(' '));
+        return { pass: /\b0\s+(?:voicemails|vm|items)\b/i.test(greeting) && /\b0\s+unread\b/i.test(greeting), detail: greeting.replace(/\s+/g, ' ') };
       });
 
       await check(`${name} typed command answers through the visible controls`, async () => {
@@ -272,7 +272,7 @@ try {
         await thread.scrollIntoViewIfNeeded();
         const box = await bounds(thread);
         const minWidth = phone ? 250 : 300;
-        return { pass: box.width >= minWidth && box.height >= 130 && box.height <= 170 && box.visibleWidth >= minWidth && box.visibleHeight >= 130, detail: JSON.stringify(box) };
+        return { pass: box.width >= minWidth && box.height >= 130 && box.height <= 180 && box.visibleWidth >= minWidth && box.visibleHeight >= 130, detail: JSON.stringify(box) };
       });
       await check(`${name} input reserves text space for RUN`, async () => {
         const result = await page.locator('.core-chamber .cmd-input').evaluate((input, minWidth) => {

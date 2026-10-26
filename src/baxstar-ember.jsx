@@ -3962,6 +3962,62 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
           .brand-sparks { display:none; }
           .is-speaking .reactor-core-orb { animation:none; }
         }
+
+        .conversation-workspace { display:contents; }
+        /* Desktop cockpit, recovered from 5d911ba: the viewport is the frame.
+           Side-by-side chat preserves the skull instead of shrinking on replies. */
+        @media (min-width:1021px) {
+          .ember-root:has(.ops-fit) .tank-wrap { width:26px; }
+          .ops-fit .ember-row:not(.row-on) .feed-excerpt { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; padding-top:2px; padding-bottom:2px; }
+          .ember-shell.ops-fit { height:100dvh; min-height:0; overflow:hidden; padding:10px 28px 112px; gap:7px; }
+          .ops-fit .main-grid { flex:1 1 0; min-height:0; grid-template-columns:minmax(180px,.8fr) minmax(490px,2.4fr) minmax(180px,.8fr); gap:8px; grid-template-rows:minmax(0,1fr); }
+          .ops-fit .ops-side, .ops-fit .ops-core { min-height:0; }
+          .ops-fit .ops-side { gap:7px!important; }
+          .ops-fit .ops-side > .panel { padding:8px!important; }
+          .ops-fit .ops-side > .panel:last-child { flex:0 1 32%; min-height:90px; }
+          .ops-fit .ops-side .ember-row { padding:5px 0!important; }
+          .ops-fit .ops-side .row-title { font-size:12px; }
+          .ops-fit .ops-side .chip, .ops-fit .ops-side .row-open { padding:4px 7px!important; min-height:28px; font-size:10px; white-space:nowrap; }
+          .ops-fit .ops-side .ember-row > .mt-2 { flex-wrap:wrap; gap:4px; margin-top:4px; }
+          .ops-fit .ops-side .ember-row > .mt-1, .ops-fit .ops-side .ember-row > .mt-1\.5 { font-size:11px; line-height:1.35; }
+          .ops-fit .core-chamber { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(0,1fr); grid-template-rows:minmax(0,1fr); padding:8px 8px 58px!important; align-items:stretch; gap:8px!important; }
+          .ops-fit .greet-row { display:none; }
+          .ops-fit .core-wrap { grid-column:1; grid-row:1; container-type:size; align-self:stretch; justify-content:center; min-height:0; }
+          .ops-fit .core-row { width:100%; gap:6px; }
+          .ops-fit .reactor-stage { width:min(360px,100cqw,calc(100cqh - 80px)); }
+          .ops-fit .scope-bezel { width:min(280px,100%); margin:0; }
+          .ops-fit .core-row .prompt-plate { grid-row:2; min-height:32px; padding:5px 6px; width:auto; }
+          .ops-fit .plate-label { font-size:9px; flex-direction:row; gap:3px; white-space:nowrap; letter-spacing:0; }
+          .ops-fit .core-wrap > .mt-2 { gap:4px; }
+          .ops-fit .core-wrap .seg { padding:5px 7px; white-space:nowrap; font-size:9px; }
+          .ops-fit .conversation-workspace { display:flex; flex-direction:column; grid-column:2; grid-row:1; min-width:0; min-height:0; gap:6px; overflow-y:auto; padding:2px; }
+          .ops-fit .home-thread { flex:1 1 110px; height:auto; min-height:90px; max-height:180px; padding:5px; gap:4px; }
+          .ops-fit .chat-bubble { padding:5px 7px; font-size:12px; line-height:1.4; }
+          .ops-fit .chat-message-actions .chip { min-height:26px; padding:3px 7px; }
+          .ops-fit .chat-composer { flex:none; }
+          .ops-fit .chat-composer .cmd-input { min-height:44px; max-height:64px; padding:6px 8px; font-size:12px; }
+          .ops-fit .chat-hint { display:none; }
+          .ops-fit .chat-controls { position:absolute; bottom:5px; left:8px; width:calc(100% - 16px); flex-wrap:nowrap; gap:4px!important; }
+          .ops-fit .chat-controls > div { gap:4px; }
+          .ops-fit .chat-controls .fieldlabel { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+          .ops-fit .chat-controls .codex { padding:2px; gap:2px; flex-wrap:nowrap; }
+          .ops-fit .chat-controls .seg { padding:4px 6px; font-size:10px; min-height:28px; white-space:nowrap; }
+          .ops-fit .chat-controls > .chip { padding:4px 8px; min-height:28px; white-space:nowrap; }
+          .ops-fit .foreground-voice { padding:6px; flex:none; }
+          .ops-fit .voice-status { font-size:11px; line-height:1.3; }
+          .ops-fit .voice-actions { gap:4px; margin:5px 0; }
+          .ops-fit .foreground-voice button { min-height:30px; padding:4px 7px; font-size:10px; white-space:nowrap; }
+          .ops-fit .voice-review textarea { min-height:44px; height:44px; font-size:12px; }
+          .ops-fit .voice-footnote { font-size:9px; gap:3px; }
+          .ops-fit .foreground-voice audio { height:32px; margin:4px 0; }
+          .ops-fit .conversation-workspace:has(.foreground-voice:not([hidden])) > .chat-composer { display:none; }
+          .ops-fit .ember-header { min-height:44px; padding:5px 12px; }
+          .ops-fit .greet-row .chip { min-height:28px; padding:4px 8px!important; }
+          .ops-fit .voice-footnote span:last-child { display:none; }
+          .ops-fit .tools-rail { flex:none; }
+          .ops-fit .ops-data-note, .ops-fit .ops-error { max-height:32px; overflow:auto; font-size:11px; }
+        }
+
         /* YOUR TOOLS: one slim row with its label inline. */
         .tools-rail.panel { display:flex; align-items:center; gap:12px; border-width:9px; border-radius:12px; padding:3px 8px; }
         .tools-rail .tools-head { flex:none; border:none; padding:0; margin:0; }
@@ -4138,14 +4194,14 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
           {/* LEFT */}
           <div ref={callsColRef} className="ops-side flex min-h-0 flex-col gap-4">
-            <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
+            <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length > 4 ? "4 / " : ""}${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
               {data.voicemails.length === 0 && <p className="feed-empty">No missed calls or voicemails returned for the last 48 hours.</p>}
-              {data.voicemails.map((v, i) => (
+              {data.voicemails.slice(0, 4).map((v, i) => (
                 <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
                   selected={selectedComm?.type === "vm" && selectedComm.i === i}
                   onClick={() => setSelectedComm(selectedComm?.type === "vm" && selectedComm.i === i ? null : { type: "vm", i })}>
                   {v.vm ? (
-                    <div className="mt-1.5 rounded-r-lg px-3 py-2 text-[11.5px] italic leading-relaxed"
+                    <div title={v.vm} className="feed-excerpt mt-1.5 rounded-r-lg px-3 py-2 text-[11.5px] italic leading-relaxed"
                       style={{ background: "rgba(255,158,61,.06)", borderLeft: "2px solid var(--ember-orange)", color: "var(--ink-dim)" }}>
                       "{v.vm}"
                     </div>
@@ -4266,6 +4322,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
               </div>
 
+              <div className="conversation-workspace">
               {/* THE THREAD — home is the real Claude chat (Brady, 2026-08-01). Full
                   scrolling history, not a single-answer box; OPS commands, dock
                   actions and typed questions all land here. */}
@@ -4273,7 +4330,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 <div ref={chatThreadRef} className="home-thread reveal w-full" role="region" aria-label="Conversation" aria-busy={thinking}
                   onScroll={(e) => { const el = e.currentTarget; chatPinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }}
                   style={{ animationDelay: "0.45s" }}>
-                  {chatMsgs.map((m) => (
+                  {chatMsgs.slice(-4).map((m) => (
                     m.role === "user" ? (
                       <div key={m.id} data-message-id={m.id} data-role="user" data-status={m.status} className="chat-bubble self-end whitespace-pre-wrap rounded-2xl rounded-br-sm border px-4 py-2.5"
                         style={{ background: "rgba(255,77,61,.13)", borderColor: "var(--line-hot)", color: "var(--ink)" }}>
@@ -4327,34 +4384,6 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </button>
               </div>
               <div id="chat-input-hint" className="chat-hint" title="Last 24 saved messages; up to 8 included as context. Connectors are read-only; external actions are not enabled.">Enter to send · Shift+Enter for a new line · connectors are read-only; nothing is sent for you.</div>
-
-              {/* Model + Effort live on the home page now — the codex wraps instead of
-                  running off the right edge of a phone. */}
-              <div className="chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
-                <div className="flex max-w-full items-center gap-2">
-                  <span className="fieldlabel">Model</span>
-                  <div className="codex">
-                    {MODELS.map((m) => (
-                      <button key={m.id} disabled={thinking} aria-pressed={chatModel === m.id} title={`${m.name} · ${m.id}`} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex max-w-full items-center gap-2">
-                  <span className="fieldlabel">Effort</span>
-                  <div className="codex">
-                    {Object.entries(EFFORT).map(([k, e]) => (
-                      <button key={k} disabled={thinking} aria-pressed={chatEffort === k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
-                        {e.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {chatMsgs.length > 0 && (
-                  <button className="chip ghost" onClick={clearChat}>Clear thread</button>
-                )}
-              </div>
 
               {/* editable lever draft — never sends automatically */}
               {draftEdit !== null && (
@@ -4410,19 +4439,48 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </fieldset>
               )}
 
+              </div>
+              {/* Model + Effort live on the home page now — the codex wraps instead of
+                  running off the right edge of a phone. */}
+              <div className="chat-controls reveal flex w-full max-w-2xl flex-wrap items-center justify-center gap-x-4 gap-y-2" style={{ animationDelay: "0.6s" }}>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="fieldlabel">Model</span>
+                  <div className="codex">
+                    {MODELS.map((m) => (
+                      <button key={m.id} disabled={thinking} aria-pressed={chatModel === m.id} title={`${m.name} · ${m.id}`} className={`seg sm ${chatModel === m.id ? "on" : ""}`} onClick={() => setChatModel(m.id)}>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex max-w-full items-center gap-2">
+                  <span className="fieldlabel">Effort</span>
+                  <div className="codex">
+                    {Object.entries(EFFORT).map(([k, e]) => (
+                      <button key={k} disabled={thinking} aria-pressed={chatEffort === k} className={`seg sm ${chatEffort === k ? "on" : ""}`} onClick={() => setChatEffort(k)}>
+                        {e.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {chatMsgs.length > 0 && (
+                  <button className="chip ghost" onClick={clearChat}>Clear thread</button>
+                )}
+              </div>
+
             </div>
           </div>
 
           {/* RIGHT */}
           <div ref={inboxColRef} className="ops-side flex min-h-0 flex-col gap-4">
-            <Panel notch="hot" title="Inbox" count={`${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow
+            <Panel notch="hot" title="Inbox" count={`${data.emails.length > 4 ? "4 / " : ""}${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow
               action={<button type="button" className="panel-link" disabled={thinking} onClick={() => runPrompt("triage")}>Triage Inbox ›</button>}>
               {data.emails.length === 0 && <p className="feed-empty">No unread email returned for the last 24 hours.</p>}
-              {data.emails.map((m, i) => (
+              {data.emails.slice(0, 4).map((m, i) => (
                 <Row key={i} who={m.from} when={m.time}
                   selected={selectedComm?.type === "email" && selectedComm.i === i}
                   onClick={() => setSelectedComm(selectedComm?.type === "email" && selectedComm.i === i ? null : { type: "email", i })}>
-                  <div className="mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{m.subject}</div>
+                  <div title={m.subject} className="feed-excerpt mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{m.subject}</div>
                   <div className="mt-2 flex gap-2">
                     <button className="chip solid" disabled={thinking || !!leverBusy} onClick={(e) => { e.stopPropagation(); draftReply(m, "email", i); }}>
                       Draft reply
@@ -4436,9 +4494,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               ))}
             </Panel>
 
-            <Panel notch="cool" title="Schedule" count={`${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
+            <Panel notch="cool" title="Schedule" count={`${data.events.length > 4 ? "4 / " : ""}${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
               {data.events.length === 0 && <p className="feed-empty">No calendar events returned for today or tomorrow.</p>}
-              {data.events.map((e, i) => (
+              {data.events.slice(0, 4).map((e, i) => (
                 <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail}>
                   {calendarLink(e.link) && <div className="mt-1.5"><SourceLink href={calendarLink(e.link)} label="Open in Calendar" /></div>}
                 </Row>
@@ -6344,7 +6402,7 @@ function Row({ who, when, children, onClick, selected }) {
   const tag = typeof when === "string" && when.length <= ROW_TAG_MAX;
   return (
     <div className={`ember-row border-b py-2.5 last:border-none ${onClick ? "row-sel" : ""} ${selected ? "row-on" : ""}`}
-      style={{ borderColor: "rgba(255,90,60,.09)" }} onClick={onClick}>
+      style={{ borderColor: "rgba(255,90,60,.09)" }} onClick={onClick} tabIndex={onClick ? 0 : undefined} onKeyDown={e => { if (onClick && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="row-title min-w-0 text-[13px] font-semibold">{who}</span>
         {when && tag && <span className="font-mono-x shrink-0 text-[9.5px]" style={{ color: "var(--ink-faint)" }}>{when}</span>}

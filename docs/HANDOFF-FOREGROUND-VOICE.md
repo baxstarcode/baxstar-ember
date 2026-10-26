@@ -1,5 +1,13 @@
 # Resume Ember: foreground voice and the large skull
 
+## Latest correction — October 26, 2026
+
+Desktop OPS must never require page scrolling. Brady explicitly corrected the
+scrolling exception in this original handoff. Use the current side-by-side desktop
+layout, compact recent feeds and bottom settings rail; preserve phone stacking,
+the pinned dock and a skull whose size is independent of history. This requirement
+supersedes the older layout guidance below.
+
 ## Start here
 
 Brady authorized either this handoff or continuing implementation after the latest
@@ -103,8 +111,8 @@ Line numbers below refer to base `5d911ba` and may move.
   The current asset is `assets/ember/raster/reactor-bezel@2x.webp`, with the orange
   orb positioned over its center. Preserve the approved artwork and dock.
 - Old one-screen desktop constraints should not force the skull to become tiny.
-  Favor stable hero size plus bounded conversation scrolling; permit sensible page
-  scrolling on genuinely small viewports rather than hiding essential controls.
+  Favor stable hero size plus bounded conversation scrolling. Desktop must fit
+  without page scrolling; phone layouts may scroll.
 
 ### Reuse the tested voice behavior
 

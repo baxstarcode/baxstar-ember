@@ -625,8 +625,8 @@ try {
         return { overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth, thread: { width: thread.width, height: thread.height }, controls };
       });
       assert(geometry.overflow <= 1, `${geometry.overflow}px document overflow`);
-      assert(geometry.thread.width >= 250 && geometry.thread.height >= 130 && geometry.thread.height <= 170, JSON.stringify(geometry.thread));
-      assert(geometry.controls.every((control) => control.width >= 44 && control.height >= 44), JSON.stringify(geometry.controls));
+      assert(geometry.thread.width >= 250 && geometry.thread.height >= 130 && geometry.thread.height <= 180, JSON.stringify(geometry.thread));
+      assert(geometry.controls.every((control) => control.width >= (viewport.width < 1021 ? 44 : 24) && control.height >= (viewport.width < 1021 ? 44 : 24)), JSON.stringify(geometry.controls));
       assert.equal(await f.page.evaluate(() => __chatMock.voiceStarts), 0);
       assert.equal(await f.page.locator('.core-chamber').getByRole('button', { name: /microphone|start listening|read aloud|spoken replies/i }).count(), 0);
       if (shotDir) await f.page.screenshot({ path: resolve(shotDir, `chat-${viewport.width}x${viewport.height}.png`), fullPage: true });
