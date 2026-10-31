@@ -163,8 +163,9 @@ async function run(label, viewport) {
   });
   check(`${label}: reactor crown replaces the skull arch`, crown && crown.skulls === 0 &&
     crown.display !== "none" && crown.visibility !== "hidden" &&
-    // Sized by the viewport since 2026-10-15 (bigger on tall screens), always round.
-    crown.w >= (mobile ? 160 : 240) && crown.w <= 360 && Math.abs(crown.w - crown.h) <= 2, JSON.stringify(crown));
+    // Sized by the viewport since 2026-10-15, always round. Desktop is center stage
+    // since 2026-10-31 (Brady): no 360px cap, so 1440x900 must clear the old cap.
+    crown.w >= (mobile ? 160 : 380) && crown.w <= (mobile ? 360 : 900) && Math.abs(crown.w - crown.h) <= 2, JSON.stringify(crown));
   const plates = await plateGeometry(page, mobile);
   check(`${label}: prompt plates stay clear of the large reactor, beside it or below on phones`,
     plates.ok && plates.decorativeSerials && plates.labels[0] === "WHAT'D I MISS" && plates.labels[1] === "BRIEF MY DAY", JSON.stringify(plates));

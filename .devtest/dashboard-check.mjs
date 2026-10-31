@@ -150,7 +150,8 @@ try {
     check(`${name} no skull ornament`, await page.locator(".skull-arch").count() === 0);
     check(`${name} core chamber present`, await page.locator(".core-host").count() > 0);
     const reactor = await page.locator(".reactor-stage").first().boundingBox();
-    check(`${name} reactor stays prominent and fits the screen`, !!reactor && reactor.height >= (name === "PHONE" ? 250 : 240) && reactor.height <= 361,
+    // Desktop lost its 360px cap 2026-10-31 (Ember center stage); 1440x900 must clear it.
+    check(`${name} reactor stays prominent and fits the screen`, !!reactor && reactor.height >= (name === "PHONE" ? 250 : 380) && reactor.height <= (name === "PHONE" ? 361 : 900),
       reactor ? `${Math.round(reactor.height)}px` : "missing");
     check(`${name} core instrument present`, await page.locator(".reactor-stage, .scope-bezel").count() > 0);
     check(`${name} panels filled from live sync`, body.includes("LIVE SYNC LANDED") && body.includes("LIVESYNCPROOF"));

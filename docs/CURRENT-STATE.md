@@ -1,5 +1,24 @@
 # Ember — Current State
 
+**Ember center stage — October 31, 2026 (Claude Code):** Brady: "Change ember back to her glory days of being center stage.  Try again to be effecient with space with the goal of teh biggest p[ossible skull and a wider text window below. [...] Keep latest iteration otherwise."
+Desktop OPS (≥1021px) now stacks the chamber like `fb6500e`, the version where she was
+centred: the skull owns the whole upper chamber, sized by its height with no 360px
+cap, over a full-width conversation. WHAT'D I MISS / BRIEF MY DAY sit beside her
+(full machined plates once the chamber row is 360px+ tall), ENIGMA/SCOPE and
+status/VOICE LAB take the top corners, and Model (left) and Clear thread/Effort
+(right) take the bottom corners, so the old bottom rail no longer costs her height.
+The conversation row has a fixed height (130–132px from 800px tall; 84px on shorter
+screens), so a reply never shrinks her. Voice runs as one wide strip in the
+composer's place. No page scroll at any of the five desktop sizes. Phone layout,
+feeds, dock, voice flow and everything else are unchanged.
+
+Demo-mode measurements, skull / conversation width (was): 1024×700 247 / 519px
+(246 / 246); 1100×640 194 / 565 (186 / 268); 1280×720 274 / 673 (266 / 319);
+1440×900 406 / 769 (360 / 366); 1920×1080 586 / 1057 (360 / 504). Live mode has no
+demo note line, so she gets about 22px more. Tests now require ≥380px at 1440×900
+(was ≤360) and keep the 130–180px conversation contract at 1440×900 and 1280×800.
+Full `npm run test:release` exits 0.
+
 **Quo reconnected — October 26, 2026 (Claude Code):** the coordinator cutover is live.
 Worker `47108b31-7ae5-46af-982c-337eaf15eb4e` (from main `b10b1d1`, PR #60, plus
 Brady's two fresh consent seeds) runs the `EmberTokenCoordinator` in required mode and

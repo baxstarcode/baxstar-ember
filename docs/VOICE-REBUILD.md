@@ -33,7 +33,7 @@ screen wake lock. Mic-release uncertainty stays gated pending user confirmation.
 A missing/denied wake lock does not block conversation or claim the screen is held.
 Late recognition, requests and wake grants cannot revive cancelled work.
 
-The 360px maximum skull is independent of history. Its inward hot-brand phrases
+The skull's size is independent of history (its 360px desktop cap was lifted 2026-10-31; see `docs/CURRENT-STATE.md`). Its inward hot-brand phrases
 follow approximate audio progress, with a reduced-motion fallback; no exact word
 alignment is claimed. Normal history scrolls below in a compact 148px region.
 The pinned dock is preserved. Short viewports scroll to expose all controls.

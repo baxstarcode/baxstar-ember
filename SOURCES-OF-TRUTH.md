@@ -11,10 +11,14 @@ dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
 sources, implementation boundaries and the outstanding physical-device proof.
 
 
-**Desktop layout authority, October 26, 2026:** Brady requires OPS to fit the
+**Desktop layout authority, October 26, 2026 (amended October 31):** Brady requires OPS to fit the
 desktop viewport without page scrolling. Preserve the pinned dock, use compact
-recent feeds and side-by-side conversation, and keep skull size independent of
-message count. This overrides the older foreground handoff scrolling exception.
+recent feeds, and keep skull size independent of message count. This overrides the
+older foreground handoff scrolling exception. Since 2026-10-31 Ember is **center
+stage**: the skull is as big as the chamber height allows over a full-width
+conversation, with plates and Model/Effort in the flanks (Brady: "the goal of teh
+biggest p[ossible skull and a wider text window below"). The side-by-side
+conversation of 10-26 is superseded. See `docs/CURRENT-STATE.md`.
 
 **Current voice authority:** Brady explicitly approved the foreground voice handoff
 and implementation, superseding the historical integration hold below. Canonical

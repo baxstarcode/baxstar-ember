@@ -14,8 +14,9 @@ sources, implementation boundaries and the outstanding physical-device proof.
 ## Latest correction — October 26, 2026
 
 Desktop OPS must never require page scrolling. Brady explicitly corrected the
-scrolling exception in this original handoff. Use the current side-by-side desktop
-layout, compact recent feeds and bottom settings rail; preserve phone stacking,
+scrolling exception in this original handoff. Use the current center-stage desktop
+layout (2026-10-31: skull over a full-width conversation, Model/Effort in the flanks
+beside her) and compact recent feeds; preserve phone stacking,
 the pinned dock and a skull whose size is independent of history. This requirement
 supersedes the older layout guidance below.
 
