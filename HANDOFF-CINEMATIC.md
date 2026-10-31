@@ -1,5 +1,10 @@
 # Ember — Living Cinematic Handoff
 
+**2026-10-31 — Ember center stage (Claude):** on desktop the skull fills the upper
+chamber again with no 360px cap (406px at 1440×900, 586px at 1920×1080), over a
+full-width conversation; plates and Model/Effort moved into the flanks beside her. No
+page scroll. Details: `docs/CURRENT-STATE.md`.
+
 **2026-10-26 — Quo is back (Claude):** the token-coordinator Worker cutover and the
 voice AI binding are live (Worker `47108b31`), and Brady completed fresh Google and Quo
 consent. His signed-in page shows Quo, Gmail and Calendar lit, with a real Quo missed

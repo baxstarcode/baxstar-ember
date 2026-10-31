@@ -437,7 +437,7 @@ now (missed calls + voicemails, 48 h, both inboxes); per-provider health means t
 Quo row simply reads Unavailable until the coordinator cutover (§1b) brings the
 grant back, and Gmail/Calendar cards are unaffected.
 
-## 10. Touch at desktop width: the model/effort rail is 28px
+## 10. Touch at desktop width: the Model/Effort buttons are 28px
 
 **Status: OPEN (2026-10-26) — found while restoring the prompt-plate release check**
 
@@ -446,10 +446,12 @@ grant back, and Gmail/Calendar cards are unaffected.
 is more specific, so on a touch pointer at ≥1021px wide (tablet landscape) the
 Haiku…Fable and Low…Xtra buttons measure 28px (measured at 1440×900 with touch
 emulation). Mouse desktops are unaffected, as are phones (<1021px). The prompt plates
-next to them were fixed the same way on 2026-10-26 (`docs/CURRENT-STATE.md`). The
-likely fix is the same coarse-only override. The rail sits in the chamber's 58px
-bottom padding at `bottom:5px`, so 44px buttons should fit. That needs a five-size
-fit check and a test before it ships; it was left out to keep this change scoped.
+next to them were fixed the same way on 2026-10-26 (`docs/CURRENT-STATE.md`). Since
+2026-10-31 the buttons sit as 2×2 grids in the bottom corners beside the skull, not
+in a bottom rail. At 44px each grid grows from about 80px to 112px tall, which fits
+from 1024×700 up but would meet the plate in the right flank at 1100×640. A fix needs
+the plates or Clear thread repositioned on short touch screens, a five-size fit check
+and a test.
 
 ## Expected behavior that is not a bug
 

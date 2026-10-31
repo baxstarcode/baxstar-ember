@@ -98,6 +98,12 @@ lit from the upper left, and turning it showed the disc as a moving crescent. Th
 just outside the rim, so the disc holds only the wheel; prove it on frames (outside mask+feather:
 0 changed pixels; rest frames identical to frame 0).
 
+2026-10-31: **Ember is center stage on desktop** (Brady: "the goal of teh biggest p[ossible
+skull and a wider text window below"). The skull owns the upper chamber with no 360px cap,
+over a full-width conversation of fixed height; every control row lives in the flanks
+beside her circle. Do not move controls back under her, cap her, or put the conversation
+beside her, and keep OPS free of page scroll.
+
 ## Source-of-truth preflight
 
 For work that changes Ember code/config/live behavior, depends on a prior Ember decision,
