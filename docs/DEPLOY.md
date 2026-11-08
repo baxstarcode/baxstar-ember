@@ -293,7 +293,11 @@ Release order (one owner):
 1. **Cloudflare access.** API token from the **Edit Cloudflare Workers** template (it
    covers Workers Scripts edit, Workers Tail read and Account Settings read), 7-day
    expiry. Give it to the cloud session as a network secret for `api.cloudflare.com`
-   (or use `wrangler login` on a Mac). Never paste it into chat.
+   (or use `wrangler login` on a Mac). Never paste it into chat. Note (2026-11-08): the
+   **Default** cloud environment already holds an active network secret for
+   `api.cloudflare.com` ("Cloudflare API token (Pages edit)", no expiry) that can read
+   this Worker's deployments, settings, secret names and logs; whether it can deploy
+   Workers was not tested. A session on Default may not need a new token.
 2. Record the live state: `npx wrangler deployments status` and
    `npx wrangler versions view <id>` in `proxy/`. Expect `47108b31-7ae5-46af-982c-337eaf15eb4e`
    with `EMBER_TOKEN_COORDINATOR`, `EMBER_VOICE_AI`, `ALLOWED_ORIGINS`,

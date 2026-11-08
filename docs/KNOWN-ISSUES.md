@@ -96,14 +96,22 @@ stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been reco
 ## 1b. Quo is offline
 
 **Status: REOPENED 2026-11-08 — repair built on `claude/brave-tesla-xnlnr6`, NOT DEPLOYED.**
-Brady saw a red Quo light, "Quo needs a new sign-in" (`reconnect_required`) and demo
-calls 13 days after the 10-26 consent. The 1-hour recheck from 10-26 was never
-answered, so persistence was never confirmed. Gmail and Calendar stayed connected through
-the same coordinator, which rules out the binding, routing and storage. The owner kept
-no reason for the stop, so whether Quo rejected the token (expired/revoked) or a
-renewal got no reply cannot be told after the fact; Claude's separate Quo connector
-also lost authorization in the same window (evidence of a Quo-side grant loss, not
-proof). The fix records and logs every outcome, retries a rate-limited renewal with the
+Brady saw a red Quo light, "Quo needs a new sign-in" and demo calls 13 days after the
+10-26 consent. The 1-hour recheck from 10-26 was never answered, so persistence was
+never confirmed. **Live evidence (read-only, 2026-11-08, Workers Logs via the existing
+Default-environment Cloudflare token):** live Worker is still `47108b31` (deployed
+2026-10-26 20:25 UTC; bindings intact). In the full 7-day log window (2026-11-01 21:33 →
+2026-11-08 20:27 UTC, 212 events) the Quo token owner (Durable Object `cd190472…`, one
+call per status check) answered **503 on all 29 calls**, each in ≤329 ms — so none was a
+provider call timing out; it was already durably stopped before 11-01 21:33. The Google
+owner (`bf01835c…`) answered 200 on 121 of 122. No exceptions or CPU/memory limits. The
+grant therefore stopped between 10-26 ~20:32 UTC (last confirmed working) and 11-01
+21:33 UTC, outside log retention, and the old owner stored no reason — whether Quo
+rejected a renewal (expired/revoked/rotated) or a renewal reply was lost cannot be told.
+Claude's separate Quo connector also lost authorization in the same period (evidence
+of a Quo-side grant loss, not proof). The "needs a new sign-in" wording Brady saw can
+also come from the Signal Log, which said it for any read without a successful Quo tool
+result; that text now distinguishes "offline" from "no tool result this time". The fix records and logs every outcome, retries a rate-limited renewal with the
 same unspent token, renews idle grants every 12 hours, exposes `health` in status, and
 adds one-tap in-app Reconnect that saves the fresh grant server-side. Deploy steps and
 verification: `docs/DEPLOY.md` "In-app reconnect and grant health". Until deployed and

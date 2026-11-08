@@ -200,8 +200,13 @@ export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = n
     const detail = typeof data?.error === 'string' ? data.error : data?.error?.message;
     throw reason(detail || `Ember request failed (HTTP ${res.status}).`);
   }
-  if (res.headers.get('x-ember-connectors') === 'degraded' || !succeededConnectors(data).has(provider)) {
-    throw reason(`${FEED.names[provider]} returned no successful tool result — the connector is offline or needs a new sign-in. Check the OPS lights.`);
+  // "Degraded" means the Worker could not authorize the connector; a missing tool
+  // result alone can be a failed or skipped tool call with a healthy sign-in.
+  if (res.headers.get('x-ember-connectors') === 'degraded') {
+    throw reason(`${FEED.names[provider]} is offline in Ember right now. Open OPS: a red ${FEED.names[provider]} panel names the cause and offers Reconnect.`);
+  }
+  if (!succeededConnectors(data).has(provider)) {
+    throw reason(`${FEED.names[provider]} returned no successful tool result this time. Refresh to retry; if the OPS ${FEED.names[provider]} light is red, reconnect it there.`);
   }
   const { signals, dropped } = projectSignals(provider, extractJSON(data), now);
   return {

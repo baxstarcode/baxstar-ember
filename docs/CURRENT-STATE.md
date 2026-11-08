@@ -5,9 +5,12 @@ On 11-08 Ember showed a red Quo light, "Quo needs a new sign-in" and demo calls,
 after the 10-26 consent. Findings: that text is the Worker's `reconnect_required` code,
 which only the token owner emits after a failed Quo refresh exchange or on an earlier
 durable stop; Google uses the same coordinator and stayed connected, so the binding,
-routing and storage work. The old owner recorded no reason, so the exact Quo reply is
-unrecoverable; Claude's own Quo connector also lost its authorization in the same
-window, which points to a Quo-side grant loss but does not prove it. The expired
+routing and storage work. Workers Logs (read-only, existing Default-environment token)
+show the live Worker is still `47108b31` and the Quo owner returned 503 on all 29 calls
+from 11-01 21:33 UTC (start of retention) to 11-08 19:33 UTC, each in ≤329 ms, while the
+Google owner returned 200 on 121 of 122: the Quo grant stopped between 10-26 and 11-01,
+and the old owner recorded no reason. Claude's own Quo connector also lost its
+authorization in that period, which points to a Quo-side grant loss but does not prove it. The expired
 Cloudflare deploy token is unrelated: the Worker never uses it at runtime (it is still
 set, invalid, in the `baxstar-booking` cloud environment). Built, tested, not deployed:
 (1) the owner classifies refresh outcomes (provider rejection, rate limit kept as

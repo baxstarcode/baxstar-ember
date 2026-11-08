@@ -239,7 +239,7 @@ test('readFeed refuses non-production hosts, Access login pages, errors and unve
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond('<html>login</html>', { headers: { 'content-type': 'text/html' } }) }), /Sign in to Ember/);
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond({ error: { message: 'Model not allowed.' } }, { status: 400 }) }), /Model not allowed/);
   await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', [], { ok: false })) }), /no successful tool result/);
-  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', []), { headers: { 'x-ember-connectors': 'degraded' } }) }), /no successful tool result/);
+  await assert.rejects(feed.readFeed('gmail', { fetchImpl: respond(reply('gmail', []), { headers: { 'x-ember-connectors': 'degraded' } }) }), /Gmail is offline in Ember right now/);
   await assert.rejects(feed.readFeed('calendar', { fetchImpl: respond(reply('gmail', [])) }), /no successful tool result/);
   await assert.rejects(feed.readFeed('quo', { fetchImpl: respond(reply('gmail', [])) }), /Quo returned no successful tool result/);
   let sent;
