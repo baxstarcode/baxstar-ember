@@ -95,7 +95,21 @@ stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been reco
 
 ## 1b. Quo is offline
 
-**Status: FIXED 2026-10-26. The persistence recheck after token expiry is PROVISIONAL.**
+**Status: REOPENED 2026-11-08 — repair built on `claude/brave-tesla-xnlnr6`, NOT DEPLOYED.**
+Brady saw a red Quo light, "Quo needs a new sign-in" (`reconnect_required`) and demo
+calls 13 days after the 10-26 consent. The 1-hour recheck from 10-26 was never
+answered, so persistence was never confirmed. Gmail and Calendar stayed connected through
+the same coordinator, which rules out the binding, routing and storage. The owner kept
+no reason for the stop, so whether Quo rejected the token (expired/revoked) or a
+renewal got no reply cannot be told after the fact; Claude's separate Quo connector
+also lost authorization in the same window (evidence of a Quo-side grant loss, not
+proof). The fix records and logs every outcome, retries a rate-limited renewal with the
+same unspent token, renews idle grants every 12 hours, exposes `health` in status, and
+adds one-tap in-app Reconnect that saves the fresh grant server-side. Deploy steps and
+verification: `docs/DEPLOY.md` "In-app reconnect and grant health". Until deployed and
+reconnected, Quo stays offline; OPS now says so instead of showing sample calls.
+
+**Earlier status: FIXED 2026-10-26. The persistence recheck after token expiry is PROVISIONAL.**
 The coordinator cutover went live (Worker `0283d68b`, then `47108b31` with both fresh
 consent seeds; see `docs/DEPLOY.md`, "Durable token owner"). Brady's signed-in page at
 15:32 CDT showed the Quo light lit and a real Quo missed call, and he reported the
@@ -452,6 +466,38 @@ in a bottom rail. At 44px each grid grows from about 80px to 112px tall, which f
 from 1024×700 up but would meet the plate in the right flank at 1100×640. A fix needs
 the plates or Clear thread repositioned on short touch screens, a five-size fit check
 and a test.
+
+## 11. November 8 feed and voice findings
+
+**Status: FIXED in code 2026-11-08 (branch `claude/brave-tesla-xnlnr6`); live behavior PROVISIONAL until deployed.**
+
+- **"no subject returned" on Gmail cards.** No Ember code writes that text; the model did.
+  Neither prompt said to read the Subject header, and the Signal Log ignored a `subject`
+  field. Both prompts now ask for the header verbatim and forbid placeholders; OPS shows
+  `(no subject line)` and Signal Log falls back to the subject or the signal for a
+  placeholder title. Confirm on the next live read (the exact Gmail tool call Haiku made
+  on 11-08 was not captured).
+- **Schedule vs "tomorrow".** The panel spans Chicago today and tomorrow but rows carried
+  only a time, in model order, and only four show, so at night today's finished events
+  read as tomorrow's and hid them. Rows now name their day, upcoming events come first,
+  the sync asks for each event's start and gives Chicago local bounds too, and every
+  model call is told today's and tomorrow's Chicago dates. Open for Brady: BRIEF MY DAY's
+  prompt has said "Brief me on tomorrow" since August while its label says "my day";
+  left unchanged.
+- **Draft PR #59 (`codex/signal-feed-reliability`), assessed, not merged.** Useful and not
+  on main: feed timeouts covering the body, a 512 KiB reply cap, code-enforced record
+  caps, "Partial read" and stale-card states, provider-host link checks, and the weekly
+  Claude-report import. It conflicts only in `docs/CURRENT-STATE.md`; on main+PR the
+  Signal Log suites passed 44/44 and 28/28 (2026-11-08, scratch copy). Before merging:
+  rebase onto current main and drop its merge commit `89b7154`; bring its ROADMAP/README
+  "signed-in acceptance pending" line in line with §9; drop the two synthetic JPGs
+  (~864 KiB) and the logs that cite private `/workspace` paths; rebase over this branch's
+  small `signal-log/ember-feed.mjs` subject fix; run the release check (all its commits
+  were `[skip ci]`). Its no-retry/backoff choice differs from ROADMAP item 134 and needs
+  Brady's sign-off.
+- **Voice speed.** Spoken replies now stream sentence by sentence (see CURRENT-STATE).
+  The 1100 ms end-of-speech grace and the model's thinking time are unchanged and are the
+  largest remaining waits; lowering either changes the approved experience.
 
 ## Expected behavior that is not a bug
 

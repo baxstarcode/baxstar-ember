@@ -81,6 +81,13 @@ of links to Brady's other properties.
 
 ## Provenance — who did what
 
+- **Claude Code, 2026-11-08 — Quo repair, feed truth, streamed voice (NOT deployed):**
+  branch `claude/brave-tesla-xnlnr6`. Token owner records/logs every renewal outcome,
+  exposes `health`, renews idle grants every 12 h, and in-app Reconnect saves a fresh
+  grant server-side; OPS stops showing sample calls beside a dead connector; Gmail
+  subject and Schedule day fixes; sentence-streamed speech. Deploy is blocked on a
+  Cloudflare token. Record: `docs/DEPLOY.md` "In-app reconnect and grant health";
+  `docs/KNOWN-ISSUES.md` 1b and 11; `docs/MUSE-EVALUATION.md`.
 - **Claude Code, 2026-10-26 — Quo reconnected (coordinator cutover):** per Brady's
   handoff, PR #60 added the voice AI binding to `proxy/wrangler.toml`. A full Worker
   deploy from main `b10b1d1` replaced `f8d6ac15` with `0283d68b`, which carries the

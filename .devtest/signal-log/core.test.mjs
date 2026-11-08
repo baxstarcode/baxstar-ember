@@ -190,6 +190,16 @@ test('quo projection links to the inbox, keeps voicemail text in the signal and 
   assert.doesNotThrow(() => validateEnvelope({ version: 1, workspaceId: 'baxstar', accountId: 'baxstar-fishing', source: 'quo', signals }));
   assert.throws(() => validateEnvelope({ version: 1, workspaceId: 'baxstar', accountId: 'baxstar-fishing', source: 'sms', signals }), /unsupported/);
 });
+test('gmail cards carry the real subject, never a "no subject returned" placeholder (2026-11-08)', () => {
+  assert.match(feed.buildPrompt('gmail', feedNow), /Subject header copied verbatim/);
+  assert.match(feed.buildPrompt('gmail', feedNow), /never write a placeholder/);
+  const { signals } = feed.projectSignals('gmail', { signals: [
+    { id: 'msg-a', title: 'no subject returned', subject: 'Pontoon deposit question', signal: 'Asks about the deposit.', kind: 'attention' },
+    { id: 'msg-b', title: '(No subject)', signal: 'Customer wants a Saturday trip.', kind: 'attention' },
+    { id: 'msg-c', title: 'FareHarbor — New booking Jul 14', signal: 'Booking confirmed.', kind: 'good' },
+  ] }, feedNow);
+  assert.deepEqual(signals.map((s) => s.title), ['Pontoon deposit question', 'Customer wants a Saturday trip.', 'FareHarbor — New booking Jul 14']);
+});
 test('a provider is verified only by its own successful tool result', () => {
   assert(feed.succeededConnectors(reply('gmail', [])).has('gmail'));
   assert(!feed.succeededConnectors(reply('gmail', [], { ok: false })).has('gmail'));

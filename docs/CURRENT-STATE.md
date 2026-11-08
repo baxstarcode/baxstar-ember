@@ -1,5 +1,33 @@
 # Ember — Current State
 
+**Quo repair, feed truth and faster voice — November 8, 2026 (Claude Code, branch `claude/brave-tesla-xnlnr6`, NOT DEPLOYED):**
+On 11-08 Ember showed a red Quo light, "Quo needs a new sign-in" and demo calls, 13 days
+after the 10-26 consent. Findings: that text is the Worker's `reconnect_required` code,
+which only the token owner emits after a failed Quo refresh exchange or on an earlier
+durable stop; Google uses the same coordinator and stayed connected, so the binding,
+routing and storage work. The old owner recorded no reason, so the exact Quo reply is
+unrecoverable; Claude's own Quo connector also lost its authorization in the same
+window, which points to a Quo-side grant loss but does not prove it. The expired
+Cloudflare deploy token is unrelated: the Worker never uses it at runtime (it is still
+set, invalid, in the `baxstar-booking` cloud environment). Built, tested, not deployed:
+(1) the owner classifies refresh outcomes (provider rejection, rate limit kept as
+retryable with the same unspent token, no reply / provider error / bad reply kept as the
+durable stop), records the last outcome and logs one fixed-vocabulary line per renewal;
+(2) `/api/connectors/status` returns per-connector `health` (source, connectedAt,
+lastRenewedAt, renewals, rotations, failure) with no token text; (3) in-app **Reconnect
+Quo / Reconnect Google**: signed-in Ember gets a 10-minute signed ticket, the provider
+consent opens in a new tab, and the fresh grant is saved straight into a fixed app owner
+(never the Cloudflare dashboard, never an old seed); (4) a 12-hour keep-alive alarm
+renews idle grants; (5) the discovered Quo token endpoint must be an HTTPS `quo.com`
+host; (6) OPS never shows sample calls beside a dead connector, names the cause and
+offers Reconnect, and pre-sync sample rows are labelled SAMPLE. Also: Gmail rows and
+Signal Log cards no longer show a model placeholder like "no subject returned"; Schedule
+rows name their day (Today/Tomorrow), list upcoming events first, and the model is told
+the Chicago dates for today and tomorrow; spoken replies start on the first sentence
+while the rest is still being written (simulated end-of-speech → first audio 6550 ms →
+4407 ms; real devices PROVISIONAL). Release order and the one owner action are in
+`docs/DEPLOY.md` "In-app reconnect and grant health". Muse: `docs/MUSE-EVALUATION.md`.
+
 **Ember center stage — October 31, 2026 (Claude Code):** Brady: "Change ember back to her glory days of being center stage.  Try again to be effecient with space with the goal of teh biggest p[ossible skull and a wider text window below. [...] Keep latest iteration otherwise."
 Desktop OPS (≥1021px) now stacks the chamber like `fb6500e`, the version where she was
 centred: the skull owns the whole upper chamber, sized by its height with no 360px

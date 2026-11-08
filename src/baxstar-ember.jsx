@@ -56,8 +56,13 @@ function bradyContext() {
     timeZone: "America/Chicago", weekday: "long", year: "numeric",
     month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
   });
+  const day = (offset) => new Date(Date.now() + offset * 86400000).toLocaleDateString("en-US", {
+    timeZone: "America/Chicago", weekday: "long", month: "long", day: "numeric",
+  });
+  // Spelled out because "tomorrow" computed by the model drifted from the Schedule
+  // panel's own Chicago window (2026-11-08).
   return `${BRADY_CONTEXT}
-Current date/time: ${stamp}. Compute "today", "tomorrow", and any look-back window from this timestamp — never guess a date.`;
+Current date/time: ${stamp}. In Detroit Lakes (America/Chicago) today is ${day(0)} and tomorrow is ${day(1)}. Compute "today", "tomorrow", and any look-back window from this — never guess a date.`;
 }
 
 const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
@@ -502,12 +507,25 @@ const OPS_FEEDS = [
   { server: "gmail",    key: "emails",     label: "Gmail",    what: "email" },
   { server: "calendar", key: "events",     label: "Calendar", what: "schedule" },
 ];
+// Signed-in Ember starts a fresh sign-in here; the Worker saves the new grant itself.
+const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
 const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
 const CONNECTOR_ISSUE_TEXT = {
   setup_required: "setup incomplete",
   reconnect_required: "needs a new sign-in",
   temporarily_unavailable: "temporarily unavailable — try Sync again",
 };
+// Why the token owner stopped, in Brady's words. Fixed codes from the Worker only.
+const CONNECTOR_FAILURE_TEXT = {
+  provider_rejected: "the provider refused the saved sign-in",
+  rate_limited: "the provider asked Ember to wait",
+  no_reply: "the provider did not answer a renewal",
+  provider_error: "the provider returned an error during a renewal",
+  bad_reply: "the provider sent an unreadable renewal",
+  interrupted: "a renewal was interrupted",
+};
+const RECONNECTABLE = new Set(["reconnect_required", "setup_required"]);
+const PROVIDER_OF = { quo: "quo", gmail: "google", calendar: "google", gdrive: "google" };
 // Returning to the tab re-syncs once the panels are older than this.
 const OPS_STALE_MS = 15 * 60 * 1000;
 
@@ -530,7 +548,9 @@ async function fetchConnectorStatus() {
     // Ignore unknown fields/reasons: raw provider errors never become UI copy.
     const issues = Object.fromEntries(STATUS_CONNECTORS.filter((n) => connectors[n] === "offline" &&
       Object.hasOwn(CONNECTOR_ISSUE_TEXT, data.issues?.[n])).map((n) => [n, data.issues[n]]));
-    return { connectors, issues };
+    const failures = Object.fromEntries(STATUS_CONNECTORS.filter((n) => connectors[n] === "offline" &&
+      Object.hasOwn(CONNECTOR_FAILURE_TEXT, data.health?.[n]?.failure)).map((n) => [n, data.health[n].failure]));
+    return { connectors, issues, failures };
   } catch (e) {
     return null;
   }
@@ -550,6 +570,42 @@ function degradedChatNote(status) {
 // Midnight in America/Chicago, `days` after today's Chicago date, as an ISO
 // instant. 06:00Z is midnight CST; the Chicago hour shown at that instant (0 in
 // winter, 1 in summer) is exactly how far past midnight it is.
+// YYYY-MM-DD of an instant in Detroit Lakes.
+function chicagoDayKey(time) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(time);
+}
+
+// A model returned "no subject returned" as a subject on 2026-11-08. A placeholder
+// is not a subject: show the honest fallback instead.
+function cleanSubject(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return /^[([]?\s*(no|missing|empty)\s+subject(\s+(line|returned|available|provided))?\s*[)\].]?$/i.test(text) ? "" : text;
+}
+
+// The Schedule panel spans today AND tomorrow, so every row names its day and the
+// upcoming events come first: at night, today's finished events used to fill the
+// four visible rows and hide tomorrow (2026-11-08).
+function orderEvents(events, now = new Date()) {
+  const today = chicagoDayKey(now);
+  const tomorrow = chicagoDayKey(new Date(now.getTime() + 86400000));
+  const rows = events.map((e, i) => {
+    const start = Date.parse(e?.start);
+    if (!Number.isFinite(start)) return { e, i, start: null };
+    const key = chicagoDayKey(start);
+    const day = key === today ? "Today" : key === tomorrow ? "Tomorrow"
+      : new Date(start).toLocaleDateString("en-US", { timeZone: "America/Chicago", weekday: "short" });
+    return { e: { ...e, day }, i, start };
+  });
+  const rank = (r) => (r.start === null ? 1 : r.start < now.getTime() - 3600000 ? 2 : 0);
+  return rows.sort((a, b) => rank(a) - rank(b) || (a.start ?? 0) - (b.start ?? 0) || a.i - b.i).map((r) => r.e);
+}
+
+function normalizeFeed(key, list, now) {
+  if (key === "emails") return list.map((m) => ({ ...m, subject: cleanSubject(m?.subject) }));
+  if (key === "events") return orderEvents(list, now);
+  return list;
+}
+
 function chicagoMidnightISO(now, days) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit",
@@ -1318,7 +1374,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
   options.current = { onSend, blocked, enabled };
-  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0 });
+  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null });
   const c = control.current;
   const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const production = location.hostname === "ember.baxstarfishing.com";
@@ -1372,7 +1428,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     try { rec.abort(); } catch {}
   }
   function stop(note = "Stopped. Your words and replies are still here.") {
-    pauseConversation(); c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers();
+    pauseConversation(); c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers(); endStream();
     if (c.rec && c.draft.trim()) c.interrupted = true;
     // Preserve the mic-release gate even when Stop is pressed more than once.
     if (c.rec && ["releasing", "unconfirmed"].includes(c.mic)) {
@@ -1444,6 +1500,81 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     } catch { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } }
     finally { clearTimeout(c.timers.play); }
   }
+  // SENTENCE STREAMING (2026-11-08). A spoken turn used to wait for the whole
+  // reply and then for one MP3 of all of it. Now the first sentence goes to Jenny
+  // while the rest is still being written; later sentences are grouped into larger
+  // clips, fetched in parallel and played in order on the same player. Same 1000
+  // character spoken cap, same voice, same Stop/interrupt rules.
+  const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1000;
+  function endStream() { const s = c.stream; c.stream = null; s?.controller.abort(); }
+  function clipEnd(text, min, first) {
+    const re = /[.!?…]["”’)\]]*(?=\s)|\n+/g;
+    let end = -1, m;
+    while ((m = re.exec(text))) {
+      const at = m.index + m[0].length;
+      if (at >= min) { end = at; if (first) break; }
+    }
+    return end;
+  }
+  function feedSpeech(epoch, text, final = false) {
+    const s = c.stream;
+    if (!s || s.epoch !== epoch || !c.live) return;
+    if (!final) s.streamed = true;
+    while (!s.capped && s.spoken < SPOKEN_MAX) {
+      const rest = text.slice(s.said);
+      if (!rest.trim()) { s.said = text.length; break; }
+      let end = clipEnd(rest, s.clips.length ? CLIP_MIN : FIRST_CLIP_MIN, !s.clips.length);
+      if (end < 0 && final) end = rest.length;
+      if (end < 0) break;
+      let piece = rest.slice(0, end).trim();
+      s.said += end;
+      const room = SPOKEN_MAX - s.spoken;
+      if (piece.length > room) { piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "…"; s.capped = true; }
+      if (piece) { s.spoken += piece.length; queueClip(s, piece); }
+    }
+    if (final) {
+      s.done = true;
+      if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) { s.waiting = false; finishTurn(); }
+    }
+  }
+  function queueClip(s, text) {
+    const clip = { text, blob: null };
+    const index = s.clips.push(clip) - 1;
+    c.spokeEpoch = s.epoch;
+    const controller = new AbortController();
+    s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: "en-US-JennyNeural" }) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+        if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
+        const blob = await response.blob();
+        if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
+        if (c.stream !== s) return;
+        clip.blob = blob;
+        if (s.waiting && index === s.playing + 1) { s.waiting = false; playClip(s, index); }
+      })
+      .catch((error) => {
+        if (c.stream !== s || !c.live) return;
+        endStream(); pauseConversation(); releaseWake();
+        patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message });
+      })
+      .finally(() => clearTimeout(timeout));
+  }
+  function playClip(s, index) {
+    if (!c.live || c.stream !== s || s.epoch !== c.epoch || c.rec || document.hidden) return;
+    const audio = audioRef.current, clip = s.clips[index];
+    s.playing = index;
+    if (c.url) URL.revokeObjectURL(c.url);
+    c.url = URL.createObjectURL(clip.blob); c.phrases = emberPhrases(clip.text); c.phraseIndex = -1;
+    audio.src = c.url; audio.load();
+    session("playback"); keepAwake();
+    if (index === 0) patch({ audioReady: true });
+    const epoch = c.epoch;
+    Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5000))])
+      .catch(() => { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); pauseConversation(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } })
+      .finally(() => clearTimeout(c.timers.play));
+  }
   async function speak() {
     if (!c.answer || c.rec || c.request || !production || document.hidden) return;
     const epoch = ++c.epoch; keepAwake();
@@ -1469,15 +1600,20 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   async function send() {
     if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
     const epoch = ++c.epoch, controller = new AbortController(); c.request = controller;
-    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake();
+    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake(); endStream();
+    c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
     patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
     const timeout = setTimeout(() => controller.abort(), 60000);
     try {
-      const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal });
+      const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal, onVoiceText: (text) => feedSpeech(epoch, text) });
       if (!c.live || epoch !== c.epoch) return;
       c.request = null;
-      if (!result) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
-      c.answer = result; patch({ answer: result }); await speak();
+      if (!result) { endStream(); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
+      c.answer = result; patch({ answer: result });
+      // Streamed sentences are already playing or queued; a reply that arrived in one
+      // piece (no stream) is spoken the old way. A failed clip has already said why.
+      if (c.stream?.epoch === epoch && c.stream.streamed) feedSpeech(epoch, result, true);
+      if (c.spokeEpoch !== epoch) { c.stream = null; await speak(); }
     } catch { if (c.live && epoch === c.epoch) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
@@ -1490,6 +1626,16 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {
+    const s = c.stream;
+    if (s && s.epoch === c.epoch && s.playing >= 0) {
+      const next = s.playing + 1;
+      if (next < s.clips.length) { if (s.clips[next].blob) playClip(s, next); else s.waiting = true; return; }
+      if (!s.done) { s.waiting = true; return; }
+    }
+    finishTurn();
+  }
+  function finishTurn() {
+    c.stream = null;
     session("auto");
     if (!c.url || !c.conversation || document.hidden || !options.current.enabled) { releaseWake(); patch({ phase: "ready", phrase: "" }); return; }
     const epoch = c.epoch;
@@ -1510,7 +1656,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     close: () => { stop(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
     edit: value => { c.draft = value; c.partial = false; patch({ draft: value, partial: false }); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
-    paused: () => { if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
+    paused: () => { if (audioRef.current?.ended && c.stream?.epoch === c.epoch) return; if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
@@ -1586,8 +1732,14 @@ export default function BaxstarEmber() {
   const live = feedLive.voicemails || feedLive.emails || feedLive.events;
   const [connStatus, setConnStatus] = useState(null);
   const connStatusRef = useRef(null);
+  const [connIssues, setConnIssues] = useState({});
+  const [reconnecting, setReconnecting] = useState(false);
+  const reconnectedRef = useRef(false);
   const [syncProblems, setSyncProblems] = useState([]);
   const freshFeeds = OPS_FEEDS.filter((f) => feedLive[f.key] && connStatus?.[f.server] !== "offline" && !syncProblems.some((p) => p.key === f.key));
+  const quoDown = connStatus?.quo === "offline";
+  const gmailDown = connStatus?.gmail === "offline";
+  const calendarDown = connStatus?.calendar === "offline";
   const feedState = !live ? "DEMO" : freshFeeds.length === OPS_FEEDS.length ? "LIVE" : freshFeeds.length ? "PARTIAL" : "STALE";
   const lastSyncRef = useRef(0);
   const [syncing, setSyncing] = useState(false);
@@ -1993,7 +2145,7 @@ export default function BaxstarEmber() {
 
   /* ---------- OPS: COMMAND PIPELINE ---------- */
 
-  async function sendCommand(text, { retryId, voiceSignal } = {}) {
+  async function sendCommand(text, { retryId, voiceSignal, onVoiceText } = {}) {
     if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
     // Ref guard is synchronous: two clicks in one render cannot launch two requests.
     if (activeChatRef.current || !chatReady || voiceSignal?.aborted) return null;
@@ -2034,7 +2186,7 @@ export default function BaxstarEmber() {
       const resp = await callClaude(messages, {
         useTools: true, model: chatModel, effort: EFFORT[chatEffort]?.api, maxTokens: EFFORT[chatEffort]?.budget,
         signal: request.controller.signal,
-        onDelta: (content) => patchAssistant({ content }),
+        onDelta: (content) => { patchAssistant({ content }); if (isCurrent()) onVoiceText?.(content); },
         onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current)); },
       });
       if (!isCurrent()) return null;
@@ -2122,11 +2274,13 @@ export default function BaxstarEmber() {
       const status = check?.connectors || null;
       connStatusRef.current = status;
       setConnStatus(status);
+      setConnIssues(check ? Object.fromEntries(Object.entries(check.issues).map(([n, issue]) =>
+        [n, { issue, failure: check.failures[n] }])) : {});
       // Ask only for connectors that can authorize. An unreachable status route
       // asks for all three and lets the tool results decide.
       const wanted = OPS_FEEDS.filter((f) => !status || status[f.server] !== "offline");
       const offline = OPS_FEEDS.filter((f) => !wanted.includes(f));
-      problems = offline.map((f) => ({ key: f.key, text: `${f.label} ${CONNECTOR_ISSUE_TEXT[check?.issues[f.server]] || "offline"}` }));
+      problems = offline.map((f) => ({ key: f.key, text: `${f.label} ${CONNECTOR_ISSUE_TEXT[check?.issues[f.server]] || "offline"}${check?.failures[f.server] ? ` — ${CONNECTOR_FAILURE_TEXT[check.failures[f.server]]}` : ""}` }));
       if (!wanted.length) {
         setSyncProblems(problems);
         throw new Error(`${listNames(offline.map((f) => f.label))} are offline; no feeds were replaced.`);
@@ -2140,15 +2294,17 @@ export default function BaxstarEmber() {
       const since48 = new Date(now.getTime() - 48 * 3600 * 1000).toISOString();
       const dayStart = chicagoMidnightISO(now, 0);
       const dayEnd = chicagoMidnightISO(now, 2);
+      const localStart = `${chicagoDayKey(now)}T00:00:00`;
+      const localEnd = `${chicagoDayKey(new Date(dayEnd))}T00:00:00`;
       const steps = {
         voicemails: `Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) — pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.`,
-        emails: "Up to 5 unread Gmail messages from the last 24 hours.",
-        events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow in America/Chicago) — pass these exact timestamps to the tool. Give each event's time in America/Chicago (e.g. "2:00 PM").`,
+        emails: "Up to 5 unread Gmail messages from the last 24 hours. Read each message with a view that includes its headers (not an IDs-only or metadata-only view) and copy its Subject header verbatim into \"subject\". If a message truly has no subject, leave \"subject\" empty — never write a placeholder such as \"no subject returned\".",
+        events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow in America/Chicago) — pass these exact instants to the tool; if it takes local times instead, pass ${localStart} to ${localEnd} with timeZone America/Chicago. Give each event's time in America/Chicago (e.g. "2:00 PM") and its start exactly as the tool returned it.`,
       };
       const shapes = {
         voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
         emails: '"emails":[{"from":"","time":"","subject":"","id":"the Gmail message id exactly as the tool returned it"}]',
-        events: '"events":[{"time":"","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]',
+        events: '"events":[{"time":"","start":"the event start as ISO 8601 with offset","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]',
       };
       const prompt = `${bradyContext()}
 
@@ -2180,7 +2336,7 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
       for (const f of unverified) problems.push({ key: f.key, text: `${f.label} unverified` });
       setSyncProblems(problems);
       if (landed.length) {
-        setData((d) => ({ ...d, ...Object.fromEntries(landed.map((f) => [f.key, parsed[f.key]])) }));
+        setData((d) => ({ ...d, ...Object.fromEntries(landed.map((f) => [f.key, normalizeFeed(f.key, parsed[f.key], now)])) }));
         setFeedLive((prev) => ({ ...prev, ...Object.fromEntries(landed.map((f) => [f.key, true])) }));
         setSelectedComm(null);
       }
@@ -2212,12 +2368,42 @@ Then respond with ONLY valid JSON — no markdown, no commentary:
   const syncLiveRef = useRef(syncLive);
   syncLiveRef.current = syncLive;
 
+  // One tap from the offline panel: the Worker hands back a signed, 10-minute
+  // sign-in link, the provider's page opens in a new tab, and the grant is saved
+  // server-side when Brady approves. Coming back to this tab re-syncs.
+  async function reconnectConnector(server) {
+    const provider = PROVIDER_OF[server];
+    if (!provider || reconnecting) return;
+    // Opened inside the click so a popup blocker allows it; pointed at the link below.
+    const tab = typeof window !== "undefined" ? window.open("", "_blank") : null;
+    if (tab) tab.opener = null;
+    setReconnecting(true);
+    try {
+      const res = await fetch(RECONNECT_ENDPOINT, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider }),
+      });
+      const data = res.ok ? await res.json() : null;
+      const url = typeof data?.url === "string" ? new URL(data.url) : null;
+      if (!url || url.protocol !== "https:" || url.pathname !== "/oauth/start") throw new Error("no sign-in link");
+      reconnectedRef.current = true;
+      if (tab) tab.location.href = url.href;
+      else window.location.assign(url.href);
+    } catch {
+      if (tab) tab.close();
+      setError(`Could not start the ${provider === "quo" ? "Quo" : "Google"} sign-in. Try again in a minute.`);
+    } finally {
+      setReconnecting(false);
+    }
+  }
+
   // Coming back to Ember after a while refreshes the panels by itself — Brady
   // should never have to press SYNC to see current data. Same automation rule
   // as the arrival sync below.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
+      // Back from a reconnect tab: check the new sign-in straight away.
+      if (reconnectedRef.current) { reconnectedRef.current = false; syncLiveRef.current(); return; }
       if (typeof navigator !== "undefined" && navigator.webdriver && !window.__EMBER_AUTOSYNC_TEST) return;
       if (lastSyncRef.current && Date.now() - lastSyncRef.current > OPS_STALE_MS) syncLiveRef.current();
     };
@@ -2696,7 +2882,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     const fresh = OPS_FEEDS.filter((f) => feedLive[f.key] && !why(f));
     const rest = OPS_FEEDS.filter((f) => !fresh.includes(f)).map((f) => {
       const w = why(f);
-      return `${f.what[0].toUpperCase()}${f.what.slice(1)}: ${feedLive[f.key] ? "last sync kept" : "demo preview"}${w ? ` (${w.text})` : ""}`;
+      return `${f.what[0].toUpperCase()}${f.what.slice(1)}: ${feedLive[f.key] ? "last sync kept" : connStatus?.[f.server] === "offline" ? "not loaded" : "demo preview"}${w ? ` (${w.text})` : ""}`;
     });
     if (!rest.length) return "";
     return [fresh.length ? `Live: ${fresh.map((f) => f.what).join(", ")}` : null, ...rest].filter(Boolean).join(" · ");
@@ -2833,6 +3019,10 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
         .ops-core, .ops-side { min-width:0; }
         .ops-data-note { margin:0 4px; color:var(--ink-dim); font-size:12px; line-height:1.5; }
         .feed-empty { padding:22px 0; color:var(--ink-dim); font-size:13px; line-height:1.6; }
+        .feed-offline { padding:10px 0 12px; color:var(--ink-dim); font-size:12.5px; line-height:1.55; }
+        .feed-offline p { margin:0 0 6px; }
+        .feed-offline strong { color:#ff8074; }
+        .feed-sample { margin:0 0 4px; font-family:var(--font-mono, ui-monospace, monospace); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ember-orange); }
 
         @media (max-width:1020px){
           .ember-root { height:auto; min-height:100vh; overflow:auto; }
@@ -4171,7 +4361,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               const dot = state === "live" ? "#54e08a" : state === "offline" ? "#ff4d3d" : "var(--ember-orange)";
               return (
                 <span key={f.server} className="conn-dots flex items-center gap-1.5" data-connector={f.server} data-state={state}
-                  title={state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: offline — ${feedLive[f.key] ? "showing the last sync" : "demo preview"}` : state === "stale" ? `${f.label}: refresh unverified — showing the last sync` : `${f.label}: demo preview`}>
+                  title={state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: ${CONNECTOR_ISSUE_TEXT[connIssues[f.server]?.issue] || "offline"} — ${feedLive[f.key] ? "showing the last sync" : "no live data loaded"}` : state === "stale" ? `${f.label}: refresh unverified — showing the last sync` : `${f.label}: sample data until SYNC`}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot, boxShadow: `0 0 8px ${dot}` }} />
                   {f.label.toUpperCase()}
                 </span>
@@ -4249,10 +4439,16 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
           {/* LEFT */}
           <div ref={callsColRef} className="ops-side flex min-h-0 flex-col gap-4">
-            <Panel notch="warm" title="Calls & Voicemail" count={`${data.voicemails.length > 4 ? "4 / " : ""}${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
-              {data.voicemails.length === 0 && <p className="feed-empty">No missed calls or voicemails returned for the last 48 hours.</p>}
-              {data.voicemails.slice(0, 4).map((v, i) => (
-                <Row key={i} who={`${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
+            <Panel notch="warm" title="Calls & Voicemail" count={quoDown ? "OFFLINE" : !feedLive.voicemails ? "SAMPLE" : `${data.voicemails.length > 4 ? "4 / " : ""}${data.voicemails.length} ITEMS`} countColor="var(--ember-orange)" delay="0.15s" grow>
+              {quoDown && (
+                <OfflineFeed label="Quo" what="calls and voicemail" status={connIssues.quo} busy={reconnecting}
+                  kept={feedLive.voicemails} onReconnect={() => reconnectConnector("quo")} />
+              )}
+              {!quoDown && !feedLive.voicemails && <SampleNote what="calls" />}
+              {!quoDown && feedLive.voicemails && data.voicemails.length === 0 && <p className="feed-empty">No missed calls or voicemails returned for the last 48 hours.</p>}
+              {/* Sample calls never sit beside a dead connector: they read as real customers. */}
+              {(!quoDown || feedLive.voicemails) && data.voicemails.slice(0, 4).map((v, i) => (
+                <Row key={i} who={`${!feedLive.voicemails ? "SAMPLE · " : ""}${v.from}${v.line ? " · " + v.line : ""}`} when={v.time}
                   selected={selectedComm?.type === "vm" && selectedComm.i === i}
                   onClick={() => setSelectedComm(selectedComm?.type === "vm" && selectedComm.i === i ? null : { type: "vm", i })}>
                   {v.vm ? (
@@ -4528,14 +4724,19 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
 
           {/* RIGHT */}
           <div ref={inboxColRef} className="ops-side flex min-h-0 flex-col gap-4">
-            <Panel notch="hot" title="Inbox" count={`${data.emails.length > 4 ? "4 / " : ""}${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow
+            <Panel notch="hot" title="Inbox" count={gmailDown && !feedLive.emails ? "OFFLINE" : !feedLive.emails ? "SAMPLE" : `${data.emails.length > 4 ? "4 / " : ""}${data.emails.length} UNREAD`} countColor="#ff8074" delay="0.2s" grow
               action={<button type="button" className="panel-link" disabled={thinking} onClick={() => runPrompt("triage")}>Triage Inbox ›</button>}>
-              {data.emails.length === 0 && <p className="feed-empty">No unread email returned for the last 24 hours.</p>}
-              {data.emails.slice(0, 4).map((m, i) => (
-                <Row key={i} who={m.from} when={m.time}
+              {gmailDown && (
+                <OfflineFeed label="Gmail" what="email" status={connIssues.gmail} busy={reconnecting}
+                  kept={feedLive.emails} onReconnect={() => reconnectConnector("gmail")} />
+              )}
+              {!gmailDown && !feedLive.emails && <SampleNote what="email" />}
+              {!gmailDown && feedLive.emails && data.emails.length === 0 && <p className="feed-empty">No unread email returned for the last 24 hours.</p>}
+              {(!gmailDown || feedLive.emails) && data.emails.slice(0, 4).map((m, i) => (
+                <Row key={i} who={`${!feedLive.emails ? "SAMPLE · " : ""}${m.from}`} when={m.time}
                   selected={selectedComm?.type === "email" && selectedComm.i === i}
                   onClick={() => setSelectedComm(selectedComm?.type === "email" && selectedComm.i === i ? null : { type: "email", i })}>
-                  <div title={m.subject} className="feed-excerpt mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{m.subject}</div>
+                  <div title={m.subject || "No subject line"} className="feed-excerpt mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{m.subject || "(no subject line)"}</div>
                   <div className="mt-2 flex gap-2">
                     <button className="chip solid" disabled={thinking || !!leverBusy} onClick={(e) => { e.stopPropagation(); draftReply(m, "email", i); }}>
                       Draft reply
@@ -4549,10 +4750,15 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
               ))}
             </Panel>
 
-            <Panel notch="cool" title="Schedule" count={`${data.events.length > 4 ? "4 / " : ""}${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
-              {data.events.length === 0 && <p className="feed-empty">No calendar events returned for today or tomorrow.</p>}
-              {data.events.slice(0, 4).map((e, i) => (
-                <Row key={i} who={`${e.time} — ${e.title}`} when={e.detail}>
+            <Panel notch="cool" title="Schedule" count={calendarDown && !feedLive.events ? "OFFLINE" : !feedLive.events ? "SAMPLE" : `${data.events.length > 4 ? "4 / " : ""}${data.events.length} EVENTS`} countColor="var(--brass)" gauge={data.events.length / 6} delay="0.3s">
+              {calendarDown && (
+                <OfflineFeed label="Calendar" what="schedule" status={connIssues.calendar} busy={reconnecting}
+                  kept={feedLive.events} onReconnect={() => reconnectConnector("calendar")} />
+              )}
+              {!calendarDown && !feedLive.events && <SampleNote what="events" />}
+              {!calendarDown && feedLive.events && data.events.length === 0 && <p className="feed-empty">No calendar events returned for today or tomorrow.</p>}
+              {(!calendarDown || feedLive.events) && data.events.slice(0, 4).map((e, i) => (
+                <Row key={i} who={`${!feedLive.events ? "SAMPLE · " : ""}${e.day ? `${e.day} ` : ""}${e.time} — ${e.title}`} when={e.detail}>
                   {calendarLink(e.link) && <div className="mt-1.5"><SourceLink href={calendarLink(e.link)} label="Open in Calendar" /></div>}
                 </Row>
               ))}
@@ -6448,6 +6654,27 @@ function calendarLink(link) {
   } catch (e) { /* not a URL */ }
   return null;
 }
+// A dead connector says so in its own panel, with the one action that fixes it.
+function OfflineFeed({ label, what, status, kept, busy, onReconnect }) {
+  const issue = status?.issue;
+  return (
+    <div className="feed-offline" role="status" data-feed-offline={label.toLowerCase()}>
+      <p><strong>{label} is offline</strong>{issue ? ` — ${CONNECTOR_ISSUE_TEXT[issue]}` : ""}.
+        {status?.failure ? ` Last attempt: ${CONNECTOR_FAILURE_TEXT[status.failure]}.` : ""}</p>
+      <p>{kept ? `Showing the last ${what} Ember synced, not a fresh read.` : `No ${what} were loaded. Nothing here is current customer activity.`}</p>
+      {RECONNECTABLE.has(issue) && (
+        <button type="button" className="chip solid" disabled={busy} onClick={onReconnect}>
+          {busy ? "Opening sign-in…" : `Reconnect ${label === "Quo" ? "Quo" : "Google"}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SampleNote({ what }) {
+  return <p className="feed-sample" data-feed-sample={what}>Sample {what}, not real customers. Live {what} load on SYNC.</p>;
+}
+
 function SourceLink({ href, label }) {
   if (!href) return null;
   return <a className="row-open" href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>{label} ↗</a>;
