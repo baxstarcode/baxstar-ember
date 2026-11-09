@@ -294,7 +294,7 @@ try {
     const refresh = async mode => { gatewayMode = mode; await p.getByRole('button', { name: 'Refresh sources', exact: true }).click(); await p.locator('#refresh-sources:not(:disabled)').waitFor(); };
     await refresh('degraded'); assert.equal(await p.locator('#health-gmail').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-calendar').textContent(), 'Verified read');
     assert.match(await gmail.textContent(), /STALE READ/);
-    await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /no successful tool result/); await p.keyboard.press('Escape');
+    await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /Gmail is offline in Ember right now/); await p.keyboard.press('Escape');
     await refresh('html'); assert.equal(await p.locator('#health-calendar').textContent(), 'Unavailable'); assert.equal(await p.locator('#health-quo').textContent(), 'Unavailable');
     await p.getByRole('button', { name: 'View connection details ↗' }).click(); assert.match(await p.locator('#dialog-body').textContent(), /Sign in to Ember/); await p.keyboard.press('Escape');
     await cards(p, 3);

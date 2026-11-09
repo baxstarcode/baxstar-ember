@@ -255,6 +255,91 @@ fixed codes leave the Worker; tokens, grant identities, and raw provider/storage
 remain private. Successful authorization clears the issue and a successful feed sync
 clears the stale note.
 
+### In-app reconnect and grant health — built 2026-11-08, NOT deployed
+
+Why: on 11-08 Quo read `reconnect_required` 13 days after the 10-26 consent, and the
+owner had recorded nothing about why. Recovery also meant copying a token from the
+callback page into the Cloudflare dashboard.
+
+What changes (Worker and Pages gateway; same `EmberTokenCoordinator` class, so **no new
+binding or migration**):
+
+- The owner classifies each renewal: HTTP 400/401/403 = `provider_rejected` (record
+  becomes `rejected`, finished; Quo's MCP docs treat `invalid_grant` as "authorize
+  again", never a retry loop); HTTP 429 or OAuth `temporarily_unavailable`/`slow_down`
+  = `rate_limited` (the unspent token is kept and retried after Retry-After, 1–60 min).
+  **Ambiguous outcomes retry (second 11-08 pass, root-cause fix):** no reply, 5xx,
+  redirects, an unreadable reply (`no_reply`, `provider_error`, `bad_reply`) and a call
+  cut off by a restart (`interrupted`) keep the held token and retry it at 1, 5, 15,
+  30, 60, 60, 60 and 60 minutes (about 5 hours), with the Durable Object alarm armed
+  for each slot so retries happen while Ember is closed. The ninth consecutive
+  ambiguous failure ends the grant (`phase: "stopped"`, token dropped). The old
+  durable stop could never save a grant: if the provider had rotated, the new token
+  was already lost; if it had not, the stop threw away a working one. A pre-11-08
+  marker that kept no token still reads `interrupted` and needs Reconnect. Token
+  call timeout is 15 s (was 8 s); discovery stays 8 s, is cached for a day and is
+  re-run after an ambiguous failure; the discovered Quo token endpoint must be
+  HTTPS on `quo.com` or a subdomain.
+- Every outcome writes one Workers Logs line, e.g.
+  `{"ember":"token-owner","provider":"quo","mode":"app","trigger":"keepalive","outcome":"renewed","rotated":true,"renewals":3}`.
+  Fixed words and counts only; never a token.
+- `POST /api/connectors/status` adds `health` per connector: `source` (`app`/`setup`),
+  `connectedAt` (an app grant's consent time; for a setup-seed grant, the first renewal
+  this Worker recorded), `lastRenewedAt`, `renewals`, `rotations`, and when stopped or
+  retrying `failure`, `failedAt`, `httpStatus`, `oauthError`, `retryAt`, `attempts`.
+- The status route answers **HTTP 207** (same JSON body) whenever a requested connector
+  is down, and **200 only when every requested connector is up**, plus one
+  `{"ember":"connector-status","down":{…}}` log line naming each down connector's
+  reason and failure. Before this, it answered 200 for the whole week Quo was dead, so
+  Workers Logs looked healthy. 207 is still `res.ok`, so every existing caller keeps
+  working.
+- A successful renewal or install arms a Durable Object alarm 12 hours out; the alarm
+  renews the grant and re-arms. A stopped grant is never renewed.
+- `POST /api/connectors/reconnect` (Access-gated Pages route) returns a 10-minute signed
+  ticket link to `/oauth/start?ticket=…`. Consent that starts from a ticket is saved by
+  the callback straight into one fixed **app owner** per provider and client (name =
+  hash of `app-grant-v1`, provider, client id). The token is never shown. A newer
+  reconnect replaces the previous app grant; the setup-seed owner is never touched and
+  its seed is never adopted. Access tries the app owner first, then the seed owner.
+  The manual `/oauth/start?p=…` copy-paste route still works unchanged.
+
+Release order (one owner):
+
+1. **Cloudflare access — Workers Builds (Brady's decision, 2026-11-08: "Connect Worker
+   to GitHub").** The Worker is connected to `baxstarcode/baxstar-ember` in Cloudflare
+   (Worker → Settings → Build): production branch `main`, root directory `proxy`,
+   deploy command `npx wrangler deploy`. Merging to `main` now deploys the Worker the
+   way Cloudflare Pages already ships the UI, with Cloudflare's own build token; no
+   agent needs a Cloudflare API token. Undo: Worker → Settings → Build → Disconnect.
+   A manual deploy still works with an **Edit Cloudflare Workers** token (7-day expiry,
+   never pasted into chat) or `wrangler login` on a Mac with Node.
+2. Record the live state: `npx wrangler deployments status` and
+   `npx wrangler versions view <id>` in `proxy/`. Expect `47108b31-7ae5-46af-982c-337eaf15eb4e`
+   with `EMBER_TOKEN_COORDINATOR`, `EMBER_VOICE_AI`, `ALLOWED_ORIGINS`,
+   `OAUTH_REDIRECT_URI`, `TOKEN_COORDINATOR_REQUIRED`, `EMBER_VOICE_ENABLED` and the
+   existing secrets. Stop if anything else changed. Optional: `npx wrangler tail
+   ember-claude-proxy --format json` while Brady presses SYNC; the old Worker logs no
+   reason, so expect only the 503 from the stopped owner.
+3. Deploy the Worker from the reviewed branch or merged main: `npx wrangler deploy`
+   (full deployment). Check `/api/connectors/status` still answers through Pages; Quo
+   stays offline until step 5, now with `health.quo.failure`.
+4. Merge the PR so Pages ships the Reconnect button (it calls the route from step 3;
+   shipped first it would show "Could not start the Quo sign-in").
+5. **Brady:** open ember.baxstarfishing.com → Calls & Voicemail → **Reconnect Quo** →
+   approve in the Quo tab → close it. Ember re-syncs on return. Expect the Quo light lit,
+   real calls, and the Signal Log Quo row reading Verified read.
+6. Persistence evidence, not just one fresh request: after more than 1 hour (first access
+   token expiry) and again after 12+ hours, check `wrangler tail`/Workers Logs for
+   `"outcome":"renewed"` with `"rotated":true`, and `health.quo.renewals` climbing in
+   status. Record times and counts only.
+7. Clean up: delete the API token in Cloudflare; remove the stale, invalid
+   `CLOUDFLARE_API_TOKEN` variable from the `baxstar-booking` and Default cloud
+   environments.
+
+Rollback: `npx wrangler rollback` to `47108b31`. The app grant stays in Durable Object
+storage, unread by the old code, so Quo would go offline again until the new Worker
+returns; never delete owner records or the namespace.
+
 Platform constraints verified from Cloudflare's
 [state API](https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile),
 [SQLite migrations](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/),

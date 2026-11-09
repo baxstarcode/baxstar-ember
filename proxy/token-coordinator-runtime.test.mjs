@@ -37,9 +37,12 @@ async function status(mf, caller = "edge-a", connectors = ["quo"]) {
   const response = await mf.dispatchFetch(`${ORIGIN}/api/connectors/status`, {
     method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json", "X-Fixture-Caller": caller }, body: JSON.stringify({ connectors }),
   });
-  assert.equal(response.status, 200, response.status === 200 ? undefined : await response.clone().text());
-  const body = await response.json();
-  assert.doesNotMatch(JSON.stringify(body), /fixture-|refresh|secret/);
+  const text = await response.text();
+  const body = JSON.parse(text);
+  // 200 only when every requested connector is up; 207 (same body) while one is down.
+  const allUp = Object.values(body.connectors || {}).every((state) => state === "connected");
+  assert.equal(response.status, allUp ? 200 : 207, text);
+  assert.doesNotMatch(text, /fixture-|refresh|secret/);
   return body.connectors;
 }
 
@@ -79,7 +82,7 @@ test("workerd: two caller Workers serialize rotation and SQLite survives a full 
   }
 });
 
-test("workerd: ambiguous refresh stays stopped after restart; fresh consent gets a new owner", { timeout: 30_000 }, async () => {
+test("workerd: an ambiguous renewal waits for its retry slot across restart; fresh consent gets a new owner", { timeout: 30_000 }, async () => {
   const persist = await mkdtemp(join(tmpdir(), "ember-tokens-crash-"));
   const calls = [];
   let mf;
@@ -124,6 +127,58 @@ test("workerd: Gmail, Calendar and Drive share one Google grant across caller Wo
     assert.equal(calls, 1);
   } finally {
     await mf.dispose();
+    await rm(persist, { recursive: true, force: true });
+  }
+});
+
+test("workerd: in-app reconnect saves a fresh grant that survives restart and keeps rotating", { timeout: 30_000 }, async () => {
+  const persist = await mkdtemp(join(tmpdir(), "ember-tokens-reconnect-"));
+  const calls = [];
+  let valid = "fixture-runtime-app-refresh";
+  const oauth = { ...bindings, OAUTH_STATE_SECRET: "fixture-runtime-state", OAUTH_REDIRECT_URI: "https://ember-claude-proxy.fixture.workers.dev/oauth/callback" };
+  const provider = async (request) => {
+    const url = new URL(request.url);
+    if (url.pathname.includes(".well-known")) {
+      return Response.json({ authorization_endpoint: "https://mcp.quo.com/authorize", token_endpoint: "https://mcp.quo.com/token" });
+    }
+    const form = new URLSearchParams(await request.text());
+    if (form.get("grant_type") === "authorization_code") {
+      return Response.json({ access_token: "fixture-runtime-app-access", refresh_token: valid, expires_in: 61 });
+    }
+    const token = form.get("refresh_token");
+    calls.push(token);
+    // The setup seed is dead; only the app grant's newest token is accepted.
+    if (token !== valid) return Response.json({ error: "invalid_grant" }, { status: 400 });
+    valid = `fixture-runtime-app-rotated-${calls.length}`;
+    return Response.json({ access_token: `fixture-runtime-app-access-${calls.length}`, refresh_token: valid, expires_in: 3600 });
+  };
+  let mf;
+  try {
+    mf = new Miniflare(options(persist, provider, oauth));
+    assert.equal((await status(mf)).quo, "offline");
+    const begin = await mf.dispatchFetch(`${ORIGIN}/api/connectors/reconnect`, {
+      method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify({ provider: "quo" }),
+    });
+    const { url } = await begin.json();
+    const start = await mf.dispatchFetch(url, { redirect: "manual" });
+    assert.equal(start.status, 302);
+    const state = new URL(start.headers.get("Location")).searchParams.get("state");
+    const callback = await mf.dispatchFetch(`https://ember-claude-proxy.fixture.workers.dev/oauth/callback?code=fixture-code&state=${state}`, {
+      headers: { Cookie: start.headers.get("Set-Cookie").split(";")[0] }, redirect: "manual",
+    });
+    const page = await callback.text();
+    assert.equal(callback.status, 200, page);
+    assert.doesNotMatch(page, /fixture-runtime-app/);
+    assert.equal((await status(mf, "edge-b")).quo, "connected");
+    await mf.dispose();
+    mf = new Miniflare(options(persist, provider, oauth));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const states = await Promise.all(Array.from({ length: 6 }, (_, i) => status(mf, i % 2 ? "edge-a" : "edge-b")));
+    assert.ok(states.every((s) => s.quo === "connected"));
+    assert.deepEqual(calls, [bindings.MCP_COORDINATED_REFRESH_QUO, "fixture-runtime-app-refresh"],
+      "dead seed tried once before reconnect; the app grant then renewed exactly once after restart");
+  } finally {
+    if (mf) await mf.dispose();
     await rm(persist, { recursive: true, force: true });
   }
 });

@@ -1,5 +1,49 @@
 # Ember — Current State
 
+**Quo root cause and deploy path — November 8, 2026, second pass (Claude, Brady: "Fix this once and for all. Go"):**
+Root cause: the token owner made every failed Quo renewal a permanent, unrecorded stop,
+and Quo rotates refresh tokens, so one transient fault (429, 5xx, a reply over 8 s) or a
+real rejection killed the grant; the trigger itself (at or before 11-01 21:33 UTC) is
+past log retention. Added on the same branch: ambiguous renewals retry the held token at
+1, 5, 15, 30 and 60 minutes (about 5 hours, alarm-driven) and only Quo's refusal or the
+schedule's end stops a grant; `/api/connectors/status` answers HTTP 207 (200 only when
+everything is up) and logs one `connector-status` line naming what is down. Brady chose
+Cloudflare **Workers Builds** for Worker deploys (production branch `main`, root
+`proxy`), so a merge ships the Worker with Pages and no agent needs a Cloudflare token.
+Live deploy, Reconnect and verification are recorded in the Ember Handoff Log.
+
+**Quo repair, feed truth and faster voice — November 8, 2026 (Claude Code, branch `claude/brave-tesla-xnlnr6`, NOT DEPLOYED):**
+On 11-08 Ember showed a red Quo light, "Quo needs a new sign-in" and demo calls, 13 days
+after the 10-26 consent. Findings: that text is the Worker's `reconnect_required` code,
+which only the token owner emits after a failed Quo refresh exchange or on an earlier
+durable stop; Google uses the same coordinator and stayed connected, so the binding,
+routing and storage work. Workers Logs (read-only, existing Default-environment token)
+show the live Worker is still `47108b31` and the Quo owner returned 503 on all 29 calls
+from 11-01 21:33 UTC (start of retention) to 11-08 19:33 UTC, each in ≤329 ms, while the
+Google owner returned 200 on 121 of 122: the Quo grant stopped between 10-26 and 11-01,
+and the old owner recorded no reason. Claude's own Quo connector also lost its
+authorization in that period, which points to a Quo-side grant loss but does not prove it. The expired
+Cloudflare deploy token is unrelated: the Worker never uses it at runtime (it is still
+set, invalid, in the `baxstar-booking` cloud environment). Built, tested, not deployed:
+(1) the owner classifies refresh outcomes (provider rejection, rate limit kept as
+retryable with the same unspent token, no reply / provider error / bad reply — durable
+stop in the first pass, retry schedule since the second), records the last outcome and
+logs one fixed-vocabulary line per renewal;
+(2) `/api/connectors/status` returns per-connector `health` (source, connectedAt,
+lastRenewedAt, renewals, rotations, failure) with no token text; (3) in-app **Reconnect
+Quo / Reconnect Google**: signed-in Ember gets a 10-minute signed ticket, the provider
+consent opens in a new tab, and the fresh grant is saved straight into a fixed app owner
+(never the Cloudflare dashboard, never an old seed); (4) a 12-hour keep-alive alarm
+renews idle grants; (5) the discovered Quo token endpoint must be an HTTPS `quo.com`
+host; (6) OPS never shows sample calls beside a dead connector, names the cause and
+offers Reconnect, and pre-sync sample rows are labelled SAMPLE. Also: Gmail rows and
+Signal Log cards no longer show a model placeholder like "no subject returned"; Schedule
+rows name their day (Today/Tomorrow), list upcoming events first, and the model is told
+the Chicago dates for today and tomorrow; spoken replies start on the first sentence
+while the rest is still being written (simulated end-of-speech → first audio 6550 ms →
+4407 ms; real devices PROVISIONAL). Release order and the one owner action are in
+`docs/DEPLOY.md` "In-app reconnect and grant health". Muse: `docs/MUSE-EVALUATION.md`.
+
 **Ember center stage — October 31, 2026 (Claude Code):** Brady: "Change ember back to her glory days of being center stage.  Try again to be effecient with space with the goal of teh biggest p[ossible skull and a wider text window below. [...] Keep latest iteration otherwise."
 Desktop OPS (≥1021px) now stacks the chamber like `fb6500e`, the version where she was
 centred: the skull owns the whole upper chamber, sized by its height with no 360px

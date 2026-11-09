@@ -29,13 +29,14 @@ async function call(incoming, binding) {
   });
 }
 
-test("forwards only the six exact API paths on the production hostname", async (t) => {
+test("forwards only the seven exact API paths on the production hostname", async (t) => {
   for (const path of [
     "/api/messages",
     "/api/tts",
     "/api/voice/transcribe",
     "/api/voice/speak",
     "/api/connectors/status",
+    "/api/connectors/reconnect",
     "/api/outbox",
   ]) {
     await t.test(path, async () => {

@@ -95,7 +95,45 @@ stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been reco
 
 ## 1b. Quo is offline
 
-**Status: FIXED 2026-10-26. The persistence recheck after token expiry is PROVISIONAL.**
+**Status: REOPENED 2026-11-08 — repair built on `claude/brave-tesla-xnlnr6`, NOT DEPLOYED.**
+Brady saw a red Quo light, "Quo needs a new sign-in" and demo calls 13 days after the
+10-26 consent. The 1-hour recheck from 10-26 was never answered, so persistence was
+never confirmed. **Live evidence (read-only, 2026-11-08, Workers Logs via the existing
+Default-environment Cloudflare token):** live Worker is still `47108b31` (deployed
+2026-10-26 20:25 UTC; bindings intact). In the full 7-day log window (2026-11-01 21:33 →
+2026-11-08 20:27 UTC, 212 events) the Quo token owner (Durable Object `cd190472…`, one
+call per status check) answered **503 on all 29 calls**, each in ≤329 ms — so none was a
+provider call timing out; it was already durably stopped before 11-01 21:33. The Google
+owner (`bf01835c…`) answered 200 on 121 of 122. No exceptions or CPU/memory limits. The
+grant therefore stopped between 10-26 ~20:32 UTC (last confirmed working) and 11-01
+21:33 UTC, outside log retention, and the old owner stored no reason — whether Quo
+rejected a renewal (expired/revoked/rotated) or a renewal reply was lost cannot be told.
+Claude's separate Quo connector also lost authorization in the same period (weak
+evidence of a Quo-side grant loss: Quo's MCP docs also ask connections authorized before
+2026-10-16 to reauthorize, which alone could explain Claude's).
+
+**Root cause (second 11-08 pass, Claude):** the token owner turned **every** failed
+renewal into a permanent stop and recorded nothing. Quo rotates refresh tokens (its MCP
+docs: persist the newest rotated token atomically, serialize refreshes per grant), so a
+single renewal that met a 429, a Quo 5xx, a reply slower than 8 s, or a real rejection
+ended the grant for good. The stored record is the bare `{phase:"refreshing"}` marker
+(the only state that answers `reconnect_required` without calling Quo), so which of
+those four happened at or before 11-01 21:33 UTC (first retained log) is unrecoverable.
+Ruled out: Google-side or binding/storage faults (Google's owner kept answering 200),
+and loss of Ember's Quo client registration (11-08 ~22:45 CT the existing client id
+still reached Quo's "Connect Ember to Quo?" consent page). **Fix:** ambiguous renewals
+now retry the held token on a ~5-hour schedule instead of stopping; only Quo's own
+refusal (400/401/403) or an exhausted schedule ends a grant, and either one is recorded,
+logged, shown in status (HTTP 207 + `health`) and recovered with one-tap Reconnect. The "needs a new sign-in" wording Brady saw can
+also come from the Signal Log, which said it for any read without a successful Quo tool
+result; that text now distinguishes "offline" from "no tool result this time". The fix records and logs every outcome, retries a rate-limited or ambiguous renewal
+with the token it holds, renews idle grants every 12 hours, answers 207 with `health` in
+status while anything is down, and adds one-tap in-app Reconnect that saves the fresh
+grant server-side. Deploy steps and
+verification: `docs/DEPLOY.md` "In-app reconnect and grant health". Until deployed and
+reconnected, Quo stays offline; OPS now says so instead of showing sample calls.
+
+**Earlier status: FIXED 2026-10-26. The persistence recheck after token expiry is PROVISIONAL.**
 The coordinator cutover went live (Worker `0283d68b`, then `47108b31` with both fresh
 consent seeds; see `docs/DEPLOY.md`, "Durable token owner"). Brady's signed-in page at
 15:32 CDT showed the Quo light lit and a real Quo missed call, and he reported the
@@ -452,6 +490,38 @@ in a bottom rail. At 44px each grid grows from about 80px to 112px tall, which f
 from 1024×700 up but would meet the plate in the right flank at 1100×640. A fix needs
 the plates or Clear thread repositioned on short touch screens, a five-size fit check
 and a test.
+
+## 11. November 8 feed and voice findings
+
+**Status: FIXED in code 2026-11-08 (branch `claude/brave-tesla-xnlnr6`); live behavior PROVISIONAL until deployed.**
+
+- **"no subject returned" on Gmail cards.** No Ember code writes that text; the model did.
+  Neither prompt said to read the Subject header, and the Signal Log ignored a `subject`
+  field. Both prompts now ask for the header verbatim and forbid placeholders; OPS shows
+  `(no subject line)` and Signal Log falls back to the subject or the signal for a
+  placeholder title. Confirm on the next live read (the exact Gmail tool call Haiku made
+  on 11-08 was not captured).
+- **Schedule vs "tomorrow".** The panel spans Chicago today and tomorrow but rows carried
+  only a time, in model order, and only four show, so at night today's finished events
+  read as tomorrow's and hid them. Rows now name their day, upcoming events come first,
+  the sync asks for each event's start and gives Chicago local bounds too, and every
+  model call is told today's and tomorrow's Chicago dates. Open for Brady: BRIEF MY DAY's
+  prompt has said "Brief me on tomorrow" since August while its label says "my day";
+  left unchanged.
+- **Draft PR #59 (`codex/signal-feed-reliability`), assessed, not merged.** Useful and not
+  on main: feed timeouts covering the body, a 512 KiB reply cap, code-enforced record
+  caps, "Partial read" and stale-card states, provider-host link checks, and the weekly
+  Claude-report import. It conflicts only in `docs/CURRENT-STATE.md`; on main+PR the
+  Signal Log suites passed 44/44 and 28/28 (2026-11-08, scratch copy). Before merging:
+  rebase onto current main and drop its merge commit `89b7154`; bring its ROADMAP/README
+  "signed-in acceptance pending" line in line with §9; drop the two synthetic JPGs
+  (~864 KiB) and the logs that cite private `/workspace` paths; rebase over this branch's
+  small `signal-log/ember-feed.mjs` subject fix; run the release check (all its commits
+  were `[skip ci]`). Its no-retry/backoff choice differs from ROADMAP item 134 and needs
+  Brady's sign-off.
+- **Voice speed.** Spoken replies now stream sentence by sentence (see CURRENT-STATE).
+  The 1100 ms end-of-speech grace and the model's thinking time are unchanged and are the
+  largest remaining waits; lowering either changes the approved experience.
 
 ## Expected behavior that is not a bug
 

@@ -116,6 +116,7 @@ const POST_ROUTES = new Map([
   ["/api/voice/transcribe", "voice-transcribe"],
   ["/api/voice/speak", "voice-speak"],
   ["/api/connectors/status", "connectors"],
+  ["/api/connectors/reconnect", "reconnect"],
   ["/api/outbox", "outbox"],
 ]);
 
@@ -562,8 +563,34 @@ async function quoConfig(env, fetchImpl) {
   return { authorize, token, clientId: client.client_id, registered: true };
 }
 
-async function oauthStart(request, env, url, fetchImpl) {
-  const provider = url.searchParams.get("p");
+// Signed-in Ember asks for a reconnect through the Access-gated Pages binding and
+// receives a short-lived signed ticket for this Worker's public /oauth/start. Only
+// a sign-in that began with such a ticket is saved straight into the token owner;
+// the plain manual route still just shows the token for copy-paste.
+async function reconnectStart(body, env, cors, now) {
+  const provider = body?.provider;
+  if (provider !== "google" && provider !== "quo") return json({ error: "provider must be quo or google." }, 400, cors);
+  if (!env.EMBER_TOKEN_COORDINATOR || !env.OAUTH_STATE_SECRET || !env.OAUTH_REDIRECT_URI ||
+      !(provider === "google" ? env.GOOGLE_CLIENT_ID : env.QUO_CLIENT_ID)) {
+    return json({ error: "In-app reconnect is not configured on this Worker." }, 409, cors);
+  }
+  const ticket = await sealState({ k: "reconnect-ticket", p: provider, exp: now + 10 * 60 * 1000 }, env.OAUTH_STATE_SECRET);
+  const start = new URL("/oauth/start", env.OAUTH_REDIRECT_URI);
+  start.searchParams.set("ticket", ticket);
+  return json({ url: start.href }, 200, cors);
+}
+
+async function oauthStart(request, env, url, fetchImpl, now = Date.now()) {
+  let provider = url.searchParams.get("p");
+  let install = false;
+  if (url.searchParams.has("ticket")) {
+    const ticket = env.OAUTH_STATE_SECRET ? await openState(url.searchParams.get("ticket"), env.OAUTH_STATE_SECRET) : null;
+    if (!ticket || ticket.k !== "reconnect-ticket" || !Number.isFinite(ticket.exp) || ticket.exp <= now) {
+      return htmlPage("Ember OAuth", "<h1>Reconnect link expired</h1><p>Nothing was changed. Press Reconnect in Ember again.</p>", 400);
+    }
+    provider = ticket.p;
+    install = true;
+  }
   if (provider !== "google" && provider !== "quo") {
     return htmlPage("Ember OAuth", "<h1>Unknown provider</h1><p>Use <code>?p=google</code> or <code>?p=quo</code>.</p>", 400);
   }
@@ -607,7 +634,7 @@ async function oauthStart(request, env, url, fetchImpl) {
     ...extra,
   });
 
-  const sealed = await sealState({ v: verifier, s: state, p: provider, c: clientId }, env.OAUTH_STATE_SECRET);
+  const sealed = await sealState({ v: verifier, s: state, p: provider, c: clientId, ...(install ? { m: "install", t: now } : {}) }, env.OAUTH_STATE_SECRET);
   return new Response(null, {
     status: 302,
     headers: {
@@ -618,7 +645,7 @@ async function oauthStart(request, env, url, fetchImpl) {
   });
 }
 
-async function oauthCallback(request, env, url, fetchImpl) {
+async function oauthCallback(request, env, url, fetchImpl, now = Date.now()) {
   const err = url.searchParams.get("error");
   if (err) return htmlPage("Ember OAuth", `<h1>Denied</h1><p>The provider returned <code>${htmlEscape(err)}</code>.</p>`, 400);
 
@@ -673,6 +700,8 @@ async function oauthCallback(request, env, url, fetchImpl) {
     );
   }
 
+  if (saved.m === "install") return installAppGrant(isGoogle ? "google" : "quo", saved, data, env, now);
+
   const names = usesTokenCoordinator(env)
     ? [isGoogle ? "MCP_COORDINATED_REFRESH_GOOGLE" : "MCP_COORDINATED_REFRESH_QUO"]
     : isGoogle ? ["MCP_REFRESH_GMAIL", "MCP_REFRESH_CALENDAR", "MCP_REFRESH_GDRIVE"] : ["MCP_REFRESH_QUO"];
@@ -693,6 +722,36 @@ async function oauthCallback(request, env, url, fetchImpl) {
       `<p>This page is the only time the token is shown. It is not stored anywhere — the Worker has no permission to write its own secrets, which is why this is a copy-paste step.</p>`,
     200
   );
+}
+
+// The fresh grant goes straight into the provider's app owner. The token is never
+// shown, and a failed save changes nothing.
+async function installAppGrant(provider, saved, data, env, now) {
+  const label = provider === "google" ? "Google" : "Quo";
+  const clientId = provider === "google" ? env.GOOGLE_CLIENT_ID : env.QUO_CLIENT_ID;
+  const done = (title, body, status) => {
+    const page = htmlPage(title, body, status);
+    page.headers.append("Set-Cookie", "ember_oauth=; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=0");
+    return page;
+  };
+  if (!Number.isFinite(saved.t) || now - saved.t > APP_INSTALL_WINDOW_MS || saved.c !== clientId) {
+    return done("Ember OAuth", "<h1>Reconnect expired</h1><p>Nothing was saved. Press Reconnect in Ember again.</p>", 400);
+  }
+  try {
+    const grant = await appCredentials(provider === "google" ? "gmail" : "quo", env);
+    const namespace = env.EMBER_TOKEN_COORDINATOR;
+    if (!grant || !namespace) throw new Error("not configured");
+    const owner = namespace.get(namespace.idFromName(grant.key));
+    const res = await owner.fetch("https://ember-token.internal/app/install", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ connector: grant.connector, refresh: data.refresh_token, token: data.access_token, expiresIn: data.expires_in }),
+    });
+    if (!res.ok) throw new Error("install refused");
+  } catch {
+    return done("Ember OAuth", `<h1>${label} was not saved</h1><p>Ember could not store the new sign-in, so nothing changed. Press Reconnect in Ember to try again.</p>`, 502);
+  }
+  return done("Ember — reconnected",
+    `<h1>${label} reconnected</h1><p>Ember saved the new sign-in. Close this tab and press <strong>SYNC</strong> in Ember.</p>`, 200);
 }
 
 // --- per-request access tokens --------------------------------------------
@@ -859,6 +918,76 @@ async function mintAccessToken(connector, refresh, current, env, fetchImpl, now)
 
 const usesTokenCoordinator = (env) => env.TOKEN_COORDINATOR_REQUIRED === "true" || !!env.EMBER_TOKEN_COORDINATOR;
 
+// GRANT HEALTH (2026-11-08). On 11-08 Quo read "needs a new sign-in" 13 days after
+// the 10-26 consent, and nothing recorded why: every refresh failure looked the
+// same and left the same durable stop. The owner now classifies the provider's
+// answer, keeps the last outcome in its record, and logs one fixed-vocabulary line
+// per renewal. Only these words, counts and timestamps ever leave the object.
+const GRANT_FAILURES = new Set(["provider_rejected", "rate_limited", "no_reply", "provider_error", "bad_reply", "interrupted"]);
+const OAUTH_ERRORS = new Set([
+  "invalid_grant", "invalid_client", "unauthorized_client", "invalid_request", "invalid_scope",
+  "unsupported_grant_type", "access_denied", "server_error", "temporarily_unavailable", "slow_down",
+]);
+// One renewal 12 hours after the last one keeps an idle grant exercised, so a
+// provider's idle expiry cannot lapse while Brady is away from Ember.
+const GRANT_KEEPALIVE_MS = 12 * 60 * 60 * 1000;
+const GRANT_DISCOVERY_TIMEOUT_MS = 8000;
+// Discovery (8s) + token call (15s) stay inside blockConcurrencyWhile's 30s.
+const GRANT_TOKEN_TIMEOUT_MS = 15000;
+const GRANT_DISCOVERY_CACHE_MS = 24 * 60 * 60 * 1000;
+const APP_INSTALL_WINDOW_MS = 15 * 60 * 1000;
+// AMBIGUOUS RENEWALS RETRY (2026-11-08, root-cause fix). No reply, a 5xx, an
+// unreadable reply or a crash mid-call used to be a durable stop. That stop could
+// never save a grant: if the provider had already rotated, the new token was lost
+// anyway; if it had not, the stop killed a grant that still worked. Every transient
+// fault was therefore permanent, which is the failure Brady saw (Quo dead for 7+
+// days, cause unrecorded). The owner now keeps the token it holds and retries on this
+// schedule (about 5 hours in all). Only the provider's own refusal (400/401/403,
+// Quo's documented "authorize again" signal for invalid_grant) or exhausting the
+// schedule ends the grant, and either one is recorded, logged and shown in status.
+const GRANT_RETRY_SCHEDULE_MS = [1, 5, 15, 30, 60, 60, 60, 60].map((minutes) => minutes * 60 * 1000);
+
+const isoTime = (t) => (Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : undefined);
+const countOf = (n) => (Number.isInteger(n) && n >= 0 ? n : undefined);
+
+// The browser-facing projection of an owner's health record. Fixed fields only.
+function publicGrantHealth(health) {
+  if (!isRecord(health)) return undefined;
+  const out = {
+    source: health.source === "app" || health.source === "setup" ? health.source : undefined,
+    connectedAt: isoTime(health.consentAt),
+    lastRenewedAt: isoTime(health.renewedAt),
+    renewals: countOf(health.renewals),
+    rotations: countOf(health.rotations),
+    failure: GRANT_FAILURES.has(health.failure) ? health.failure : undefined,
+    failedAt: isoTime(health.failedAt),
+    httpStatus: Number.isInteger(health.httpStatus) && health.httpStatus >= 100 && health.httpStatus < 600 ? health.httpStatus : undefined,
+    oauthError: OAUTH_ERRORS.has(health.oauthError) ? health.oauthError : undefined,
+    retryAt: isoTime(health.retryAt),
+    attempts: countOf(health.attempts) || undefined,
+  };
+  const kept = Object.entries(out).filter(([, value]) => value !== undefined);
+  return kept.length ? Object.fromEntries(kept) : undefined;
+}
+
+// Quo's token endpoint comes from its discovery document. Credentials may only be
+// posted to Quo's own HTTPS hosts, whatever that document says.
+function trustedQuoEndpoint(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return url.protocol === "https:" && (host === "quo.com" || host.endsWith(".quo.com"));
+  } catch {
+    return false;
+  }
+}
+
+function retryDelayMs(response) {
+  const seconds = Number(response?.headers?.get?.("Retry-After"));
+  const ms = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 5 * 60 * 1000;
+  return Math.min(60 * 60 * 1000, Math.max(60 * 1000, ms));
+}
+
 async function coordinatedCredentials(connector, env) {
   const provider = CONNECTOR_PROVIDER[connector];
   if (provider !== "google" && provider !== "quo") return null;
@@ -871,7 +1000,42 @@ async function coordinatedCredentials(connector, env) {
   // Google connectors share a grant. Client-secret rotation does not create a new
   // owner; fresh user consent (a different refresh seed) does.
   const key = await sha256b64url(JSON.stringify([provider, clientId, refresh]));
-  return { key, provider, refresh, clientId, clientSecret: google ? env.GOOGLE_CLIENT_SECRET : null };
+  return { mode: "seed", connector, key, provider, refresh, clientId, clientSecret: google ? env.GOOGLE_CLIENT_SECRET : null };
+}
+
+// IN-APP RECONNECT (2026-11-08). A fresh sign-in started from signed-in Ember is
+// written straight into ONE fixed owner per provider and client, so recovering a
+// lost grant no longer means copying a token into the Cloudflare dashboard. That
+// owner never adopts a seed secret: a seed that already rotated can never be
+// presented again. A newer in-app sign-in simply replaces the previous app grant.
+async function appGrantName(provider, env) {
+  const clientId = provider === "google" ? env.GOOGLE_CLIENT_ID : env.QUO_CLIENT_ID;
+  return clientId ? sha256b64url(JSON.stringify(["app-grant-v1", provider, clientId])) : null;
+}
+
+async function appCredentials(connector, env) {
+  const provider = CONNECTOR_PROVIDER[connector];
+  if (provider !== "google" && provider !== "quo") return null;
+  const key = await appGrantName(provider, env);
+  if (!key) return null;
+  const google = provider === "google";
+  return { mode: "app", connector, key, provider, clientId: google ? env.GOOGLE_CLIENT_ID : env.QUO_CLIENT_ID,
+    clientSecret: google ? env.GOOGLE_CLIENT_SECRET : null };
+}
+
+async function callGrantOwner(namespace, key, path, body) {
+  const owner = namespace.get(namespace.idFromName(key));
+  const response = await owner.fetch(`https://ember-token.internal${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  const health = publicGrantHealth(data?.health);
+  if (response.ok && typeof data.token === "string" && data.token) return { token: data.token, health };
+  // Publish only a fixed vocabulary. Provider errors, grant identities, and
+  // storage details never cross the browser-facing status boundary.
+  const reason = data?.error === "reconnect_required" ? "reconnect_required"
+    : data?.error === "no_grant" ? "no_grant" : "temporarily_unavailable";
+  return { token: null, reason, health };
 }
 
 async function coordinatedAccessToken(connector, env) {
@@ -879,23 +1043,28 @@ async function coordinatedAccessToken(connector, env) {
 }
 
 async function coordinatedAuthorization(connector, env) {
+  const namespace = env.EMBER_TOKEN_COORDINATOR;
+  // The newest consent wins: an in-app sign-in first, then the setup seed.
+  let app = null;
+  try {
+    const grant = namespace ? await appCredentials(connector, env) : null;
+    if (grant) {
+      app = await callGrantOwner(namespace, grant.key, "/app/access", { connector });
+      if (app.token) return app;
+    }
+  } catch {
+    app = { token: null, reason: "temporarily_unavailable" };
+  }
+  let seed;
   try {
     const grant = await coordinatedCredentials(connector, env);
-    const namespace = env.EMBER_TOKEN_COORDINATOR;
-    if (!grant || !namespace) return { token: null, reason: "setup_required" };
-    const owner = namespace.get(namespace.idFromName(grant.key));
-    const response = await owner.fetch("https://ember-token.internal/access", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connector, key: grant.key }),
-    });
-    const data = await response.json();
-    if (response.ok && typeof data.token === "string" && data.token) return { token: data.token };
-    // Publish only a fixed vocabulary. Provider errors, grant identities, and
-    // storage details never cross the browser-facing status boundary.
-    return { token: null, reason: data?.error === "reconnect_required" ? "reconnect_required" : "temporarily_unavailable" };
+    seed = grant && namespace ? await callGrantOwner(namespace, grant.key, "/access", { connector, key: grant.key })
+      : { token: null, reason: "setup_required" };
   } catch {
-    return { token: null, reason: "temporarily_unavailable" };
+    seed = { token: null, reason: "temporarily_unavailable" };
   }
+  if (seed.token || !app || app.reason === "no_grant") return seed;
+  return app;
 }
 
 // A single SQLite-backed Durable Object owns each OAuth grant. It is reachable
@@ -907,89 +1076,237 @@ export class EmberTokenCoordinator {
     this.env = env;
     this.fetchImpl = deps.fetch || ((url, init) => fetch(url, init));
     this.now = deps.now || Date.now;
+    this.log = deps.log || ((line) => console.log(line));
     this.unsaved = null;
+    this.endpoint = null;
   }
 
   reply(body, status = 200) {
     return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
   }
 
+  // One line per renewal outcome, for Workers Logs. Fixed words and counts only.
+  record(event) {
+    try { this.log(JSON.stringify({ ember: "token-owner", ...event })); } catch {}
+  }
+
+  async grantFor(mode, body) {
+    const grant = mode === "app" ? await appCredentials(body?.connector, this.env) : await coordinatedCredentials(body?.connector, this.env);
+    if (!grant || (mode === "seed" && body.key !== grant.key)) return null;
+    if (this.ctx.id.toString() !== this.env.EMBER_TOKEN_COORDINATOR.idFromName(grant.key).toString()) return null;
+    return grant;
+  }
+
   async fetch(request) {
-    if (request.method !== "POST" || new URL(request.url).pathname !== "/access") return this.reply({ error: "not_found" }, 404);
+    const path = request.method === "POST" ? new URL(request.url).pathname : "";
+    const mode = path === "/access" ? "seed" : path === "/app/access" || path === "/app/install" ? "app" : null;
+    if (!mode) return this.reply({ error: "not_found" }, 404);
     let body, grant;
     try {
-      // Only the connector name and opaque grant identity travel over the binding.
+      // Only the connector name and opaque grant identity travel over the binding,
+      // plus the fresh tokens of an in-app install.
       const raw = await request.text();
-      if (raw.length > 1024) return this.reply({ error: "invalid_request" }, 400);
+      if (raw.length > (path === "/app/install" ? 16384 : 1024)) return this.reply({ error: "invalid_request" }, 400);
       body = JSON.parse(raw);
-      grant = await coordinatedCredentials(body?.connector, this.env);
-      if (!grant || body.key !== grant.key || this.ctx.id.toString() !== this.env.EMBER_TOKEN_COORDINATOR.idFromName(grant.key).toString()) {
-        return this.reply({ error: "invalid_grant_owner" }, 403);
-      }
+      grant = await this.grantFor(mode, body);
+      if (!grant) return this.reply({ error: "invalid_grant_owner" }, 403);
     } catch {
       return this.reply({ error: "invalid_request" }, 400);
     }
     // Storage input gates alone do not serialize the external OAuth fetch. Hold
     // this object through the bounded call and final durable write as well.
     return this.ctx.blockConcurrencyWhile(async () => {
-      try { return await this.access(grant); }
+      try { return path === "/app/install" ? await this.install(grant, body) : await this.access(grant, "request"); }
       catch { return this.reply({ error: "temporarily_unavailable" }, 503); }
     });
   }
 
-  async access(grant) {
+  async keepAlive(at = this.now() + GRANT_KEEPALIVE_MS) {
+    const storage = this.ctx.storage;
+    if (typeof storage.setAlarm !== "function") return;
+    try { await storage.setAlarm(at); } catch {}
+  }
+
+  async alarm() {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        const record = await this.ctx.storage.get("grant");
+        // "refreshing" here is a renewal cut off mid-call; access() decides its retry.
+        if (!isRecord(record) || (record.phase !== "ready" && record.phase !== "refreshing") ||
+            (record.mode !== "app" && record.mode !== "seed")) return;
+        const grant = await this.grantFor(record.mode, { connector: record.connector, key: record.key });
+        if (!grant) return;
+        // A renewal re-arms the alarm itself; a stopped grant stays stopped.
+        await this.access(grant, "keepalive", { renew: true });
+        const after = await this.ctx.storage.get("grant");
+        if (isRecord(after) && after.phase === "ready" && Number.isFinite(after.retryAt) && after.retryAt > this.now()) {
+          await this.keepAlive(after.retryAt);
+        }
+      } catch {}
+    });
+  }
+
+  async tokenEndpoint(grant) {
+    if (grant.provider === "google") return GOOGLE_TOKEN_URL;
+    const now = this.now();
+    if (this.endpoint && now - this.endpoint.at < GRANT_DISCOVERY_CACHE_MS) return this.endpoint.url;
+    // Discovery is safe to retry and occurs BEFORE recording refresh intent.
+    // workerd supports manual/follow, not redirect:error. Every caller below
+    // rejects non-2xx responses; a redirect must never forward credentials.
+    const bounded = (url, init = {}) => this.fetchImpl(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(GRANT_DISCOVERY_TIMEOUT_MS) });
+    const url = (await quoConfig(this.env, bounded)).token;
+    if (!trustedQuoEndpoint(url)) throw new Error("untrusted token endpoint");
+    this.endpoint = { url, at: now };
+    return url;
+  }
+
+  async install(grant, body) {
+    const refresh = body?.refresh;
+    const token = body?.token;
+    if (typeof refresh !== "string" || !refresh || refresh.length > 4096 ||
+        (token !== undefined && token !== null && (typeof token !== "string" || token.length > 8192))) {
+      return this.reply({ error: "invalid_request" }, 400);
+    }
+    const now = this.now();
+    const ttl = Number(body.expiresIn);
+    const access = typeof token === "string" && token && Number.isFinite(ttl) && ttl > 60 ? { token, expiresAt: now + (ttl - 60) * 1000 } : {};
+    const health = { source: "app", consentAt: now, renewals: 0, rotations: 0 };
+    // A newer sign-in replaces the previous app grant outright; its old refresh
+    // token is abandoned here, never presented again.
+    await this.ctx.storage.put("grant", {
+      version: 1, key: grant.key, mode: "app", connector: grant.connector, phase: "ready", refresh, ...access, health,
+    });
+    this.unsaved = null;
+    await this.keepAlive();
+    this.record({ provider: grant.provider, mode: "app", trigger: "install", outcome: "installed" });
+    return this.reply({ ok: true, health });
+  }
+
+  async access(grant, trigger, options = {}) {
     const storage = this.ctx.storage;
     if (this.unsaved) {
       await storage.put("grant", this.unsaved);
       this.unsaved = null;
     }
     let record = await storage.get("grant");
-    if (record !== undefined && (!isRecord(record) || record.version !== 1 || record.key !== grant.key || record.phase !== "ready" || typeof record.refresh !== "string" || !record.refresh)) {
-      // Includes a durable in-flight marker left by a crashed/ambiguous refresh.
-      // Neither a retry nor an object restart may reuse that possibly spent token.
+    if (record === undefined) {
+      if (grant.mode === "app") return this.reply({ error: "no_grant" }, 404);
+      record = { version: 1, key: grant.key, phase: "ready", refresh: grant.refresh, health: { source: "setup" } };
+    }
+    if (!isRecord(record) || record.version !== 1 || record.key !== grant.key) {
       return this.reply({ error: "reconnect_required" }, 503);
     }
-    if (!record) record = { version: 1, key: grant.key, phase: "ready", refresh: grant.refresh };
-    if (typeof record.token === "string" && record.token && Number.isFinite(record.expiresAt) && record.expiresAt > this.now()) {
-      return this.reply({ token: record.token });
+    const health = isRecord(record.health) ? { ...record.health } : {};
+    const now = this.now();
+    if (record.phase === "refreshing" && typeof record.refresh === "string" && record.refresh) {
+      // A renewal was cut off mid-call (object restart, or a save that never landed).
+      // Its outcome is unknown, so it follows the same retry schedule as a lost reply.
+      return this.ambiguous(record, grant, health, "interrupted", { trigger, now });
+    }
+    if (record.phase !== "ready" || typeof record.refresh !== "string" || !record.refresh) {
+      // A refused grant, an exhausted retry schedule, or a pre-11-08 in-flight marker
+      // that kept no token: only a fresh sign-in recovers it.
+      if (record.phase === "refreshing" && !health.failure) health.failure = "interrupted";
+      return this.reply({ error: "reconnect_required", health }, 503);
+    }
+    if (!options.renew && typeof record.token === "string" && record.token && Number.isFinite(record.expiresAt) && record.expiresAt > now) {
+      return this.reply({ token: record.token, health });
+    }
+    if (Number.isFinite(record.retryAt) && record.retryAt > now) {
+      return this.reply({ error: "temporarily_unavailable", health: { ...health, retryAt: record.retryAt } }, 503);
     }
 
-    // Discovery is safe to retry and occurs BEFORE recording refresh intent.
-    // workerd supports manual/follow, not redirect:error. Every caller below
-    // rejects non-2xx responses; a redirect must never forward credentials.
-    const boundedFetch = (url, init = {}) => this.fetchImpl(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(8000) });
-    const endpoint = grant.provider === "google" ? GOOGLE_TOKEN_URL : (await quoConfig(this.env, boundedFetch)).token;
+    const endpoint = await this.tokenEndpoint(grant);
     const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: record.refresh, client_id: grant.clientId });
     if (grant.clientSecret) form.set("client_secret", grant.clientSecret);
-    // Commit BEFORE contacting the provider. OAuth and our database cannot form
-    // one transaction; a lost reply must leave a durable stop, not an auto-retry.
-    await storage.put("grant", { version: 1, key: grant.key, phase: "refreshing" });
-    let data;
+    const base = { version: 1, key: grant.key, mode: grant.mode, connector: grant.connector };
+    const event = { provider: grant.provider, mode: grant.mode, trigger };
+    // Commit BEFORE contacting the provider. OAuth and our database cannot form one
+    // transaction, so the marker keeps the token this owner holds: if the reply is
+    // lost or the object restarts, the retry schedule decides what happens next.
+    await storage.put("grant", { ...base, phase: "refreshing", refresh: record.refresh,
+      ...(countOf(record.attempts) ? { attempts: record.attempts } : {}), health });
+    let response, data, failure = null;
     try {
-      const response = await boundedFetch(endpoint, {
+      response = await this.fetchImpl(endpoint, {
         method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString(),
+        redirect: "manual", signal: AbortSignal.timeout(GRANT_TOKEN_TIMEOUT_MS),
       });
-      if (!response.ok) return this.reply({ error: "reconnect_required" }, 503);
-      data = await response.json();
+      try { data = await response.json(); } catch { data = undefined; }
     } catch {
-      return this.reply({ error: "reconnect_required" }, 503);
+      failure = "no_reply";
     }
-    if (!isRecord(data) || typeof data.access_token !== "string" || !data.access_token ||
-        (data.refresh_token !== undefined && (typeof data.refresh_token !== "string" || !data.refresh_token))) {
-      return this.reply({ error: "reconnect_required" }, 503);
+    const httpStatus = response ? response.status : undefined;
+    const oauthError = isRecord(data) && OAUTH_ERRORS.has(data.error) ? data.error : undefined;
+
+    if (!failure && (httpStatus === 429 || oauthError === "temporarily_unavailable" || oauthError === "slow_down")) {
+      // The provider said it did not process the exchange, so the refresh token
+      // was not spent. Keep it, back off, and try again after the wait.
+      const retryAt = now + retryDelayMs(response);
+      const deferred = { ...health, failure: "rate_limited", failedAt: now, httpStatus, oauthError, retryAt };
+      await storage.put("grant", { ...record, ...base, phase: "ready", retryAt, health: deferred });
+      this.record({ ...event, outcome: "deferred", failure: "rate_limited", httpStatus, oauthError });
+      return this.reply({ error: "temporarily_unavailable", health: deferred }, 503);
     }
-    const ttl = data.expires_in === undefined ? 3600 : Number(data.expires_in);
-    if (!Number.isFinite(ttl) || ttl <= 0) return this.reply({ error: "reconnect_required" }, 503);
+    if (!failure && !response.ok) {
+      // 400/401/403: the provider answered and refused this grant (invalid_grant is
+      // a revoked, expired or already-rotated token). Anything else is ambiguous.
+      failure = httpStatus === 400 || httpStatus === 401 || httpStatus === 403 ? "provider_rejected" : "provider_error";
+    }
+    if (!failure && (!isRecord(data) || typeof data.access_token !== "string" || !data.access_token ||
+        (data.refresh_token !== undefined && (typeof data.refresh_token !== "string" || !data.refresh_token)))) {
+      failure = "bad_reply";
+    }
+    const ttl = !failure ? (data.expires_in === undefined ? 3600 : Number(data.expires_in)) : NaN;
+    if (!failure && (!Number.isFinite(ttl) || ttl <= 0)) failure = "bad_reply";
+    if (failure === "provider_rejected") {
+      const stopped = { ...health, failure, failedAt: now, httpStatus, oauthError };
+      // Quo documents invalid_grant as "authorize again", never a retry loop. The
+      // refused token is dropped; only a fresh sign-in recovers this grant.
+      try { await storage.put("grant", { ...base, phase: "rejected", health: stopped }); } catch {}
+      this.record({ ...event, outcome: "stopped", failure, httpStatus, oauthError });
+      return this.reply({ error: "reconnect_required", health: stopped }, 503);
+    }
+    if (failure) return this.ambiguous(record, grant, health, failure, { trigger, now, httpStatus, oauthError });
+
+    const rotated = typeof data.refresh_token === "string" && data.refresh_token !== record.refresh;
+    const { failure: _f, failedAt: _a, httpStatus: _h, oauthError: _o, retryAt: _r, attempts: _n, ...kept } = health;
+    const renewed = { ...kept, consentAt: health.consentAt || now, renewedAt: now,
+      renewals: (countOf(health.renewals) || 0) + 1, rotations: (countOf(health.rotations) || 0) + (rotated ? 1 : 0) };
     this.unsaved = {
-      version: 1, key: grant.key, phase: "ready",
-      refresh: data.refresh_token || record.refresh, token: data.access_token,
-      expiresAt: this.now() + Math.max(0, ttl - 60) * 1000,
+      ...base, phase: "ready", refresh: data.refresh_token || record.refresh, token: data.access_token,
+      expiresAt: now + Math.max(0, ttl - 60) * 1000, health: renewed,
     };
     // A failed final save can be retried by this instance without another OAuth
     // call. If it dies first, the durable marker forces fresh consent instead.
     await storage.put("grant", this.unsaved);
     this.unsaved = null;
-    return this.reply({ token: data.access_token });
+    await this.keepAlive();
+    this.record({ ...event, outcome: "renewed", rotated, renewals: renewed.renewals });
+    return this.reply({ token: data.access_token, health: renewed });
+  }
+
+  // No reply, a 5xx, an unreadable reply or an interrupted call: the provider may or
+  // may not have spent the token. Keep it (and any still-valid access token), retry on
+  // GRANT_RETRY_SCHEDULE_MS, and arm the alarm so the retry happens even while Ember
+  // sits closed. A refusal on a retry, or running out of schedule, ends the grant.
+  async ambiguous(record, grant, health, failure, { trigger, now, httpStatus, oauthError }) {
+    const attempts = (countOf(record.attempts) || 0) + 1;
+    const base = { version: 1, key: grant.key, mode: grant.mode, connector: grant.connector };
+    const event = { provider: grant.provider, mode: grant.mode, trigger };
+    this.endpoint = null; // rediscover the token endpoint before the next try
+    if (attempts > GRANT_RETRY_SCHEDULE_MS.length) {
+      const stopped = { ...health, failure, failedAt: now, httpStatus, oauthError, attempts };
+      try { await this.ctx.storage.put("grant", { ...base, phase: "stopped", health: stopped }); } catch {}
+      this.record({ ...event, outcome: "stopped", failure, httpStatus, oauthError, attempts });
+      return this.reply({ error: "reconnect_required", health: stopped }, 503);
+    }
+    const retryAt = now + GRANT_RETRY_SCHEDULE_MS[attempts - 1];
+    const deferred = { ...health, failure, failedAt: now, httpStatus, oauthError, retryAt, attempts };
+    await this.ctx.storage.put("grant", { ...record, ...base, phase: "ready", attempts, retryAt, health: deferred });
+    await this.keepAlive(retryAt);
+    this.record({ ...event, outcome: "deferred", failure, httpStatus, oauthError, attempts });
+    return this.reply({ error: "temporarily_unavailable", health: deferred }, 503);
   }
 }
 
@@ -1048,14 +1365,36 @@ async function connectorStatus(body, env, cors, fetchImpl, now) {
   };
   const connectors = {};
   const issues = {};
+  const health = {};
   for (const name of names) {
     const auth = usesTokenCoordinator(env) ? await coordinatedAuthorization(name, env)
       : { token: await accessTokenFor(name, env, fetchImpl, now) };
     const token = auth.token || staticTokens[name];
     connectors[name] = token ? "connected" : "offline";
     if (!token && auth.reason) issues[name] = auth.reason;
+    // Counts, timestamps and fixed failure words: proof a grant keeps renewing.
+    if (auth.health) health[name] = auth.health;
   }
-  return json({ connectors, ...(Object.keys(issues).length ? { issues } : {}) }, 200, { ...cors, "Cache-Control": "no-store" });
+  // HTTP 207, not 200, whenever a requested connector is down. A 200 here read as
+  // healthy in Workers Logs for the whole week Quo was dead (2026-11-01 → 11-08).
+  // The body is unchanged (207 is still res.ok for every caller), and one
+  // fixed-vocabulary log line names what is down and why. Silent when all is well.
+  const down = names.filter((name) => connectors[name] !== "connected");
+  if (down.length) {
+    try {
+      console.log(JSON.stringify({ ember: "connector-status", down: Object.fromEntries(down.map((name) => [name, {
+        reason: issues[name] || "offline",
+        ...(health[name]?.failure ? { failure: health[name].failure } : {}),
+        ...(health[name]?.failedAt ? { failedAt: health[name].failedAt } : {}),
+        ...(health[name]?.retryAt ? { retryAt: health[name].retryAt } : {}),
+      }])) }));
+    } catch {}
+  }
+  return json({
+    connectors,
+    ...(Object.keys(issues).length ? { issues } : {}),
+    ...(Object.keys(health).length ? { health } : {}),
+  }, down.length ? 207 : 200, { ...cors, "Cache-Control": "no-store" });
 }
 
 // --- /tts: Ember's natural voice ------------------------------------------
@@ -1229,10 +1568,10 @@ export default {
     // header and would be refused by them.
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/oauth/start") {
-      return oauthStart(request, env, url, fetchImpl);
+      return oauthStart(request, env, url, fetchImpl, now);
     }
     if (request.method === "GET" && url.pathname === "/oauth/callback") {
-      return oauthCallback(request, env, url, fetchImpl);
+      return oauthCallback(request, env, url, fetchImpl, now);
     }
 
     const origin = request.headers.get("Origin");
@@ -1285,6 +1624,9 @@ export default {
     }
     if (route === "connectors") {
       return connectorStatus(body, env, cors, fetchImpl, now);
+    }
+    if (route === "reconnect") {
+      return reconnectStart(body, env, cors, now);
     }
     if (route === "outbox") {
       return handleOutbox(body, env, cors, fetchImpl);

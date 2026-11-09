@@ -50,6 +50,11 @@ const iso = value => {
   const time = Date.parse(value);
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 };
+// "no subject returned" reached Gmail cards on 2026-11-08: a placeholder is not a title.
+const real = (value) => {
+  const text = fit(value, 200);
+  return /^[([]?\s*(no|missing|empty)\s+subject(\s+(line|returned|available|provided))?\s*[)\].]?$/i.test(text) ? '' : text;
+};
 const number = (value, min, max, fallback) => {
   const n = typeof value === 'string' ? Number(value) : value;
   return typeof n === 'number' && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
@@ -60,7 +65,7 @@ export function buildPrompt(provider, now = new Date()) {
   const rules = provider === 'quo'
     ? `Use ONLY the Quo tools. Read missed calls and voicemails from BOTH inboxes (${FEED.quo.inboxes}) created after ${new Date(ms - FEED.quo.hours * 3600000).toISOString()} — pass createdAfter with that exact timestamp. Include the voicemail transcript in "signal" when one exists; a missed call with no voicemail is information unless the number has called more than once. At most ${FEED.quo.max} records. "id" is the call or conversation id exactly as the tool returned it; "link" is ${FEED.quo.link}; "sourceUpdatedAt" is the call time as ISO 8601. Never invent a caller name; use the number when that is all the tool gives.`
     : provider === 'gmail'
-    ? `Use ONLY the Gmail tool. Read messages received after ${new Date(ms - FEED.gmail.hours * 3600000).toISOString()} (the last ${FEED.gmail.hours / 24} days) that are unread OR starred OR in the inbox and plainly need Brady's attention; skip newsletters, receipts and automated notices unless they signal a problem or money. At most ${FEED.gmail.max} messages. "id" is the Gmail message id exactly as the tool returned it; "link" is https://mail.google.com/mail/u/0/#all/<that id>; "sourceUpdatedAt" is the message date as ISO 8601.`
+    ? `Use ONLY the Gmail tool. Read messages received after ${new Date(ms - FEED.gmail.hours * 3600000).toISOString()} (the last ${FEED.gmail.hours / 24} days) that are unread OR starred OR in the inbox and plainly need Brady's attention; skip newsletters, receipts and automated notices unless they signal a problem or money. At most ${FEED.gmail.max} messages. Read each message with a view that includes its headers (not an IDs-only or metadata-only view): "title" is the sender plus the Subject header copied verbatim, and "subject" is that Subject header; never write a placeholder such as "no subject returned". "id" is the Gmail message id exactly as the tool returned it; "link" is https://mail.google.com/mail/u/0/#all/<that id>; "sourceUpdatedAt" is the message date as ISO 8601.`
     : `Use ONLY the Calendar tool. Read events starting between ${new Date(ms - FEED.calendar.pastHours * 3600000).toISOString()} and ${new Date(ms + FEED.calendar.aheadDays * 86400000).toISOString()} — pass these exact timestamps to the tool. At most ${FEED.calendar.max} events. "id" is the event id (append "/" + original start for a recurring instance); "link" is the event's htmlLink; "occurrenceAt" is the event start as ISO 8601 with timezone; "dueAt" is the same start when it is in the future, otherwise null. An event that is only a reminder of past work is information, not a task.`;
   return `You are Ember's Signal Log reader for Brady Baxter (Detroit Lakes, MN; Baxstar Fishing, pontoon and ice-house rentals, Lakes Golf Sim, AI consulting, his own software). Current time: ${now.toISOString()}.
 
@@ -146,7 +151,7 @@ export function projectSignals(provider, parsed, now = new Date()) {
       };
       const candidate = {
         id, occurrenceAt, sourceUpdatedAt, observedAt,
-        title: fit(raw.title, 90) || fit(details.signal, 90),
+        title: fit(real(raw.title) || real(raw.subject), 90) || fit(details.signal, 90),
         summary: fit(raw.summary, 200) || fit(details.signal, 200),
         details, categories: categories.length ? categories : ['fishing'],
         kind, priority, impact: Math.round(number(raw.impact, 1, 5, 2)),
@@ -195,8 +200,13 @@ export async function readFeed(provider, { fetchImpl = globalThis.fetch, now = n
     const detail = typeof data?.error === 'string' ? data.error : data?.error?.message;
     throw reason(detail || `Ember request failed (HTTP ${res.status}).`);
   }
-  if (res.headers.get('x-ember-connectors') === 'degraded' || !succeededConnectors(data).has(provider)) {
-    throw reason(`${FEED.names[provider]} returned no successful tool result — the connector is offline or needs a new sign-in. Check the OPS lights.`);
+  // "Degraded" means the Worker could not authorize the connector; a missing tool
+  // result alone can be a failed or skipped tool call with a healthy sign-in.
+  if (res.headers.get('x-ember-connectors') === 'degraded') {
+    throw reason(`${FEED.names[provider]} is offline in Ember right now. Open OPS: a red ${FEED.names[provider]} panel names the cause and offers Reconnect.`);
+  }
+  if (!succeededConnectors(data).has(provider)) {
+    throw reason(`${FEED.names[provider]} returned no successful tool result this time. Refresh to retry; if the OPS ${FEED.names[provider]} light is red, reconnect it there.`);
   }
   const { signals, dropped } = projectSignals(provider, extractJSON(data), now);
   return {

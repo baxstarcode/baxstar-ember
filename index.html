@@ -370,8 +370,14 @@ HARD RULE \u2014 schedule and messages: if a tool is unavailable or returns noth
       minute: "2-digit",
       timeZoneName: "short"
     });
+    const day = (offset) => new Date(Date.now() + offset * 864e5).toLocaleDateString("en-US", {
+      timeZone: "America/Chicago",
+      weekday: "long",
+      month: "long",
+      day: "numeric"
+    });
     return `${BRADY_CONTEXT}
-Current date/time: ${stamp}. Compute "today", "tomorrow", and any look-back window from this timestamp \u2014 never guess a date.`;
+Current date/time: ${stamp}. In Detroit Lakes (America/Chicago) today is ${day(0)} and tomorrow is ${day(1)}. Compute "today", "tomorrow", and any look-back window from this \u2014 never guess a date.`;
   }
   const DRIVE_CONTEXT = `You are EMBER's Drive librarian for Brady Baxter. Use your Google Drive tools to search and read files to answer.
 Key doc: "Baxstar Handoff Log" (Google Doc ID 1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns) \u2014 the canonical source of truth.
@@ -786,7 +792,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-10-31 07:57Z".startsWith("__") ? "dev" : "2026-10-31 07:57Z";
+  const BUILD_STAMP = "2026-11-09 05:37Z".startsWith("__") ? "dev" : "2026-11-09 05:37Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -794,12 +800,23 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { server: "gmail", key: "emails", label: "Gmail", what: "email" },
     { server: "calendar", key: "events", label: "Calendar", what: "schedule" }
   ];
+  const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
   const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
   const CONNECTOR_ISSUE_TEXT = {
     setup_required: "setup incomplete",
     reconnect_required: "needs a new sign-in",
     temporarily_unavailable: "temporarily unavailable \u2014 try Sync again"
   };
+  const CONNECTOR_FAILURE_TEXT = {
+    provider_rejected: "the provider refused the saved sign-in",
+    rate_limited: "the provider asked Ember to wait",
+    no_reply: "the provider did not answer a renewal",
+    provider_error: "the provider returned an error during a renewal",
+    bad_reply: "the provider sent an unreadable renewal",
+    interrupted: "a renewal was interrupted"
+  };
+  const RECONNECTABLE = /* @__PURE__ */ new Set(["reconnect_required", "setup_required"]);
+  const PROVIDER_OF = { quo: "quo", gmail: "google", calendar: "google", gdrive: "google" };
   const OPS_STALE_MS = 15 * 60 * 1e3;
   async function fetchConnectorStatus() {
     try {
@@ -817,7 +834,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         var _a;
         return connectors[n] === "offline" && Object.hasOwn(CONNECTOR_ISSUE_TEXT, (_a = data.issues) == null ? void 0 : _a[n]);
       }).map((n) => [n, data.issues[n]]));
-      return { connectors, issues };
+      const failures = Object.fromEntries(STATUS_CONNECTORS.filter((n) => {
+        var _a, _b;
+        return connectors[n] === "offline" && Object.hasOwn(CONNECTOR_FAILURE_TEXT, (_b = (_a = data.health) == null ? void 0 : _a[n]) == null ? void 0 : _b.failure);
+      }).map((n) => [n, data.health[n].failure]));
+      return { connectors, issues, failures };
     } catch (e) {
       return null;
     }
@@ -828,6 +849,34 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       return `${listNames(off.map((f) => f.label))} ${off.length === 1 ? "is" : "are"} offline \u2014 ${listNames(off.map((f) => f.what))} not checked in this reply.`;
     }
     return "Connectors unavailable \u2014 this reply uses conversation context only. Live business data was not checked.";
+  }
+  function chicagoDayKey(time) {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(time);
+  }
+  function cleanSubject(value) {
+    const text = typeof value === "string" ? value.trim() : "";
+    return /^[([]?\s*(no|missing|empty)\s+subject(\s+(line|returned|available|provided))?\s*[)\].]?$/i.test(text) ? "" : text;
+  }
+  function orderEvents(events, now = /* @__PURE__ */ new Date()) {
+    const today = chicagoDayKey(now);
+    const tomorrow = chicagoDayKey(new Date(now.getTime() + 864e5));
+    const rows = events.map((e, i) => {
+      const start = Date.parse(e == null ? void 0 : e.start);
+      if (!Number.isFinite(start)) return { e, i, start: null };
+      const key = chicagoDayKey(start);
+      const day = key === today ? "Today" : key === tomorrow ? "Tomorrow" : new Date(start).toLocaleDateString("en-US", { timeZone: "America/Chicago", weekday: "short" });
+      return { e: { ...e, day }, i, start };
+    });
+    const rank = (r) => r.start === null ? 1 : r.start < now.getTime() - 36e5 ? 2 : 0;
+    return rows.sort((a, b) => {
+      var _a, _b;
+      return rank(a) - rank(b) || ((_a = a.start) != null ? _a : 0) - ((_b = b.start) != null ? _b : 0) || a.i - b.i;
+    }).map((r) => r.e);
+  }
+  function normalizeFeed(key, list, now) {
+    if (key === "emails") return list.map((m) => ({ ...m, subject: cleanSubject(m == null ? void 0 : m.subject) }));
+    if (key === "events") return orderEvents(list, now);
+    return list;
   }
   function chicagoMidnightISO(now, days) {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
@@ -1411,7 +1460,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
     const audioRef = useRef(null), options = useRef(null);
     options.current = { onSend, blocked, enabled };
-    const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0 });
+    const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null });
     const c = control.current;
     const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     const production = location.hostname === "ember.baxstarfishing.com";
@@ -1541,6 +1590,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       (_a = c.request) == null ? void 0 : _a.abort();
       c.request = null;
       clearTimers();
+      endStream();
       if (c.rec && c.draft.trim()) c.interrupted = true;
       if (c.rec && ["releasing", "unconfirmed"].includes(c.mic)) {
         if (c.mic === "releasing") timer("release", () => {
@@ -1684,6 +1734,106 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         clearTimeout(c.timers.play);
       }
     }
+    const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
+    function endStream() {
+      const s = c.stream;
+      c.stream = null;
+      s == null ? void 0 : s.controller.abort();
+    }
+    function clipEnd(text, min, first) {
+      const re = /[.!?…]["”’)\]]*(?=\s)|\n+/g;
+      let end = -1, m;
+      while (m = re.exec(text)) {
+        const at = m.index + m[0].length;
+        if (at >= min) {
+          end = at;
+          if (first) break;
+        }
+      }
+      return end;
+    }
+    function feedSpeech(epoch, text, final = false) {
+      const s = c.stream;
+      if (!s || s.epoch !== epoch || !c.live) return;
+      if (!final) s.streamed = true;
+      while (!s.capped && s.spoken < SPOKEN_MAX) {
+        const rest = text.slice(s.said);
+        if (!rest.trim()) {
+          s.said = text.length;
+          break;
+        }
+        let end = clipEnd(rest, s.clips.length ? CLIP_MIN : FIRST_CLIP_MIN, !s.clips.length);
+        if (end < 0 && final) end = rest.length;
+        if (end < 0) break;
+        let piece = rest.slice(0, end).trim();
+        s.said += end;
+        const room = SPOKEN_MAX - s.spoken;
+        if (piece.length > room) {
+          piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "\u2026";
+          s.capped = true;
+        }
+        if (piece) {
+          s.spoken += piece.length;
+          queueClip(s, piece);
+        }
+      }
+      if (final) {
+        s.done = true;
+        if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) {
+          s.waiting = false;
+          finishTurn();
+        }
+      }
+    }
+    function queueClip(s, text) {
+      const clip = { text, blob: null };
+      const index = s.clips.push(clip) - 1;
+      c.spokeEpoch = s.epoch;
+      const controller = new AbortController();
+      s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
+      const timeout = setTimeout(() => controller.abort(), 15e3);
+      fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: "en-US-JennyNeural" }) }).then(async (response) => {
+        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny\u2019s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+        if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
+        const blob = await response.blob();
+        if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
+        if (c.stream !== s) return;
+        clip.blob = blob;
+        if (s.waiting && index === s.playing + 1) {
+          s.waiting = false;
+          playClip(s, index);
+        }
+      }).catch((error) => {
+        if (c.stream !== s || !c.live) return;
+        endStream();
+        pauseConversation();
+        releaseWake();
+        patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message });
+      }).finally(() => clearTimeout(timeout));
+    }
+    function playClip(s, index) {
+      if (!c.live || c.stream !== s || s.epoch !== c.epoch || c.rec || document.hidden) return;
+      const audio = audioRef.current, clip = s.clips[index];
+      s.playing = index;
+      if (c.url) URL.revokeObjectURL(c.url);
+      c.url = URL.createObjectURL(clip.blob);
+      c.phrases = emberPhrases(clip.text);
+      c.phraseIndex = -1;
+      audio.src = c.url;
+      audio.load();
+      session("playback");
+      keepAwake();
+      if (index === 0) patch({ audioReady: true });
+      const epoch = c.epoch;
+      Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5e3))]).catch(() => {
+        if (c.live && c.epoch === epoch) {
+          session("auto");
+          releaseWake();
+          pauseConversation();
+          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." });
+        }
+      }).finally(() => clearTimeout(c.timers.play));
+    }
     async function speak() {
       if (!c.answer || c.rec || c.request || !production || document.hidden) return;
       const epoch = ++c.epoch;
@@ -1721,6 +1871,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
     }
     async function send() {
+      var _a;
       if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
       const epoch = ++c.epoch, controller = new AbortController();
       c.request = controller;
@@ -1729,13 +1880,16 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       c.interrupted = false;
       clearAudio();
       keepAwake();
+      endStream();
+      c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
       patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
       const timeout = setTimeout(() => controller.abort(), 6e4);
       try {
-        const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal });
+        const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal, onVoiceText: (text) => feedSpeech(epoch, text) });
         if (!c.live || epoch !== c.epoch) return;
         c.request = null;
         if (!result) {
+          endStream();
           pauseConversation();
           releaseWake();
           patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." });
@@ -1743,7 +1897,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         }
         c.answer = result;
         patch({ answer: result });
-        await speak();
+        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && c.stream.streamed) feedSpeech(epoch, result, true);
+        if (c.spokeEpoch !== epoch) {
+          c.stream = null;
+          await speak();
+        }
       } catch {
         if (c.live && epoch === c.epoch) {
           pauseConversation();
@@ -1768,6 +1926,23 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       phraseAt(audioRef.current.currentTime, audioRef.current.duration);
     }
     function ended() {
+      const s = c.stream;
+      if (s && s.epoch === c.epoch && s.playing >= 0) {
+        const next = s.playing + 1;
+        if (next < s.clips.length) {
+          if (s.clips[next].blob) playClip(s, next);
+          else s.waiting = true;
+          return;
+        }
+        if (!s.done) {
+          s.waiting = true;
+          return;
+        }
+      }
+      finishTurn();
+    }
+    function finishTurn() {
+      c.stream = null;
       session("auto");
       if (!c.url || !c.conversation || document.hidden || !options.current.enabled) {
         releaseWake();
@@ -1849,6 +2024,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (c.mic === "unconfirmed" && c.rec) released(c.rec);
       },
       paused: () => {
+        var _a, _b;
+        if (((_a = audioRef.current) == null ? void 0 : _a.ended) && ((_b = c.stream) == null ? void 0 : _b.epoch) === c.epoch) return;
         if (c.phase === "playing") {
           session("auto");
           releaseWake();
@@ -1925,8 +2102,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const live = feedLive.voicemails || feedLive.emails || feedLive.events;
     const [connStatus, setConnStatus] = useState(null);
     const connStatusRef = useRef(null);
+    const [connIssues, setConnIssues] = useState({});
+    const [reconnecting, setReconnecting] = useState(false);
+    const reconnectedRef = useRef(false);
     const [syncProblems, setSyncProblems] = useState([]);
     const freshFeeds = OPS_FEEDS.filter((f) => feedLive[f.key] && (connStatus == null ? void 0 : connStatus[f.server]) !== "offline" && !syncProblems.some((p) => p.key === f.key));
+    const quoDown = (connStatus == null ? void 0 : connStatus.quo) === "offline";
+    const gmailDown = (connStatus == null ? void 0 : connStatus.gmail) === "offline";
+    const calendarDown = (connStatus == null ? void 0 : connStatus.calendar) === "offline";
     const feedState = !live ? "DEMO" : freshFeeds.length === OPS_FEEDS.length ? "LIVE" : freshFeeds.length ? "PARTIAL" : "STALE";
     const lastSyncRef = useRef(0);
     const [syncing, setSyncing] = useState(false);
@@ -2284,7 +2467,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       raf = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(raf);
     }, []);
-    async function sendCommand(text, { retryId, voiceSignal } = {}) {
+    async function sendCommand(text, { retryId, voiceSignal, onVoiceText } = {}) {
       var _a2, _b2;
       if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
       if (activeChatRef.current || !chatReady || (voiceSignal == null ? void 0 : voiceSignal.aborted)) return null;
@@ -2329,7 +2512,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           effort: (_a2 = EFFORT[chatEffort]) == null ? void 0 : _a2.api,
           maxTokens: (_b2 = EFFORT[chatEffort]) == null ? void 0 : _b2.budget,
           signal: request.controller.signal,
-          onDelta: (content) => patchAssistant({ content }),
+          onDelta: (content) => {
+            patchAssistant({ content });
+            if (isCurrent()) onVoiceText == null ? void 0 : onVoiceText(content);
+          },
           onMeta: ({ degraded }) => {
             if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current));
           }
@@ -2413,9 +2599,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const status = (check == null ? void 0 : check.connectors) || null;
         connStatusRef.current = status;
         setConnStatus(status);
+        setConnIssues(check ? Object.fromEntries(Object.entries(check.issues).map(([n, issue]) => [n, { issue, failure: check.failures[n] }])) : {});
         const wanted = OPS_FEEDS.filter((f) => !status || status[f.server] !== "offline");
         const offline = OPS_FEEDS.filter((f) => !wanted.includes(f));
-        problems = offline.map((f) => ({ key: f.key, text: `${f.label} ${CONNECTOR_ISSUE_TEXT[check == null ? void 0 : check.issues[f.server]] || "offline"}` }));
+        problems = offline.map((f) => ({ key: f.key, text: `${f.label} ${CONNECTOR_ISSUE_TEXT[check == null ? void 0 : check.issues[f.server]] || "offline"}${(check == null ? void 0 : check.failures[f.server]) ? ` \u2014 ${CONNECTOR_FAILURE_TEXT[check.failures[f.server]]}` : ""}` }));
         if (!wanted.length) {
           setSyncProblems(problems);
           throw new Error(`${listNames(offline.map((f) => f.label))} are offline; no feeds were replaced.`);
@@ -2424,15 +2611,17 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const since48 = new Date(now2.getTime() - 48 * 3600 * 1e3).toISOString();
         const dayStart = chicagoMidnightISO(now2, 0);
         const dayEnd = chicagoMidnightISO(now2, 2);
+        const localStart = `${chicagoDayKey(now2)}T00:00:00`;
+        const localEnd = `${chicagoDayKey(new Date(dayEnd))}T00:00:00`;
         const steps = {
           voicemails: `Missed calls and voicemails from BOTH Quo inboxes (Fishing 218-325-6857, Pontoon 218-325-9846) \u2014 pass createdAfter=${since48} to the tool exactly. Include voicemail transcripts when present.`,
-          emails: "Up to 5 unread Gmail messages from the last 24 hours.",
-          events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow in America/Chicago) \u2014 pass these exact timestamps to the tool. Give each event's time in America/Chicago (e.g. "2:00 PM").`
+          emails: 'Up to 5 unread Gmail messages from the last 24 hours. Read each message with a view that includes its headers (not an IDs-only or metadata-only view) and copy its Subject header verbatim into "subject". If a message truly has no subject, leave "subject" empty \u2014 never write a placeholder such as "no subject returned".',
+          events: `Calendar events between ${dayStart} and ${dayEnd} (today and tomorrow in America/Chicago) \u2014 pass these exact instants to the tool; if it takes local times instead, pass ${localStart} to ${localEnd} with timeZone America/Chicago. Give each event's time in America/Chicago (e.g. "2:00 PM") and its start exactly as the tool returned it.`
         };
         const shapes = {
           voicemails: '"voicemails":[{"from":"","line":"Fishing or Pontoon","time":"","note":"","vm":"transcript or empty"}]',
           emails: '"emails":[{"from":"","time":"","subject":"","id":"the Gmail message id exactly as the tool returned it"}]',
-          events: '"events":[{"time":"","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]'
+          events: '"events":[{"time":"","start":"the event start as ISO 8601 with offset","title":"","detail":"","link":"the event htmlLink exactly as the tool returned it"}]'
         };
         const prompt = `${bradyContext()}
 
@@ -2462,7 +2651,7 @@ Then respond with ONLY valid JSON \u2014 no markdown, no commentary:
         for (const f of unverified) problems.push({ key: f.key, text: `${f.label} unverified` });
         setSyncProblems(problems);
         if (landed.length) {
-          setData((d) => ({ ...d, ...Object.fromEntries(landed.map((f) => [f.key, parsed[f.key]])) }));
+          setData((d) => ({ ...d, ...Object.fromEntries(landed.map((f) => [f.key, normalizeFeed(f.key, parsed[f.key], now2)])) }));
           setFeedLive((prev) => ({ ...prev, ...Object.fromEntries(landed.map((f) => [f.key, true])) }));
           setSelectedComm(null);
         }
@@ -2486,9 +2675,39 @@ Then respond with ONLY valid JSON \u2014 no markdown, no commentary:
     }
     const syncLiveRef = useRef(syncLive);
     syncLiveRef.current = syncLive;
+    async function reconnectConnector(server) {
+      const provider = PROVIDER_OF[server];
+      if (!provider || reconnecting) return;
+      const tab = typeof window !== "undefined" ? window.open("", "_blank") : null;
+      if (tab) tab.opener = null;
+      setReconnecting(true);
+      try {
+        const res = await fetch(RECONNECT_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider })
+        });
+        const data2 = res.ok ? await res.json() : null;
+        const url = typeof (data2 == null ? void 0 : data2.url) === "string" ? new URL(data2.url) : null;
+        if (!url || url.protocol !== "https:" || url.pathname !== "/oauth/start") throw new Error("no sign-in link");
+        reconnectedRef.current = true;
+        if (tab) tab.location.href = url.href;
+        else window.location.assign(url.href);
+      } catch {
+        if (tab) tab.close();
+        setError(`Could not start the ${provider === "quo" ? "Quo" : "Google"} sign-in. Try again in a minute.`);
+      } finally {
+        setReconnecting(false);
+      }
+    }
     useEffect(() => {
       const onVisible = () => {
         if (document.visibilityState !== "visible") return;
+        if (reconnectedRef.current) {
+          reconnectedRef.current = false;
+          syncLiveRef.current();
+          return;
+        }
         if (typeof navigator !== "undefined" && navigator.webdriver && !window.__EMBER_AUTOSYNC_TEST) return;
         if (lastSyncRef.current && Date.now() - lastSyncRef.current > OPS_STALE_MS) syncLiveRef.current();
       };
@@ -2900,7 +3119,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
       const fresh = OPS_FEEDS.filter((f) => feedLive[f.key] && !why(f));
       const rest = OPS_FEEDS.filter((f) => !fresh.includes(f)).map((f) => {
         const w = why(f);
-        return `${f.what[0].toUpperCase()}${f.what.slice(1)}: ${feedLive[f.key] ? "last sync kept" : "demo preview"}${w ? ` (${w.text})` : ""}`;
+        return `${f.what[0].toUpperCase()}${f.what.slice(1)}: ${feedLive[f.key] ? "last sync kept" : (connStatus == null ? void 0 : connStatus[f.server]) === "offline" ? "not loaded" : "demo preview"}${w ? ` (${w.text})` : ""}`;
       });
       if (!rest.length) return "";
       return [fresh.length ? `Live: ${fresh.map((f) => f.what).join(", ")}` : null, ...rest].filter(Boolean).join(" \xB7 ");
@@ -3025,6 +3244,10 @@ Check Gmail for anything newer.`;
         .ops-core, .ops-side { min-width:0; }
         .ops-data-note { margin:0 4px; color:var(--ink-dim); font-size:12px; line-height:1.5; }
         .feed-empty { padding:22px 0; color:var(--ink-dim); font-size:13px; line-height:1.6; }
+        .feed-offline { padding:10px 0 12px; color:var(--ink-dim); font-size:12.5px; line-height:1.55; }
+        .feed-offline p { margin:0 0 6px; }
+        .feed-offline strong { color:#ff8074; }
+        .feed-sample { margin:0 0 4px; font-family:var(--font-mono, ui-monospace, monospace); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ember-orange); }
 
         @media (max-width:1020px){
           .ember-root { height:auto; min-height:100vh; overflow:auto; }
@@ -4302,6 +4525,7 @@ Check Gmail for anything newer.`;
       },
       "B"
     ), /* @__PURE__ */ React.createElement("h1", { className: "brand-title font-display font-extrabold leading-none tracking-[0.13em] whitespace-nowrap" }, "BAXSTAR", " ", /* @__PURE__ */ React.createElement("span", { style: { background: "linear-gradient(90deg,var(--ember-red),var(--ember-orange))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", filter: "drop-shadow(0 0 12px rgba(255,90,50,.35))" } }, "EMBER")), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.25em]", style: { color: "var(--ink-faint)" } }, view === "ops" ? "OPS" : view === "projects" ? "PROJECTS" : view === "mission" ? "MISSION CONTROL" : "BAXSTAR STUDIO")), /* @__PURE__ */ React.createElement("div", { className: "font-mono-x flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-[10px] tracking-wider", style: { color: "var(--ink-dim)" } }, OPS_FEEDS.map((f) => {
+      var _a2;
       const state = (connStatus == null ? void 0 : connStatus[f.server]) === "offline" ? "offline" : !feedLive[f.key] ? "demo" : freshFeeds.includes(f) ? "live" : "stale";
       const dot = state === "live" ? "#54e08a" : state === "offline" ? "#ff4d3d" : "var(--ember-orange)";
       return /* @__PURE__ */ React.createElement(
@@ -4311,7 +4535,7 @@ Check Gmail for anything newer.`;
           className: "conn-dots flex items-center gap-1.5",
           "data-connector": f.server,
           "data-state": state,
-          title: state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: offline \u2014 ${feedLive[f.key] ? "showing the last sync" : "demo preview"}` : state === "stale" ? `${f.label}: refresh unverified \u2014 showing the last sync` : `${f.label}: demo preview`
+          title: state === "live" ? `${f.label}: live` : state === "offline" ? `${f.label}: ${CONNECTOR_ISSUE_TEXT[(_a2 = connIssues[f.server]) == null ? void 0 : _a2.issue] || "offline"} \u2014 ${feedLive[f.key] ? "showing the last sync" : "no live data loaded"}` : state === "stale" ? `${f.label}: refresh unverified \u2014 showing the last sync` : `${f.label}: sample data until SYNC`
         },
         /* @__PURE__ */ React.createElement("span", { className: "h-1.5 w-1.5 rounded-full", style: { background: dot, boxShadow: `0 0 8px ${dot}` } }),
         f.label.toUpperCase()
@@ -4414,11 +4638,21 @@ Check Gmail for anything newer.`;
           return handleBgUpload((_a2 = e.target.files) == null ? void 0 : _a2[0]);
         }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), error && /* @__PURE__ */ React.createElement("p", { className: "ops-error", role: "alert", title: error }, error), view === "ops" && opsNote && /* @__PURE__ */ React.createElement("p", { className: "ops-data-note", role: "status" }, opsNote), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "main-grid flex-1" }, /* @__PURE__ */ React.createElement("div", { ref: callsColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Calls & Voicemail", count: `${data.voicemails.length > 4 ? "4 / " : ""}${data.voicemails.length} ITEMS`, countColor: "var(--ember-orange)", delay: "0.15s", grow: true }, data.voicemails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No missed calls or voicemails returned for the last 48 hours."), data.voicemails.slice(0, 4).map((v, i) => /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("div", { className: "mt-1 text-[9.5px] leading-relaxed", style: { color: "var(--ink-faint)" } }, "Drop in your generated scenes \u2014 saved to this device."))), error && /* @__PURE__ */ React.createElement("p", { className: "ops-error", role: "alert", title: error }, error), view === "ops" && opsNote && /* @__PURE__ */ React.createElement("p", { className: "ops-data-note", role: "status" }, opsNote), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "main-grid flex-1" }, /* @__PURE__ */ React.createElement("div", { ref: callsColRef, className: "ops-side flex min-h-0 flex-col gap-4" }, /* @__PURE__ */ React.createElement(Panel, { notch: "warm", title: "Calls & Voicemail", count: quoDown ? "OFFLINE" : !feedLive.voicemails ? "SAMPLE" : `${data.voicemails.length > 4 ? "4 / " : ""}${data.voicemails.length} ITEMS`, countColor: "var(--ember-orange)", delay: "0.15s", grow: true }, quoDown && /* @__PURE__ */ React.createElement(
+      OfflineFeed,
+      {
+        label: "Quo",
+        what: "calls and voicemail",
+        status: connIssues.quo,
+        busy: reconnecting,
+        kept: feedLive.voicemails,
+        onReconnect: () => reconnectConnector("quo")
+      }
+    ), !quoDown && !feedLive.voicemails && /* @__PURE__ */ React.createElement(SampleNote, { what: "calls" }), !quoDown && feedLive.voicemails && data.voicemails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No missed calls or voicemails returned for the last 48 hours."), (!quoDown || feedLive.voicemails) && data.voicemails.slice(0, 4).map((v, i) => /* @__PURE__ */ React.createElement(
       Row,
       {
         key: i,
-        who: `${v.from}${v.line ? " \xB7 " + v.line : ""}`,
+        who: `${!feedLive.voicemails ? "SAMPLE \xB7 " : ""}${v.from}${v.line ? " \xB7 " + v.line : ""}`,
         when: v.time,
         selected: (selectedComm == null ? void 0 : selectedComm.type) === "vm" && selectedComm.i === i,
         onClick: () => setSelectedComm((selectedComm == null ? void 0 : selectedComm.type) === "vm" && selectedComm.i === i ? null : { type: "vm", i })
@@ -4679,23 +4913,35 @@ Check Gmail for anything newer.`;
       {
         notch: "hot",
         title: "Inbox",
-        count: `${data.emails.length > 4 ? "4 / " : ""}${data.emails.length} UNREAD`,
+        count: gmailDown && !feedLive.emails ? "OFFLINE" : !feedLive.emails ? "SAMPLE" : `${data.emails.length > 4 ? "4 / " : ""}${data.emails.length} UNREAD`,
         countColor: "#ff8074",
         delay: "0.2s",
         grow: true,
         action: /* @__PURE__ */ React.createElement("button", { type: "button", className: "panel-link", disabled: thinking, onClick: () => runPrompt("triage") }, "Triage Inbox \u203A")
       },
-      data.emails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No unread email returned for the last 24 hours."),
-      data.emails.slice(0, 4).map((m, i) => /* @__PURE__ */ React.createElement(
+      gmailDown && /* @__PURE__ */ React.createElement(
+        OfflineFeed,
+        {
+          label: "Gmail",
+          what: "email",
+          status: connIssues.gmail,
+          busy: reconnecting,
+          kept: feedLive.emails,
+          onReconnect: () => reconnectConnector("gmail")
+        }
+      ),
+      !gmailDown && !feedLive.emails && /* @__PURE__ */ React.createElement(SampleNote, { what: "email" }),
+      !gmailDown && feedLive.emails && data.emails.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No unread email returned for the last 24 hours."),
+      (!gmailDown || feedLive.emails) && data.emails.slice(0, 4).map((m, i) => /* @__PURE__ */ React.createElement(
         Row,
         {
           key: i,
-          who: m.from,
+          who: `${!feedLive.emails ? "SAMPLE \xB7 " : ""}${m.from}`,
           when: m.time,
           selected: (selectedComm == null ? void 0 : selectedComm.type) === "email" && selectedComm.i === i,
           onClick: () => setSelectedComm((selectedComm == null ? void 0 : selectedComm.type) === "email" && selectedComm.i === i ? null : { type: "email", i })
         },
-        /* @__PURE__ */ React.createElement("div", { title: m.subject, className: "feed-excerpt mt-1 text-xs leading-relaxed", style: { color: "var(--ink-dim)" } }, m.subject),
+        /* @__PURE__ */ React.createElement("div", { title: m.subject || "No subject line", className: "feed-excerpt mt-1 text-xs leading-relaxed", style: { color: "var(--ink-dim)" } }, m.subject || "(no subject line)"),
         /* @__PURE__ */ React.createElement("div", { className: "mt-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { className: "chip solid", disabled: thinking || !!leverBusy, onClick: (e) => {
           e.stopPropagation();
           draftReply(m, "email", i);
@@ -4704,7 +4950,17 @@ Check Gmail for anything newer.`;
           openTaskDraft(m, "email", i);
         } }, "Task draft"), /* @__PURE__ */ React.createElement(SourceLink, { href: gmailLink(m.id), label: "Open in Gmail" }))
       ))
-    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: `${data.events.length > 4 ? "4 / " : ""}${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), data.events.slice(0, 4).map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${e.time} \u2014 ${e.title}`, when: e.detail }, calendarLink(e.link) && /* @__PURE__ */ React.createElement("div", { className: "mt-1.5" }, /* @__PURE__ */ React.createElement(SourceLink, { href: calendarLink(e.link), label: "Open in Calendar" }))))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Panel, { notch: "cool", title: "Schedule", count: calendarDown && !feedLive.events ? "OFFLINE" : !feedLive.events ? "SAMPLE" : `${data.events.length > 4 ? "4 / " : ""}${data.events.length} EVENTS`, countColor: "var(--brass)", gauge: data.events.length / 6, delay: "0.3s" }, calendarDown && /* @__PURE__ */ React.createElement(
+      OfflineFeed,
+      {
+        label: "Calendar",
+        what: "schedule",
+        status: connIssues.calendar,
+        busy: reconnecting,
+        kept: feedLive.events,
+        onReconnect: () => reconnectConnector("calendar")
+      }
+    ), !calendarDown && !feedLive.events && /* @__PURE__ */ React.createElement(SampleNote, { what: "events" }), !calendarDown && feedLive.events && data.events.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "feed-empty" }, "No calendar events returned for today or tomorrow."), (!calendarDown || feedLive.events) && data.events.slice(0, 4).map((e, i) => /* @__PURE__ */ React.createElement(Row, { key: i, who: `${!feedLive.events ? "SAMPLE \xB7 " : ""}${e.day ? `${e.day} ` : ""}${e.time} \u2014 ${e.title}`, when: e.detail }, calendarLink(e.link) && /* @__PURE__ */ React.createElement("div", { className: "mt-1.5" }, /* @__PURE__ */ React.createElement(SourceLink, { href: calendarLink(e.link), label: "Open in Calendar" }))))))), view === "ops" && /* @__PURE__ */ React.createElement("div", { className: "tools-rail panel reveal", style: { animationDelay: "0.7s" } }, /* @__PURE__ */ React.createElement("div", { className: "tools-head" }, /* @__PURE__ */ React.createElement("img", { src: `${ASSETS}/svg/ornaments/corner-gear.svg`, alt: "", width: "12", height: "12", "aria-hidden": "true" }), /* @__PURE__ */ React.createElement("span", { className: "font-mono-x text-[9px] tracking-[0.28em]", style: { color: "var(--brass)" } }, "YOUR TOOLS")), /* @__PURE__ */ React.createElement("div", { className: "tools-groups" }, TOOL_LINKS.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.group, className: "tools-group" }, /* @__PURE__ */ React.createElement("div", { className: "fieldlabel" }, g.group), /* @__PURE__ */ React.createElement("div", { className: "tools-links" }, g.items.map((t) => t.overlay === "signal" ? /* @__PURE__ */ React.createElement(
       "button",
       {
         key: t.url,
@@ -6324,6 +6580,13 @@ Check Gmail for anything newer.`;
     } catch (e) {
     }
     return null;
+  }
+  function OfflineFeed({ label, what, status, kept, busy, onReconnect }) {
+    const issue = status == null ? void 0 : status.issue;
+    return /* @__PURE__ */ React.createElement("div", { className: "feed-offline", role: "status", "data-feed-offline": label.toLowerCase() }, /* @__PURE__ */ React.createElement("p", null, /* @__PURE__ */ React.createElement("strong", null, label, " is offline"), issue ? ` \u2014 ${CONNECTOR_ISSUE_TEXT[issue]}` : "", ".", (status == null ? void 0 : status.failure) ? ` Last attempt: ${CONNECTOR_FAILURE_TEXT[status.failure]}.` : ""), /* @__PURE__ */ React.createElement("p", null, kept ? `Showing the last ${what} Ember synced, not a fresh read.` : `No ${what} were loaded. Nothing here is current customer activity.`), RECONNECTABLE.has(issue) && /* @__PURE__ */ React.createElement("button", { type: "button", className: "chip solid", disabled: busy, onClick: onReconnect }, busy ? "Opening sign-in\u2026" : `Reconnect ${label === "Quo" ? "Quo" : "Google"}`));
+  }
+  function SampleNote({ what }) {
+    return /* @__PURE__ */ React.createElement("p", { className: "feed-sample", "data-feed-sample": what }, "Sample ", what, ", not real customers. Live ", what, " load on SYNC.");
   }
   function SourceLink({ href, label }) {
     if (!href) return null;

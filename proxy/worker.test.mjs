@@ -961,8 +961,8 @@ for (const model of ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
     env, {}, { fetch: f, now: () => 1_234_567 }
   );
   const body = await res.json();
-  check("connector status verifies credentials without reading private data",
-    res.status === 200 &&
+  check("connector status verifies credentials without reading private data (207: Drive is down)",
+    res.status === 207 &&
     body.connectors.quo === "connected" &&
     body.connectors.gmail === "connected" &&
     body.connectors.calendar === "connected" &&
@@ -1139,7 +1139,7 @@ const ttsPost = (body, headers = {}) =>
   const body = await res.json();
   check("same-origin connector-status route stays credential-only", res.status === 200 && body.connectors.gmail === "connected" && Object.keys(body.connectors).length === 1 && f.calls.length === 0);
   const empty = await worker.fetch(new Request(`${API_ORIGIN}/api/connectors/status`, { method: "POST", headers: { Origin: ORIGIN } }), baseEnv, {}, { fetch: f });
-  check("empty connector-status request still checks all four connectors", empty.status === 200 && Object.keys((await empty.json()).connectors).length === 4);
+  check("empty connector-status request still checks all four connectors (207 while any is down)", empty.status === 207 && Object.keys((await empty.json()).connectors).length === 4);
 }
 
 for (const [path, body] of [["/api/tts", null], ["/api/tts", []], ["/api/connectors/status", null], ["/api/connectors/status", { connectors: [12] }], ["/api/connectors/status", { connectors: "gmail" }]]) {

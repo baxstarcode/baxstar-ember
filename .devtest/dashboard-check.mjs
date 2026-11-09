@@ -68,9 +68,9 @@ const check = (label, condition, extra = "") => {
 
 const ALL_CONNECTED = { quo: "connected", gmail: "connected", calendar: "connected", gdrive: "connected" };
 
-async function routeStatus(page, connectors) {
+async function routeStatus(page, connectors, extra = {}) {
   await page.route(`${ORIGIN}/api/connectors/status`, (route) => route.fulfill({
-    status: 200, contentType: "application/json", body: JSON.stringify({ connectors }),
+    status: 200, contentType: "application/json", body: JSON.stringify({ connectors, ...extra }),
   }));
 }
 
@@ -352,6 +352,66 @@ try {
     await context.close();
   }
 
+  // 2026-11-08: the Schedule panel spans today and tomorrow, but rows showed only a
+  // time, so tonight's list read as "tomorrow"; and a model wrote "no subject
+  // returned" as an email subject. Pinned to 9:30 PM CST on Sunday Nov 8.
+  {
+    const name = "CALENDAR DAYS";
+    const context = await offlineContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.clock.setFixedTime(new Date("2026-11-09T03:30:00Z"));
+    await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
+    await routeStatus(page, ALL_CONNECTED);
+    let syncPrompt = "";
+    await page.route(`${ORIGIN}/api/messages`, async (route) => {
+      const raw = route.request().postData() || "";
+      if (/ONLY valid JSON/.test(raw)) syncPrompt = JSON.parse(raw).messages[0].content;
+      const text = JSON.stringify({
+        voicemails: [],
+        emails: [{ from: "SubjectlessSender", time: "8:00 PM", subject: "no subject returned", id: "18f2a9c7b3d4e5f7" }],
+        events: [
+          { time: "2:00 PM", start: "2026-11-08T14:00:00-06:00", title: "PastTodayEvent", detail: "" },
+          { time: "1:00 PM", start: "2026-11-09T13:00:00-06:00", title: "TomorrowAfternoon", detail: "" },
+          { time: "9:00 PM", start: "2026-11-08T21:00:00-06:00", title: "TonightEvent", detail: "" },
+          { time: "6:00 AM", start: "2026-11-09T06:00:00-06:00", title: "TomorrowEarly", detail: "" },
+          { time: "8:00 AM", start: "2026-11-09T08:00:00-06:00", title: "TomorrowMorning", detail: "" },
+        ],
+      });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ content: verifiedSyncContent(text) }) });
+    });
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForFunction(() => /TomorrowEarly/.test(document.body.innerText), null, { timeout: 10000 });
+    console.log(`\n===== ${name} =====`);
+    const rows = await page.locator(".ember-row .row-title").allInnerTexts();
+    const schedule = rows.filter((t) => /Event|Tomorrow/.test(t));
+    check(`${name} upcoming events first, each row names its day`, JSON.stringify(schedule) === JSON.stringify([
+      "Today 9:00 PM — TonightEvent", "Tomorrow 6:00 AM — TomorrowEarly", "Tomorrow 8:00 AM — TomorrowMorning", "Tomorrow 1:00 PM — TomorrowAfternoon",
+    ]), JSON.stringify(schedule));
+    const body = await page.locator("body").innerText();
+    check(`${name} a placeholder subject shows the honest fallback`, /\(no subject line\)/.test(body) && !/no subject returned/i.test(body));
+    check(`${name} sync prompt asks for the Subject header verbatim`, /Subject header verbatim/.test(syncPrompt));
+    check(`${name} sync prompt gives Chicago local bounds and the event start`,
+      /2026-11-08T00:00:00 to 2026-11-10T00:00:00 with timeZone America\/Chicago/.test(syncPrompt) && /"start"/.test(syncPrompt));
+    check(`${name} model is told which day tomorrow is`, /today is Sunday, November 8 and tomorrow is Monday, November 9/.test(syncPrompt));
+    await context.close();
+  }
+
+  // Before any sync the panels hold sample furniture, and must say so on every
+  // row (2026-11-08: demo calls read as real customers while Quo was down).
+  {
+    const name = "SAMPLE DATA";
+    const context = await offlineContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await page.goto(`${ORIGIN}/index.html`, { waitUntil: "load" });
+    await page.waitForSelector(".core-chamber", { timeout: 15000 });
+    console.log(`\n===== ${name} =====`);
+    const body = await page.locator("body").innerText();
+    check(`${name} sample calls are labelled on the row`, /SAMPLE · \(701\) 555-0142/.test(body));
+    check(`${name} every feed says it is sample data`, await page.locator("[data-feed-sample]").count() === 3);
+    check(`${name} panel counts read SAMPLE, not item totals`, !/\d+ ITEMS|\d+ UNREAD|\d+ EVENTS/.test(body));
+    await context.close();
+  }
+
   // One dead connector must not blank the others (live 2026-10-15: Quo offline,
   // Gmail/Calendar/Drive connected, every panel stuck on the demo preview).
   {
@@ -362,7 +422,16 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => { window.__EMBER_AUTOSYNC_TEST = true; });
-    await routeStatus(page, { ...ALL_CONNECTED, quo: "offline" });
+    await routeStatus(page, { ...ALL_CONNECTED, quo: "offline" }, {
+      issues: { quo: "reconnect_required" },
+      health: { quo: { source: "setup", failure: "provider_rejected", oauthError: "invalid_grant", httpStatus: 400 } },
+    });
+    const reconnects = [];
+    await page.route(`${ORIGIN}/api/connectors/reconnect`, async (route) => {
+      reconnects.push(JSON.parse(route.request().postData() || "{}"));
+      await route.fulfill({ json: { url: "https://ember-claude-proxy.fixture.workers.dev/oauth/start?ticket=fixture-ticket" } });
+    });
+    await context.route("https://ember-claude-proxy.fixture.workers.dev/oauth/start**", (route) => route.fulfill({ contentType: "text/html", body: "<title>fixture sign-in</title>" }));
     await page.route(`${ORIGIN}/api/messages`, async (route) => {
       const body = JSON.parse(route.request().postData() || "{}");
       requests.push(body);
@@ -390,10 +459,21 @@ try {
     check(`${name} sync prompt never asks for Quo`, !/Quo inboxes/.test(JSON.stringify(syncRequest?.messages)));
     const body = await page.locator("body").innerText();
     check(`${name} Gmail and Calendar panels filled live`, /PartialInboxProof/.test(body) && /PartialEventProof/.test(body));
-    check(`${name} calls panel keeps the demo preview`, /\(701\) 555-0142/.test(body));
+    check(`${name} calls panel shows no sample calls beside a dead connector`, !/555-0142|555-0977/.test(body));
+    const offlineCard = await page.locator('[data-feed-offline="quo"]').innerText();
+    check(`${name} calls panel names the sign-in problem and its cause`,
+      /Quo is offline — needs a new sign-in/.test(offlineCard) && /provider refused the saved sign-in/.test(offlineCard) && /Nothing here is current customer activity/.test(offlineCard), offlineCard);
+    check(`${name} live Gmail rows carry no SAMPLE label`, !/SAMPLE · PartialInboxProof/.test(body));
+    const popupPromise = context.waitForEvent("page");
+    await page.getByRole("button", { name: "Reconnect Quo" }).click();
+    const popup = await popupPromise;
+    await popup.waitForURL(/\/oauth\/start\?ticket=fixture-ticket/, { timeout: 10000 });
+    check(`${name} Reconnect asks the Worker for a Quo sign-in link and opens it`,
+      reconnects.length === 1 && reconnects[0].provider === "quo", JSON.stringify(reconnects));
+    await popup.close();
     check(`${name} no red sync error`, !/did not verify|no feeds were replaced/i.test(body));
     const note = await page.locator(".ops-data-note").innerText();
-    check(`${name} truth line names Quo offline`, /Calls and voicemail: demo preview \(Quo offline\)/.test(note), note);
+    check(`${name} truth line names Quo's sign-in problem`, /Calls and voicemail: not loaded \(Quo needs a new sign-in — the provider refused the saved sign-in\)/.test(note), note);
     check(`${name} header Quo light offline`, (await page.locator('[data-connector="quo"]').getAttribute("data-state")) === "offline");
     check(`${name} header Gmail light live`, (await page.locator('[data-connector="gmail"]').getAttribute("data-state")) === "live");
     check(`${name} header reads PARTIAL`, /PARTIAL ·/.test(await page.locator(".hdr-clock").innerText()));
