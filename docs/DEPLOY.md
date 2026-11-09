@@ -193,7 +193,8 @@ auto-deployed `4d824627` (Google seed, 20:19 UTC) and then
 At 15:32 CDT Brady's signed-in page showed QUO / GMAIL / CALENDAR lit, LIVE, a real
 Quo missed call, live Gmail and Calendar rows, and a chat reply. He reported that
 the Signal Log and a spoken reply also worked. Anonymous `workers.dev` API routes
-still return 404. **PROVISIONAL:** the step-4 recheck after access-token expiry. The
+still return 404. **PROVISIONAL (never run; the grant died between 10-26 and 11-01
+unnoticed, see `docs/KNOWN-ISSUES.md` 1b):** the step-4 recheck after access-token expiry. The
 legacy `MCP_REFRESH_*` secrets remain on the Worker unused (required mode never reads
 them); deleting them and revoking the old grants is Brady's call.
 
@@ -333,7 +334,9 @@ Release order (one owner):
 6. Persistence evidence, not just one fresh request: after more than 1 hour (first access
    token expiry) and again after 12+ hours, check `wrangler tail`/Workers Logs for
    `"outcome":"renewed"` with `"rotated":true`, and `health.quo.renewals` climbing in
-   status. Record times and counts only.
+   status. Record times and counts only. **Done 2026-11-09:** four rotating renewals at
+   08:27, 14:08, 16:14 and 21:37 UTC (renewals 1→4), no `deferred`/`stopped` lines; the
+   idle 12-hour keep-alive has not fired yet because each renewal re-arms it.
 7. Clean up: delete the API token in Cloudflare; remove the stale, invalid
    `CLOUDFLARE_API_TOKEN` variable from the `baxstar-booking` and Default cloud
    environments.
