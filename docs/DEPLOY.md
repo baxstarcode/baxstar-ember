@@ -255,7 +255,7 @@ fixed codes leave the Worker; tokens, grant identities, and raw provider/storage
 remain private. Successful authorization clears the issue and a successful feed sync
 clears the stale note.
 
-### In-app reconnect and grant health — built 2026-11-08, NOT deployed
+### In-app reconnect and grant health — deployed 2026-11-08 (Worker `7736245b`)
 
 Why: on 11-08 Quo read `reconnect_required` 13 days after the 10-26 consent, and the
 owner had recorded nothing about why. Recovery also meant copying a token from the
@@ -308,9 +308,11 @@ Release order (one owner):
 1. **Cloudflare access — Workers Builds (Brady's decision, 2026-11-08: "Connect Worker
    to GitHub").** The Worker is connected to `baxstarcode/baxstar-ember` in Cloudflare
    (Worker → Settings → Build): production branch `main`, root directory `proxy`,
-   deploy command `npx wrangler deploy`. Merging to `main` now deploys the Worker the
-   way Cloudflare Pages already ships the UI, with Cloudflare's own build token; no
-   agent needs a Cloudflare API token. Undo: Worker → Settings → Build → Disconnect.
+   deploy command `npx wrangler deploy`, build watch path `proxy/*` (UI- or docs-only
+   merges do not redeploy the Worker). Merging a change under `proxy/` to `main` deploys
+   the Worker the way Cloudflare Pages already ships the UI, with Cloudflare's own build
+   token; no agent needs a Cloudflare API token. First build: `a157305a` → `7736245b`
+   (2026-11-08 23:47 CST), replacing `47108b31`. Undo: Worker → Settings → Build → Disconnect.
    A manual deploy still works with an **Edit Cloudflare Workers** token (7-day expiry,
    never pasted into chat) or `wrangler login` on a Mac with Node.
 2. Record the live state: `npx wrangler deployments status` and

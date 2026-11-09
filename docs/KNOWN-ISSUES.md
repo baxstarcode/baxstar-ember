@@ -95,7 +95,13 @@ stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been reco
 
 ## 1b. Quo is offline
 
-**Status: REOPENED 2026-11-08 — repair built on `claude/brave-tesla-xnlnr6`, NOT DEPLOYED.**
+**Status: FIXED 2026-11-08 23:50 CST.** PR #64 merged (`a41d6cb`), Worker `7736245b` deployed by
+Cloudflare Workers Builds, Quo reconnected in-app; status 200 with all four connectors
+connected and a read-only Quo chat read verified. **PROVISIONAL:** the first access-token
+renewal and the 12-hour keep-alive (watch Workers Logs for a `token-owner` line with
+`"provider":"quo"` and `"outcome":"renewed"`). History of the reopen follows.
+
+**Reopened 2026-11-08 — repair built on `claude/brave-tesla-xnlnr6` (deployed the same night).**
 Brady saw a red Quo light, "Quo needs a new sign-in" and demo calls 13 days after the
 10-26 consent. The 1-hour recheck from 10-26 was never answered, so persistence was
 never confirmed. **Live evidence (read-only, 2026-11-08, Workers Logs via the existing
@@ -130,8 +136,8 @@ result; that text now distinguishes "offline" from "no tool result this time". T
 with the token it holds, renews idle grants every 12 hours, answers 207 with `health` in
 status while anything is down, and adds one-tap in-app Reconnect that saves the fresh
 grant server-side. Deploy steps and
-verification: `docs/DEPLOY.md` "In-app reconnect and grant health". Until deployed and
-reconnected, Quo stays offline; OPS now says so instead of showing sample calls.
+verification: `docs/DEPLOY.md` "In-app reconnect and grant health". OPS now names a dead
+connector instead of showing sample calls.
 
 **Earlier status: FIXED 2026-10-26. The persistence recheck after token expiry is PROVISIONAL.**
 The coordinator cutover went live (Worker `0283d68b`, then `47108b31` with both fresh
@@ -493,7 +499,7 @@ and a test.
 
 ## 11. November 8 feed and voice findings
 
-**Status: FIXED in code 2026-11-08 (branch `claude/brave-tesla-xnlnr6`); live behavior PROVISIONAL until deployed.**
+**Status: FIXED 2026-11-08 and deployed with PR #64 (Pages from `a41d6cb`); real-device voice timing stays PROVISIONAL.**
 
 - **"no subject returned" on Gmail cards.** No Ember code writes that text; the model did.
   Neither prompt said to read the Subject header, and the Signal Log ignored a `subject`

@@ -10,7 +10,9 @@ schedule's end stops a grant; `/api/connectors/status` answers HTTP 207 (200 onl
 everything is up) and logs one `connector-status` line naming what is down. Brady chose
 Cloudflare **Workers Builds** for Worker deploys (production branch `main`, root
 `proxy`), so a merge ships the Worker with Pages and no agent needs a Cloudflare token.
-Live deploy, Reconnect and verification are recorded in the Ember Handoff Log.
+Live since 2026-11-08 23:47 CST (Worker `7736245b`, build `a157305a`); Quo reconnected
+in-app at 23:50 and status read 200 with Quo, Gmail, Calendar and Drive connected. Renewal
+persistence is PROVISIONAL until a Quo `renewed` log line appears. Evidence: Ember Handoff Log.
 
 **Quo repair, feed truth and faster voice — November 8, 2026 (Claude Code, branch `claude/brave-tesla-xnlnr6`, NOT DEPLOYED):**
 On 11-08 Ember showed a red Quo light, "Quo needs a new sign-in" and demo calls, 13 days

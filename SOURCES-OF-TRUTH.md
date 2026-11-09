@@ -84,7 +84,8 @@ of links to Brady's other properties.
 - **Claude, 2026-11-08 (second pass) — Quo root cause, retry schedule, 207 status,
   Workers Builds:** continued `claude/brave-tesla-xnlnr6` rather than rebuilding. Ambiguous
   renewals retry instead of stopping; status answers 207 while a connector is down; Worker
-  deploys move to Cloudflare Workers Builds from `main` (Brady's choice). Record:
+  deploys move to Cloudflare Workers Builds from `main` (Brady's choice). Live 2026-11-08
+  23:47 CST as Worker `7736245b`; Quo reconnected in-app 23:50. Record:
   `docs/KNOWN-ISSUES.md` 1b "Root cause"; `docs/DEPLOY.md` "In-app reconnect and grant
   health"; Ember Handoff Log.
 - **Claude Code, 2026-11-08 — Quo repair, feed truth, streamed voice (NOT deployed):**
