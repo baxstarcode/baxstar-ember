@@ -1,5 +1,17 @@
 # Ember — Current State
 
+**Quo root cause and deploy path — November 8, 2026, second pass (Claude, Brady: "Fix this once and for all. Go"):**
+Root cause: the token owner made every failed Quo renewal a permanent, unrecorded stop,
+and Quo rotates refresh tokens, so one transient fault (429, 5xx, a reply over 8 s) or a
+real rejection killed the grant; the trigger itself (at or before 11-01 21:33 UTC) is
+past log retention. Added on the same branch: ambiguous renewals retry the held token at
+1, 5, 15, 30 and 60 minutes (about 5 hours, alarm-driven) and only Quo's refusal or the
+schedule's end stops a grant; `/api/connectors/status` answers HTTP 207 (200 only when
+everything is up) and logs one `connector-status` line naming what is down. Brady chose
+Cloudflare **Workers Builds** for Worker deploys (production branch `main`, root
+`proxy`), so a merge ships the Worker with Pages and no agent needs a Cloudflare token.
+Live deploy, Reconnect and verification are recorded in the Ember Handoff Log.
+
 **Quo repair, feed truth and faster voice — November 8, 2026 (Claude Code, branch `claude/brave-tesla-xnlnr6`, NOT DEPLOYED):**
 On 11-08 Ember showed a red Quo light, "Quo needs a new sign-in" and demo calls, 13 days
 after the 10-26 consent. Findings: that text is the Worker's `reconnect_required` code,
@@ -14,8 +26,9 @@ authorization in that period, which points to a Quo-side grant loss but does not
 Cloudflare deploy token is unrelated: the Worker never uses it at runtime (it is still
 set, invalid, in the `baxstar-booking` cloud environment). Built, tested, not deployed:
 (1) the owner classifies refresh outcomes (provider rejection, rate limit kept as
-retryable with the same unspent token, no reply / provider error / bad reply kept as the
-durable stop), records the last outcome and logs one fixed-vocabulary line per renewal;
+retryable with the same unspent token, no reply / provider error / bad reply — durable
+stop in the first pass, retry schedule since the second), records the last outcome and
+logs one fixed-vocabulary line per renewal;
 (2) `/api/connectors/status` returns per-connector `health` (source, connectedAt,
 lastRenewedAt, renewals, rotations, failure) with no token text; (3) in-app **Reconnect
 Quo / Reconnect Google**: signed-in Ember gets a 10-minute signed ticket, the provider

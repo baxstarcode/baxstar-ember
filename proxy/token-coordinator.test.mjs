@@ -151,13 +151,37 @@ test("failed final persistence retries the save without refreshing again", async
   assert.equal(h.calls.at(-1), "fixture-rotated");
 });
 
-test("a crash after a failed final save cannot replay a spent token", async () => {
+// 2026-11-08 root-cause fix: an ambiguous renewal used to be a durable stop, which
+// could never save a grant (a rotated token was already lost; an unrotated one was
+// thrown away). The held token is now retried on GRANT_RETRY_SCHEDULE_MS.
+test("a crash after a failed final save retries the held token on the schedule, never at once", async () => {
   const h = harness();
   h.faults = { failFinal: true };
   await h.direct();
   h.restart(); h.faults = {};
+  const after = await h.direct();
+  assert.equal(after.status, 503);
+  assert.equal((await after.json()).error, "temporarily_unavailable");
+  assert.equal(h.calls.length, 1, "no second call until the first retry slot");
+  // A provider that honours its previous token (or never rotated) recovers the grant.
+  h.advance(61_000);
+  assert.equal((await h.direct()).status, 200);
+  assert.deepEqual(h.calls, ["fixture-quo-seed", "fixture-quo-seed"]);
+});
+
+test("a strict provider refusing the replayed token ends the grant: recorded, no loop", async () => {
+  const h = harness();
+  h.faults = { failFinal: true };
+  await h.direct();
+  h.restart(); h.faults = {};
+  await h.direct();
+  h.provider = () => Response.json({ error: "invalid_grant" }, { status: 400 });
+  h.advance(61_000);
   assert.equal((await (await h.direct()).json()).error, "reconnect_required");
-  assert.equal(h.calls.length, 1);
+  h.advance(24 * 3600 * 1000);
+  assert.equal((await h.direct()).status, 503);
+  assert.deepEqual(h.calls, ["fixture-quo-seed", "fixture-quo-seed"]);
+  assert.equal(h.records.get(keyFor("quo", h.env)).phase, "rejected");
 });
 
 for (const [name, provider] of [
@@ -169,15 +193,39 @@ for (const [name, provider] of [
   ["invalid token", () => Response.json({ access_token: "fixture-access", refresh_token: {} })],
   ["invalid expiry", () => Response.json({ access_token: "fixture-access", expires_in: -1 })],
 ]) {
-  test(`${name} leaves a durable stop across retries/restarts`, async () => {
+  test(`${name}: the held token is kept and retried on the schedule, across restarts`, async () => {
     const h = harness({ provider });
-    assert.equal((await h.direct()).status, 503);
+    const first = await h.direct();
+    assert.equal(first.status, 503);
+    assert.equal((await first.json()).error, "temporarily_unavailable");
+    const key = keyFor("quo", h.env);
+    assert.equal(h.records.get(key).phase, "ready");
+    assert.equal(h.records.get(key).attempts, 1);
+    assert.equal(h.alarms.get(key), h.clock + 60_000, "the retry is armed even while Ember stays closed");
     h.restart();
-    assert.equal((await (await h.direct()).json()).error, "reconnect_required");
-    assert.equal(h.calls.length, 1);
-    assert.equal(h.records.values().next().value.phase, "refreshing");
+    assert.equal((await (await h.direct()).json()).error, "temporarily_unavailable");
+    assert.equal(h.calls.length, 1, "nothing is retried before its slot");
+    h.provider = () => Response.json({ access_token: "fixture-access", refresh_token: "fixture-rotated", expires_in: 3600 });
+    h.advance(61_000);
+    assert.equal((await h.direct()).status, 200);
+    assert.deepEqual(h.calls, ["fixture-quo-seed", "fixture-quo-seed"]);
+    assert.equal(h.records.get(key).attempts, undefined, "a renewal clears the retry count");
   });
 }
+
+test("a provider that never answers ends the grant once the retry schedule runs out", async () => {
+  const h = harness({ provider: () => Response.json({ error: "server_error" }, { status: 502 }) });
+  const key = keyFor("quo", h.env);
+  for (let attempt = 1; attempt <= 9; attempt++) {
+    await h.direct();
+    h.advance(61 * 60 * 1000);
+  }
+  assert.equal((await (await h.direct()).json()).error, "reconnect_required");
+  assert.equal(h.calls.length, 9, "the first try plus eight scheduled retries, then stop");
+  assert.equal(h.records.get(key).phase, "stopped");
+  assert.equal(h.records.get(key).refresh, undefined, "a stopped record keeps no token");
+  assert.match(h.logs.join("\n"), /"outcome":"stopped","failure":"provider_error","httpStatus":502.*"attempts":9/);
+});
 
 test("discovery failure is retryable because no refresh intent was committed", async () => {
   const h = harness();
@@ -197,7 +245,8 @@ test("new consent recovers without overwriting the previous grant", async () => 
   h.provider = () => Response.json({ access_token: "fixture-new-access", refresh_token: "fixture-new-rotation", expires_in: 120 });
   assert.equal((await h.direct()).status, 200);
   assert.equal(h.records.size, 2);
-  assert.equal(h.records.get(oldKey).phase, "refreshing");
+  assert.equal(h.records.get(oldKey).phase, "ready", "the old grant keeps its own retry schedule");
+  assert.equal(h.records.get(oldKey).attempts, 1);
   assert.deepEqual(h.calls, ["fixture-quo-seed", "fixture-new-consent"]);
 });
 
@@ -250,16 +299,55 @@ test("malformed persisted state fails closed", async () => {
   assert.equal(h.calls.length, 0);
 });
 
-test("status distinguishes transient storage trouble from an ambiguous refresh", async () => {
+test("status distinguishes storage trouble, an ambiguous renewal and a refused grant", async () => {
   const h = harness();
   h.faults = { failRead: true };
   assert.deepEqual((await h.status()).issues, { quo: "temporarily_unavailable" });
   h.faults = {};
   h.provider = () => { throw new Error("fixture provider lost reply"); };
-  assert.deepEqual((await h.status()).issues, { quo: "reconnect_required" });
+  const lost = await h.status();
+  assert.deepEqual(lost.issues, { quo: "temporarily_unavailable" });
+  assert.equal(lost.health.quo.failure, "no_reply");
+  assert.equal(lost.health.quo.attempts, 1);
+  assert.ok(Date.parse(lost.health.quo.retryAt) > h.clock);
   h.restart();
-  assert.deepEqual((await h.status()).issues, { quo: "reconnect_required" });
+  assert.deepEqual((await h.status()).issues, { quo: "temporarily_unavailable" });
   assert.equal(h.calls.length, 1);
+  h.provider = () => Response.json({ error: "invalid_grant" }, { status: 400 });
+  h.advance(61_000);
+  assert.deepEqual((await h.status()).issues, { quo: "reconnect_required" });
+  assert.equal(h.calls.length, 2);
+});
+
+test("status answers 207 with one fixed log line while a connector is down; 200 and silence when all are up", async () => {
+  const h = harness({ provider: (init) => new URLSearchParams(init.body).get("refresh_token") === "fixture-quo-seed"
+    ? Response.json({ error: "invalid_grant" }, { status: 400 })
+    : Response.json({ access_token: "fixture-access", refresh_token: "fixture-rotated", expires_in: 3600 }) });
+  const ask = () => worker.fetch(new Request(`${ORIGIN}/api/connectors/status`, {
+    method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify({ connectors: ["quo", "gmail"] }),
+  }), h.env, {}, { fetch: () => { throw new Error("legacy refresh must not run"); } });
+  const lines = [];
+  const original = console.log;
+  console.log = (line) => lines.push(String(line));
+  try {
+    const down = await ask();
+    assert.equal(down.status, 207, "a dead Quo must never read as a healthy 200");
+    assert.deepEqual((await down.json()).connectors, { quo: "offline", gmail: "connected" });
+    assert.equal(lines.length, 1);
+    const line = JSON.parse(lines[0]);
+    assert.equal(line.ember, "connector-status");
+    assert.deepEqual(Object.keys(line.down), ["quo"]);
+    assert.equal(line.down.quo.reason, "reconnect_required");
+    assert.equal(line.down.quo.failure, "provider_rejected");
+    assert.doesNotMatch(lines[0], /fixture-/);
+    await h.install("quo", { refresh: "fixture-app-refresh", token: "fixture-app-access", expiresIn: 3600 });
+    const up = await ask();
+    assert.equal(up.status, 200);
+    assert.deepEqual((await up.json()).connectors, { quo: "connected", gmail: "connected" });
+    assert.equal(lines.length, 1, "healthy status logs nothing");
+  } finally {
+    console.log = original;
+  }
 });
 
 test("unknown coordinator error text cannot leak through status", async () => {
@@ -353,7 +441,7 @@ test("a legacy in-flight marker reports an interrupted refresh", async () => {
 });
 
 test("an in-app install replaces a stopped seed grant without presenting the seed", async () => {
-  const h = harness({ provider: () => { throw new Error("fixture lost reply"); } });
+  const h = harness({ provider: () => Response.json({ error: "invalid_grant" }, { status: 400 }) });
   assert.equal((await h.status()).issues.quo, "reconnect_required");
   assert.equal((await h.install("quo", { refresh: "fixture-app-refresh", token: "fixture-app-access", expiresIn: 3600 })).status, 200);
   const status = await h.status();
@@ -368,7 +456,7 @@ test("an in-app install replaces a stopped seed grant without presenting the see
   h.advance(2 * 3600 * 1000);
   assert.equal((await h.status()).health.quo.rotations, 2);
   assert.deepEqual(h.calls, ["fixture-quo-seed", "fixture-app-refresh", "fixture-app-rotated-1"]);
-  assert.equal(h.records.get(keyFor("quo", h.env)).phase, "refreshing", "the stopped seed grant is left untouched");
+  assert.equal(h.records.get(keyFor("quo", h.env)).phase, "rejected", "the stopped seed grant is left untouched");
 });
 
 test("a second install supersedes the first app grant; its token is never presented", async () => {
@@ -414,7 +502,7 @@ test("keep-alive: a renewal arms a 12-hour alarm that renews with the rotated to
   assert.match(h.logs.at(-1), /"trigger":"keepalive","outcome":"renewed"/);
 });
 
-test("keep-alive leaves a stopped grant stopped and re-arms after a rate limit", async () => {
+test("keep-alive re-arms after a rate limit or a lost reply and leaves a refused grant stopped", async () => {
   const h = harness({ provider: () => new Response("busy", { status: 429, headers: { "Retry-After": "300" } }) });
   const key = keyFor("quo", h.env);
   await h.direct();
@@ -426,14 +514,19 @@ test("keep-alive leaves a stopped grant stopped and re-arms after a rate limit",
   h.provider = () => { throw new Error("fixture lost reply"); };
   h.advance(6 * 60 * 1000);
   await h.owner(key).alarm();
-  assert.equal(h.records.get(key).phase, "refreshing");
+  assert.equal(h.records.get(key).phase, "ready");
+  assert.equal(h.alarms.get(key), h.clock + 60 * 1000, "a lost reply is retried in the first slot");
+  h.provider = () => Response.json({ error: "invalid_grant" }, { status: 400 });
+  h.advance(61 * 1000);
+  await h.owner(key).alarm();
+  assert.equal(h.records.get(key).phase, "rejected");
   h.advance(12 * 3600 * 1000);
   await h.owner(key).alarm();
-  assert.equal(h.calls.length, 3, "no provider call once stopped");
+  assert.equal(h.calls.length, 4, "no provider call once refused");
 });
 
 test("reconnect flow: signed-in ticket → provider consent → grant saved, token never shown", async () => {
-  const h = harness({ provider: () => { throw new Error("fixture lost reply"); } });
+  const h = harness({ provider: () => Response.json({ error: "invalid_grant" }, { status: 400 }) });
   Object.assign(h.env, { OAUTH_STATE_SECRET: "fixture-state-secret", OAUTH_REDIRECT_URI: "https://ember-claude-proxy.fixture.workers.dev/oauth/callback" });
   assert.equal((await h.status()).issues.quo, "reconnect_required");
   const providerFetch = async (url, init = {}) => {

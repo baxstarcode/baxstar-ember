@@ -936,6 +936,16 @@ const GRANT_DISCOVERY_TIMEOUT_MS = 8000;
 const GRANT_TOKEN_TIMEOUT_MS = 15000;
 const GRANT_DISCOVERY_CACHE_MS = 24 * 60 * 60 * 1000;
 const APP_INSTALL_WINDOW_MS = 15 * 60 * 1000;
+// AMBIGUOUS RENEWALS RETRY (2026-11-08, root-cause fix). No reply, a 5xx, an
+// unreadable reply or a crash mid-call used to be a durable stop. That stop could
+// never save a grant: if the provider had already rotated, the new token was lost
+// anyway; if it had not, the stop killed a grant that still worked. Every transient
+// fault was therefore permanent, which is the failure Brady saw (Quo dead for 7+
+// days, cause unrecorded). The owner now keeps the token it holds and retries on this
+// schedule (about 5 hours in all). Only the provider's own refusal (400/401/403,
+// Quo's documented "authorize again" signal for invalid_grant) or exhausting the
+// schedule ends the grant, and either one is recorded, logged and shown in status.
+const GRANT_RETRY_SCHEDULE_MS = [1, 5, 15, 30, 60, 60, 60, 60].map((minutes) => minutes * 60 * 1000);
 
 const isoTime = (t) => (Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : undefined);
 const countOf = (n) => (Number.isInteger(n) && n >= 0 ? n : undefined);
@@ -954,6 +964,7 @@ function publicGrantHealth(health) {
     httpStatus: Number.isInteger(health.httpStatus) && health.httpStatus >= 100 && health.httpStatus < 600 ? health.httpStatus : undefined,
     oauthError: OAUTH_ERRORS.has(health.oauthError) ? health.oauthError : undefined,
     retryAt: isoTime(health.retryAt),
+    attempts: countOf(health.attempts) || undefined,
   };
   const kept = Object.entries(out).filter(([, value]) => value !== undefined);
   return kept.length ? Object.fromEntries(kept) : undefined;
@@ -1120,7 +1131,9 @@ export class EmberTokenCoordinator {
     return this.ctx.blockConcurrencyWhile(async () => {
       try {
         const record = await this.ctx.storage.get("grant");
-        if (!isRecord(record) || record.phase !== "ready" || (record.mode !== "app" && record.mode !== "seed")) return;
+        // "refreshing" here is a renewal cut off mid-call; access() decides its retry.
+        if (!isRecord(record) || (record.phase !== "ready" && record.phase !== "refreshing") ||
+            (record.mode !== "app" && record.mode !== "seed")) return;
         const grant = await this.grantFor(record.mode, { connector: record.connector, key: record.key });
         if (!grant) return;
         // A renewal re-arms the alarm itself; a stopped grant stays stopped.
@@ -1184,13 +1197,18 @@ export class EmberTokenCoordinator {
       return this.reply({ error: "reconnect_required" }, 503);
     }
     const health = isRecord(record.health) ? { ...record.health } : {};
+    const now = this.now();
+    if (record.phase === "refreshing" && typeof record.refresh === "string" && record.refresh) {
+      // A renewal was cut off mid-call (object restart, or a save that never landed).
+      // Its outcome is unknown, so it follows the same retry schedule as a lost reply.
+      return this.ambiguous(record, grant, health, "interrupted", { trigger, now });
+    }
     if (record.phase !== "ready" || typeof record.refresh !== "string" || !record.refresh) {
-      // Includes a durable in-flight marker left by a crashed/ambiguous refresh.
-      // Neither a retry nor an object restart may reuse that possibly spent token.
+      // A refused grant, an exhausted retry schedule, or a pre-11-08 in-flight marker
+      // that kept no token: only a fresh sign-in recovers it.
       if (record.phase === "refreshing" && !health.failure) health.failure = "interrupted";
       return this.reply({ error: "reconnect_required", health }, 503);
     }
-    const now = this.now();
     if (!options.renew && typeof record.token === "string" && record.token && Number.isFinite(record.expiresAt) && record.expiresAt > now) {
       return this.reply({ token: record.token, health });
     }
@@ -1203,9 +1221,11 @@ export class EmberTokenCoordinator {
     if (grant.clientSecret) form.set("client_secret", grant.clientSecret);
     const base = { version: 1, key: grant.key, mode: grant.mode, connector: grant.connector };
     const event = { provider: grant.provider, mode: grant.mode, trigger };
-    // Commit BEFORE contacting the provider. OAuth and our database cannot form
-    // one transaction; a lost reply must leave a durable stop, not an auto-retry.
-    await storage.put("grant", { ...base, phase: "refreshing", health });
+    // Commit BEFORE contacting the provider. OAuth and our database cannot form one
+    // transaction, so the marker keeps the token this owner holds: if the reply is
+    // lost or the object restarts, the retry schedule decides what happens next.
+    await storage.put("grant", { ...base, phase: "refreshing", refresh: record.refresh,
+      ...(countOf(record.attempts) ? { attempts: record.attempts } : {}), health });
     let response, data, failure = null;
     try {
       response = await this.fetchImpl(endpoint, {
@@ -1239,17 +1259,18 @@ export class EmberTokenCoordinator {
     }
     const ttl = !failure ? (data.expires_in === undefined ? 3600 : Number(data.expires_in)) : NaN;
     if (!failure && (!Number.isFinite(ttl) || ttl <= 0)) failure = "bad_reply";
-    if (failure) {
+    if (failure === "provider_rejected") {
       const stopped = { ...health, failure, failedAt: now, httpStatus, oauthError };
-      // A rejected grant is finished. Any other failure keeps the in-flight marker:
-      // the provider may have rotated the token before its reply was lost.
-      try { await storage.put("grant", { ...base, phase: failure === "provider_rejected" ? "rejected" : "refreshing", health: stopped }); } catch {}
+      // Quo documents invalid_grant as "authorize again", never a retry loop. The
+      // refused token is dropped; only a fresh sign-in recovers this grant.
+      try { await storage.put("grant", { ...base, phase: "rejected", health: stopped }); } catch {}
       this.record({ ...event, outcome: "stopped", failure, httpStatus, oauthError });
       return this.reply({ error: "reconnect_required", health: stopped }, 503);
     }
+    if (failure) return this.ambiguous(record, grant, health, failure, { trigger, now, httpStatus, oauthError });
 
     const rotated = typeof data.refresh_token === "string" && data.refresh_token !== record.refresh;
-    const { failure: _f, failedAt: _a, httpStatus: _h, oauthError: _o, retryAt: _r, ...kept } = health;
+    const { failure: _f, failedAt: _a, httpStatus: _h, oauthError: _o, retryAt: _r, attempts: _n, ...kept } = health;
     const renewed = { ...kept, consentAt: health.consentAt || now, renewedAt: now,
       renewals: (countOf(health.renewals) || 0) + 1, rotations: (countOf(health.rotations) || 0) + (rotated ? 1 : 0) };
     this.unsaved = {
@@ -1263,6 +1284,29 @@ export class EmberTokenCoordinator {
     await this.keepAlive();
     this.record({ ...event, outcome: "renewed", rotated, renewals: renewed.renewals });
     return this.reply({ token: data.access_token, health: renewed });
+  }
+
+  // No reply, a 5xx, an unreadable reply or an interrupted call: the provider may or
+  // may not have spent the token. Keep it (and any still-valid access token), retry on
+  // GRANT_RETRY_SCHEDULE_MS, and arm the alarm so the retry happens even while Ember
+  // sits closed. A refusal on a retry, or running out of schedule, ends the grant.
+  async ambiguous(record, grant, health, failure, { trigger, now, httpStatus, oauthError }) {
+    const attempts = (countOf(record.attempts) || 0) + 1;
+    const base = { version: 1, key: grant.key, mode: grant.mode, connector: grant.connector };
+    const event = { provider: grant.provider, mode: grant.mode, trigger };
+    this.endpoint = null; // rediscover the token endpoint before the next try
+    if (attempts > GRANT_RETRY_SCHEDULE_MS.length) {
+      const stopped = { ...health, failure, failedAt: now, httpStatus, oauthError, attempts };
+      try { await this.ctx.storage.put("grant", { ...base, phase: "stopped", health: stopped }); } catch {}
+      this.record({ ...event, outcome: "stopped", failure, httpStatus, oauthError, attempts });
+      return this.reply({ error: "reconnect_required", health: stopped }, 503);
+    }
+    const retryAt = now + GRANT_RETRY_SCHEDULE_MS[attempts - 1];
+    const deferred = { ...health, failure, failedAt: now, httpStatus, oauthError, retryAt, attempts };
+    await this.ctx.storage.put("grant", { ...record, ...base, phase: "ready", attempts, retryAt, health: deferred });
+    await this.keepAlive(retryAt);
+    this.record({ ...event, outcome: "deferred", failure, httpStatus, oauthError, attempts });
+    return this.reply({ error: "temporarily_unavailable", health: deferred }, 503);
   }
 }
 
@@ -1331,11 +1375,26 @@ async function connectorStatus(body, env, cors, fetchImpl, now) {
     // Counts, timestamps and fixed failure words: proof a grant keeps renewing.
     if (auth.health) health[name] = auth.health;
   }
+  // HTTP 207, not 200, whenever a requested connector is down. A 200 here read as
+  // healthy in Workers Logs for the whole week Quo was dead (2026-11-01 → 11-08).
+  // The body is unchanged (207 is still res.ok for every caller), and one
+  // fixed-vocabulary log line names what is down and why. Silent when all is well.
+  const down = names.filter((name) => connectors[name] !== "connected");
+  if (down.length) {
+    try {
+      console.log(JSON.stringify({ ember: "connector-status", down: Object.fromEntries(down.map((name) => [name, {
+        reason: issues[name] || "offline",
+        ...(health[name]?.failure ? { failure: health[name].failure } : {}),
+        ...(health[name]?.failedAt ? { failedAt: health[name].failedAt } : {}),
+        ...(health[name]?.retryAt ? { retryAt: health[name].retryAt } : {}),
+      }])) }));
+    } catch {}
+  }
   return json({
     connectors,
     ...(Object.keys(issues).length ? { issues } : {}),
     ...(Object.keys(health).length ? { health } : {}),
-  }, 200, { ...cors, "Cache-Control": "no-store" });
+  }, down.length ? 207 : 200, { ...cors, "Cache-Control": "no-store" });
 }
 
 // --- /tts: Ember's natural voice ------------------------------------------

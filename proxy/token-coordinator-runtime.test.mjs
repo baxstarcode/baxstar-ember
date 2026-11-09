@@ -37,9 +37,12 @@ async function status(mf, caller = "edge-a", connectors = ["quo"]) {
   const response = await mf.dispatchFetch(`${ORIGIN}/api/connectors/status`, {
     method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json", "X-Fixture-Caller": caller }, body: JSON.stringify({ connectors }),
   });
-  assert.equal(response.status, 200, response.status === 200 ? undefined : await response.clone().text());
-  const body = await response.json();
-  assert.doesNotMatch(JSON.stringify(body), /fixture-|refresh|secret/);
+  const text = await response.text();
+  const body = JSON.parse(text);
+  // 200 only when every requested connector is up; 207 (same body) while one is down.
+  const allUp = Object.values(body.connectors || {}).every((state) => state === "connected");
+  assert.equal(response.status, allUp ? 200 : 207, text);
+  assert.doesNotMatch(text, /fixture-|refresh|secret/);
   return body.connectors;
 }
 
@@ -79,7 +82,7 @@ test("workerd: two caller Workers serialize rotation and SQLite survives a full 
   }
 });
 
-test("workerd: ambiguous refresh stays stopped after restart; fresh consent gets a new owner", { timeout: 30_000 }, async () => {
+test("workerd: an ambiguous renewal waits for its retry slot across restart; fresh consent gets a new owner", { timeout: 30_000 }, async () => {
   const persist = await mkdtemp(join(tmpdir(), "ember-tokens-crash-"));
   const calls = [];
   let mf;

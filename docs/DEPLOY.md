@@ -265,19 +265,34 @@ What changes (Worker and Pages gateway; same `EmberTokenCoordinator` class, so *
 binding or migration**):
 
 - The owner classifies each renewal: HTTP 400/401/403 = `provider_rejected` (record
-  becomes `rejected`, finished); HTTP 429 or OAuth `temporarily_unavailable`/`slow_down`
-  = `rate_limited` (the unspent token is kept and retried after Retry-After, 1–60 min);
-  no reply, 5xx, redirects or an unreadable reply keep the durable stop as before
-  (`no_reply`, `provider_error`, `bad_reply`). A legacy stop reads `interrupted`. Token
-  call timeout is 15 s (was 8 s); discovery stays 8 s and is cached for a day; the
-  discovered Quo token endpoint must be HTTPS on `quo.com` or a subdomain.
+  becomes `rejected`, finished; Quo's MCP docs treat `invalid_grant` as "authorize
+  again", never a retry loop); HTTP 429 or OAuth `temporarily_unavailable`/`slow_down`
+  = `rate_limited` (the unspent token is kept and retried after Retry-After, 1–60 min).
+  **Ambiguous outcomes retry (second 11-08 pass, root-cause fix):** no reply, 5xx,
+  redirects, an unreadable reply (`no_reply`, `provider_error`, `bad_reply`) and a call
+  cut off by a restart (`interrupted`) keep the held token and retry it at 1, 5, 15,
+  30, 60, 60, 60 and 60 minutes (about 5 hours), with the Durable Object alarm armed
+  for each slot so retries happen while Ember is closed. The ninth consecutive
+  ambiguous failure ends the grant (`phase: "stopped"`, token dropped). The old
+  durable stop could never save a grant: if the provider had rotated, the new token
+  was already lost; if it had not, the stop threw away a working one. A pre-11-08
+  marker that kept no token still reads `interrupted` and needs Reconnect. Token
+  call timeout is 15 s (was 8 s); discovery stays 8 s, is cached for a day and is
+  re-run after an ambiguous failure; the discovered Quo token endpoint must be
+  HTTPS on `quo.com` or a subdomain.
 - Every outcome writes one Workers Logs line, e.g.
   `{"ember":"token-owner","provider":"quo","mode":"app","trigger":"keepalive","outcome":"renewed","rotated":true,"renewals":3}`.
   Fixed words and counts only; never a token.
 - `POST /api/connectors/status` adds `health` per connector: `source` (`app`/`setup`),
   `connectedAt` (an app grant's consent time; for a setup-seed grant, the first renewal
-  this Worker recorded), `lastRenewedAt`, `renewals`, `rotations`, and when stopped
-  `failure`, `failedAt`, `httpStatus`, `oauthError`, `retryAt`.
+  this Worker recorded), `lastRenewedAt`, `renewals`, `rotations`, and when stopped or
+  retrying `failure`, `failedAt`, `httpStatus`, `oauthError`, `retryAt`, `attempts`.
+- The status route answers **HTTP 207** (same JSON body) whenever a requested connector
+  is down, and **200 only when every requested connector is up**, plus one
+  `{"ember":"connector-status","down":{…}}` log line naming each down connector's
+  reason and failure. Before this, it answered 200 for the whole week Quo was dead, so
+  Workers Logs looked healthy. 207 is still `res.ok`, so every existing caller keeps
+  working.
 - A successful renewal or install arms a Durable Object alarm 12 hours out; the alarm
   renews the grant and re-arms. A stopped grant is never renewed.
 - `POST /api/connectors/reconnect` (Access-gated Pages route) returns a 10-minute signed
@@ -290,14 +305,14 @@ binding or migration**):
 
 Release order (one owner):
 
-1. **Cloudflare access.** API token from the **Edit Cloudflare Workers** template (it
-   covers Workers Scripts edit, Workers Tail read and Account Settings read), 7-day
-   expiry. Give it to the cloud session as a network secret for `api.cloudflare.com`
-   (or use `wrangler login` on a Mac). Never paste it into chat. Note (2026-11-08): the
-   **Default** cloud environment already holds an active network secret for
-   `api.cloudflare.com` ("Cloudflare API token (Pages edit)", no expiry) that can read
-   this Worker's deployments, settings, secret names and logs; whether it can deploy
-   Workers was not tested. A session on Default may not need a new token.
+1. **Cloudflare access — Workers Builds (Brady's decision, 2026-11-08: "Connect Worker
+   to GitHub").** The Worker is connected to `baxstarcode/baxstar-ember` in Cloudflare
+   (Worker → Settings → Build): production branch `main`, root directory `proxy`,
+   deploy command `npx wrangler deploy`. Merging to `main` now deploys the Worker the
+   way Cloudflare Pages already ships the UI, with Cloudflare's own build token; no
+   agent needs a Cloudflare API token. Undo: Worker → Settings → Build → Disconnect.
+   A manual deploy still works with an **Edit Cloudflare Workers** token (7-day expiry,
+   never pasted into chat) or `wrangler login` on a Mac with Node.
 2. Record the live state: `npx wrangler deployments status` and
    `npx wrangler versions view <id>` in `proxy/`. Expect `47108b31-7ae5-46af-982c-337eaf15eb4e`
    with `EMBER_TOKEN_COORDINATOR`, `EMBER_VOICE_AI`, `ALLOWED_ORIGINS`,

@@ -108,12 +108,28 @@ owner (`bf01835c…`) answered 200 on 121 of 122. No exceptions or CPU/memory li
 grant therefore stopped between 10-26 ~20:32 UTC (last confirmed working) and 11-01
 21:33 UTC, outside log retention, and the old owner stored no reason — whether Quo
 rejected a renewal (expired/revoked/rotated) or a renewal reply was lost cannot be told.
-Claude's separate Quo connector also lost authorization in the same period (evidence
-of a Quo-side grant loss, not proof). The "needs a new sign-in" wording Brady saw can
+Claude's separate Quo connector also lost authorization in the same period (weak
+evidence of a Quo-side grant loss: Quo's MCP docs also ask connections authorized before
+2026-10-16 to reauthorize, which alone could explain Claude's).
+
+**Root cause (second 11-08 pass, Claude):** the token owner turned **every** failed
+renewal into a permanent stop and recorded nothing. Quo rotates refresh tokens (its MCP
+docs: persist the newest rotated token atomically, serialize refreshes per grant), so a
+single renewal that met a 429, a Quo 5xx, a reply slower than 8 s, or a real rejection
+ended the grant for good. The stored record is the bare `{phase:"refreshing"}` marker
+(the only state that answers `reconnect_required` without calling Quo), so which of
+those four happened at or before 11-01 21:33 UTC (first retained log) is unrecoverable.
+Ruled out: Google-side or binding/storage faults (Google's owner kept answering 200),
+and loss of Ember's Quo client registration (11-08 ~22:45 CT the existing client id
+still reached Quo's "Connect Ember to Quo?" consent page). **Fix:** ambiguous renewals
+now retry the held token on a ~5-hour schedule instead of stopping; only Quo's own
+refusal (400/401/403) or an exhausted schedule ends a grant, and either one is recorded,
+logged, shown in status (HTTP 207 + `health`) and recovered with one-tap Reconnect. The "needs a new sign-in" wording Brady saw can
 also come from the Signal Log, which said it for any read without a successful Quo tool
-result; that text now distinguishes "offline" from "no tool result this time". The fix records and logs every outcome, retries a rate-limited renewal with the
-same unspent token, renews idle grants every 12 hours, exposes `health` in status, and
-adds one-tap in-app Reconnect that saves the fresh grant server-side. Deploy steps and
+result; that text now distinguishes "offline" from "no tool result this time". The fix records and logs every outcome, retries a rate-limited or ambiguous renewal
+with the token it holds, renews idle grants every 12 hours, answers 207 with `health` in
+status while anything is down, and adds one-tap in-app Reconnect that saves the fresh
+grant server-side. Deploy steps and
 verification: `docs/DEPLOY.md` "In-app reconnect and grant health". Until deployed and
 reconnected, Quo stays offline; OPS now says so instead of showing sample calls.
 
