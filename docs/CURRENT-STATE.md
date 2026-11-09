@@ -12,7 +12,9 @@ Cloudflare **Workers Builds** for Worker deploys (production branch `main`, root
 `proxy`), so a merge ships the Worker with Pages and no agent needs a Cloudflare token.
 Live since 2026-11-08 23:47 CST (Worker `7736245b`, build `a157305a`); Quo reconnected
 in-app at 23:50 and status read 200 with Quo, Gmail, Calendar and Drive connected. Renewal
-persistence is PROVISIONAL until a Quo `renewed` log line appears. Evidence: Ember Handoff Log.
+persistence confirmed 2026-11-09: Workers Logs show four rotating Quo renewals (renewals 1→4,
+08:27–21:37 UTC), each followed by status 200 with all four connectors up. The idle 12-hour
+keep-alive has not fired yet (each renewal re-arms it). Evidence: Ember Handoff Log, 11-09 entries.
 
 **Quo repair, feed truth and faster voice — November 8, 2026 (Claude Code, branch `claude/brave-tesla-xnlnr6`, NOT DEPLOYED):**
 On 11-08 Ember showed a red Quo light, "Quo needs a new sign-in" and demo calls, 13 days

@@ -97,9 +97,15 @@ stamp check (one message each with Haiku, Sonnet, Opus, Fable) has not been reco
 
 **Status: FIXED 2026-11-08 23:50 CST.** PR #64 merged (`a41d6cb`), Worker `7736245b` deployed by
 Cloudflare Workers Builds, Quo reconnected in-app; status 200 with all four connectors
-connected and a read-only Quo chat read verified. **PROVISIONAL:** the first access-token
-renewal and the 12-hour keep-alive (watch Workers Logs for a `token-owner` line with
-`"provider":"quo"` and `"outcome":"renewed"`). History of the reopen follows.
+connected and a read-only Quo chat read verified. **Renewal persistence confirmed 2026-11-09**
+(Workers Logs, read-only, recorded in the Ember Handoff Log): the Quo app owner `4dc0acb8`
+logged `token-owner` `outcome:"renewed"`, `rotated:true` at 08:27:52, 14:08:58, 16:14:41 and
+21:37:23 UTC (renewals 1→4), each followed by `/app/access` 200 and status 200, with no
+`deferred` or `stopped` lines. **PROVISIONAL:** the idle 12-hour keep-alive alarm; each
+renewal re-arms it, so it first fires only after 12 hours without Ember use. Minor: the
+Google app-owner lookup (`055913ff`) answers 404 on every check because no in-app Google
+grant exists, and the Worker then uses the working Google seed owner; harmless, but it
+doubles Google owner calls and adds 404s to the logs. History of the reopen follows.
 
 **Reopened 2026-11-08 — repair built on `claude/brave-tesla-xnlnr6` (deployed the same night).**
 Brady saw a red Quo light, "Quo needs a new sign-in" and demo calls 13 days after the
