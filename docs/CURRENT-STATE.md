@@ -1,5 +1,14 @@
 # Ember — Current State
 
+**iPhone voice cutoff — November 10, 2026 (recorded by Claude, from Brady's lab v6 report):**
+Brady: “Cut me off on a long sentence so I didn’t get my full thought through.” iPhone
+Safari 27.0.1 finalized a phrase at a pause 11.3 s into the turn and reported nothing for
+750 ms, so the lab's default grace stopped capture and Ember answered half the thought. A
+first turn returned no final phrase in 14.1 s and ended in Safari `aborted`; nothing was
+sent. A reply kept playing through a 1.8 s page hide (v6 `playback-kept`); audibility
+unrecorded. No Pass added; the five-turn gate stays 3 of 5. The dashboard's 1100 ms
+auto-send grace is untested against this pause. Details: `docs/VOICE-REBUILD.md`.
+
 **Quo root cause and deploy path — November 8, 2026, second pass (Claude, Brady: "Fix this once and for all. Go"):**
 Root cause: the token owner made every failed Quo renewal a permanent, unrecorded stop,
 and Quo rotates refresh tokens, so one transient fault (429, 5xx, a reply over 8 s) or a

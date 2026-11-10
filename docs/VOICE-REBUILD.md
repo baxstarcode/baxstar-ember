@@ -60,6 +60,46 @@ evidence. The following entries describe prior experiments, not the current scop
 
 ## Historical experiments
 
+**iPhone long-sentence cutoff — November 10, 2026 (lab v6, recorded by Claude):**
+Brady's report began `2026-11-10T13:36:20.410Z` (07:36 CST): iPhone Safari 27.0.1
+(user agent says iPhone OS 18_7), phone experiment opted in, pause window at the
+750 ms default. His device note, verbatim: “Cut me off on a long sentence so I didn’t
+get my full thought through.” Raw report:
+`docs/verification/2026-11-10-iphone-voice-lab-v6.json`.
+
+- **Turn 2 is the cutoff.** Recognition started 5 ms after Talk. Safari returned its
+  first final phrase at 11306 ms and the lab armed the 750 ms grace. No new result and
+  no sound/speech event arrived in that window (there is no
+  `end-of-speech-grace-cancelled`), so the grace elapsed at 12057 ms, the lab requested
+  stop, and recognition ended 9 ms later. The rest of the chain ran: Send at 17368 ms,
+  first streamed text 919 ms later, text complete at 19635 ms, reply TTS HTTP 200/audio
+  (76752 bytes in 2438 ms), playing at 22809 ms. Ember answered the first part of the
+  thought.
+- **Turn 1 captured nothing.** Recognition ran 14.1 s with no final phrase. Stop was
+  requested at 14501 ms by a Finish/Talk tap (no grace, 30-second cap or page-hide
+  event precedes it). Safari answered `aborted` 48 ms later and the turn ended with no
+  transcript. Nothing was sent.
+- **What it shows.** On Brady's iPhone, Safari can finalize a phrase at a mid-thought
+  pause and then report nothing (no result, no activity event) for longer than 750 ms
+  before his next words. The lab's grace then ends the turn, as designed. This is the
+  physical early-cutoff retest the 750 ms grace was waiting on; on iPhone it is **not
+  resolved for long sentences**. The report does not show how long the pause was.
+  Inference, not tested: the dashboard's conversation mode uses an 1100 ms grace and
+  sends automatically when recognition ends, so the same pause there would send half a
+  thought with no review step. Whether 1100 ms would have held this sentence is unknown.
+- **Side result for v6.** During the reply the page was hidden at 32108 ms with
+  `tab-hidden / playback-kept`, returned at 33917 ms (1.8 s away), and the clip ended
+  normally at 37173 ms. This is the first real-iPhone browser evidence that v6 keeps a
+  playing reply going through a hide. Audibility while away and the output route
+  (phone speaker or CarPlay) are unrecorded.
+- **Gate.** Both turns' observations are unrecorded and turn 2 lost words, so this adds
+  no Pass. The five-turn gate stays at 3 of 5.
+- **Next test, no code change needed.** In the lab, set the pause to “Give me 1.6
+  seconds”, say one long sentence with a natural pause, and record whether all of it
+  arrives. If it still cuts off, repeat with “I’ll press Finish talking”. Changing the
+  lab's 750 ms default or the dashboard's 1100 ms grace changes the approved experience
+  and is Brady's call.
+
 
 **Voice check v6 background playback — October 22, 2026 (Claude):**
 Brady's CarPlay report (session `2026-10-22T13:02:49Z`, iPhone Safari 27.0.1,

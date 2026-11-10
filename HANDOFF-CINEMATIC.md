@@ -1,5 +1,13 @@
 # Ember — Living Cinematic Handoff
 
+**2026-11-10 — iPhone voice test cut Brady off mid-sentence (recorded by Claude):** in
+lab v6 on iPhone Safari, Safari finalized a phrase at a pause 11.3 s in and then reported
+nothing for 750 ms, so the lab's default grace ended the turn and Ember answered half the
+thought. An earlier turn (14.1 s, no final phrase) ended in Safari `aborted` with nothing
+sent. Side result: a reply kept playing through a 1.8 s page hide (v6 `playback-kept`);
+audibility unrecorded. Five-turn gate still 3 of 5. Next: one long sentence with the
+1.6 s pause. Details: `docs/VOICE-REBUILD.md`.
+
 **2026-10-31 — Ember center stage (Claude):** on desktop the skull fills the upper
 chamber again with no 360px cap (406px at 1440×900, 586px at 1920×1080), over a
 full-width conversation; plates and Model/Effort moved into the flanks beside her. No

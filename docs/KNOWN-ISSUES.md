@@ -233,6 +233,12 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**November 10 iPhone cutoff (lab v6):** Brady was cut off mid-sentence. Safari finalized
+a phrase at a pause and reported nothing for 750 ms, so the lab's default grace ended the
+turn. The 750 ms grace's physical retest is therefore failed on iPhone for long
+sentences. The dashboard's 1100 ms auto-send grace is untested against the same pause.
+Next: one long sentence in the lab with the 1.6 s pause. See the newest Voice Rebuild entry.
+
 **October 22 background playback (v6):** switching apps no longer cuts off a reply
 that is already playing; the mic and in-flight requests still stop. Whether iOS
 keeps a backgrounded Safari reply audible over CarPlay is the next physical check.

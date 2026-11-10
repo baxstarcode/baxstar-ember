@@ -1,0 +1,131 @@
+{
+  "experiment": "Ember explicit-turn voice reliability lab",
+  "version": 6,
+  "status": "PROVISIONAL: browser events are not physical-device proof",
+  "startedAt": "2026-11-10T13:36:20.410Z",
+  "environment": {
+    "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1",
+    "secureContext": true,
+    "recognitionAPI": true,
+    "playbackAPI": true,
+    "mobileDetected": true,
+    "mobileOptIn": true,
+    "endOfSpeechGraceMs": 750,
+    "previewHost": false,
+    "deviceNotes": "Cut me off on a long sentence so I didn’t get my full thought through"
+  },
+  "privacy": "No transcript, reply text, audio, credentials, or business data included. Review your device notes before sharing.",
+  "turns": [
+    {
+      "number": 1,
+      "source": "microphone",
+      "startedMs": 4711,
+      "marks": {
+        "turn-start": 0,
+        "mic-start-requested": 1,
+        "recognition-started": 352,
+        "mic-stop-requested": 14501,
+        "recognition-error": 14549,
+        "mic-abort-requested": 14549,
+        "recognition-ended": 14549
+      },
+      "observation": "unrecorded"
+    },
+    {
+      "number": 2,
+      "source": "microphone",
+      "startedMs": 23247,
+      "marks": {
+        "turn-start": 0,
+        "mic-start-requested": 0,
+        "recognition-started": 5,
+        "first-final-transcript": 11306,
+        "end-of-speech-grace-started": 11306,
+        "end-of-speech-grace-elapsed": 12057,
+        "mic-stop-requested": 12057,
+        "recognition-ended": 12066,
+        "text-sent": 17368,
+        "first-response-text": 18287,
+        "text-complete": 19635,
+        "tts-requested": 20271,
+        "tts-response-received": 22709,
+        "audio-ready": 22715,
+        "audio-session-playback-requested": 22723,
+        "audio-playing": 22809,
+        "tab-hidden": 32108,
+        "tab-returned": 33917,
+        "audio-session-auto-requested": 37173,
+        "audio-ended": 37173
+      },
+      "observation": "unrecorded",
+      "stream": true
+    }
+  ],
+  "speechAttempts": [
+    {
+      "number": 1,
+      "turn": 2,
+      "source": "reply",
+      "startedMs": 43518,
+      "stage": "complete",
+      "result": "ended",
+      "beforePlayback": {
+        "sessionType": "auto",
+        "sessionState": "unavailable",
+        "muted": false,
+        "volume": 1
+      },
+      "httpStatus": 200,
+      "contentType": "audio",
+      "responseMs": 2438,
+      "bytes": 76752,
+      "requestDurationMs": 2444,
+      "sessionRequest": "accepted",
+      "duringPlayback": {
+        "sessionType": "playback",
+        "sessionState": "unavailable",
+        "muted": false,
+        "volume": 1
+      },
+      "durationMs": 16902,
+      "afterPlayback": {
+        "sessionType": "playback",
+        "sessionState": "unavailable",
+        "muted": false,
+        "volume": 1
+      }
+    }
+  ],
+  "events": [
+    { "atMs": 0, "turn": null, "event": "probe-loaded" },
+    { "atMs": 1993, "turn": null, "event": "mobile-experiment-enabled" },
+    { "atMs": 4711, "turn": 1, "event": "turn-start" },
+    { "atMs": 4712, "turn": 1, "event": "mic-start-requested" },
+    { "atMs": 5063, "turn": 1, "event": "recognition-started" },
+    { "atMs": 19212, "turn": 1, "event": "mic-stop-requested" },
+    { "atMs": 19260, "turn": 1, "event": "recognition-error", "detail": "aborted" },
+    { "atMs": 19260, "turn": 1, "event": "mic-abort-requested" },
+    { "atMs": 19260, "turn": 1, "event": "recognition-ended" },
+    { "atMs": 23247, "turn": 2, "event": "turn-start" },
+    { "atMs": 23247, "turn": 2, "event": "mic-start-requested" },
+    { "atMs": 23252, "turn": 2, "event": "recognition-started" },
+    { "atMs": 34553, "turn": 2, "event": "first-final-transcript" },
+    { "atMs": 34553, "turn": 2, "event": "end-of-speech-grace-started", "detail": "750ms" },
+    { "atMs": 35304, "turn": 2, "event": "end-of-speech-grace-elapsed", "detail": "750ms" },
+    { "atMs": 35304, "turn": 2, "event": "mic-stop-requested" },
+    { "atMs": 35313, "turn": 2, "event": "recognition-ended" },
+    { "atMs": 40615, "turn": 2, "event": "text-sent", "detail": "streaming" },
+    { "atMs": 41534, "turn": 2, "event": "first-response-text" },
+    { "atMs": 42882, "turn": 2, "event": "text-complete" },
+    { "atMs": 43518, "turn": 2, "event": "tts-requested", "detail": "reply" },
+    { "atMs": 45956, "turn": 2, "event": "tts-response-received", "detail": "HTTP 200; audio" },
+    { "atMs": 45962, "turn": 2, "event": "audio-ready" },
+    { "atMs": 45962, "turn": 2, "event": "audio-session-playback-requested", "detail": "accepted" },
+    { "atMs": 45970, "turn": 2, "event": "audio-session-playback-requested", "detail": "accepted" },
+    { "atMs": 46056, "turn": 2, "event": "audio-playing" },
+    { "atMs": 55355, "turn": 2, "event": "tab-hidden", "detail": "playback-kept" },
+    { "atMs": 57164, "turn": 2, "event": "tab-returned" },
+    { "atMs": 60420, "turn": 2, "event": "audio-session-auto-requested" },
+    { "atMs": 60420, "turn": 2, "event": "audio-ended" }
+  ]
+}
