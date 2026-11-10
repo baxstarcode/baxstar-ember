@@ -105,7 +105,7 @@ try{
   await f.panel.locator('[data-wake="held"]').waitFor();await f.finish();
   check(`${width}: capture ends before Send`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
   await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
-  check(`${width}: selected Opus/High uses normal chat`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='high'&&c.body.messages.at(-1)?.content==='Check my next trip.'));
+  check(`${width}: spoken turn keeps the selected Opus model at Fast-replies Low effort`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='low'&&c.body.max_tokens===4000&&c.body.messages[0]?.content.includes('Effort: LOW')&&!c.body.messages[0]?.content.includes('Effort: HIGH')&&c.body.messages.at(-1)?.content==='Check my next trip.'));
   check(`${width}: Jenny uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-JennyNeural'));
   check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
@@ -130,6 +130,26 @@ try{
   check(`${width}: return never rearms mic`,await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
   check(`${width}: dock unchanged`,(await f.page.locator('.dock-label').allTextContents()).map(t=>t.replace(/\u00ad/g,'')).join('|')==='OPS|Caption Studio|Knowledge Graph|Google Drive|FareHarbor|Projects');
   check(`${width}: no runtime errors`,f.errors.length===0);await f.context.close();
+ }
+ {
+  // Fast replies is the default for spoken turns only; typed chat keeps Brady's Model/Effort.
+  const f=await fixture({prefs:{v:5,chatModel:'claude-opus-5-5',chatEffort:'high'}});
+  await f.page.getByRole('textbox',{name:'Ask Ember'}).fill('Typed question');await f.page.getByRole('textbox',{name:'Ask Ember'}).press('Enter');
+  await f.page.waitForFunction(()=>document.querySelector('.home-thread [data-role="assistant"]')?.innerText.includes('Your voice is connected'));
+  check('typed chat keeps selected Opus/High while Fast replies is on',f.calls.some(c=>c.path==='/api/messages'&&c.body.output_config?.effort==='high'&&c.body.max_tokens===12000&&c.body.messages.at(-1)?.content==='Typed question'));
+  await f.start();const toggle=f.panel.getByRole('button',{name:/Fast replies/});
+  check('Fast replies defaults on and is visible in the voice panel',await toggle.getAttribute('aria-pressed')==='true');
+  check('Fast replies cannot change mid-capture',await toggle.isDisabled());
+  await f.finish();await toggle.click();
+  check('Fast replies toggles off',await toggle.getAttribute('aria-pressed')==='false');
+  await f.page.waitForFunction(()=>JSON.parse(localStorage.getItem('ember-prefs')||'{}').voiceFast===false);check('Fast replies choice persists',true);
+  await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('Fast replies off: spoken turn uses the selected Opus/High',f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='high'&&c.body.messages.at(-1)?.content==='Check my next trip.'));
+  check('Fast replies toggle adds no runtime errors',f.errors.length===0);await f.context.close();
+ }
+ {
+  const f=await fixture({prefs:{v:5,chatModel:'claude-sonnet-5-5',chatEffort:'medium',voiceFast:false}});
+  await f.start();check('saved Fast replies off is restored',await f.panel.getByRole('button',{name:/Fast replies/}).getAttribute('aria-pressed')==='false');await f.context.close();
  }
  {
   const f=await fixture({preview:true});await f.start();await f.finish();check('preview Send is gated',await f.panel.getByRole('button',{name:'Send',exact:true}).isDisabled());check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();

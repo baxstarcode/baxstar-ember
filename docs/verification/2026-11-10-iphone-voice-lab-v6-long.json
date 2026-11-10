@@ -1,0 +1,92 @@
+{
+  "experiment": "Ember explicit-turn voice reliability lab",
+  "version": 6,
+  "status": "PROVISIONAL: browser events are not physical-device proof",
+  "startedAt": "2026-11-10T13:45:42.054Z",
+  "environment": {
+    "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1",
+    "secureContext": true,
+    "recognitionAPI": true,
+    "playbackAPI": true,
+    "mobileDetected": true,
+    "mobileOptIn": true,
+    "endOfSpeechGraceMs": 750,
+    "previewHost": false,
+    "deviceNotes": "This test seemed to work, especially when I would pause in between words and it seemed to have high fidelity with the .75 second buffer delay that it allows. It let me speak a long paragraph, so that was good too. The issue is now the CarPlay integration is still struggling because the fan, it does not go down when I talk. This time it didn’t go down even when I talked, and it increases in volume when Omberg talks a lot of times"
+  },
+  "privacy": "No transcript, reply text, audio, credentials, or business data included. Review your device notes before sharing.",
+  "turns": [
+    {
+      "number": 1,
+      "source": "microphone",
+      "startedMs": 29987,
+      "marks": {
+        "turn-start": 0,
+        "mic-start-requested": 0,
+        "recognition-started": 1460,
+        "first-final-transcript": 21277,
+        "end-of-speech-grace-started": 21277,
+        "end-of-speech-grace-elapsed": 22028,
+        "mic-stop-requested": 22028,
+        "recognition-ended": 22033,
+        "text-sent": 24186,
+        "first-response-text": 25206,
+        "text-complete": 26311,
+        "tts-requested": 28354,
+        "tts-response-received": 29369,
+        "audio-ready": 29391,
+        "audio-session-playback-requested": 29403,
+        "audio-playing": 29480,
+        "audio-session-auto-requested": 40209,
+        "audio-ended": 40209,
+        "physical-result-recorded": 113387
+      },
+      "observation": { "result": "limited", "micIndicatorOff": true, "replyAudible": true },
+      "stream": true
+    }
+  ],
+  "speechAttempts": [
+    {
+      "number": 1,
+      "turn": 1,
+      "source": "reply",
+      "startedMs": 58341,
+      "stage": "complete",
+      "result": "ended",
+      "beforePlayback": { "sessionType": "auto", "sessionState": "unavailable", "muted": false, "volume": 1 },
+      "httpStatus": 200,
+      "contentType": "audio",
+      "responseMs": 1015,
+      "bytes": 55296,
+      "requestDurationMs": 1037,
+      "sessionRequest": "accepted",
+      "duringPlayback": { "sessionType": "playback", "sessionState": "unavailable", "muted": false, "volume": 1 },
+      "durationMs": 11855,
+      "afterPlayback": { "sessionType": "playback", "sessionState": "unavailable", "muted": false, "volume": 1 }
+    }
+  ],
+  "events": [
+    { "atMs": 0, "turn": null, "event": "probe-loaded" },
+    { "atMs": 4062, "turn": null, "event": "mobile-experiment-enabled" },
+    { "atMs": 29987, "turn": 1, "event": "turn-start" },
+    { "atMs": 29987, "turn": 1, "event": "mic-start-requested" },
+    { "atMs": 31447, "turn": 1, "event": "recognition-started" },
+    { "atMs": 51264, "turn": 1, "event": "first-final-transcript" },
+    { "atMs": 51264, "turn": 1, "event": "end-of-speech-grace-started", "detail": "750ms" },
+    { "atMs": 52015, "turn": 1, "event": "end-of-speech-grace-elapsed", "detail": "750ms" },
+    { "atMs": 52015, "turn": 1, "event": "mic-stop-requested" },
+    { "atMs": 52020, "turn": 1, "event": "recognition-ended" },
+    { "atMs": 54173, "turn": 1, "event": "text-sent", "detail": "streaming" },
+    { "atMs": 55193, "turn": 1, "event": "first-response-text" },
+    { "atMs": 56298, "turn": 1, "event": "text-complete" },
+    { "atMs": 58341, "turn": 1, "event": "tts-requested", "detail": "reply" },
+    { "atMs": 59356, "turn": 1, "event": "tts-response-received", "detail": "HTTP 200; audio" },
+    { "atMs": 59378, "turn": 1, "event": "audio-ready" },
+    { "atMs": 59378, "turn": 1, "event": "audio-session-playback-requested", "detail": "accepted" },
+    { "atMs": 59390, "turn": 1, "event": "audio-session-playback-requested", "detail": "accepted" },
+    { "atMs": 59467, "turn": 1, "event": "audio-playing" },
+    { "atMs": 70196, "turn": 1, "event": "audio-session-auto-requested" },
+    { "atMs": 70196, "turn": 1, "event": "audio-ended" },
+    { "atMs": 143374, "turn": 1, "event": "physical-result-recorded", "detail": "limited" }
+  ]
+}

@@ -1660,7 +1660,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
-function ForegroundVoice({ voice, chatBusy }) {
+function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
   return <section className="foreground-voice" aria-label="Ember voice controls" hidden={!voice.open} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); voice.close(); } }}>
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
@@ -1669,6 +1669,7 @@ function ForegroundVoice({ voice, chatBusy }) {
       <button className="chip ghost" onClick={() => { voice.close(); requestAnimationFrame(() => document.querySelector('.chat-composer textarea')?.focus()); }}>Type instead</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
+      <button className="chip ghost" aria-pressed={fast} disabled={voice.busy} onClick={onFast} title={fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies."}>{fast ? "Fast replies: on" : "Fast replies: off"}</button>
     </div>
     <div className="voice-review" hidden={voice.conversation || !!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
     {voice.conversation && !voice.answer && voice.draft && <p className="voice-live-words" aria-label="Heard words">{voice.draft}</p>}
@@ -1802,6 +1803,15 @@ export default function BaxstarEmber() {
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
+  // FAST REPLIES FOR SPOKEN TURNS (2026-11-10). Brady: "When I try to use Ember, it
+  // just is very slow ... I can't have a back-and-forth conversation with her ...
+  // make changes to improve her." Workers Logs of his real 11-09 iPhone conversation
+  // show 8.3-13.6 s from sending his words to Jenny's first sentence, nearly all of
+  // it the model thinking at High effort (TTS took under 1 s). Spoken turns therefore
+  // run at Low effort on whichever model he picked; typed chat keeps his Model/Effort
+  // choice (Opus 5.5 / High by default). The voice panel's "Fast replies" switch
+  // turns this off, and the choice persists.
+  const [voiceFast, setVoiceFast] = useState(true);
   const [chatReady, setChatReady] = useState(false);
   const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
   const [chatError, setChatError] = useState("");
@@ -1922,6 +1932,7 @@ export default function BaxstarEmber() {
           const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
           if (Object.hasOwn(EFFORT, effort)) setChatEffort(effort);
         }
+        if (typeof prefs.voiceFast === "boolean") setVoiceFast(prefs.voiceFast);
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
@@ -2034,8 +2045,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (chatReady) saveChat(chatMsgs); }, [chatMsgs, chatReady]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
-  }, [surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
+    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, voiceFast, lake, postWindow: postTime, studioTool, coreMode, revToday });
+  }, [surfaces, chatModel, chatEffort, voiceFast, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -2175,16 +2186,18 @@ export default function BaxstarEmber() {
     setChatFeedback("");
     setCopiedChatId(null);
     if (!retryId) setCommand("");
+    // Spoken turns run at Low effort unless Brady switched Fast replies off.
+    const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
     try {
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
       ];
       // No automatic model retry: connector calls may already have run upstream.
       const resp = await callClaude(messages, {
-        useTools: true, model: chatModel, effort: EFFORT[chatEffort]?.api, maxTokens: EFFORT[chatEffort]?.budget,
+        useTools: true, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
         signal: request.controller.signal,
         onDelta: (content) => { patchAssistant({ content }); if (isCurrent()) onVoiceText?.(content); },
         onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current)); },
@@ -4604,7 +4617,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
               )}
 
-              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} />
+              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} fast={voiceFast} onFast={() => setVoiceFast((v) => !v)} />
 
               {chatConnectors && <div className="chat-connectors" role="status">{chatConnectors}</div>}
               {chatError && <div className="chat-error" role="alert">{chatError}</div>}

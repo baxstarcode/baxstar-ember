@@ -1,12 +1,18 @@
 # Ember — Living Cinematic Handoff
 
+**2026-11-10 — Fast replies: spoken turns at Low effort (Claude):** Brady's real 11-09
+iPhone conversation waited 8–14 s for Jenny's first sentence, almost all of it Opus at High
+effort thinking. Spoken turns now run at Low on the chosen model, with a **Fast replies**
+switch in the voice panel; typed chat is unchanged. PROVISIONAL until his next real use is
+measured from Workers Logs. Details: `docs/VOICE-REBUILD.md`.
+
 **2026-11-10 — iPhone voice test cut Brady off mid-sentence (recorded by Claude):** in
 lab v6 on iPhone Safari, Safari finalized a phrase at a pause 11.3 s in and then reported
 nothing for 750 ms, so the lab's default grace ended the turn and Ember answered half the
 thought. An earlier turn (14.1 s, no final phrase) ended in Safari `aborted` with nothing
 sent. Side result: a reply kept playing through a 1.8 s page hide (v6 `playback-kept`);
-audibility unrecorded. Five-turn gate still 3 of 5. Next: one long sentence with the
-1.6 s pause. Details: `docs/VOICE-REBUILD.md`.
+audibility unrecorded. Five-turn gate still 3 of 5. A later run the same morning carried a
+long paragraph cleanly at 750 ms, so no retest is requested. Details: `docs/VOICE-REBUILD.md`.
 
 **2026-10-31 — Ember center stage (Claude):** on desktop the skull fills the upper
 chamber again with no 360px cap (406px at 1440×900, 586px at 1920×1080), over a

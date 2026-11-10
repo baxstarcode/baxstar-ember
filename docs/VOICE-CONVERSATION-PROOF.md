@@ -35,7 +35,9 @@ reply from being captured as the next question. This is turn-taking, not full-du
 barge-in or a claim of ChatGPT's realtime architecture. Foreground scope is unchanged.
 
 Opus 5.5 / High defaults apply once to existing preferences (v5); later explicit
-choices persist. Dashboard sync remains Haiku/Low. The separate Voice Lab is historical.
+choices persist. Spoken turns run at Low effort on the chosen model (Fast replies,
+2026-11-10, after Brady's real-use logs showed 8-14 s before Jenny's first sentence at
+High); the voice panel's Fast replies switch restores the chat setting for spoken turns. Dashboard sync remains Haiku/Low. The separate Voice Lab is historical.
 
 Browser tests simulate recognition and provider responses with real HTML audio
 playback. They cover three automatic turns from one mouth tap, no microphone over

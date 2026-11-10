@@ -6,7 +6,9 @@ foreground session. The user's new instruction supersedes older mandatory
 review/Send and no-rearm requirements below. Stop/close/hidden-page/typing ends the
 session; unfinished or failed turns pause for recovery. Typed questions stay
 text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
-one-time migration; subsequent choices persist. Desktop no-scroll and the pinned
+one-time migration; subsequent choices persist. Since 2026-11-10, spoken turns run at
+Low effort on the chosen model (Fast replies, a switch in the voice panel); typed chat
+keeps the Model/Effort choice. Desktop no-scroll and the pinned
 dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
 sources, implementation boundaries and the outstanding physical-device proof.
 
@@ -60,6 +62,59 @@ evidence. The following entries describe prior experiments, not the current scop
 
 ## Historical experiments
 
+**Real-use diagnosis and Fast replies — November 10, 2026 (Claude):** Brady, after
+three more lab runs: “When I try to use Ember, it just is very slow. It doesn't work
+really for much at all. I can't have a back-and-forth conversation with her for sure.
+That never works when I'm using her for real. Investigate this and make changes to
+improve her.”
+
+- **Where the wait is (Workers Logs, read-only).** His real dashboard conversation on
+  iPhone, 2026-11-09 17:19–17:21 CST, ran 3 spoken turns. From each text request to
+  Jenny's first clip request took 11.7 s, 13.6 s and 8.3 s. (If the log timestamps
+  mark request start rather than end, those become 10.1, 11.4 and 6.3 s.) Jenny's first clips took 0.7–0.8 s. Those
+  streamed requests reached their first response bytes in 2.3–2.9 s with the four
+  connectors attached; the connector-free lab requests did so in 0.5–1.1 s. Nearly all
+  of the remaining wait is the model thinking before its first sentence: every
+  spoken turn ran Opus 5.5 at **High** effort with a 12000-token budget and the prompt
+  line “reason carefully step-by-step before answering; be thorough and double-check
+  specifics”. The 7–14 s coordinator `/access` wall times in the same logs end after
+  the request that called them, so they are not a wait the caller saw.
+- **Change (dashboard only).** Spoken turns now run at Low effort (4000-token budget,
+  the LOW prompt line) on whichever model Brady picked. Typed chat keeps his
+  Model/Effort choice (Opus 5.5 / High by default). The voice panel gained a persistent
+  **Fast replies** switch; off restores the chat setting for spoken turns. No Worker,
+  connector, grace, voice or TTS change. Opus 5.5 cannot turn thinking off, so effort is
+  the lever. Fast mode (`speed: "fast"`, 2x price) was not enabled: it costs money and
+  needs Brady's yes plus a Worker allowlist change.
+- **Measured afterwards without lab runs.** The same log query on his next real use
+  gives the new send-to-first-clip time. Until then the gain is PROVISIONAL.
+- **The other two lab reports that morning.** `13:42:59Z`: locking the screen 3.0 s into
+  recognition stopped capture by design (`stop-all / tab-hidden`), kept the provisional
+  words, and the reviewed draft completed a full Send/Play cycle. The Play tap he noted
+  is the lab's explicit Play, not an autoplay failure. `13:45:42Z`: one long paragraph
+  stayed one recognition phrase for 19.8 s, then the 750 ms grace ended it. Text and
+  Jenny completed, and he recorded **Limited** (mic off, reply audible), noting that
+  pauses “seemed to have high fidelity with the .75 second buffer”. The five-turn gate
+  stays at 3 of 5. Raw reports:
+  `docs/verification/2026-11-10-iphone-voice-lab-v6-lock.json`,
+  `docs/verification/2026-11-10-iphone-voice-lab-v6-long.json`.
+- **CarPlay fan (inference, not tested).** The truck lowers its blower for iPhone voice
+  sessions such as Siri and calls. Safari dictation sometimes registered as one (fan
+  down at 13:42) and sometimes not (13:45). Jenny plays in the `playback` media session
+  that v4 requests, which is what fixed the 10-20 silent replies, so the truck treats
+  her like music: blower back up, media volume. A web page cannot choose the phone-call
+  channel, and switching to `play-and-record` risks re-breaking the audibility v4 fixed,
+  so nothing was changed for the fan.
+- **Lock screen and app switch.** iOS stops a hidden Safari page's microphone, and the
+  conversation ends with it. A web page cannot fix this. Only a native path such as the
+  prepared, not-live Shortcut (draft PR #48) can talk with the phone locked.
+- **What the lab is still for.** It proved capture, Jenny over CarPlay, mic release and
+  playback through a hide on this iPhone. It does not exercise the dashboard's model,
+  connectors or speed, which is where real use was failing. Its five-turn gate predates
+  Brady's 10-26 approval of dashboard voice and no longer blocks anything.
+  Recommendation: stop running the lab and judge Ember by real use, measured from the
+  logs.
+
 **iPhone long-sentence cutoff — November 10, 2026 (lab v6, recorded by Claude):**
 Brady's report began `2026-11-10T13:36:20.410Z` (07:36 CST): iPhone Safari 27.0.1
 (user agent says iPhone OS 18_7), phone experiment opted in, pause window at the
@@ -94,11 +149,9 @@ get my full thought through.” Raw report:
   (phone speaker or CarPlay) are unrecorded.
 - **Gate.** Both turns' observations are unrecorded and turn 2 lost words, so this adds
   no Pass. The five-turn gate stays at 3 of 5.
-- **Next test, no code change needed.** In the lab, set the pause to “Give me 1.6
-  seconds”, say one long sentence with a natural pause, and record whether all of it
-  arrives. If it still cuts off, repeat with “I’ll press Finish talking”. Changing the
-  lab's 750 ms default or the dashboard's 1100 ms grace changes the approved experience
-  and is Brady's call.
+- **Superseded the same morning:** the 13:45 report below carried a long paragraph
+  cleanly at 750 ms. The 1.6 s retest is no longer requested, and the grace values are
+  unchanged.
 
 
 **Voice check v6 background playback — October 22, 2026 (Claude):**

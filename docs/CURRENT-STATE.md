@@ -1,5 +1,15 @@
 # Ember — Current State
 
+**Fast replies for spoken turns — November 10, 2026 (Claude; Brady: "make changes to improve her"):**
+Workers Logs of Brady's real iPhone conversation (11-09 17:19–17:21 CST, 3 turns) show
+8–14 s from Send to Jenny's first clip. Nearly all of it is Opus 5.5 thinking at High
+effort before the first sentence; TTS took under 1 s. Spoken turns now run at Low effort
+on whichever model he picked, and typed chat keeps his Model/Effort choice. A persistent
+**Fast replies** switch in the voice panel turns this off. No Worker, connector, grace or
+voice change. The gain is PROVISIONAL until his next real use is measured from the same
+logs; no lab run is needed. iOS still ends the conversation when Safari is hidden or
+locked, and the CarPlay fan treats Jenny as media; see `docs/VOICE-REBUILD.md`.
+
 **iPhone voice cutoff — November 10, 2026 (recorded by Claude, from Brady's lab v6 report):**
 Brady: “Cut me off on a long sentence so I didn’t get my full thought through.” iPhone
 Safari 27.0.1 finalized a phrase at a pause 11.3 s into the turn and reported nothing for
