@@ -1,7 +1,7 @@
 # Ember — Current State
 
-**Deaf second turn, slow replies, invented calendar — November 11, 2026 (Claude, branch
-`claude/ember-voice-debugging-t0ezm0`, NOT MERGED):** WebKit source shows PR #67's iPhone
+**Deaf second turn, slow replies, invented calendar — November 11, 2026 (Claude, PR #68,
+merged on Brady's "merge PR #68"):** WebKit source shows PR #67's iPhone
 mic check could never fire: iOS sends `audiostart` whether or not sound arrives, so only
 words prove the mic works. The failure matches WebKit bug 321436 (iOS 26/27: after an
 `<audio>` element plays, the next recognition session hears nothing and fires nothing).
