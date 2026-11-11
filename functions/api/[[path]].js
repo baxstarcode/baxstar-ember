@@ -5,6 +5,7 @@ const ALLOWED_PATHS = new Set([
   "/api/tts",
   "/api/voice/transcribe",
   "/api/voice/speak",
+  "/api/voice/trace",
   "/api/connectors/status",
   "/api/connectors/reconnect",
   "/api/outbox",

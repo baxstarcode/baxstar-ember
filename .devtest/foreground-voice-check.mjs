@@ -37,7 +37,9 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
    if(u.pathname==='/api/tts')return route.fulfill(mode==='ttsFailure'?{status:502,json:{error:'provider-refused'}}:{contentType:'audio/wav',body:wav}).catch(()=>{});
    const q=body.messages?.at(-1)?.content||'';
    const text=/ONLY valid JSON/.test(q)?'{"voicemails":[],"emails":[],"events":[]}':mode==='long'?'This is the complete long reply. '.repeat(45):'Your voice is connected. The boat is ready, and your next trip is on the calendar.';
-   return route.fulfill({json:{model:body.model,content:[{type:'text',text}],stop_reason:'end_turn'}}).catch(()=>{});
+   // A verified lookup: the live-data guard requires a real connector result.
+   const tools=/ONLY valid JSON/.test(q)||mode==='noTool'?[]:[{type:'mcp_tool_use',id:'t1',name:'list_events',server_name:'calendar'},{type:'mcp_tool_result',tool_use_id:'t1',is_error:false,content:[]}];
+   return route.fulfill({json:{model:body.model,content:[...tools,{type:'text',text}],stop_reason:'end_turn'}}).catch(()=>{});
   }
   const rel=u.pathname==='/'?'index.html':u.pathname.slice(1),file=path.resolve(root,rel);
   if(!file.startsWith(root+path.sep))return route.abort();
@@ -107,7 +109,7 @@ try{
   await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
   check(`${width}: spoken turn keeps the selected Opus model at Fast-replies Low effort`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='low'&&c.body.max_tokens===4000&&c.body.messages[0]?.content.includes('Effort: LOW')&&!c.body.messages[0]?.content.includes('Effort: HIGH')&&c.body.messages.at(-1)?.content==='Check my next trip.'));
   check(`${width}: Jenny uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-JennyNeural'));
-  check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')));
+  check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')&&c.path!=='/api/voice/trace'));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
   const after=await hero.boundingBox();check(`${width}: skull does not shrink after reply`,Math.abs(before.width-after.width)<1&&after.width>250);
   check(`${width}: transcript remains bounded`,await f.page.locator('.home-thread').evaluate(e=>e.clientHeight>=90&&e.clientHeight<=180));
@@ -176,8 +178,14 @@ try{
   await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
   await f.page.waitForFunction(()=>recs.length===2&&recs[1].active);await f.page.locator('[data-voice-phase="listening"]').waitFor();
   check('a re-armed mic that opens keeps listening past the audio check',await (async()=>{await f.page.waitForTimeout(3000);return f.page.evaluate(()=>recs[1].active)})());
+  await f.page.getByText(/I didn’t hear anything. Listening again/).waitFor({timeout:15000});
+  check('a silent re-armed turn gets one fresh recognizer after a gap',await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
+  await f.page.waitForFunction(()=>recs.length===3&&recs[2].active,null,{timeout:6000});
+  check('the fresh retry is reported as a deaf retry',await f.page.evaluate(()=>emberVoiceTraces.at(-1).outcome==='no-words-retry'));
   await f.page.getByText(/Paused: no words heard/).waitFor({timeout:15000});
-  check('a silent re-armed turn pauses instead of listening for 30 s',await f.page.evaluate(()=>recs.every(r=>!r.active))&&await f.page.locator('[data-voice-phase="listening"]').count()===0);await f.context.close();
+  check('a second silent turn pauses instead of listening for 30 s',await f.page.evaluate(()=>recs.length===3&&recs.every(r=>!r.active))&&await f.page.locator('[data-voice-phase="listening"]').count()===0);
+  check('the pause is reported with its trigger',await f.page.evaluate(()=>{const t=emberVoiceTraces.at(-1);return t.outcome==='no-words'&&t.trigger==='deaf-retry'&&t.marks.onstart>=0}));
+  check('traces reach the self-report route on production',f.calls.filter(c=>c.path==='/api/voice/trace').length>=3);await f.context.close();
  }
  {
   const f=await fixture({preview:true});await f.start();await f.finish();check('preview Send is gated',await f.panel.getByRole('button',{name:'Send',exact:true}).isDisabled());check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();

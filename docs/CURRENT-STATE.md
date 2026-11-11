@@ -1,5 +1,20 @@
 # Ember — Current State
 
+**Deaf second turn, slow replies, invented calendar — November 11, 2026 (Claude, branch
+`claude/ember-voice-debugging-t0ezm0`, NOT MERGED):** WebKit source shows PR #67's iPhone
+mic check could never fire: iOS sends `audiostart` whether or not sound arrives, so only
+words prove the mic works. The failure matches WebKit bug 321436 (iOS 26/27: after an
+`<audio>` element plays, the next recognition session hears nothing and fires nothing).
+On iPhone (WebKit with `navigator.audioSession`) Jenny now plays through one Web Audio
+context opened by the tap and kept running, with the old player as fallback; an
+automatic turn with no words gets one fresh restart after 3 s, then pauses. Every turn
+self-reports its timeline and last-words-to-first-sound time to Workers Logs
+(`/api/voice/trace`, no words). Separately, the morning's spoken replies used no
+connector at all, so schedule, email, call and file questions now need a real tool result
+in that turn, or Ember re-asks once and then says it couldn't check. Tested in the
+container only (Chromium with an iPhone user agent; Playwright WebKit is not installed);
+real-device behavior is PROVISIONAL. Details: `docs/VOICE-REBUILD.md`.
+
 **Second-turn mic check — November 11, 2026 (Claude):** on iPhone, Ember's automatic restart
 after Jenny's first answer reported LISTENING while the phone gave it no sound (Safari mic
 light off; in Chrome no second request). Jenny's player is now torn down before the restart,

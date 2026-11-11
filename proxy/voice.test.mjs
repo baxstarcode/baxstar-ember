@@ -82,3 +82,38 @@ test("an inference that never finishes reaches the deadline without retry", asyn
   t.mock.timers.tick(25001);
   assert.equal((await pending).status, 504); assert.equal(f.calls.length, 1);
 });
+
+// --- /api/voice/trace: device self-report, allowlisted fields only ----------
+import { sanitizeVoiceTrace, handleVoiceTrace } from "./voice-trace.mjs";
+const goodTrace = { v: 1, ua: "ios-safari", engine: "webkit", n: 2, trigger: "auto", outcome: "no-words-retry", out: "web",
+  sinceReplyEndMs: 812, session: "auto/active", error: null, lastWordsToSoundMs: null,
+  reply: { live: "calendar", guard: "retried", tools: 1, tool: true },
+  marks: { "start-called": 0, onstart: 41, audiostart: 63, "first-sound": 4210, "last-result": 1200 } };
+test("voice trace keeps only allowlisted enums, marks and small integers", () => {
+  const out = sanitizeVoiceTrace({ ...goodTrace, transcript: "call Mike at 3", url: "https://evil.example",
+    marks: { ...goodTrace.marks, words: 5, "first-sound": "4210", onstart: -1, end: 9e9 }, reply: { ...goodTrace.reply, text: "secret" }, ua: "ios-safari" });
+  assert.deepEqual(out, { v: 1, ua: "ios-safari", engine: "webkit", trigger: "auto", outcome: "no-words-retry", out: "web", session: "auto/active",
+    n: 2, sinceReplyEndMs: 812, marks: { "start-called": 0, audiostart: 63, "last-result": 1200 }, reply: { live: "calendar", guard: "retried", tools: 1, tool: true } });
+  assert.equal(JSON.stringify(out).includes("Mike"), false);
+  for (const bad of [null, [], { ...goodTrace, v: 2 }, { ...goodTrace, ua: "Mozilla/5.0" }, { ...goodTrace, outcome: "anything" }]) assert.equal(sanitizeVoiceTrace(bad), null);
+  assert.equal(sanitizeVoiceTrace({ ...goodTrace, session: "auto/active; drop" }).session, undefined);
+});
+test("voice trace route logs one line through the Worker and answers 204", async () => {
+  const lines = []; const realLog = console.log; console.log = (line) => lines.push(line);
+  try {
+    const post = (body, options = {}) => worker.fetch(new Request(`${options.host || origin}/api/voice/trace`, {
+      method: "POST", headers: { Origin: options.origin || origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }), { ALLOWED_ORIGINS: origin }, {}, { fetch() { throw new Error("A trace must never call a provider"); } });
+    const ok = await post(goodTrace);
+    assert.equal(ok.status, 204);
+    const logged = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((l) => l?.event === "voice-trace");
+    assert.equal(logged.length, 1); assert.equal(logged[0].trigger, "auto"); assert.equal(logged[0].marks.audiostart, 63);
+    assert.equal((await post({ v: 1 })).status, 400);
+    assert.equal((await post(goodTrace, { origin: "https://evil.example" })).status, 403);
+    assert.equal((await post(goodTrace, { host: "https://ember-claude-proxy.brady-9d1.workers.dev" })).status, 404);
+    const big = await post({ ...goodTrace, pad: "x".repeat(5000) });
+    assert.equal(big.status, 413);
+  } finally { console.log = realLog; }
+  const direct = handleVoiceTrace(goodTrace, {}, () => {});
+  assert.equal(direct.status, 204);
+});
