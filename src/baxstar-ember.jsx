@@ -1370,6 +1370,17 @@ function emberPhrases(text) {
   if (phrase) pieces.push(phrase);
   return pieces;
 }
+// SECOND-TURN MIC CHECK (2026-11-11). Brady, iPhone: "she can listen to me for just
+// one round, and then the light on Safari at least goes off, and the mic quits
+// listening"; in Chrome the mic indicator stayed on "but she did not respond anymore".
+// Both screens read LISTENING… and Workers Logs show no second request: the browser
+// reported the automatic restart as started while the phone fed it no sound. An
+// automatic (re-armed) turn now has to prove itself: audio start within 2.5 s where
+// the browser reported audio start before (one quiet retry), and some words within
+// 10 s. Otherwise the conversation pauses with a "tap the mouth" note. A tap-started
+// turn is unchanged.
+const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500;
+const REARM_AUDIO_MS = 2500, REARM_WORDS_MS = 10000;
 function useEmberVoice({ onSend, blocked, enabled }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
@@ -1408,15 +1419,29 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     c.url = ""; c.phraseIndex = -1; session("auto");
     patch({ audioReady: false, phrase: "" });
   }
-  function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = null; }
+  function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = rec.onaudiostart = null; }
   function pauseConversation() { c.conversation = false; patch({ conversation: false }); }
   function released(rec) {
     if (c.rec !== rec) return;
     detach(rec); c.rec = null; c.mic = "off"; clearTimers();
+    if (c.retryMic) {
+      c.retryMic = false; c.releaseNote = ""; c.conversation = true;
+      patch({ conversation: true, phase: "ready", note: "Reopening the microphone…" });
+      timer("next", () => { if (c.live && c.conversation && !document.hidden) start(true); }, REARM_RETRY_MS);
+      return;
+    }
     const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
     c.releaseNote = ""; patch({ phase: "ready", note });
     if (c.conversation && c.draft.trim() && !c.partial && !document.hidden) { send(); }
     else if (c.conversation) { pauseConversation(); releaseWake(); patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn’t catch any words. Tap the mouth to resume." }); }
+  }
+  // A re-armed mic that the phone never actually opened: retry once, then say so
+  // and wait for a tap instead of showing LISTENING over a dead microphone.
+  function deadMic(rec, retry, note) {
+    if (c.rec !== rec || !["starting", "listening"].includes(c.mic)) return;
+    c.retryMic = retry; c.releaseNote = retry ? "" : note;
+    clearTimers(); abortMic();
+    if (!retry) releaseWake();
   }
   function abortMic() {
     pauseConversation();
@@ -1448,6 +1473,8 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     if (c.rec || c.request || options.current.blocked || !options.current.enabled || document.hidden) return;
     patch({ open: true });
     if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
+    const rearm = continuing === true;
+    if (!rearm) c.retried = false;
     stop(); c.conversation = true; c.partial = false; patch({ conversation: true }); c.releaseNote = ""; c.blob = null; c.answer = "";
     const prefix = c.interrupted ? c.draft.trim() : "";
     c.draft = prefix; patch({ draft: prefix, answer: "", partial: false });
@@ -1456,15 +1483,22 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     try { rec = new Recognition(); } catch { pauseConversation(); patch({ note: "The browser could not start speech recognition. Try again when ready." }); return; }
     c.rec = rec; c.mic = "starting"; keepAwake(); session("auto");
     rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    let audioSeen = false, wordsSeen = false;
+    rec.onaudiostart = () => { if (c.rec !== rec) return; audioSeen = true; c.audioEvidence = true; if (rearm) c.retried = false; };
     rec.onstart = () => {
       if (c.rec !== rec || c.mic !== "starting") return;
-      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: "Listening. Pause when you’re done; I’ll answer aloud." });
+      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: rearm ? "Your turn. I’m listening." : "Listening. Pause when you’re done; I’ll answer aloud." });
       timer("turn", finish, 30000);
+      if (rearm) {
+        // Only a browser that reported audio start on an earlier turn is held to it.
+        if (c.audioEvidence) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Jenny spoke. Tap the mouth to answer."); } }, REARM_AUDIO_MS);
+        timer("words", () => { if (!wordsSeen && c.mic === "listening") deadMic(rec, false, "Paused: no words heard. Tap the mouth to answer."); }, REARM_WORDS_MS);
+      }
     };
     rec.onsoundstart = rec.onspeechstart = () => { if (c.rec === rec) clearTimeout(c.timers.grace); };
     rec.onresult = event => {
       if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
-      clearTimeout(c.timers.grace);
+      clearTimeout(c.timers.grace); wordsSeen = true;
       const results = Array.from(event.results), words = results.map(r => r[0]?.transcript || "").join(" ").trim();
       c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2000);
       c.partial = results.some(r => !r.isFinal);
@@ -1639,8 +1673,11 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     session("auto");
     if (!c.url || !c.conversation || document.hidden || !options.current.enabled) { releaseWake(); patch({ phase: "ready", phrase: "" }); return; }
     const epoch = c.epoch;
+    // Release Jenny's player and playback session now, not in the same tick as the
+    // mic restart; WebKit gets a longer handoff (it is the engine with audioSession).
+    clearAudio();
     patch({ phase: "ready", phrase: "", note: "Your turn…" });
-    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, 450);
+    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
   }
   useEffect(() => {
     c.live = true;

@@ -1,5 +1,12 @@
 # Ember — Current State
 
+**Second-turn mic check — November 11, 2026 (Claude):** on iPhone, Ember's automatic restart
+after Jenny's first answer reported LISTENING while the phone gave it no sound (Safari mic
+light off; in Chrome no second request). Jenny's player is now torn down before the restart,
+and WebKit waits 800 ms. An automatic turn that shows no audio start (after one retry) or no
+words within 10 s pauses with a "tap the mouth" note instead of fake LISTENING. PROVISIONAL on
+device; details and the one diagnostic question are in `docs/VOICE-REBUILD.md`.
+
 **Fast replies for spoken turns — November 10, 2026 (Claude; Brady: "make changes to improve her"):**
 Workers Logs of Brady's real iPhone conversation (11-09 17:19–17:21 CST, 3 turns) show
 8–14 s from Send to Jenny's first clip. Nearly all of it is Opus 5.5 thinking at High

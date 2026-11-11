@@ -233,6 +233,11 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**November 11 second-turn restart:** on iPhone (Safari and Chrome) the automatic restart after
+Jenny's first answer reported LISTENING with no sound reaching it. Automatic turns now pause
+with a "tap the mouth" note when no audio start (after one retry) or no words arrive within
+10 s. Whether the longer handoff restores tapless back-and-forth on iPhone is PROVISIONAL.
+
 **November 10 iPhone lab runs (v6):** one turn cut Brady off mid-sentence (Safari
 finalized a phrase at a pause and reported nothing for 750 ms). A later run carried a long
 paragraph cleanly at 750 ms (Limited: mic off, reply audible). Locking the screen stops

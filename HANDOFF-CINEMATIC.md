@@ -1,5 +1,10 @@
 # Ember — Living Cinematic Handoff
 
+**2026-11-11 — Second-turn mic check (Claude):** after Jenny's first answer the iPhone showed
+LISTENING over a dead mic. Automatic turns now must show audio and words, or they pause with a
+"tap the mouth" note; Jenny's player is released before the restart. PROVISIONAL on device.
+Details: `docs/VOICE-REBUILD.md`.
+
 **2026-11-10 — Fast replies: spoken turns at Low effort (Claude):** Brady's real 11-09
 iPhone conversation waited 8–14 s for Jenny's first sentence, almost all of it Opus at High
 effort thinking. Spoken turns now run at Low on the chosen model, with a **Fast replies**

@@ -792,7 +792,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-10 14:07Z".startsWith("__") ? "dev" : "2026-11-10 14:07Z";
+  const BUILD_STAMP = "2026-11-11 03:32Z".startsWith("__") ? "dev" : "2026-11-11 03:32Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1456,6 +1456,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     if (phrase) pieces.push(phrase);
     return pieces;
   }
+  const REARM_HANDOFF_MS = 450;
+  const REARM_HANDOFF_WEBKIT_MS = 800;
+  const REARM_RETRY_MS = 1500;
+  const REARM_AUDIO_MS = 2500;
+  const REARM_WORDS_MS = 1e4;
   function useEmberVoice({ onSend, blocked, enabled }) {
     const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
     const audioRef = useRef(null), options = useRef(null);
@@ -1540,7 +1545,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       patch({ audioReady: false, phrase: "" });
     }
     function detach(rec) {
-      rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = null;
+      rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = rec.onaudiostart = null;
     }
     function pauseConversation() {
       c.conversation = false;
@@ -1552,6 +1557,16 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       c.rec = null;
       c.mic = "off";
       clearTimers();
+      if (c.retryMic) {
+        c.retryMic = false;
+        c.releaseNote = "";
+        c.conversation = true;
+        patch({ conversation: true, phase: "ready", note: "Reopening the microphone\u2026" });
+        timer("next", () => {
+          if (c.live && c.conversation && !document.hidden) start(true);
+        }, REARM_RETRY_MS);
+        return;
+      }
       const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
       c.releaseNote = "";
       patch({ phase: "ready", note });
@@ -1562,6 +1577,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         releaseWake();
         patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn\u2019t catch any words. Tap the mouth to resume." });
       }
+    }
+    function deadMic(rec, retry, note) {
+      if (c.rec !== rec || !["starting", "listening"].includes(c.mic)) return;
+      c.retryMic = retry;
+      c.releaseNote = retry ? "" : note;
+      clearTimers();
+      abortMic();
+      if (!retry) releaseWake();
     }
     function abortMic() {
       pauseConversation();
@@ -1627,6 +1650,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." });
         return;
       }
+      const rearm = continuing === true;
+      if (!rearm) c.retried = false;
       stop();
       c.conversation = true;
       c.partial = false;
@@ -1654,12 +1679,31 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       rec.continuous = true;
       rec.interimResults = true;
       rec.maxAlternatives = 1;
+      let audioSeen = false, wordsSeen = false;
+      rec.onaudiostart = () => {
+        if (c.rec !== rec) return;
+        audioSeen = true;
+        c.audioEvidence = true;
+        if (rearm) c.retried = false;
+      };
       rec.onstart = () => {
         if (c.rec !== rec || c.mic !== "starting") return;
         clearTimers();
         c.mic = "listening";
-        patch({ phase: "listening", note: "Listening. Pause when you\u2019re done; I\u2019ll answer aloud." });
+        patch({ phase: "listening", note: rearm ? "Your turn. I\u2019m listening." : "Listening. Pause when you\u2019re done; I\u2019ll answer aloud." });
         timer("turn", finish, 3e4);
+        if (rearm) {
+          if (c.audioEvidence) timer("live", () => {
+            if (!audioSeen) {
+              const retry = !c.retried;
+              c.retried = true;
+              deadMic(rec, retry, "Your phone didn\u2019t reopen the microphone after Jenny spoke. Tap the mouth to answer.");
+            }
+          }, REARM_AUDIO_MS);
+          timer("words", () => {
+            if (!wordsSeen && c.mic === "listening") deadMic(rec, false, "Paused: no words heard. Tap the mouth to answer.");
+          }, REARM_WORDS_MS);
+        }
       };
       rec.onsoundstart = rec.onspeechstart = () => {
         if (c.rec === rec) clearTimeout(c.timers.grace);
@@ -1667,6 +1711,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       rec.onresult = (event) => {
         if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
         clearTimeout(c.timers.grace);
+        wordsSeen = true;
         const results = Array.from(event.results), words = results.map((r) => {
           var _a;
           return ((_a = r[0]) == null ? void 0 : _a.transcript) || "";
@@ -1950,10 +1995,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         return;
       }
       const epoch = c.epoch;
+      clearAudio();
       patch({ phase: "ready", phrase: "", note: "Your turn\u2026" });
       timer("next", () => {
         if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true);
-      }, 450);
+      }, navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
     }
     useEffect(() => {
       var _a, _b;

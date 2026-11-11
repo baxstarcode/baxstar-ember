@@ -62,6 +62,38 @@ evidence. The following entries describe prior experiments, not the current scop
 
 ## Historical experiments
 
+**Second-turn mic check — November 11, 2026 (Claude, from ChatGPT's 11-10 Ember log handoff):**
+Brady on iPhone (11-10, about 6:50 PM CST): Ember “can listen to me for just one round,
+and then the light on Safari at least goes off, and the mic quits listening”, and the
+truck's blower rises again. In Chrome on the same phone the mic indicator stayed on
+“but she did not respond anymore”. Both screenshots show the reactor reading
+**LISTENING…**, which renders only after the browser reports the automatic restart as
+started. Workers Logs agree: Chrome made one spoken request (18:51:56 CST; Jenny's
+first clip about 4 s later) and no second one. Safari made requests at 18:54:12 and
+18:55:17; the second is presumably a manual re-tap. So the browser accepted the
+automatic restart about 0.45 s after Jenny stopped, but the phone fed it no sound.
+Likely cause, not proven: switching from Jenny's playback session back to capture
+with no tap.
+
+- **Change (dashboard).** Jenny's player and playback session are torn down when her
+  reply ends, not in the same tick as the restart. The restart then waits 800 ms in
+  WebKit browsers (450 ms elsewhere). An automatic turn must prove itself: where the
+  browser has reported audio start on an earlier turn, it must report it again within
+  2.5 s (one quiet retry 1.5 s later). Any automatic turn must also produce words within
+  10 s. Otherwise the conversation pauses with a plain note ("Your phone didn’t reopen
+  the microphone after Jenny spoke. Tap the mouth to answer." or "Paused: no words
+  heard."), releases the screen lock and stops showing LISTENING. Tap-started turns
+  are unchanged.
+- **Tests.** 10 new foreground-voice checks cover a dead re-arm (retry, then pause, no
+  fake LISTENING, no request, wake released, tap restarts), a successful retry carrying
+  the conversation on, a live re-arm surviving the audio check, and a silent re-arm
+  pausing at 10 s. The full release suite passes.
+- **PROVISIONAL, one diagnostic question, no test loop.** On Brady's next ordinary use,
+  which happens after Jenny's first answer? (a) she keeps listening, meaning the longer
+  handoff fixed it; (b) "Your phone didn’t reopen the microphone…", meaning the phone
+  refuses a restart without a tap; or (c) "Paused: no words heard". If (b), the iPhone
+  path needs one tap per turn, or a native path; a browser change cannot force capture.
+
 **Real-use diagnosis and Fast replies — November 10, 2026 (Claude):** Brady, after
 three more lab runs: “When I try to use Ember, it just is very slow. It doesn't work
 really for much at all. I can't have a back-and-forth conversation with her for sure.

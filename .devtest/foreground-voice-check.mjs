@@ -18,7 +18,7 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
   if(prefs)localStorage.setItem("ember-prefs",JSON.stringify(prefs));
   window.recs=[];window.recMode='normal';window.wakes=[];window.wakeMode=wake;
   class Rec {
-   start(){this.active=true;recs.push(this);if(recMode==='denied')setTimeout(()=>this.onerror?.({error:'not-allowed'}),0);else if(recMode!=='pending')setTimeout(()=>this.onstart?.(),0)}
+   start(){this.active=true;recs.push(this);if(recMode==='denied')setTimeout(()=>this.onerror?.({error:'not-allowed'}),0);else if(recMode!=='pending')setTimeout(()=>{this.onstart?.();const dead=window.deadAudio>0&&recs.length>1;if(dead)window.deadAudio--;else if(window.audioStart)this.onaudiostart?.()},0)}
    stop(){if(recMode!=='unconfirmed'){this.active=false;setTimeout(()=>this.onend?.(),0)}}
    abort(){this.stop()}
   }
@@ -150,6 +150,34 @@ try{
  {
   const f=await fixture({prefs:{v:5,chatModel:'claude-sonnet-5-5',chatEffort:'medium',voiceFast:false}});
   await f.start();check('saved Fast replies off is restored',await f.panel.getByRole('button',{name:/Fast replies/}).getAttribute('aria-pressed')==='false');await f.context.close();
+ }
+ {
+  // Second-turn mic check (2026-11-11): an automatic turn whose mic the phone never opens.
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=2});
+  await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
+  await f.page.getByText(/Reopening the microphone/).waitFor();check('dead re-armed mic gets one quiet retry',await f.page.evaluate(()=>recs.length===2&&!recs[1].active));
+  await f.page.getByText(/didn’t reopen the microphone after Jenny spoke/).waitFor({timeout:15000});
+  check('second dead re-arm pauses with a tap-the-mouth note',await f.page.evaluate(()=>recs.length===3&&recs.every(r=>!r.active)));
+  check('dead re-arm never shows LISTENING',await f.page.locator('[data-voice-phase="listening"]').count()===0);
+  check('dead re-arm sends nothing',f.calls.filter(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||'')).length===1);
+  check('dead re-arm releases the screen lock',await f.page.evaluate(()=>wakes.every(w=>w.released)));
+  await f.start();check('a tap after the pause starts a normal turn',await f.page.evaluate(()=>recs.length===4&&recs[3].active));
+  check('second-turn check adds no runtime errors',f.errors.length===0);await f.context.close();
+ }
+ {
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=1});
+  await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
+  await f.page.getByText(/Reopening the microphone/).waitFor();await f.page.waitForFunction(()=>recs.length===3&&recs[2].active);await f.page.locator('[data-voice-phase="listening"]').waitFor();
+  await f.page.evaluate(()=>say('Second question'));await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('a successful retry carries the conversation to the next reply',f.calls.some(c=>c.path==='/api/messages'&&c.body.messages?.at(-1)?.content==='Second question'));await f.context.close();
+ }
+ {
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true});
+  await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
+  await f.page.waitForFunction(()=>recs.length===2&&recs[1].active);await f.page.locator('[data-voice-phase="listening"]').waitFor();
+  check('a re-armed mic that opens keeps listening past the audio check',await (async()=>{await f.page.waitForTimeout(3000);return f.page.evaluate(()=>recs[1].active)})());
+  await f.page.getByText(/Paused: no words heard/).waitFor({timeout:15000});
+  check('a silent re-armed turn pauses instead of listening for 30 s',await f.page.evaluate(()=>recs.every(r=>!r.active))&&await f.page.locator('[data-voice-phase="listening"]').count()===0);await f.context.close();
  }
  {
   const f=await fixture({preview:true});await f.start();await f.finish();check('preview Send is gated',await f.panel.getByRole('button',{name:'Send',exact:true}).isDisabled());check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();
