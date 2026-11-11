@@ -37,7 +37,9 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
    if(u.pathname==='/api/tts')return route.fulfill(mode==='ttsFailure'?{status:502,json:{error:'provider-refused'}}:{contentType:'audio/wav',body:wav}).catch(()=>{});
    const q=body.messages?.at(-1)?.content||'';
    const text=/ONLY valid JSON/.test(q)?'{"voicemails":[],"emails":[],"events":[]}':mode==='long'?'This is the complete long reply. '.repeat(45):'Your voice is connected. The boat is ready, and your next trip is on the calendar.';
-   return route.fulfill({json:{model:body.model,content:[{type:'text',text}],stop_reason:'end_turn'}}).catch(()=>{});
+   // A verified lookup: the live-data guard requires a real connector result.
+   const tools=/ONLY valid JSON/.test(q)||mode==='noTool'?[]:[{type:'mcp_tool_use',id:'t1',name:'list_events',server_name:'calendar'},{type:'mcp_tool_result',tool_use_id:'t1',is_error:false,content:[]}];
+   return route.fulfill({json:{model:body.model,content:[...tools,{type:'text',text}],stop_reason:'end_turn'}}).catch(()=>{});
   }
   const rel=u.pathname==='/'?'index.html':u.pathname.slice(1),file=path.resolve(root,rel);
   if(!file.startsWith(root+path.sep))return route.abort();
@@ -47,8 +49,9 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
  await page.waitForFunction(()=>document.querySelector('.chat-controls button[aria-pressed="true"]'));
  const panel=page.getByRole('region',{name:'Ember voice controls'});
  const start=async()=>{await page.getByRole('button',{name:'Talk to Ember',exact:true}).click();await page.locator('[data-voice-phase="listening"]').waitFor()};
- const finish=async(text='Check my next trip.',final=true)=>{await page.evaluate(([t,f])=>say(t,f),[text,final]);await panel.getByRole('button',{name:'Stop voice'}).click();await panel.locator('[data-phase="ready"]').waitFor()};
- return {page,context,panel,calls,errors,start,finish,mode:v=>mode=v,resolve:()=>{pending.splice(0).forEach(r=>r())},async end(){await page.locator('audio[aria-label="Ember reply"]').evaluate(a=>a.currentTime=a.duration-.05);await panel.locator('[data-phase="ready"]').waitFor()}};
+ const finish=async(text='Check my next trip.',final=true)=>{await page.evaluate(([t,f])=>say(t,f),[text,final]);await panel.getByRole('button',{name:'Stop voice'}).click();await page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'})};
+ const ask=async(text='Check my next trip.')=>{await page.evaluate(t=>say(t),text)};
+ return {page,context,panel,calls,errors,start,finish,ask,mode:v=>mode=v,resolve:()=>{pending.splice(0).forEach(r=>r())},async end(){await page.locator('audio[aria-label="Ember reply"]').evaluate(a=>a.currentTime=a.duration-.05);await page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'})}};
 }
 try{
  for(const prefs of [{v:4,chatModel:'claude-sonnet-5-5',chatEffort:'medium'},{v:5,chatModel:'claude-sonnet-5-5',chatEffort:'low'}]){
@@ -56,7 +59,7 @@ try{
   check(`preferences v${prefs.v}: requested migration or later override persists`,labels.join('|')===(prefs.v===4?'Opus|High':'Sonnet|Low'));await f.context.close();
  }
  {
-  const f=await fixture();await f.start();await f.page.evaluate(()=>{say('unfinished',false);recs.at(-1).onend()});await f.panel.locator('[data-phase="ready"]').waitFor();
+  const f=await fixture();await f.start();await f.page.evaluate(()=>{say('unfinished',false);recs.at(-1).onend()});await f.page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'});
   check('unfinished natural recognition end never auto-sends',!f.calls.some(c=>c.path==='/api/messages'));await f.context.close();
  }
  {
@@ -79,7 +82,7 @@ try{
    await f.panel.locator('[data-phase="listening"]').waitFor();
   }
   check(`${width}: one mouth tap supports three conversation turns`,await f.page.evaluate(()=>recs.length===4));
-  await f.panel.getByRole('button',{name:'Type instead'}).click();
+  await f.panel.getByRole('button',{name:'Close voice'}).click();
   const spoken=f.calls.filter(c=>c.path==='/api/tts').length;
   await f.page.getByRole('textbox',{name:'Ask Ember'}).fill('Typed question');await f.page.getByRole('textbox',{name:'Ask Ember'}).press('Enter');
   await f.page.waitForTimeout(400);
@@ -92,7 +95,7 @@ try{
   const geometry=()=>f.page.evaluate(()=>{const w=document.querySelector('.conversation-workspace'),r=document.querySelector('.reactor-stage').getBoundingClientRect(),d=document.querySelector('.console-dock').getBoundingClientRect(),t=document.querySelector('.tools-rail').getBoundingClientRect();return {scroll:document.documentElement.scrollHeight-innerHeight,workspaceOverflow:w.scrollHeight-w.clientHeight,skull:r.width,bottom:r.bottom,dock:d.top,tools:t.bottom}});
   const initial=await geometry();
   check(`${width} desktop fits without page scrolling`,initial.scroll<=1&&initial.tools<=initial.dock);
-  await f.start();await f.finish();await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  await f.start();await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
   const active=await geometry();await f.page.waitForTimeout(1600);await f.page.screenshot({path:`/tmp/ember-fit-${width}.png`});
   check(`${width} voice controls fit and skull stays stable`,active.scroll<=1&&active.workspaceOverflow<=1&&Math.abs(active.skull-initial.skull)<1&&active.bottom<=active.dock);
   await f.context.close();
@@ -102,12 +105,12 @@ try{
   const f=await fixture({width});const hero=f.page.locator('.reactor-stage');const before=await hero.boundingBox();
   check(`${width}: mic never starts on load`,await f.page.evaluate(()=>recs.length===0));
   await f.start();check(`${width}: explicit mouth tap starts one session`,await f.page.evaluate(()=>recs.length===1));
-  await f.panel.locator('[data-wake="held"]').waitFor();await f.finish();
-  check(`${width}: capture ends before Send`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
-  await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  await f.panel.locator('[data-wake="held"]').waitFor();await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
+  check(`${width}: capture ends before Jenny speaks`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
+  check(`${width}: the panel has no review box, Send or Type instead`,await f.panel.locator('textarea').count()===0&&await f.panel.getByRole('button',{name:/^(Send|Type instead)$/}).count()===0);
   check(`${width}: spoken turn keeps the selected Opus model at Fast-replies Low effort`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='low'&&c.body.max_tokens===4000&&c.body.messages[0]?.content.includes('Effort: LOW')&&!c.body.messages[0]?.content.includes('Effort: HIGH')&&c.body.messages.at(-1)?.content==='Check my next trip.'));
   check(`${width}: Jenny uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-JennyNeural'));
-  check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')));
+  check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')&&c.path!=='/api/voice/trace'));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
   const after=await hero.boundingBox();check(`${width}: skull does not shrink after reply`,Math.abs(before.width-after.width)<1&&after.width>250);
   check(`${width}: transcript remains bounded`,await f.page.locator('.home-thread').evaluate(e=>e.clientHeight>=90&&e.clientHeight<=180));
@@ -122,10 +125,10 @@ try{
   await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.getByRole('button',{name:'Read reply',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
   check(`${width}: speech replay uses cached audio`,f.calls.filter(c=>c.path==='/api/tts').length===count);
   await f.panel.getByRole('button',{name:'Stop voice'}).click();
-  check(`${width}: stop clears audio but preserves words`,await f.panel.locator('audio').getAttribute('src')===null&&(await f.panel.locator('textarea').inputValue()).includes('next trip'));
+  check(`${width}: stop clears audio but preserves words`,await f.panel.locator('audio').getAttribute('src')===null&&(await f.page.locator('.home-thread').innerText()).includes('next trip'));
   await f.start();await f.page.evaluate(()=>say('Unfinished words',false));await f.page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'))});
-  await f.panel.locator('[data-phase="ready"]').waitFor();
-  check(`${width}: interruption retains received words`,(await f.panel.locator('textarea').inputValue())==='Unfinished words');
+  await f.page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'});
+  check(`${width}: interruption puts received words in the Ask Ember box`,(await f.page.getByRole('textbox',{name:'Ask Ember'}).inputValue())==='Unfinished words');
   await f.page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'))});
   check(`${width}: return never rearms mic`,await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
   check(`${width}: dock unchanged`,(await f.page.locator('.dock-label').allTextContents()).map(t=>t.replace(/\u00ad/g,'')).join('|')==='OPS|Caption Studio|Knowledge Graph|Google Drive|FareHarbor|Projects');
@@ -140,10 +143,10 @@ try{
   await f.start();const toggle=f.panel.getByRole('button',{name:/Fast replies/});
   check('Fast replies defaults on and is visible in the voice panel',await toggle.getAttribute('aria-pressed')==='true');
   check('Fast replies cannot change mid-capture',await toggle.isDisabled());
-  await f.finish();await toggle.click();
+  await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'});await toggle.click();
   check('Fast replies toggles off',await toggle.getAttribute('aria-pressed')==='false');
   await f.page.waitForFunction(()=>JSON.parse(localStorage.getItem('ember-prefs')||'{}').voiceFast===false);check('Fast replies choice persists',true);
-  await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  await f.start();await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
   check('Fast replies off: spoken turn uses the selected Opus/High',f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='high'&&c.body.messages.at(-1)?.content==='Check my next trip.'));
   check('Fast replies toggle adds no runtime errors',f.errors.length===0);await f.context.close();
  }
@@ -176,11 +179,17 @@ try{
   await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
   await f.page.waitForFunction(()=>recs.length===2&&recs[1].active);await f.page.locator('[data-voice-phase="listening"]').waitFor();
   check('a re-armed mic that opens keeps listening past the audio check',await (async()=>{await f.page.waitForTimeout(3000);return f.page.evaluate(()=>recs[1].active)})());
+  await f.page.getByText(/I didn’t hear anything. Listening again/).waitFor({timeout:15000});
+  check('a silent re-armed turn gets one fresh recognizer after a gap',await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
+  await f.page.waitForFunction(()=>recs.length===3&&recs[2].active,null,{timeout:6000});
+  check('the fresh retry is reported as a deaf retry',await f.page.evaluate(()=>emberVoiceTraces.at(-1).outcome==='no-words-retry'));
   await f.page.getByText(/Paused: no words heard/).waitFor({timeout:15000});
-  check('a silent re-armed turn pauses instead of listening for 30 s',await f.page.evaluate(()=>recs.every(r=>!r.active))&&await f.page.locator('[data-voice-phase="listening"]').count()===0);await f.context.close();
+  check('a second silent turn pauses instead of listening for 30 s',await f.page.evaluate(()=>recs.length===3&&recs.every(r=>!r.active))&&await f.page.locator('[data-voice-phase="listening"]').count()===0);
+  check('the pause is reported with its trigger',await f.page.evaluate(()=>{const t=emberVoiceTraces.at(-1);return t.outcome==='no-words'&&t.trigger==='deaf-retry'&&t.marks.onstart>=0}));
+  check('traces reach the self-report route on production',f.calls.filter(c=>c.path==='/api/voice/trace').length>=3);await f.context.close();
  }
  {
-  const f=await fixture({preview:true});await f.start();await f.finish();check('preview Send is gated',await f.panel.getByRole('button',{name:'Send',exact:true}).isDisabled());check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();
+  const f=await fixture({preview:true});await f.start();await f.finish();check('preview sends nothing and keeps the words in the Ask Ember box',!f.calls.some(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||''))&&(await f.page.getByRole('textbox',{name:'Ask Ember'}).inputValue()).includes('next trip'));check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();
  }
  {
   const f=await fixture({recognition:false});await f.page.getByRole('button',{name:'Talk to Ember',exact:true}).click();check('unsupported recognition has readable fallback',await f.panel.innerText().then(t=>t.includes('Voice recognition is unavailable')));await f.context.close();
@@ -192,21 +201,21 @@ try{
   const f=await fixture({wake:'pending'});await f.start();await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.page.evaluate(()=>resolveWake());await f.page.waitForFunction(()=>wakes.length&&wakes.every(w=>w.released));check('late wake grant after Stop is released',true);await f.context.close();
  }
  {
-  const f=await fixture();await f.start();await f.finish();f.mode('ttsFailure');await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.page.getByText(/Jenny’s speech service returned HTTP 502/).waitFor();
+  const f=await fixture();await f.start();f.mode('ttsFailure');await f.ask();await f.page.getByText(/Jenny’s speech service returned HTTP 502/).waitFor();
   check('failed TTS has no speaking animation',await f.page.locator('.brand-phrase').count()===0);
   const chats=f.calls.filter(c=>c.path==='/api/messages').length;f.mode('normal');await f.panel.getByRole('button',{name:'Read reply',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();check('speech retry never resends chat',f.calls.filter(c=>c.path==='/api/messages').length===chats);await f.context.close();
  }
  for(const mode of ['chatPending','ttsPending']){
-  const f=await fixture();await f.start();await f.finish();f.mode(mode);await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator(`[data-phase="${mode==='chatPending'?'thinking':'preparing'}"]`).waitFor();await f.panel.getByRole('button',{name:'Stop voice'}).click();f.resolve();await f.page.waitForTimeout(150);
+  const f=await fixture();await f.start();f.mode(mode);await f.ask();await f.panel.locator(`[data-phase="${mode==='chatPending'?'thinking':'preparing'}"]`).waitFor();await f.panel.getByRole('button',{name:'Stop voice'}).click();f.resolve();await f.page.waitForTimeout(150);
   check(`${mode}: cancelled response cannot start audio`,await f.panel.locator('audio').getAttribute('src')===null&&await f.page.locator('.brand-phrase').count()===0);await f.context.close();
  }
  {
   const f=await fixture();await f.page.evaluate(()=>window.recMode='unconfirmed');await f.start();await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.getByRole('button',{name:'I checked: mic indicator is off'}).waitFor();
-  check('unconfirmed mic blocks sending',await f.panel.getByRole('button',{name:'Send',exact:true}).isDisabled());
+  check('unconfirmed mic sends nothing',!f.calls.some(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||'')));
   await f.panel.getByRole('button',{name:'I checked: mic indicator is off'}).click();check('physical confirmation releases gate',await f.panel.getByRole('button',{name:'Talk',exact:true}).isEnabled());await f.context.close();
  }
  {
-  const f=await fixture({reduced:true});await f.start();await f.finish();f.mode('long');await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  const f=await fixture({reduced:true});await f.start();f.mode('long');await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
   check('long reply explicitly announces partial speech',(await f.panel.innerText()).includes('Speaking the first part only'));
   check('long reply retained in full',await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.length>1000));
   check('TTS respects 1000-character Worker cap',f.calls.find(c=>c.path==='/api/tts').body.text.length<=1000);
@@ -219,13 +228,13 @@ try{
  }
  {
   const f=await fixture();await f.page.evaluate(()=>{window.realPlay=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=()=>Promise.reject(new DOMException('Blocked','NotAllowedError'))});
-  await f.start();await f.finish();await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.page.getByText(/Audio is ready. Tap Play/).waitFor();
+  await f.start();await f.ask();await f.page.getByText(/Audio is ready. Tap Play/).waitFor();
   check('blocked autoplay retains native audio controls',await f.panel.locator('audio').isVisible());
   await f.page.evaluate(()=>{HTMLMediaElement.prototype.play=realPlay;document.querySelector('audio').play()});await f.panel.locator('[data-phase="playing"]').waitFor();check('explicit playback starts without another API request',f.calls.filter(c=>c.path==='/api/tts').length===1);await f.context.close();
  }
  {
-  const f=await fixture();await f.start();await f.finish();await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
-  for(let n=0;n<3;n++){await f.start();await f.finish('Repeated turn '+n);await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();await f.end()}
+  const f=await fixture();await f.start();await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();await f.panel.getByRole('button',{name:'Stop voice'}).click();
+  for(let n=0;n<3;n++){await f.start();await f.ask('Repeated turn '+n);await f.panel.locator('[data-phase="playing"]').waitFor();await f.panel.getByRole('button',{name:'Stop voice'}).click()}
   check('four complete successive turns never capture over playback',await f.page.evaluate(()=>recs.length===4&&recs.every(r=>!r.active)));
   check('successive turns use exactly one speech request each',f.calls.filter(c=>c.path==='/api/tts').length===4);await f.context.close();
  }
@@ -234,11 +243,11 @@ try{
   check('interim speech cancels the pending phrase cutoff',await f.page.evaluate(()=>recs.at(-1).active));
   await f.page.evaluate(()=>say('Now finished'));await f.panel.locator('[data-phase="playing"]').waitFor();
   check('final phrase automatically sends and speaks',await f.page.evaluate(()=>!recs.at(-1).active)&&f.calls.some(c=>c.path==='/api/tts'));await f.panel.getByRole('button',{name:'Stop voice'}).click();
-  await f.start();await f.page.evaluate(()=>{say('Keep these words',false);window.lateResult=recs.at(-1).onresult});await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.locator('[data-phase="ready"]').waitFor();
+  await f.start();await f.page.evaluate(()=>{say('Keep these words',false);window.lateResult=recs.at(-1).onresult});await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'});
   await f.page.evaluate(()=>{const r=[{transcript:'stale transcript'}];r.isFinal=true;lateResult({results:[r],resultIndex:0})});
-  check('late recognition event cannot replace interrupted words',(await f.panel.locator('textarea').inputValue())==='Keep these words');
-  await f.start();await f.page.evaluate(()=>say('and continue'));await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.locator('[data-phase="ready"]').waitFor();
-  check('explicit continuation carries interrupted draft',(await f.panel.locator('textarea').inputValue())==='Keep these words and continue');
+  check('late recognition event cannot replace interrupted words',(await f.page.getByRole('textbox',{name:'Ask Ember'}).inputValue())==='Keep these words');
+  await f.start();await f.page.evaluate(()=>say('and continue'));await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'});
+  check('later unsent words join the Ask Ember box instead of a review step',(await f.page.getByRole('textbox',{name:'Ask Ember'}).inputValue())==='Keep these words and continue');
   await f.context.close();
  }
  {

@@ -74,7 +74,10 @@ function startStaticServer(requests) {
           `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "refusal" } })}\n\n`,
           'event: message_stop\ndata: {"type":"message_stop"}\n\n',
         ] : []),
-        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+        // A real calendar lookup precedes the answer (the live-data guard needs one).
+        'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"mcp_tool_use","id":"t1","name":"list_events","server_name":"calendar","input":{}}}\n\n',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"mcp_tool_result","tool_use_id":"t1","is_error":false,"content":[]}}\n\n',
+        'event: content_block_start\ndata: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}\n\n',
         ...["Two ", "bookings ", "today, ", "Brady."].map((text) =>
           `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } })}\n\n`),
         'event: message_stop\ndata: {"type":"message_stop"}\n\n',

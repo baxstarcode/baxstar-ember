@@ -1,5 +1,100 @@
 # Ember voice — current foreground integration and historical evidence
 
+## Second-turn deaf mic, slow replies, invented calendar — diagnosis 2026-11-11 (Claude)
+
+**Evidence used (no device test asked of Brady):** his 11-11 iPhone Safari screen recording
+(10:56–10:57 CST), read-only Workers Logs (Worker `7736245b`), the repo's device reports,
+WebKit source (`SpeechRecognition.cpp`, `SpeechRecognizer.cpp`,
+`SpeechRecognitionCaptureSourceImpl.cpp`, `WebSpeechRecognizerTask.mm`,
+`RealtimeMediaSource.cpp`, `MediaSessionManagerCocoa.mm`, `DOMAudioSession.cpp`,
+`SpeechRecognitionRealtimeMediaSourceManager.cpp`, all at WebKit `main`, 2026-11-11) and
+the WebKit/W3C trackers below.
+
+**Workers Logs, 2026-11-11 16:45–17:05 UTC (iPhone Safari 27.0.1):** spoken requests at
+16:45:21, 16:52:30, 16:55:36 and 16:56:58 UTC, each followed by Jenny's clips, and never a
+second spoken request within a minute of a reply ending. The recording's turn is
+16:56:58 (request 2.5 s, first clip requested 16:57:01.3). So the restarted microphone
+produced no words, as the screen showed.
+
+### Second turn: candidate causes
+
+| Candidate | For | Against | Cheapest check |
+|---|---|---|---|
+| A. The automatic restart starts a "deaf" recognition session after Jenny's `<audio>` playback (WebKit bug) | [WebKit 321436](https://bugs.webkit.org/show_bug.cgi?id=321436) (NEW, InRadar, last touched 2026-11-09) describes exactly this: after an `<audio>`/`<video>` element plays, `start()` "appears to start" but no result, error or end ever fires; reproduced on iOS 27.0.1 (Brady's version) through 27.3 beta. A Safari engineer tied it to the audio session being deactivated while recognition runs ([web-speech-api #96](https://github.com/WebAudio/web-speech-api/issues/96); fixes 317741/317747 landed in WebKit in June–July 2026 but reports on shipping iOS 27 continue). Reported workaround: play audio through Web Audio. Control Center still showing "Baxstar Ember" as Now Playing after PR #67's release fits a media session that outlives the reply | Taps after Jenny did work (11-10 18:55 Safari, 11-11 16:56:58), so the bug is not "every later session" for Brady | Per-turn trace (below): automatic vs tap, words or none |
+| B. A restart without a fresh user tap is refused or muted by iOS | Every tap-started second turn worked; every automatic one failed | WebKit's speech permission path (`SpeechRecognitionPermissionManager`) has no user-gesture check; the gesture-gating proposal (bug 219886) was dropped in 2021 | Trace: does a no-tap retry 13 s later hear words? |
+| C. Too little time between playback end and restart | Reports say a 3.5–15 s wait helps; PR #67's 800 ms and 1.5 s retry are short; WebKit keeps the playback category for 2 s after media ends (`delayBeforeSettingCategoryNone`) | One reporter says delays "don't help" | Same trace: `sinceReplyEndMs` against outcome |
+| D. PR #67's checks misread the state | **Proven from WebKit source:** `start` is sent before capture begins; `audiostart` fires as soon as `RealtimeMediaSource::start()` does not fail at once; the Cocoa recognizer never sends `soundstart`; `speechstart` arrives only with the first hypothesis. So on iPhone the 2.5 s "audio start" check always passes, and only words prove the mic is live. That is why Brady saw "no words heard", not "didn't reopen" | — | Settled by source |
+
+**Conclusion:** D is proven; A is the best-supported cause and matches every observation;
+B and C cannot be separated from A without device evidence. No container can prove what
+iOS does with the microphone.
+
+**Built (PR for branch `claude/ember-voice-debugging-t0ezm0`):**
+1. On WebKit engines (every iPhone browser, Mac Safari) that expose `navigator.audioSession`,
+   Jenny plays through one `AudioContext` opened inside the mouth tap and kept running for
+   the whole conversation (`playback` session during her clips, `auto` before listening).
+   Each clip is decoded and played as a buffer, so no `<audio>` element plays and nothing
+   holds Now Playing. A clip that cannot be decoded falls back to the old player. Chrome
+   on the Mac is unchanged. A browser without `navigator.audioSession` keeps the old
+   player, because Web Audio alone is ambient sound that the silent switch mutes.
+2. On WebKit the useless audio-start check is skipped. An automatic turn with no words in
+   10 s gets one fresh recognizer after a 3 s gap ("I didn't hear anything. Listening
+   again…"), then pauses with "tap the mouth".
+3. **Self-report:** every listen→reply turn posts one record to `/api/voice/trace`, which the
+   Worker writes to Workers Logs as `{"event":"voice-trace",…}`: trigger (tap, auto, retry,
+   deaf-retry), outcome, how Jenny played (web or element), audio-session state at
+   listen start, time since the last reply ended, event times (onstart, audiostart,
+   speechstart, first and last result, send, tool result, first text, first clip
+   request/ready, first sound, reply end) and `lastWordsToSoundMs` (last recognized words to
+   Jenny's first sound). No words, audio or free text: the Worker drops anything not
+   allowlisted (`proxy/voice-trace.mjs`). Query: Workers Logs, `ember-claude-proxy`,
+   message contains `voice-trace`.
+
+**How the next real use settles it:** turns with `trigger:"auto"` and `outcome:"spoke"` and
+`out:"web"` mean Web Audio fixed it (A). `outcome:"no-words-retry"` followed by a
+`deaf-retry` turn that `spoke` means time matters (C). Both automatic attempts ending in
+`no-words`, followed by a working `tap`, means iOS needs a tap per turn (B). Then the
+best possible web design is one tap per turn on iPhone, with a native Shortcut (draft
+PR #48) as the only route to tapless turns.
+
+### Slowness
+
+Workers Logs, request start to Jenny's first clip request: 11-09 (High effort) 10.1 s; 11-11
+(Low effort, Fast replies) 1.6, 2.7, 4.0 and 5.6 s. PR #67's change worked for the model
+part. Still unmeasured on a device: last words → request (the 1100 ms grace plus the
+recognizer's own delay) and clip → first sound. The trace now reports the full
+`lastWordsToSoundMs` for each real turn. Container simulation (fixed simulated timings, not
+live): 2.5 s to the first sound and about 4.0 s to the first sound of the answer when a
+calendar lookup is needed.
+
+### Invented calendar facts
+
+Spoken turns always attached the connectors (`useTools: true`; the Worker injected Google
+tokens before each request at 16:55:33). But each of that morning's spoken turns finished
+in 2.5–5 s, while every tool-using feed sync took 15–20 s. So the model answered from memory
+at Low effort, and the streamed-reply parser discarded tool blocks, so nothing noticed.
+Now the parser keeps `mcp_tool_use`/`mcp_tool_result` blocks; a schedule, email, calls/texts,
+files or "what did I miss" question must get a real connector result in that turn, or
+Ember re-asks once with an explicit tool instruction, and failing that answers "I couldn't
+get a live result from your calendar just now, so I won't guess." Spoken turns hold Jenny
+until the result arrives, with "One moment, checking your calendar." if it takes over
+0.9 s. A non-live question whose reply still mentions meetings, voicemail and the like
+without a lookup gets an "I didn't check" caveat. The prompt now says earlier replies are
+not tool results.
+
+**Voice panel cleanup (2026-11-11, Brady, after a 12:04 CST iPhone test of the still-live PR #67
+build):** "It shows a part that looks like it's from a voice reliability test, not a part of my
+actual Ember build." The panel's Review box, Send, Type instead and screen-awake/footnote lines
+were left over from the voice lab's explicit-turn design. They did not cause the stop:
+"Paused: no words heard" comes from the mic watchdog, and the Review box only appeared after
+that pause. They are removed. The panel keeps her status, Talk (only while paused), Answer
+now, Stop voice, Read reply and Fast replies. Unsent words go to the Ask Ember box, and the
+panel closes so the box is visible on desktop.
+
+**Stale text below (found 2026-11-11):** "Current integration" still says review-then-Send
+and "No microphone auto-start/rearm". Since 10-26 the code auto-sends and re-arms (the
+banner at the top says so); the code wins.
+
 **Conversation mode update — October 26, 2026:** mouth-started voice now automatically
 sends finalized speech, speaks with Jenny and listens again within the active
 foreground session. The user's new instruction supersedes older mandatory

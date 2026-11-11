@@ -233,6 +233,15 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**November 11, later (branch `claude/ember-voice-debugging-t0ezm0`):** the PR #67 audio-start
+check cannot detect a dead mic on iPhone (WebKit fires `audiostart` regardless; proven
+from source). Likely cause: WebKit bug 321436, a deaf recognition session after `<audio>`
+playback. Jenny now plays through Web Audio on WebKit, an automatic turn that hears nothing
+gets one fresh restart after 3 s, and each turn writes a `voice-trace` line to Workers
+Logs. Whether iPhone now keeps going without a tap is PROVISIONAL until those lines show
+`trigger:"auto"` turns with `outcome:"spoke"`. If both automatic attempts keep ending
+`no-words` while taps work, the web page needs one tap per turn on iPhone.
+
 **November 11 second-turn restart:** on iPhone (Safari and Chrome) the automatic restart after
 Jenny's first answer reported LISTENING with no sound reaching it. Automatic turns now pause
 with a "tap the mouth" note when no audio start (after one retry) or no words arrive within
@@ -552,6 +561,20 @@ and a test.
   improved. Spoken turns now run at Low effort on the chosen model (Fast replies switch
   in the voice panel; typed chat unchanged). The gain is PROVISIONAL until his next real
   use is measured from Workers Logs. The 1100 ms end-of-speech grace is unchanged.
+
+## 12. Spoken replies stated calendar facts without a lookup (2026-11-11)
+
+**Status: guard built on branch `claude/ember-voice-debugging-t0ezm0`; PROVISIONAL live.**
+A spoken reply listed events and birthdays, and a later reply said they "were not from a
+real lookup". Connectors were attached to every turn, but the 11-11 spoken turns finished in
+2.5–5 s against 15–20 s for tool-using calls: the model answered from memory. The streamed
+parser now keeps tool blocks; a live-data question (schedule, email, calls/texts, files,
+"what did I miss") must get a real connector result in that turn, or Ember re-asks once and
+then says "I couldn't get a live result from your … just now, so I won't guess." Spoken
+answers wait for the result. Limits: the question patterns are keyword-based (drafting and
+how-to questions are exempt), so an unusual phrasing can slip past. A miss there gets the
+reply-side "I didn't check" caveat only when the reply names meetings, voicemail or similar.
+Live check: the `voice-trace` line's `reply.guard` (`ok`, `retried`, `refused`, `caveat`).
 
 ## Expected behavior that is not a bug
 

@@ -12,6 +12,9 @@ import { chromium } from "playwright";
 
 const root = path.resolve(process.env.EMBER_ROOT || new URL("..", import.meta.url).pathname);
 const MODEL = { firstTokenMs: 2500, charsPerSecond: 280 };   // assumed reply stream
+// A calendar question gets a real lookup before the answer (the live-data guard
+// holds Jenny until the connector result): the tool result lands at toolResultMs.
+const TOOL = { resultMs: 1800 };
 const TTS = { baseMs: 350, msPerChar: 2.5 };                  // assumed synthesis time
 const SPEECH_CHARS_PER_SECOND = 15;                           // clip duration
 const REPLY = "Your next trip is tomorrow at 6 AM on Detroit Lake with a party of four. " +
@@ -26,7 +29,7 @@ const browser = await chromium.launch(executablePath ? { executablePath } : {});
 async function measure(run, scenario = "latency") {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
-  await page.addInitScript(({ MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND }) => {
+  await page.addInitScript(({ MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL }) => {
     window.recs = []; window.marks = {};
     class Rec {
       start() { this.active = true; recs.push(this); setTimeout(() => this.onstart?.(), 0); }
@@ -67,11 +70,17 @@ async function measure(run, scenario = "latency") {
           async start(ctl) {
             const wait = (ms) => new Promise((r) => setTimeout(r, ms));
             ctl.enqueue(sse({ type: "message_start", message: { model: body.model } }));
-            await wait(MODEL.firstTokenMs);
+            await wait(TOOL.resultMs);
+            ctl.enqueue(sse({ type: "content_block_start", index: 0, content_block: { type: "mcp_tool_use", id: "t1", name: "list_events", server_name: "calendar", input: {} } }));
+            ctl.enqueue(sse({ type: "content_block_stop", index: 0 }));
+            ctl.enqueue(sse({ type: "content_block_start", index: 1, content_block: { type: "mcp_tool_result", tool_use_id: "t1", is_error: false, content: [] } }));
+            ctl.enqueue(sse({ type: "content_block_stop", index: 1 }));
+            marks.toolResult = performance.now();
+            await wait(MODEL.firstTokenMs - TOOL.resultMs);
             marks.firstToken = performance.now();
-            ctl.enqueue(sse({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
+            ctl.enqueue(sse({ type: "content_block_start", index: 2, content_block: { type: "text", text: "" } }));
             for (let i = 0; i < REPLY.length; i += 14) {
-              ctl.enqueue(sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: REPLY.slice(i, i + 14) } }));
+              ctl.enqueue(sse({ type: "content_block_delta", index: 2, delta: { type: "text_delta", text: REPLY.slice(i, i + 14) } }));
               await wait(14 / MODEL.charsPerSecond * 1000);
             }
             marks.lastToken = performance.now();
@@ -84,8 +93,8 @@ async function measure(run, scenario = "latency") {
       }
       return realFetch(input, init);
     };
-    document.addEventListener("playing", () => { marks.firstAudio ??= performance.now(); marks.plays = (marks.plays || 0) + 1; }, true);
-  }, { MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND });
+    document.addEventListener("playing", () => { marks.firstAudio ??= performance.now(); (marks.playTimes ||= []).push(performance.now()); marks.plays = (marks.plays || 0) + 1; }, true);
+  }, { MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL });
   const origin = "https://ember.baxstarfishing.com";
   await page.route("**/*", async (route) => {
     const u = new URL(route.request().url());
@@ -99,6 +108,14 @@ async function measure(run, scenario = "latency") {
   await page.locator('[data-voice-phase="listening"]').waitFor();
   await page.evaluate(() => say("What does tomorrow look like?"));
   await page.waitForFunction(() => window.marks.firstAudio, null, { timeout: 30000 });
+  if (scenario === "latency") {
+    // The answer's first clip follows the hold line; play the hold line out.
+    await page.waitForFunction(() => window.marks.ttsTexts?.length >= 2, null, { timeout: 30000 });
+    for (let i = 0; i < 40 && (await page.evaluate(() => (window.marks.plays || 0) < 2)); i++) {
+      await page.locator('audio[aria-label="Ember reply"]').evaluate((a) => { if (a.duration && !a.paused) a.currentTime = a.duration - 0.05; });
+      await page.waitForTimeout(100);
+    }
+  }
   await page.waitForTimeout(200);
   if (scenario === "sequence") {
     // Play every clip to its end; the turn must finish and the mic re-arm once.
@@ -120,7 +137,8 @@ async function measure(run, scenario = "latency") {
   const m = await page.evaluate(() => window.marks);
   await context.close();
   const at = (k) => (m[k] === undefined ? null : Math.round(m[k] - m.speechEnd));
-  return { run, sent: at("sent"), firstToken: at("firstToken"), lastToken: at("lastToken"), firstTtsRequest: at("firstTtsRequest"), firstTtsReply: at("firstTtsReply"), firstAudio: at("firstAudio"), ttsCalls: m.ttsCalls };
+  const answerAudio = m.ttsTexts?.[0]?.startsWith("One moment") ? m.playTimes?.[1] : m.playTimes?.[0];
+  return { run, sent: at("sent"), toolResult: at("toolResult"), firstToken: at("firstToken"), lastToken: at("lastToken"), firstTtsRequest: at("firstTtsRequest"), firstTtsReply: at("firstTtsReply"), firstAudio: at("firstAudio"), answerAudio: answerAudio === undefined ? null : Math.round(answerAudio - m.speechEnd), ttsCalls: m.ttsCalls };
 }
 
 try {
@@ -130,11 +148,14 @@ try {
   console.log(`simulated: first token ${MODEL.firstTokenMs}ms, ${MODEL.charsPerSecond} chars/s, TTS ${TTS.baseMs}ms + ${TTS.msPerChar}ms/char, reply ${REPLY.length} chars`);
   console.table(runs);
   const median = (k) => runs.map((r) => r[k]).sort((a, b) => a - b)[1];
+  console.log(`median end-of-speech → first answer audio (after the calendar lookup): ${median("answerAudio")}ms`);
   console.log(`median end-of-speech → first audio: ${median("firstAudio")}ms (send ${median("sent")}ms, first token ${median("firstToken")}ms, first TTS request ${median("firstTtsRequest")}ms, first TTS reply ${median("firstTtsReply")}ms)`);
   if (process.env.EMBER_STREAM_CHECKS) {
     const seq = await measure(0, "sequence");
     const said = seq.ttsTexts.join(" ").replace(/\s+/g, " ").trim();
-    assert.equal(said, REPLY.replace(/\s+/g, " ").trim(), "every sentence is spoken once, in order");
+    // The lookup took over 0.9 s, so Jenny first says she is checking; nothing of
+    // the answer is spoken before the calendar result arrives.
+    assert.equal(said, ("One moment, checking your calendar. " + REPLY).replace(/\s+/g, " ").trim(), "the hold line, then every sentence once, in order");
     assert.ok(seq.ttsTexts.length >= 2 && seq.plays >= seq.ttsTexts.length, `all ${seq.ttsTexts.length} clips played`);
     assert.equal(seq.phase, "listening", "the conversation hands the turn back after the last clip");
     assert.equal(seq.recs, 2, "the mic re-arms exactly once");

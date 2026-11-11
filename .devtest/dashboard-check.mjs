@@ -129,7 +129,9 @@ try {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ content: isSync && syncEvidence ? verifiedSyncContent(text) : [{ type: "text", text }] }),
+        // The typed calendar ask arrives with a real lookup: the live-data guard
+        // refuses schedule facts that no connector returned.
+        body: JSON.stringify({ content: isSync ? (syncEvidence ? verifiedSyncContent(text) : [{ type: "text", text }]) : verifiedSyncContent(text) }),
       });
     });
 

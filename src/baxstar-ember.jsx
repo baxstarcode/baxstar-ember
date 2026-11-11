@@ -623,7 +623,7 @@ function responseError(data, fallback) {
   return typeof data?.error === "string" ? data.error : data?.error?.message || data?.message || fallback;
 }
 
-async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens, effort, onDelta, onMeta, signal } = {}) {
+async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens, effort, onDelta, onMeta, onTool, signal } = {}) {
   // Thinking-capable models (Opus 5) bill their reasoning AND tool round-trips
   // against max_tokens. 1000 ran out before the first word of a tool-using
   // answer was written — reproduced live 2026-08-26: stop_reason max_tokens,
@@ -679,6 +679,9 @@ async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, se
   let text = "";
   let sawText = false;
   let eventName = "", dataLines = [], stopped = false, stopReason = null, servedModel = null;
+  // Connector calls and results stream as their own blocks. They are kept (minus
+  // their payloads) so a caller can tell a real lookup from an answer from memory.
+  const toolBlocks = [];
   const dispatch = () => {
     const data = dataLines.join("\n");
     const name = eventName;
@@ -689,6 +692,13 @@ async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, se
     catch { throw new Error("Ember received a malformed reply stream. Please retry."); }
     if (name === "error" || ev.type === "error" || ev.error) {
       throw new Error(responseError(ev, "The model reported a streaming error. Please retry."));
+    }
+    if (ev.type === "content_block_start" && /^mcp_tool_(use|result)$/.test(ev.content_block?.type || "")) {
+      const b = ev.content_block;
+      const block = b.type === "mcp_tool_use"
+        ? { type: b.type, id: b.id, name: b.name, server_name: b.server_name }
+        : { type: b.type, tool_use_id: b.tool_use_id, is_error: b.is_error === true };
+      toolBlocks.push(block); onTool?.(block);
     }
     if (ev.type === "content_block_start" && ev.content_block?.type === "text") {
       if (sawText && text && !text.endsWith("\n")) text += "\n";
@@ -741,7 +751,7 @@ async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, se
       }
     }
     if (!stopped) throw new Error("The connection ended before the reply finished. The partial reply is shown; retry when ready.");
-    return { content: [{ type: "text", text }], stop_reason: stopReason, model: servedModel, _streamed: true, _connectorsDegraded: degraded };
+    return { content: [...toolBlocks, { type: "text", text }], stop_reason: stopReason, model: servedModel, _streamed: true, _connectorsDegraded: degraded };
   } finally {
     signal?.removeEventListener("abort", abort);
     void reader.cancel().catch(() => {});
@@ -762,6 +772,39 @@ function validChatMessages(raw) {
       return model ? { id, role: m.role, content: m.content, status: "complete", model } : { id, role: m.role, content: m.content, status: "complete" };
     });
 }
+// LIVE-DATA GUARD (2026-11-11). On 11-11 a spoken reply listed calendar events and
+// birthdays, and a later reply admitted "the events and birthdays I listed were not
+// from a real lookup". Workers Logs: that morning's spoken turns finished in 2.5-5 s,
+// while every tool-using call that morning took 15-20 s; connectors were attached
+// to every turn, so the model simply answered without calling them. The prompt's
+// HARD RULE was not enough, so the rule is now enforced in code: a question about
+// schedule, email, calls/texts or files must produce a real connector result in
+// this turn, or Ember asks once more with an explicit instruction, and failing
+// that says it could not check. Spoken turns hold Jenny until a result arrives.
+const LIVE_DATA = [
+  ["calendar", /\b(calendar|meetings?|appointments?|birthdays?|bookings?|reservations?|charters?|agenda)\b|\b(?:my|next|any|upcoming|today'?s|tomorrow'?s|this week'?s) (?:events?|trips?|plans?|schedule)\b|\b(?:am i|are we) (?:free|open|busy|booked)\b|\bwhat(?:'s| is) (?:on|happening|going on)\b|\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b[^.?!]{0,30}\b(?:look|got|have|has|doing|going|happening|hold)\b|\b(?:what|how) (?:does|do|will|is|'s) (?:today|tomorrow|tonight|my (?:day|week|morning|afternoon|evening))\b|\b(?:do|did) i have (?:any(?:thing)?|something)\b|\bmy (?:day|week|weekend|morning|afternoon|evening) (?:look|going|hold)/i],
+  ["email", /\b(e-?mails?|inbox|gmail)\b|\b(?:my|new|any|unread|recent|latest|last) mail\b/i],
+  ["calls and texts", /\b(voicemails?|missed calls?|texted|quo)\b|\b(?:my|new|any|unread|recent|latest|last) (?:calls?|texts?|messages?|sms)\b|\b(?:who|anyone|anybody|someone|somebody) (?:called|call|texted|text|messaged)\b|\bdid (?:\w+ )?(?:call|text)\b/i],
+  ["files", /\b(?:google )?drive\b|\b(?:my|the) (?:docs?|documents?|files?|spreadsheets?|sheets?) (?:about|on|for|called|named)\b|\bhandoff log\b/i],
+  ["messages", /\bwhat(?: did|'d) i miss\b|\bbrief (?:me|my)\b|\bcatch me up\b|\banything (?:new|urgent|important)\b/i],
+];
+// Drafting and how-to questions are not fact claims about Brady's data.
+const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|translate)\b|^\s*(how (?:do|can|would|should) (?:i|you)|what is an? |explain|define)\b/i;
+function liveDataNeed(text) {
+  if (LIVE_EXEMPT.test(text)) return null;
+  for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
+  return null;
+}
+// A reply that talks about Brady's live data without any tool result is flagged,
+// unless it is the honest "I couldn't check" answer.
+const LIVE_CLAIM = /\b(your (?:calendar|schedule|inbox|email|voicemail|calls?|texts?|messages)|meetings?|appointments?|birthdays?|missed call|voicemail|unread)\b/i;
+const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|didn'?t|did not)\b[^.]{0,40}\b(see|check|reach|access|look|read|get|pull)\b|\b(unavailable|offline)\b/i;
+// What a made-up lookup sounds like: times, weekdays, "you have…", named items.
+const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
+const toolResults = (resp) => (resp?.content || []).filter((b) => b?.type === "mcp_tool_result" && b.is_error === false).length;
+const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
+const LIVE_RETRY_NOTE = (need) => `\n\n[Ember check: this question needs Brady's live ${need}. Call the matching read-only tool in THIS turn before answering. Facts in earlier replies are not tool results. If the tool fails, say you couldn't check.]`;
+
 function chatContext(messages) {
   const tail = messages.slice(-8);
   while (tail[0]?.role === "assistant") tail.shift();
@@ -1379,20 +1422,116 @@ function emberPhrases(text) {
 // the browser reported audio start before (one quiet retry), and some words within
 // 10 s. Otherwise the conversation pauses with a "tap the mouth" note. A tap-started
 // turn is unchanged.
-const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500;
+//
+// DEAF SECOND TURN ON iOS (2026-11-11, this pass). Brady's 11-11 recording: after
+// Jenny's first answer the panel said "Your turn. I'm listening.", the mic light
+// stayed off, and 10 s later "Paused: no words heard". WebKit source explains why
+// the 2.5 s check above never fired on iPhone: `start` is sent before capture
+// begins, `audiostart` fires as soon as the capture start call does not fail at
+// once (RealtimeMediaSource::start → sourceStarted), and Cocoa never sends
+// `soundstart`. So on iPhone only recognized words prove the mic is live.
+// This is a reported, unfixed iOS 26/27 WebKit failure (bugs.webkit.org 321436,
+// InRadar): after an <audio> element plays, the next recognition session starts
+// but hears nothing and fires no result, error or end. A Safari engineer tied it
+// to the audio session being deactivated while recognition runs (bug 317741);
+// the reported working workaround is to play the reply through Web Audio. So on
+// WebKit engines (every iPhone browser, Mac Safari) Jenny now plays through one
+// AudioContext opened by the tap and kept running for the conversation, which
+// keeps the page's audio session alive and leaves no paused player holding
+// "Now Playing". An automatic turn that hears no words gets one fresh restart
+// after a 3 s gap, then pauses. Every turn reports its event timeline to
+// Workers Logs (/api/voice/trace, no words or audio) so the device answers.
+const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500, REARM_DEAF_RETRY_MS = 3000;
 const REARM_AUDIO_MS = 2500, REARM_WORDS_MS = 10000;
-function useEmberVoice({ onSend, blocked, enabled }) {
+function voiceUaFamily() {
+  const ua = navigator.userAgent || "";
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (ios) return /CriOS/.test(ua) ? "ios-chrome" : /FxiOS/.test(ua) ? "ios-firefox" : /EdgiOS/.test(ua) ? "ios-edge" : "ios-safari";
+  if (/Edg\//.test(ua)) return "edge";
+  if (/Chrome\/|Chromium\//.test(ua)) return /Macintosh/.test(ua) ? "mac-chrome" : "chrome";
+  if (/Safari\//.test(ua) && /Macintosh/.test(ua)) return "mac-safari";
+  return "other";
+}
+// Every iOS browser is WebKit; so is Mac Safari. Chrome on the Mac keeps the player.
+const voiceWebKit = () => /^(ios-|mac-safari)/.test(voiceUaFamily());
+function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
-  options.current = { onSend, blocked, enabled };
-  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null });
+  options.current = { onSend, onDraft, blocked, enabled };
+  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
   const c = control.current;
   const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const production = location.hostname === "ember.baxstarfishing.com";
+  const webkit = voiceWebKit();
   function patch(values) { if (values.phase) c.phase = values.phase; if (c.live) setState(s => ({ ...s, ...values })); }
   function timer(name, fn, delay) { clearTimeout(c.timers[name]); c.timers[name] = setTimeout(fn, delay); }
   function clearTimers() { Object.values(c.timers).forEach(clearTimeout); c.timers = {}; }
   function session(type) { try { if (navigator.audioSession) navigator.audioSession.type = type; } catch {} }
+  // VOICE TRACE — one record per listen→reply turn: event times in ms from the
+  // start call, the trigger (tap / auto / retry), how Jenny played, and the time
+  // from the last recognized words to Jenny's first sound. No words, no audio.
+  function traceBegin(trigger) {
+    if (c.trace) traceEnd("replaced");
+    const now = performance.now();
+    c.trace = { t0: now, trigger, n: ++c.turns, marks: {}, sinceReplyEndMs: c.replyEndedAt ? Math.round(now - c.replyEndedAt) : null };
+  }
+  function mark(name, always = false) { const t = c.trace; if (t && (always || t.marks[name] === undefined)) t.marks[name] = Math.round(performance.now() - t.t0); }
+  function traceEnd(outcome) {
+    const t = c.trace; if (!t) return; c.trace = null;
+    const m = t.marks, words = m["last-result"];
+    const body = { v: 1, ua: voiceUaFamily(), engine: webkit ? "webkit" : "other", n: t.n, trigger: t.trigger, outcome, out: t.out || null,
+      sinceReplyEndMs: t.sinceReplyEndMs, session: t.session || null, error: t.error || null, reply: t.reply || null, marks: m,
+      lastWordsToSoundMs: Number.isFinite(words) && Number.isFinite(m["first-sound"]) ? m["first-sound"] - words : null };
+    try { (window.emberVoiceTraces ||= []).push(body); if (window.emberVoiceTraces.length > 20) window.emberVoiceTraces.shift(); } catch {}
+    if (!production) return;
+    try {
+      const data = JSON.stringify(body);
+      if (!navigator.sendBeacon?.("/api/voice/trace", new Blob([data], { type: "application/json" })))
+        fetch("/api/voice/trace", { method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json" }, body: data }).catch(() => {});
+    } catch {}
+  }
+  // One AudioContext per open voice panel, created and resumed inside a tap, then
+  // left running so the page never "finishes playing" between turns.
+  function ensureContext() {
+    // Without navigator.audioSession the page cannot ask for "playback", and Web
+    // Audio alone is ambient sound that the iPhone's silent switch mutes. Such a
+    // browser keeps Jenny on the page player rather than risk a silent reply.
+    if (!webkit || !navigator.audioSession) return null;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try {
+      if (!c.ctx || c.ctx.state === "closed") c.ctx = new AC();
+      if (c.ctx.state !== "running") c.ctx.resume().catch(() => {});
+      return c.ctx;
+    } catch { c.ctx = null; return null; }
+  }
+  function closeContext() { stopWeb(); const ctx = c.ctx; c.ctx = null; try { ctx?.close()?.catch?.(() => {}); } catch {} }
+  const webReady = () => webkit && !!navigator.audioSession && c.ctx?.state === "running";
+  function stopWeb() {
+    const w = c.web; c.web = null; clearInterval(c.webTick);
+    if (w) { w.src.onended = null; try { w.src.stop(); } catch {} }
+  }
+  // Resolves true when Jenny's clip is playing through Web Audio, false to fall back.
+  async function playWeb(blob, epoch) {
+    const ctx = c.ctx;
+    try {
+      const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+      if (!c.live || c.epoch !== epoch || c.rec || document.hidden || c.ctx !== ctx || ctx.state !== "running") return true;
+      stopWeb();
+      const src = ctx.createBufferSource();
+      src.buffer = buffer; src.connect(ctx.destination);
+      const web = { src, at: ctx.currentTime, duration: buffer.duration };
+      c.web = web; c.out = "web"; if (c.trace) c.trace.out ||= "web";
+      src.onended = () => { if (c.web !== web) return; c.web = null; clearInterval(c.webTick); ended(); };
+      session("playback");
+      src.start();
+      clearInterval(c.webTick);
+      c.webTick = setInterval(() => { if (c.web === web) phraseAt(ctx.currentTime - web.at, web.duration); }, 120);
+      playing();
+      return true;
+    } catch { return false; }
+  }
+  function releaseMediaSession() { try { if (navigator.mediaSession) { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = "none"; } } catch {} }
   function releaseWake() {
     c.active = false; c.wakeEpoch++;
     const lock = c.wake; c.wake = null;
@@ -1416,7 +1555,8 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     const audio = audioRef.current;
     if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
     if (c.url) URL.revokeObjectURL(c.url);
-    c.url = ""; c.phraseIndex = -1; session("auto");
+    stopWeb(); releaseMediaSession();
+    c.url = ""; c.out = null; c.phraseIndex = -1; session("auto");
     patch({ audioReady: false, phrase: "" });
   }
   function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = rec.onaudiostart = null; }
@@ -1424,22 +1564,33 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   function released(rec) {
     if (c.rec !== rec) return;
     detach(rec); c.rec = null; c.mic = "off"; clearTimers();
+    mark("end");
     if (c.retryMic) {
-      c.retryMic = false; c.releaseNote = ""; c.conversation = true;
-      patch({ conversation: true, phase: "ready", note: "Reopening the microphone…" });
-      timer("next", () => { if (c.live && c.conversation && !document.hidden) start(true); }, REARM_RETRY_MS);
+      const delay = c.retryDelay || REARM_RETRY_MS, note = c.retryNote || "Reopening the microphone…";
+      c.retryMic = false; c.retryDelay = 0; c.retryNote = ""; c.releaseNote = ""; c.conversation = true;
+      patch({ conversation: true, phase: "ready", note });
+      timer("next", () => { if (c.live && c.conversation && !document.hidden) start(true); }, delay);
       return;
     }
-    const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
+    const note = c.releaseNote || (c.draft.trim() ? "Microphone stopped." : "Microphone stopped. Tap the mouth to try again.");
     c.releaseNote = ""; patch({ phase: "ready", note });
     if (c.conversation && c.draft.trim() && !c.partial && !document.hidden) { send(); }
-    else if (c.conversation) { pauseConversation(); releaseWake(); patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn’t catch any words. Tap the mouth to resume." }); }
+    else {
+      const words = c.draft.trim();
+      traceEnd(words ? "unfinished" : "no-words");
+      if (c.conversation) { pauseConversation(); releaseWake(); if (!words) patch({ note: "I didn’t catch any words. Tap the mouth to resume." }); }
+      // Unsent words go to the Ask Ember box (RUN sends them as text); the voice
+      // panel has no review step of its own any more.
+      if (words) { c.draft = ""; c.interrupted = false; c.partial = false; patch({ open: false, draft: "", partial: false, note: `${note} Your words are in the Ask Ember box.` }); options.current.onDraft?.(words); }
+    }
   }
-  // A re-armed mic that the phone never actually opened: retry once, then say so
-  // and wait for a tap instead of showing LISTENING over a dead microphone.
-  function deadMic(rec, retry, note) {
+  // A re-armed mic that heard nothing: retry once, then say so and wait for a tap
+  // instead of showing LISTENING over a dead microphone.
+  function deadMic(rec, retry, note, outcome, { delay = 0, retryNote = "", trigger = "retry" } = {}) {
     if (c.rec !== rec || !["starting", "listening"].includes(c.mic)) return;
     c.retryMic = retry; c.releaseNote = retry ? "" : note;
+    c.retryDelay = delay; c.retryNote = retryNote; c.nextTrigger = retry ? trigger : null;
+    traceEnd(outcome);
     clearTimers(); abortMic();
     if (!retry) releaseWake();
   }
@@ -1453,6 +1604,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     try { rec.abort(); } catch {}
   }
   function stop(note = "Stopped. Your words and replies are still here.") {
+    traceEnd("stopped");
     pauseConversation(); c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers(); endStream();
     if (c.rec && c.draft.trim()) c.interrupted = true;
     // Preserve the mic-release gate even when Stop is pressed more than once.
@@ -1464,7 +1616,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   function finish() {
     const rec = c.rec;
     if (!rec || !["starting", "listening"].includes(c.mic)) return;
-    clearTimers(); c.mic = "stopping"; patch({ phase: "stopping", note: "Finishing your words…" });
+    mark("finish"); clearTimers(); c.mic = "stopping"; patch({ phase: "stopping", note: "Finishing your words…" });
     timer("finish", () => { if (c.rec === rec) abortMic(); }, 3000);
     try { rec.stop(); } catch { abortMic(); }
   }
@@ -1474,8 +1626,13 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     patch({ open: true });
     if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
     const rearm = continuing === true;
-    if (!rearm) c.retried = false;
+    const trigger = rearm ? c.nextTrigger || "auto" : "tap";
+    c.nextTrigger = null;
+    if (!rearm) { c.retried = false; c.deafRetried = false; }
     stop(); c.conversation = true; c.partial = false; patch({ conversation: true }); c.releaseNote = ""; c.blob = null; c.answer = "";
+    // Inside the tap: open (or wake) Jenny's Web Audio player before any await.
+    if (!rearm) ensureContext();
+    traceBegin(trigger); mark("start-called");
     const prefix = c.interrupted ? c.draft.trim() : "";
     c.draft = prefix; patch({ draft: prefix, answer: "", partial: false });
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1484,22 +1641,36 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     c.rec = rec; c.mic = "starting"; keepAwake(); session("auto");
     rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
     let audioSeen = false, wordsSeen = false;
-    rec.onaudiostart = () => { if (c.rec !== rec) return; audioSeen = true; c.audioEvidence = true; if (rearm) c.retried = false; };
+    rec.onaudiostart = () => { if (c.rec !== rec) return; mark("audiostart"); audioSeen = true; c.audioEvidence = true; if (rearm) c.retried = false; };
     rec.onstart = () => {
       if (c.rec !== rec || c.mic !== "starting") return;
+      mark("onstart");
+      if (c.trace) c.trace.session = navigator.audioSession ? `${navigator.audioSession.type}/${navigator.audioSession.state}` : null;
       clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: rearm ? "Your turn. I’m listening." : "Listening. Pause when you’re done; I’ll answer aloud." });
       timer("turn", finish, 30000);
       if (rearm) {
-        // Only a browser that reported audio start on an earlier turn is held to it.
-        if (c.audioEvidence) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Jenny spoke. Tap the mouth to answer."); } }, REARM_AUDIO_MS);
-        timer("words", () => { if (!wordsSeen && c.mic === "listening") deadMic(rec, false, "Paused: no words heard. Tap the mouth to answer."); }, REARM_WORDS_MS);
+        // Chrome sends audiostart when capture really begins, so a browser that sent
+        // it before is held to it. WebKit sends it whether or not sound will ever
+        // arrive (see DEAF SECOND TURN above), so on WebKit only words count.
+        if (c.audioEvidence && !webkit) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Jenny spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio"); } }, REARM_AUDIO_MS);
+        timer("words", () => {
+          if (wordsSeen || c.mic !== "listening") return;
+          // One fresh recognizer after a 3 s gap (reports put the iOS recovery
+          // window at seconds), then pause rather than listen into a dead mic.
+          const retry = !c.deafRetried; c.deafRetried = true;
+          deadMic(rec, retry, "Paused: no words heard. Tap the mouth to answer.", retry ? "no-words-retry" : "no-words",
+            { delay: REARM_DEAF_RETRY_MS, retryNote: "I didn’t hear anything. Listening again…", trigger: "deaf-retry" });
+        }, REARM_WORDS_MS);
       }
     };
-    rec.onsoundstart = rec.onspeechstart = () => { if (c.rec === rec) clearTimeout(c.timers.grace); };
+    rec.onsoundstart = () => { if (c.rec === rec) { mark("soundstart"); clearTimeout(c.timers.grace); } };
+    rec.onspeechstart = () => { if (c.rec === rec) { mark("speechstart"); clearTimeout(c.timers.grace); } };
     rec.onresult = event => {
       if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
-      clearTimeout(c.timers.grace); wordsSeen = true;
+      clearTimeout(c.timers.grace); wordsSeen = true; c.deafRetried = false;
+      mark("first-result"); mark("last-result", true);
       const results = Array.from(event.results), words = results.map(r => r[0]?.transcript || "").join(" ").trim();
+      if (results.some(r => r.isFinal)) mark("first-final");
       c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2000);
       c.partial = results.some(r => !r.isFinal);
       patch({ draft: c.draft, partial: c.partial });
@@ -1508,6 +1679,8 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     };
     rec.onerror = event => {
       if (c.rec !== rec) return;
+      if (c.trace) c.trace.error = String(event.error || "unknown").slice(0, 24);
+      mark("error");
       c.interrupted = Boolean(c.draft); clearTimers(); abortMic(); releaseWake();
       const notes = { "not-allowed": "Microphone permission was denied. Allow it in browser and device settings, then retry.", "audio-capture": "The microphone is unavailable. Finish any other recording or call, then retry.", "no-speech": "No speech was detected. Tap the mouth to retry.", "network": "Speech recognition lost its connection. Your received words are still here.", "service-not-allowed": "The browser’s speech service is unavailable. Check Safari/Siri settings or use typed chat." };
       c.releaseNote = notes[event.error] || "Speech recognition was interrupted. Your received words are still here.";
@@ -1526,7 +1699,10 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   async function playReply(epoch) {
     if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
     const audio = audioRef.current;
-    clearAudio(); c.url = URL.createObjectURL(c.blob); audio.src = c.url; audio.load();
+    clearAudio();
+    if (webReady() && await playWeb(c.blob, epoch)) return;
+    if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
+    c.url = URL.createObjectURL(c.blob); c.out = "element"; if (c.trace) c.trace.out ||= "element"; audio.src = c.url; audio.load();
     patch({ audioReady: true, phase: "ready", note: "Jenny is ready. Tap Play if playback does not start." });
     session("playback");
     try {
@@ -1553,11 +1729,12 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   function feedSpeech(epoch, text, final = false) {
     const s = c.stream;
     if (!s || s.epoch !== epoch || !c.live) return;
-    if (!final) s.streamed = true;
+    if (!final) { s.streamed = true; mark("first-text"); }
     while (!s.capped && s.spoken < SPOKEN_MAX) {
       const rest = text.slice(s.said);
       if (!rest.trim()) { s.said = text.length; break; }
-      let end = clipEnd(rest, s.clips.length ? CLIP_MIN : FIRST_CLIP_MIN, !s.clips.length);
+      const first = s.clips.length === (s.lead || 0);
+      let end = clipEnd(rest, first ? FIRST_CLIP_MIN : CLIP_MIN, first);
       if (end < 0 && final) end = rest.length;
       if (end < 0) break;
       let piece = rest.slice(0, end).trim();
@@ -1575,6 +1752,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     const clip = { text, blob: null };
     const index = s.clips.push(clip) - 1;
     c.spokeEpoch = s.epoch;
+    if (!index) mark("first-clip-request");
     const controller = new AbortController();
     s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -1586,10 +1764,12 @@ function useEmberVoice({ onSend, blocked, enabled }) {
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
         if (c.stream !== s) return;
         clip.blob = blob;
+        if (!index) mark("first-clip-ready");
         if (s.waiting && index === s.playing + 1) { s.waiting = false; playClip(s, index); }
       })
       .catch((error) => {
         if (c.stream !== s || !c.live) return;
+        traceEnd("speech-failed");
         endStream(); pauseConversation(); releaseWake();
         patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message });
       })
@@ -1597,10 +1777,21 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   }
   function playClip(s, index) {
     if (!c.live || c.stream !== s || s.epoch !== c.epoch || c.rec || document.hidden) return;
-    const audio = audioRef.current, clip = s.clips[index];
+    const clip = s.clips[index];
     s.playing = index;
+    c.phrases = emberPhrases(clip.text); c.phraseIndex = -1;
+    if (webReady()) {
+      const epoch = c.epoch; keepAwake();
+      playWeb(clip.blob, epoch).then(ok => { if (!ok && c.stream === s && s.playing === index && c.epoch === epoch) playClipElement(s, index); });
+      return;
+    }
+    playClipElement(s, index);
+  }
+  function playClipElement(s, index) {
+    if (!c.live || c.stream !== s || s.epoch !== c.epoch || c.rec || document.hidden) return;
+    const audio = audioRef.current, clip = s.clips[index];
     if (c.url) URL.revokeObjectURL(c.url);
-    c.url = URL.createObjectURL(clip.blob); c.phrases = emberPhrases(clip.text); c.phraseIndex = -1;
+    c.url = URL.createObjectURL(clip.blob); c.out = "element"; if (c.trace) c.trace.out ||= "element";
     audio.src = c.url; audio.load();
     session("playback"); keepAwake();
     if (index === 0) patch({ audioReady: true });
@@ -1611,13 +1802,14 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   }
   async function speak() {
     if (!c.answer || c.rec || c.request || !production || document.hidden) return;
-    const epoch = ++c.epoch; keepAwake();
+    const epoch = ++c.epoch; keepAwake(); ensureContext();
     const long = c.answer.length > 1000;
     const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "…" : c.answer;
     c.phrases = emberPhrases(spoken);
     if (c.blob) { await playReply(epoch); return; }
     const controller = new AbortController(); c.request = controller;
     patch({ phase: "preparing", note: "Preparing Jenny’s voice…" });
+    mark("first-clip-request");
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: "en-US-JennyNeural" }) });
@@ -1626,38 +1818,48 @@ function useEmberVoice({ onSend, blocked, enabled }) {
       const blob = await response.blob();
       if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
       if (!c.live || epoch !== c.epoch) return;
-      c.blob = blob; c.request = null;
+      c.blob = blob; c.request = null; mark("first-clip-ready");
       await playReply(epoch);
-    } catch (error) { if (c.live && epoch === c.epoch) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
+    } catch (error) { if (c.live && epoch === c.epoch) { traceEnd("speech-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   async function send() {
     if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
     const epoch = ++c.epoch, controller = new AbortController(); c.request = controller;
-    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake(); endStream();
+    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake(); endStream(); ensureContext();
     c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
     patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
+    mark("send");
     const timeout = setTimeout(() => controller.abort(), 60000);
     try {
-      const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal, onVoiceText: (text) => feedSpeech(epoch, text) });
+      const result = await options.current.onSend(c.draft.trim(), {
+        voiceSignal: controller.signal,
+        onVoiceText: (text) => feedSpeech(epoch, text),
+        // A live-data question holds Jenny until a real tool result arrives; this
+        // short line keeps the wait from sounding like silence.
+        onVoiceHold: (line) => { const s = c.stream; if (s?.epoch === epoch && !s.clips.length) { s.lead = 1; queueClip(s, line); } },
+        onVoiceMeta: (meta) => { if (c.trace) c.trace.reply = { ...(c.trace.reply || {}), ...meta }; if (meta.tool) mark("tool-result"); },
+      });
       if (!c.live || epoch !== c.epoch) return;
       c.request = null;
-      if (!result) { endStream(); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
+      if (!result) { traceEnd("reply-failed"); endStream(); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
+      mark("reply-complete");
       c.answer = result; patch({ answer: result });
       // Streamed sentences are already playing or queued; a reply that arrived in one
       // piece (no stream) is spoken the old way. A failed clip has already said why.
-      if (c.stream?.epoch === epoch && c.stream.streamed) feedSpeech(epoch, result, true);
+      if (c.stream?.epoch === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
       if (c.spokeEpoch !== epoch) { c.stream = null; await speak(); }
-    } catch { if (c.live && epoch === c.epoch) { pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
+    } catch { if (c.live && epoch === c.epoch) { traceEnd("reply-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   function playing() {
-    if (c.rec || document.hidden || !options.current.enabled || !c.url) { audioRef.current?.pause(); return; }
+    if (c.rec || document.hidden || !options.current.enabled || (!c.url && !c.web)) { audioRef.current?.pause(); stopWeb(); return; }
+    mark("first-sound");
     // Sending from the phone's controls can leave the mouth above the viewport.
     // Bring the speaking face back once; later scrolling stays under user control.
     if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
     session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Your microphone is off." });
-    phraseAt(audioRef.current.currentTime, audioRef.current.duration);
+    if (c.web) phraseAt(0, c.web.duration); else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {
     const s = c.stream;
@@ -1671,49 +1873,53 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   function finishTurn() {
     c.stream = null;
     session("auto");
-    if (!c.url || !c.conversation || document.hidden || !options.current.enabled) { releaseWake(); patch({ phase: "ready", phrase: "" }); return; }
+    mark("reply-ended"); c.replyEndedAt = performance.now();
+    const played = Boolean(c.out);
+    traceEnd(played ? "spoke" : "not-spoken");
+    if (!played || !c.conversation || document.hidden || !options.current.enabled) { releaseWake(); patch({ phase: "ready", phrase: "" }); return; }
     const epoch = c.epoch;
-    // Release Jenny's player and playback session now, not in the same tick as the
-    // mic restart; WebKit gets a longer handoff (it is the engine with audioSession).
+    // Release Jenny's clip, player and Now Playing entry before the mic restart.
+    // The Web Audio context itself stays running: that is the point (see above).
     clearAudio();
     patch({ phase: "ready", phrase: "", note: "Your turn…" });
-    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
+    c.nextTrigger = "auto";
+    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, webkit || navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
   }
   useEffect(() => {
     c.live = true;
-    const hidden = () => { if (document.hidden) stop("Paused when Ember left the screen. Review your words before continuing."); };
-    const exit = () => stop("Voice stopped. Your completed conversation is saved.");
+    const hidden = () => { if (document.hidden) { stop("Paused when Ember left the screen. Review your words before continuing."); closeContext(); } };
+    const exit = () => { stop("Voice stopped. Your completed conversation is saved."); closeContext(); };
     const interrupt = () => { if (navigator.audioSession?.state === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth."); };
     document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit); navigator.audioSession?.addEventListener?.("statechange", interrupt);
-    return () => { c.live = false; stop(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", interrupt); };
+    return () => { c.live = false; stop(); closeContext(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", interrupt); };
   }, []);
-  useEffect(() => { if (!enabled) { stop(); patch({ open: false }); } }, [enabled]);
+  useEffect(() => { if (!enabled) { stop(); closeContext(); patch({ open: false }); } }, [enabled]);
   return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
     mouth: () => c.conversation || c.rec || c.request || c.phase === "playing" ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
-    close: () => { stop(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
-    edit: value => { c.draft = value; c.partial = false; patch({ draft: value, partial: false }); },
+    close: () => { stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
     paused: () => { if (audioRef.current?.ended && c.stream?.epoch === c.epoch) return; if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
 function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
+  // VOICE PANEL (2026-11-11, Brady: the review box and test buttons looked like
+  // a reliability test, not Ember). Conversation is the only mode: tap the mouth,
+  // talk, Jenny answers, Ember listens again. The panel keeps her status and the
+  // few controls a driver needs; unsent words go to the Ask Ember box.
   return <section className="foreground-voice" aria-label="Ember voice controls" hidden={!voice.open} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); voice.close(); } }}>
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
-      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.answer && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>{voice.draft ? "Talk again" : "Talk"}</button>}
+      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.conversation && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>Talk</button>}
       <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
-      <button className="chip ghost" onClick={() => { voice.close(); requestAnimationFrame(() => document.querySelector('.chat-composer textarea')?.focus()); }}>Type instead</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
       <button className="chip ghost" aria-pressed={fast} disabled={voice.busy} onClick={onFast} title={fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies."}>{fast ? "Fast replies: on" : "Fast replies: off"}</button>
     </div>
-    <div className="voice-review" hidden={voice.conversation || !!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
     {voice.conversation && !voice.answer && voice.draft && <p className="voice-live-words" aria-label="Heard words">{voice.draft}</p>}
-    {voice.partial && !voice.conversation && <small>These words may be unfinished. Review before sending.</small>}
     <audio ref={voice.audioRef} controls playsInline preload="none" hidden={!voice.audioReady} aria-label="Ember reply" onPlaying={voice.playing} onPause={voice.paused} onEnded={voice.ended} onError={voice.audioError} onTimeUpdate={e => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration)}/>
-    <div className="voice-footnote"><span data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake…", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" })[voice.wake]}</span><span>Keep Ember visible · mouth starts/stops conversation.</span></div>
-    {!voice.production && <small>Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com.</small>}
+    <span className="sr-only" data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" })[voice.wake]}</span>
+    {!voice.production && <small>Preview: microphone checks only. Replies work on ember.baxstarfishing.com.</small>}
   </section>;
 }
 
@@ -1850,7 +2056,7 @@ export default function BaxstarEmber() {
   // turns this off, and the choice persists.
   const [voiceFast, setVoiceFast] = useState(true);
   const [chatReady, setChatReady] = useState(false);
-  const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
+  const voice = useEmberVoice({ onSend: sendCommand, onDraft: (words) => setCommand((typed) => typed.trim() ? `${typed.trim()} ${words}` : words), blocked: thinking || !chatReady, enabled: view === "ops" });
   const [chatError, setChatError] = useState("");
   const [chatConnectors, setChatConnectors] = useState("");
   const [chatFeedback, setChatFeedback] = useState("");
@@ -2193,7 +2399,7 @@ export default function BaxstarEmber() {
 
   /* ---------- OPS: COMMAND PIPELINE ---------- */
 
-  async function sendCommand(text, { retryId, voiceSignal, onVoiceText } = {}) {
+  async function sendCommand(text, { retryId, voiceSignal, onVoiceText, onVoiceHold, onVoiceMeta } = {}) {
     if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
     // Ref guard is synchronous: two clicks in one render cannot launch two requests.
     if (activeChatRef.current || !chatReady || voiceSignal?.aborted) return null;
@@ -2227,20 +2433,50 @@ export default function BaxstarEmber() {
     const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
     try {
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
       ];
-      // No automatic model retry: connector calls may already have run upstream.
-      const resp = await callClaude(messages, {
+      // No automatic model retry on errors: connector calls may already have run
+      // upstream. The one exception is the live-data guard below, which re-asks only
+      // when no connector result came back at all (connectors are read-only).
+      const need = liveDataNeed(q);
+      let held = Boolean(voiceSignal && need), latest = "", degraded = false, resp, guard = need ? "ok" : null;
+      // Only when the lookup is slow: a quick result goes straight to the answer.
+      const holdTimer = held ? setTimeout(() => { if (held && isCurrent()) onVoiceHold?.(`One moment, checking your ${need}.`); }, 900) : null;
+      onVoiceMeta?.({ live: need });
+      const ask = (msgs) => callClaude(msgs, {
         useTools: true, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
         signal: request.controller.signal,
-        onDelta: (content) => { patchAssistant({ content }); if (isCurrent()) onVoiceText?.(content); },
-        onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current)); },
+        onDelta: (content) => { latest = content; patchAssistant({ content }); if (isCurrent() && !held) onVoiceText?.(content); },
+        onMeta: ({ degraded: d }) => { degraded ||= d; if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current)); },
+        // Jenny speaks a live-data answer only once a real connector result is in.
+        onTool: (block) => {
+          if (block.type !== "mcp_tool_result" || block.is_error || !isCurrent()) return;
+          onVoiceMeta?.({ tool: true });
+          if (held) { held = false; if (latest) onVoiceText?.(latest); }
+        },
       });
+      resp = await ask(messages);
       if (!isCurrent()) return null;
-      const answer = extractText(resp);
+      if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
+        guard = "retried"; latest = ""; patchAssistant({ content: "" });
+        const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
+        resp = await ask(again);
+        if (!isCurrent()) return null;
+      }
+      clearTimeout(holdTimer); held = false;
+      let answer = extractText(resp);
+      if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && resp.stop_reason !== "max_tokens" && !HONEST_MISS.test(answer) && LIVE_FACT.test(answer)) {
+        // Still no lookup and the reply states facts: say so instead.
+        guard = "refused"; answer = liveMissLine(need);
+        resp = { ...resp, content: [{ type: "text", text: answer }] };
+      } else if (!need && !toolResults(resp) && LIVE_CLAIM.test(answer) && !HONEST_MISS.test(answer)) {
+        guard = "caveat"; answer += "\n\nI didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
+        resp = { ...resp, content: [{ type: "text", text: answer }] };
+      }
+      onVoiceMeta?.({ guard, tools: toolResults(resp) });
       const served = typeof resp.model === "string" ? resp.model : undefined;
       // A refusal is shown as one. Nothing is retried on another model behind
       // Brady's back — he picks the next model and presses Retry himself.

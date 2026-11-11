@@ -108,6 +108,7 @@ function readOnlyToolset(name) {
 }
 
 import { handleVoice } from "./voice.mjs";
+import { handleVoiceTrace, VOICE_TRACE_BYTES } from "./voice-trace.mjs";
 import { edgeGecV2 } from "./vendor/edge-gec-v2.mjs";
 
 const POST_ROUTES = new Map([
@@ -115,6 +116,7 @@ const POST_ROUTES = new Map([
   ["/api/tts", "tts"],
   ["/api/voice/transcribe", "voice-transcribe"],
   ["/api/voice/speak", "voice-speak"],
+  ["/api/voice/trace", "trace"],
   ["/api/connectors/status", "connectors"],
   ["/api/connectors/reconnect", "reconnect"],
   ["/api/outbox", "outbox"],
@@ -1611,12 +1613,13 @@ export default {
     }
     let body;
     try { body = await readJsonBody(request, route === "connectors",
-      route === "voice-transcribe" ? 3 * 1024 * 1024 : route === "voice-speak" ? 16 * 1024 : MAX_BODY_BYTES); }
+      route === "voice-transcribe" ? 3 * 1024 * 1024 : route === "voice-speak" ? 16 * 1024 : route === "trace" ? VOICE_TRACE_BYTES : MAX_BODY_BYTES); }
     catch (error) {
       return json({ error: error instanceof RequestInputError ? error.message : "Could not read request body." },
         error instanceof RequestInputError ? error.status : 400, cors);
     }
     if (route.startsWith("voice-")) return handleVoice(route, body, env, cors, request.signal);
+    if (route === "trace") return handleVoiceTrace(body, cors);
     // The natural voice needs no Anthropic key — routed after the origin gate
     // but before the key check, so a voice-only misconfiguration still speaks.
     if (route === "tts") {

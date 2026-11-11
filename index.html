@@ -792,7 +792,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-11 03:32Z".startsWith("__") ? "dev" : "2026-11-11 03:32Z";
+  const BUILD_STAMP = "2026-11-11 18:58Z".startsWith("__") ? "dev" : "2026-11-11 18:58Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -896,7 +896,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     var _a;
     return typeof (data == null ? void 0 : data.error) === "string" ? data.error : ((_a = data == null ? void 0 : data.error) == null ? void 0 : _a.message) || (data == null ? void 0 : data.message) || fallback;
   }
-  async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens, effort, onDelta, onMeta, signal } = {}) {
+  async function callClaude(messages, { useTools = true, model = DEFAULT_MODEL, servers, maxTokens, effort, onDelta, onMeta, onTool, signal } = {}) {
     const body = { model, max_tokens: maxTokens || 8e3, messages };
     if (useTools) body.mcp_servers = servers || MCP_SERVERS;
     if (EFFORT_MODELS.test(model)) body.output_config = { effort: effort || "medium" };
@@ -943,8 +943,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     let text = "";
     let sawText = false;
     let eventName = "", dataLines = [], stopped = false, stopReason = null, servedModel = null;
+    const toolBlocks = [];
     const dispatch = () => {
-      var _a, _b, _c, _d, _e;
+      var _a, _b, _c, _d, _e, _f;
       const data = dataLines.join("\n");
       const name = eventName;
       eventName = "";
@@ -959,19 +960,25 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (name === "error" || ev.type === "error" || ev.error) {
         throw new Error(responseError(ev, "The model reported a streaming error. Please retry."));
       }
-      if (ev.type === "content_block_start" && ((_a = ev.content_block) == null ? void 0 : _a.type) === "text") {
+      if (ev.type === "content_block_start" && /^mcp_tool_(use|result)$/.test(((_a = ev.content_block) == null ? void 0 : _a.type) || "")) {
+        const b = ev.content_block;
+        const block = b.type === "mcp_tool_use" ? { type: b.type, id: b.id, name: b.name, server_name: b.server_name } : { type: b.type, tool_use_id: b.tool_use_id, is_error: b.is_error === true };
+        toolBlocks.push(block);
+        onTool == null ? void 0 : onTool(block);
+      }
+      if (ev.type === "content_block_start" && ((_b = ev.content_block) == null ? void 0 : _b.type) === "text") {
         if (sawText && text && !text.endsWith("\n")) text += "\n";
         sawText = true;
         text += ev.content_block.text || "";
         if (text) onDelta == null ? void 0 : onDelta(text);
-      } else if (ev.type === "content_block_delta" && ((_b = ev.delta) == null ? void 0 : _b.type) === "text_delta") {
+      } else if (ev.type === "content_block_delta" && ((_c = ev.delta) == null ? void 0 : _c.type) === "text_delta") {
         if (typeof ev.delta.text !== "string") throw new Error("Ember received an invalid text fragment.");
         text += ev.delta.text;
         onDelta == null ? void 0 : onDelta(text);
       }
-      if (ev.type === "message_start" && typeof ((_c = ev.message) == null ? void 0 : _c.model) === "string") servedModel = ev.message.model;
-      if ((_d = ev.delta) == null ? void 0 : _d.stop_reason) stopReason = ev.delta.stop_reason;
-      if ((_e = ev.message) == null ? void 0 : _e.stop_reason) stopReason = ev.message.stop_reason;
+      if (ev.type === "message_start" && typeof ((_d = ev.message) == null ? void 0 : _d.model) === "string") servedModel = ev.message.model;
+      if ((_e = ev.delta) == null ? void 0 : _e.stop_reason) stopReason = ev.delta.stop_reason;
+      if ((_f = ev.message) == null ? void 0 : _f.stop_reason) stopReason = ev.message.stop_reason;
       if (ev.type === "message_stop") stopped = true;
     };
     const line = (value) => {
@@ -1018,7 +1025,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         }
       }
       if (!stopped) throw new Error("The connection ended before the reply finished. The partial reply is shown; retry when ready.");
-      return { content: [{ type: "text", text }], stop_reason: stopReason, model: servedModel, _streamed: true, _connectorsDegraded: degraded };
+      return { content: [...toolBlocks, { type: "text", text }], stop_reason: stopReason, model: servedModel, _streamed: true, _connectorsDegraded: degraded };
     } finally {
       signal == null ? void 0 : signal.removeEventListener("abort", abort);
       void reader.cancel().catch(() => {
@@ -1040,6 +1047,27 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       return model ? { id, role: m.role, content: m.content, status: "complete", model } : { id, role: m.role, content: m.content, status: "complete" };
     });
   }
+  const LIVE_DATA = [
+    ["calendar", /\b(calendar|meetings?|appointments?|birthdays?|bookings?|reservations?|charters?|agenda)\b|\b(?:my|next|any|upcoming|today'?s|tomorrow'?s|this week'?s) (?:events?|trips?|plans?|schedule)\b|\b(?:am i|are we) (?:free|open|busy|booked)\b|\bwhat(?:'s| is) (?:on|happening|going on)\b|\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b[^.?!]{0,30}\b(?:look|got|have|has|doing|going|happening|hold)\b|\b(?:what|how) (?:does|do|will|is|'s) (?:today|tomorrow|tonight|my (?:day|week|morning|afternoon|evening))\b|\b(?:do|did) i have (?:any(?:thing)?|something)\b|\bmy (?:day|week|weekend|morning|afternoon|evening) (?:look|going|hold)/i],
+    ["email", /\b(e-?mails?|inbox|gmail)\b|\b(?:my|new|any|unread|recent|latest|last) mail\b/i],
+    ["calls and texts", /\b(voicemails?|missed calls?|texted|quo)\b|\b(?:my|new|any|unread|recent|latest|last) (?:calls?|texts?|messages?|sms)\b|\b(?:who|anyone|anybody|someone|somebody) (?:called|call|texted|text|messaged)\b|\bdid (?:\w+ )?(?:call|text)\b/i],
+    ["files", /\b(?:google )?drive\b|\b(?:my|the) (?:docs?|documents?|files?|spreadsheets?|sheets?) (?:about|on|for|called|named)\b|\bhandoff log\b/i],
+    ["messages", /\bwhat(?: did|'d) i miss\b|\bbrief (?:me|my)\b|\bcatch me up\b|\banything (?:new|urgent|important)\b/i]
+  ];
+  const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|translate)\b|^\s*(how (?:do|can|would|should) (?:i|you)|what is an? |explain|define)\b/i;
+  function liveDataNeed(text) {
+    if (LIVE_EXEMPT.test(text)) return null;
+    for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
+    return null;
+  }
+  const LIVE_CLAIM = /\b(your (?:calendar|schedule|inbox|email|voicemail|calls?|texts?|messages)|meetings?|appointments?|birthdays?|missed call|voicemail|unread)\b/i;
+  const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|didn'?t|did not)\b[^.]{0,40}\b(see|check|reach|access|look|read|get|pull)\b|\b(unavailable|offline)\b/i;
+  const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
+  const toolResults = (resp) => ((resp == null ? void 0 : resp.content) || []).filter((b) => (b == null ? void 0 : b.type) === "mcp_tool_result" && b.is_error === false).length;
+  const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
+  const LIVE_RETRY_NOTE = (need) => `
+
+[Ember check: this question needs Brady's live ${need}. Call the matching read-only tool in THIS turn before answering. Facts in earlier replies are not tool results. If the tool fails, say you couldn't check.]`;
   function chatContext(messages) {
     var _a;
     const tail = messages.slice(-8);
@@ -1459,16 +1487,28 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const REARM_HANDOFF_MS = 450;
   const REARM_HANDOFF_WEBKIT_MS = 800;
   const REARM_RETRY_MS = 1500;
+  const REARM_DEAF_RETRY_MS = 3e3;
   const REARM_AUDIO_MS = 2500;
   const REARM_WORDS_MS = 1e4;
-  function useEmberVoice({ onSend, blocked, enabled }) {
+  function voiceUaFamily() {
+    const ua = navigator.userAgent || "";
+    const ios = /iPhone|iPad|iPod/.test(ua) || /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    if (ios) return /CriOS/.test(ua) ? "ios-chrome" : /FxiOS/.test(ua) ? "ios-firefox" : /EdgiOS/.test(ua) ? "ios-edge" : "ios-safari";
+    if (/Edg\//.test(ua)) return "edge";
+    if (/Chrome\/|Chromium\//.test(ua)) return /Macintosh/.test(ua) ? "mac-chrome" : "chrome";
+    if (/Safari\//.test(ua) && /Macintosh/.test(ua)) return "mac-safari";
+    return "other";
+  }
+  const voiceWebKit = () => /^(ios-|mac-safari)/.test(voiceUaFamily());
+  function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
     const audioRef = useRef(null), options = useRef(null);
-    options.current = { onSend, blocked, enabled };
-    const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null });
+    options.current = { onSend, onDraft, blocked, enabled };
+    const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
     const c = control.current;
     const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     const production = location.hostname === "ember.baxstarfishing.com";
+    const webkit = voiceWebKit();
     function patch(values) {
       if (values.phase) c.phase = values.phase;
       if (c.live) setState((s) => ({ ...s, ...values }));
@@ -1484,6 +1524,132 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function session(type) {
       try {
         if (navigator.audioSession) navigator.audioSession.type = type;
+      } catch {
+      }
+    }
+    function traceBegin(trigger) {
+      if (c.trace) traceEnd("replaced");
+      const now = performance.now();
+      c.trace = { t0: now, trigger, n: ++c.turns, marks: {}, sinceReplyEndMs: c.replyEndedAt ? Math.round(now - c.replyEndedAt) : null };
+    }
+    function mark(name, always = false) {
+      const t = c.trace;
+      if (t && (always || t.marks[name] === void 0)) t.marks[name] = Math.round(performance.now() - t.t0);
+    }
+    function traceEnd(outcome) {
+      var _a;
+      const t = c.trace;
+      if (!t) return;
+      c.trace = null;
+      const m = t.marks, words = m["last-result"];
+      const body = {
+        v: 1,
+        ua: voiceUaFamily(),
+        engine: webkit ? "webkit" : "other",
+        n: t.n,
+        trigger: t.trigger,
+        outcome,
+        out: t.out || null,
+        sinceReplyEndMs: t.sinceReplyEndMs,
+        session: t.session || null,
+        error: t.error || null,
+        reply: t.reply || null,
+        marks: m,
+        lastWordsToSoundMs: Number.isFinite(words) && Number.isFinite(m["first-sound"]) ? m["first-sound"] - words : null
+      };
+      try {
+        (window.emberVoiceTraces || (window.emberVoiceTraces = [])).push(body);
+        if (window.emberVoiceTraces.length > 20) window.emberVoiceTraces.shift();
+      } catch {
+      }
+      if (!production) return;
+      try {
+        const data = JSON.stringify(body);
+        if (!((_a = navigator.sendBeacon) == null ? void 0 : _a.call(navigator, "/api/voice/trace", new Blob([data], { type: "application/json" }))))
+          fetch("/api/voice/trace", { method: "POST", credentials: "same-origin", keepalive: true, headers: { "Content-Type": "application/json" }, body: data }).catch(() => {
+          });
+      } catch {
+      }
+    }
+    function ensureContext() {
+      if (!webkit || !navigator.audioSession) return null;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try {
+        if (!c.ctx || c.ctx.state === "closed") c.ctx = new AC();
+        if (c.ctx.state !== "running") c.ctx.resume().catch(() => {
+        });
+        return c.ctx;
+      } catch {
+        c.ctx = null;
+        return null;
+      }
+    }
+    function closeContext() {
+      var _a, _b;
+      stopWeb();
+      const ctx = c.ctx;
+      c.ctx = null;
+      try {
+        (_b = (_a = ctx == null ? void 0 : ctx.close()) == null ? void 0 : _a.catch) == null ? void 0 : _b.call(_a, () => {
+        });
+      } catch {
+      }
+    }
+    const webReady = () => {
+      var _a;
+      return webkit && !!navigator.audioSession && ((_a = c.ctx) == null ? void 0 : _a.state) === "running";
+    };
+    function stopWeb() {
+      const w = c.web;
+      c.web = null;
+      clearInterval(c.webTick);
+      if (w) {
+        w.src.onended = null;
+        try {
+          w.src.stop();
+        } catch {
+        }
+      }
+    }
+    async function playWeb(blob, epoch) {
+      var _a;
+      const ctx = c.ctx;
+      try {
+        const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+        if (!c.live || c.epoch !== epoch || c.rec || document.hidden || c.ctx !== ctx || ctx.state !== "running") return true;
+        stopWeb();
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+        const web = { src, at: ctx.currentTime, duration: buffer.duration };
+        c.web = web;
+        c.out = "web";
+        if (c.trace) (_a = c.trace).out || (_a.out = "web");
+        src.onended = () => {
+          if (c.web !== web) return;
+          c.web = null;
+          clearInterval(c.webTick);
+          ended();
+        };
+        session("playback");
+        src.start();
+        clearInterval(c.webTick);
+        c.webTick = setInterval(() => {
+          if (c.web === web) phraseAt(ctx.currentTime - web.at, web.duration);
+        }, 120);
+        playing();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    function releaseMediaSession() {
+      try {
+        if (navigator.mediaSession) {
+          navigator.mediaSession.metadata = null;
+          navigator.mediaSession.playbackState = "none";
+        }
       } catch {
       }
     }
@@ -1539,7 +1705,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         audio.load();
       }
       if (c.url) URL.revokeObjectURL(c.url);
+      stopWeb();
+      releaseMediaSession();
       c.url = "";
+      c.out = null;
       c.phraseIndex = -1;
       session("auto");
       patch({ audioReady: false, phrase: "" });
@@ -1552,36 +1721,56 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       patch({ conversation: false });
     }
     function released(rec) {
+      var _a, _b;
       if (c.rec !== rec) return;
       detach(rec);
       c.rec = null;
       c.mic = "off";
       clearTimers();
+      mark("end");
       if (c.retryMic) {
+        const delay = c.retryDelay || REARM_RETRY_MS, note2 = c.retryNote || "Reopening the microphone\u2026";
         c.retryMic = false;
+        c.retryDelay = 0;
+        c.retryNote = "";
         c.releaseNote = "";
         c.conversation = true;
-        patch({ conversation: true, phase: "ready", note: "Reopening the microphone\u2026" });
+        patch({ conversation: true, phase: "ready", note: note2 });
         timer("next", () => {
           if (c.live && c.conversation && !document.hidden) start(true);
-        }, REARM_RETRY_MS);
+        }, delay);
         return;
       }
-      const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
+      const note = c.releaseNote || (c.draft.trim() ? "Microphone stopped." : "Microphone stopped. Tap the mouth to try again.");
       c.releaseNote = "";
       patch({ phase: "ready", note });
       if (c.conversation && c.draft.trim() && !c.partial && !document.hidden) {
         send();
-      } else if (c.conversation) {
-        pauseConversation();
-        releaseWake();
-        patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn\u2019t catch any words. Tap the mouth to resume." });
+      } else {
+        const words = c.draft.trim();
+        traceEnd(words ? "unfinished" : "no-words");
+        if (c.conversation) {
+          pauseConversation();
+          releaseWake();
+          if (!words) patch({ note: "I didn\u2019t catch any words. Tap the mouth to resume." });
+        }
+        if (words) {
+          c.draft = "";
+          c.interrupted = false;
+          c.partial = false;
+          patch({ open: false, draft: "", partial: false, note: `${note} Your words are in the Ask Ember box.` });
+          (_b = (_a = options.current).onDraft) == null ? void 0 : _b.call(_a, words);
+        }
       }
     }
-    function deadMic(rec, retry, note) {
+    function deadMic(rec, retry, note, outcome, { delay = 0, retryNote = "", trigger = "retry" } = {}) {
       if (c.rec !== rec || !["starting", "listening"].includes(c.mic)) return;
       c.retryMic = retry;
       c.releaseNote = retry ? "" : note;
+      c.retryDelay = delay;
+      c.retryNote = retryNote;
+      c.nextTrigger = retry ? trigger : null;
+      traceEnd(outcome);
       clearTimers();
       abortMic();
       if (!retry) releaseWake();
@@ -1607,6 +1796,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }
     function stop(note = "Stopped. Your words and replies are still here.") {
       var _a;
+      traceEnd("stopped");
       pauseConversation();
       c.epoch++;
       c.releaseNote = note;
@@ -1630,6 +1820,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function finish() {
       const rec = c.rec;
       if (!rec || !["starting", "listening"].includes(c.mic)) return;
+      mark("finish");
       clearTimers();
       c.mic = "stopping";
       patch({ phase: "stopping", note: "Finishing your words\u2026" });
@@ -1651,7 +1842,12 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         return;
       }
       const rearm = continuing === true;
-      if (!rearm) c.retried = false;
+      const trigger = rearm ? c.nextTrigger || "auto" : "tap";
+      c.nextTrigger = null;
+      if (!rearm) {
+        c.retried = false;
+        c.deafRetried = false;
+      }
       stop();
       c.conversation = true;
       c.partial = false;
@@ -1659,6 +1855,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       c.releaseNote = "";
       c.blob = null;
       c.answer = "";
+      if (!rearm) ensureContext();
+      traceBegin(trigger);
+      mark("start-called");
       const prefix = c.interrupted ? c.draft.trim() : "";
       c.draft = prefix;
       patch({ draft: prefix, answer: "", partial: false });
@@ -1682,40 +1881,65 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       let audioSeen = false, wordsSeen = false;
       rec.onaudiostart = () => {
         if (c.rec !== rec) return;
+        mark("audiostart");
         audioSeen = true;
         c.audioEvidence = true;
         if (rearm) c.retried = false;
       };
       rec.onstart = () => {
         if (c.rec !== rec || c.mic !== "starting") return;
+        mark("onstart");
+        if (c.trace) c.trace.session = navigator.audioSession ? `${navigator.audioSession.type}/${navigator.audioSession.state}` : null;
         clearTimers();
         c.mic = "listening";
         patch({ phase: "listening", note: rearm ? "Your turn. I\u2019m listening." : "Listening. Pause when you\u2019re done; I\u2019ll answer aloud." });
         timer("turn", finish, 3e4);
         if (rearm) {
-          if (c.audioEvidence) timer("live", () => {
+          if (c.audioEvidence && !webkit) timer("live", () => {
             if (!audioSeen) {
               const retry = !c.retried;
               c.retried = true;
-              deadMic(rec, retry, "Your phone didn\u2019t reopen the microphone after Jenny spoke. Tap the mouth to answer.");
+              deadMic(rec, retry, "Your phone didn\u2019t reopen the microphone after Jenny spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio");
             }
           }, REARM_AUDIO_MS);
           timer("words", () => {
-            if (!wordsSeen && c.mic === "listening") deadMic(rec, false, "Paused: no words heard. Tap the mouth to answer.");
+            if (wordsSeen || c.mic !== "listening") return;
+            const retry = !c.deafRetried;
+            c.deafRetried = true;
+            deadMic(
+              rec,
+              retry,
+              "Paused: no words heard. Tap the mouth to answer.",
+              retry ? "no-words-retry" : "no-words",
+              { delay: REARM_DEAF_RETRY_MS, retryNote: "I didn\u2019t hear anything. Listening again\u2026", trigger: "deaf-retry" }
+            );
           }, REARM_WORDS_MS);
         }
       };
-      rec.onsoundstart = rec.onspeechstart = () => {
-        if (c.rec === rec) clearTimeout(c.timers.grace);
+      rec.onsoundstart = () => {
+        if (c.rec === rec) {
+          mark("soundstart");
+          clearTimeout(c.timers.grace);
+        }
+      };
+      rec.onspeechstart = () => {
+        if (c.rec === rec) {
+          mark("speechstart");
+          clearTimeout(c.timers.grace);
+        }
       };
       rec.onresult = (event) => {
         if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
         clearTimeout(c.timers.grace);
         wordsSeen = true;
+        c.deafRetried = false;
+        mark("first-result");
+        mark("last-result", true);
         const results = Array.from(event.results), words = results.map((r) => {
           var _a;
           return ((_a = r[0]) == null ? void 0 : _a.transcript) || "";
         }).join(" ").trim();
+        if (results.some((r) => r.isFinal)) mark("first-final");
         c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2e3);
         c.partial = results.some((r) => !r.isFinal);
         patch({ draft: c.draft, partial: c.partial });
@@ -1724,6 +1948,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       };
       rec.onerror = (event) => {
         if (c.rec !== rec) return;
+        if (c.trace) c.trace.error = String(event.error || "unknown").slice(0, 24);
+        mark("error");
         c.interrupted = Boolean(c.draft);
         clearTimers();
         abortMic();
@@ -1759,10 +1985,15 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
     }
     async function playReply(epoch) {
+      var _a;
       if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
       const audio = audioRef.current;
       clearAudio();
+      if (webReady() && await playWeb(c.blob, epoch)) return;
+      if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
       c.url = URL.createObjectURL(c.blob);
+      c.out = "element";
+      if (c.trace) (_a = c.trace).out || (_a.out = "element");
       audio.src = c.url;
       audio.load();
       patch({ audioReady: true, phase: "ready", note: "Jenny is ready. Tap Play if playback does not start." });
@@ -1800,14 +2031,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function feedSpeech(epoch, text, final = false) {
       const s = c.stream;
       if (!s || s.epoch !== epoch || !c.live) return;
-      if (!final) s.streamed = true;
+      if (!final) {
+        s.streamed = true;
+        mark("first-text");
+      }
       while (!s.capped && s.spoken < SPOKEN_MAX) {
         const rest = text.slice(s.said);
         if (!rest.trim()) {
           s.said = text.length;
           break;
         }
-        let end = clipEnd(rest, s.clips.length ? CLIP_MIN : FIRST_CLIP_MIN, !s.clips.length);
+        const first = s.clips.length === (s.lead || 0);
+        let end = clipEnd(rest, first ? FIRST_CLIP_MIN : CLIP_MIN, first);
         if (end < 0 && final) end = rest.length;
         if (end < 0) break;
         let piece = rest.slice(0, end).trim();
@@ -1834,6 +2069,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const clip = { text, blob: null };
       const index = s.clips.push(clip) - 1;
       c.spokeEpoch = s.epoch;
+      if (!index) mark("first-clip-request");
       const controller = new AbortController();
       s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
       const timeout = setTimeout(() => controller.abort(), 15e3);
@@ -1844,12 +2080,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
         if (c.stream !== s) return;
         clip.blob = blob;
+        if (!index) mark("first-clip-ready");
         if (s.waiting && index === s.playing + 1) {
           s.waiting = false;
           playClip(s, index);
         }
       }).catch((error) => {
         if (c.stream !== s || !c.live) return;
+        traceEnd("speech-failed");
         endStream();
         pauseConversation();
         releaseWake();
@@ -1858,12 +2096,28 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }
     function playClip(s, index) {
       if (!c.live || c.stream !== s || s.epoch !== c.epoch || c.rec || document.hidden) return;
-      const audio = audioRef.current, clip = s.clips[index];
+      const clip = s.clips[index];
       s.playing = index;
-      if (c.url) URL.revokeObjectURL(c.url);
-      c.url = URL.createObjectURL(clip.blob);
       c.phrases = emberPhrases(clip.text);
       c.phraseIndex = -1;
+      if (webReady()) {
+        const epoch = c.epoch;
+        keepAwake();
+        playWeb(clip.blob, epoch).then((ok) => {
+          if (!ok && c.stream === s && s.playing === index && c.epoch === epoch) playClipElement(s, index);
+        });
+        return;
+      }
+      playClipElement(s, index);
+    }
+    function playClipElement(s, index) {
+      var _a;
+      if (!c.live || c.stream !== s || s.epoch !== c.epoch || c.rec || document.hidden) return;
+      const audio = audioRef.current, clip = s.clips[index];
+      if (c.url) URL.revokeObjectURL(c.url);
+      c.url = URL.createObjectURL(clip.blob);
+      c.out = "element";
+      if (c.trace) (_a = c.trace).out || (_a.out = "element");
       audio.src = c.url;
       audio.load();
       session("playback");
@@ -1883,6 +2137,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!c.answer || c.rec || c.request || !production || document.hidden) return;
       const epoch = ++c.epoch;
       keepAwake();
+      ensureContext();
       const long = c.answer.length > 1e3;
       const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : c.answer;
       c.phrases = emberPhrases(spoken);
@@ -1893,6 +2148,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const controller = new AbortController();
       c.request = controller;
       patch({ phase: "preparing", note: "Preparing Jenny\u2019s voice\u2026" });
+      mark("first-clip-request");
       const timeout = setTimeout(() => controller.abort(), 15e3);
       try {
         const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: "en-US-JennyNeural" }) });
@@ -1903,9 +2159,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (!c.live || epoch !== c.epoch) return;
         c.blob = blob;
         c.request = null;
+        mark("first-clip-ready");
         await playReply(epoch);
       } catch (error) {
         if (c.live && epoch === c.epoch) {
+          traceEnd("speech-failed");
           pauseConversation();
           releaseWake();
           patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message });
@@ -1926,29 +2184,50 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       clearAudio();
       keepAwake();
       endStream();
+      ensureContext();
       c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
       patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
+      mark("send");
       const timeout = setTimeout(() => controller.abort(), 6e4);
       try {
-        const result = await options.current.onSend(c.draft.trim(), { voiceSignal: controller.signal, onVoiceText: (text) => feedSpeech(epoch, text) });
+        const result = await options.current.onSend(c.draft.trim(), {
+          voiceSignal: controller.signal,
+          onVoiceText: (text) => feedSpeech(epoch, text),
+          // A live-data question holds Jenny until a real tool result arrives; this
+          // short line keeps the wait from sounding like silence.
+          onVoiceHold: (line) => {
+            const s = c.stream;
+            if ((s == null ? void 0 : s.epoch) === epoch && !s.clips.length) {
+              s.lead = 1;
+              queueClip(s, line);
+            }
+          },
+          onVoiceMeta: (meta) => {
+            if (c.trace) c.trace.reply = { ...c.trace.reply || {}, ...meta };
+            if (meta.tool) mark("tool-result");
+          }
+        });
         if (!c.live || epoch !== c.epoch) return;
         c.request = null;
         if (!result) {
+          traceEnd("reply-failed");
           endStream();
           pauseConversation();
           releaseWake();
           patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." });
           return;
         }
+        mark("reply-complete");
         c.answer = result;
         patch({ answer: result });
-        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && c.stream.streamed) feedSpeech(epoch, result, true);
+        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
         if (c.spokeEpoch !== epoch) {
           c.stream = null;
           await speak();
         }
       } catch {
         if (c.live && epoch === c.epoch) {
+          traceEnd("reply-failed");
           pauseConversation();
           releaseWake();
           patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." });
@@ -1960,15 +2239,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     }
     function playing() {
       var _a, _b;
-      if (c.rec || document.hidden || !options.current.enabled || !c.url) {
+      if (c.rec || document.hidden || !options.current.enabled || !c.url && !c.web) {
         (_a = audioRef.current) == null ? void 0 : _a.pause();
+        stopWeb();
         return;
       }
+      mark("first-sound");
       if (c.phase !== "playing") (_b = document.querySelector(".reactor-stage, .scope-bezel")) == null ? void 0 : _b.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       session("playback");
       keepAwake();
       patch({ phase: "playing", note: c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Your microphone is off." });
-      phraseAt(audioRef.current.currentTime, audioRef.current.duration);
+      if (c.web) phraseAt(0, c.web.duration);
+      else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
     }
     function ended() {
       const s = c.stream;
@@ -1989,7 +2271,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     function finishTurn() {
       c.stream = null;
       session("auto");
-      if (!c.url || !c.conversation || document.hidden || !options.current.enabled) {
+      mark("reply-ended");
+      c.replyEndedAt = performance.now();
+      const played = Boolean(c.out);
+      traceEnd(played ? "spoke" : "not-spoken");
+      if (!played || !c.conversation || document.hidden || !options.current.enabled) {
         releaseWake();
         patch({ phase: "ready", phrase: "" });
         return;
@@ -1997,17 +2283,24 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const epoch = c.epoch;
       clearAudio();
       patch({ phase: "ready", phrase: "", note: "Your turn\u2026" });
+      c.nextTrigger = "auto";
       timer("next", () => {
         if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true);
-      }, navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
+      }, webkit || navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
     }
     useEffect(() => {
       var _a, _b;
       c.live = true;
       const hidden = () => {
-        if (document.hidden) stop("Paused when Ember left the screen. Review your words before continuing.");
+        if (document.hidden) {
+          stop("Paused when Ember left the screen. Review your words before continuing.");
+          closeContext();
+        }
       };
-      const exit = () => stop("Voice stopped. Your completed conversation is saved.");
+      const exit = () => {
+        stop("Voice stopped. Your completed conversation is saved.");
+        closeContext();
+      };
       const interrupt = () => {
         var _a2;
         if (((_a2 = navigator.audioSession) == null ? void 0 : _a2.state) === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth.");
@@ -2019,6 +2312,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         var _a2, _b2;
         c.live = false;
         stop();
+        closeContext();
         if (c.rec) {
           const rec = c.rec;
           detach(rec);
@@ -2037,6 +2331,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     useEffect(() => {
       if (!enabled) {
         stop();
+        closeContext();
         patch({ open: false });
       }
     }, [enabled]);
@@ -2058,13 +2353,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       close: () => {
         var _a;
         stop();
+        closeContext();
         patch({ open: false });
         (_a = document.querySelector(".reactor-stage, .scope-bezel")) == null ? void 0 : _a.focus();
-      },
-      edit: (value) => {
-        c.draft = value;
-        c.partial = false;
-        patch({ draft: value, partial: false });
       },
       confirmReleased: () => {
         if (c.mic === "unconfirmed" && c.rec) released(c.rec);
@@ -2092,13 +2383,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         e.preventDefault();
         voice.close();
       }
-    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.answer && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, voice.draft ? "Talk again" : "Talk"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => {
-      voice.close();
-      requestAnimationFrame(() => {
-        var _a;
-        return (_a = document.querySelector(".chat-composer textarea")) == null ? void 0 : _a.focus();
-      });
-    } }, "Type instead"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-pressed": fast, disabled: voice.busy, onClick: onFast, title: fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies." }, fast ? "Fast replies: on" : "Fast replies: off")), /* @__PURE__ */ React.createElement("div", { className: "voice-review", hidden: voice.conversation || !!voice.answer }, /* @__PURE__ */ React.createElement("label", { className: "sr-only", htmlFor: "voice-words" }, "Review your words"), /* @__PURE__ */ React.createElement("textarea", { id: "voice-words", rows: 2, maxLength: 2e3, value: voice.draft, disabled: voice.busy, onChange: (e) => voice.edit(e.target.value), placeholder: "Your words appear here. Review, then Send." }), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.send, disabled: voice.busy || chatBusy || !voice.production || !voice.draft.trim() }, "Send")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), voice.partial && !voice.conversation && /* @__PURE__ */ React.createElement("small", null, "These words may be unfinished. Review before sending."), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("div", { className: "voice-footnote" }, /* @__PURE__ */ React.createElement("span", { "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake\u2026", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" }[voice.wake]), /* @__PURE__ */ React.createElement("span", null, "Keep Ember visible \xB7 mouth starts/stops conversation.")), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com."));
+    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-pressed": fast, disabled: voice.busy, onClick: onFast, title: fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies." }, fast ? "Fast replies: on" : "Fast replies: off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
   }
   function BaxstarEmber() {
     var _a, _b, _c, _d, _e, _f;
@@ -2204,7 +2489,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
     const [voiceFast, setVoiceFast] = useState(true);
     const [chatReady, setChatReady] = useState(false);
-    const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
+    const voice = useEmberVoice({ onSend: sendCommand, onDraft: (words) => setCommand((typed) => typed.trim() ? `${typed.trim()} ${words}` : words), blocked: thinking || !chatReady, enabled: view === "ops" });
     const [chatError, setChatError] = useState("");
     const [chatConnectors, setChatConnectors] = useState("");
     const [chatFeedback, setChatFeedback] = useState("");
@@ -2515,8 +2800,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       raf = requestAnimationFrame(loop);
       return () => cancelAnimationFrame(raf);
     }, []);
-    async function sendCommand(text, { retryId, voiceSignal, onVoiceText } = {}) {
-      var _a2, _b2;
+    async function sendCommand(text, { retryId, voiceSignal, onVoiceText, onVoiceHold, onVoiceMeta } = {}) {
       if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
       if (activeChatRef.current || !chatReady || (voiceSignal == null ? void 0 : voiceSignal.aborted)) return null;
       const current = chatMsgsRef.current;
@@ -2550,27 +2834,68 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
       try {
         const messages = [
-          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }
         ];
-        const resp = await callClaude(messages, {
-          useTools: true,
-          model: chatModel,
-          effort: (_a2 = EFFORT[turnEffort]) == null ? void 0 : _a2.api,
-          maxTokens: (_b2 = EFFORT[turnEffort]) == null ? void 0 : _b2.budget,
-          signal: request.controller.signal,
-          onDelta: (content) => {
-            patchAssistant({ content });
-            if (isCurrent()) onVoiceText == null ? void 0 : onVoiceText(content);
-          },
-          onMeta: ({ degraded }) => {
-            if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current));
-          }
-        });
+        const need = liveDataNeed(q);
+        let held = Boolean(voiceSignal && need), latest = "", degraded = false, resp, guard = need ? "ok" : null;
+        const holdTimer = held ? setTimeout(() => {
+          if (held && isCurrent()) onVoiceHold == null ? void 0 : onVoiceHold(`One moment, checking your ${need}.`);
+        }, 900) : null;
+        onVoiceMeta == null ? void 0 : onVoiceMeta({ live: need });
+        const ask = (msgs) => {
+          var _a2, _b2;
+          return callClaude(msgs, {
+            useTools: true,
+            model: chatModel,
+            effort: (_a2 = EFFORT[turnEffort]) == null ? void 0 : _a2.api,
+            maxTokens: (_b2 = EFFORT[turnEffort]) == null ? void 0 : _b2.budget,
+            signal: request.controller.signal,
+            onDelta: (content) => {
+              latest = content;
+              patchAssistant({ content });
+              if (isCurrent() && !held) onVoiceText == null ? void 0 : onVoiceText(content);
+            },
+            onMeta: ({ degraded: d }) => {
+              degraded || (degraded = d);
+              if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current));
+            },
+            // Jenny speaks a live-data answer only once a real connector result is in.
+            onTool: (block) => {
+              if (block.type !== "mcp_tool_result" || block.is_error || !isCurrent()) return;
+              onVoiceMeta == null ? void 0 : onVoiceMeta({ tool: true });
+              if (held) {
+                held = false;
+                if (latest) onVoiceText == null ? void 0 : onVoiceText(latest);
+              }
+            }
+          });
+        };
+        resp = await ask(messages);
         if (!isCurrent()) return null;
-        const answer = extractText(resp);
+        if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
+          guard = "retried";
+          latest = "";
+          patchAssistant({ content: "" });
+          const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
+          resp = await ask(again);
+          if (!isCurrent()) return null;
+        }
+        clearTimeout(holdTimer);
+        held = false;
+        let answer = extractText(resp);
+        if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && resp.stop_reason !== "max_tokens" && !HONEST_MISS.test(answer) && LIVE_FACT.test(answer)) {
+          guard = "refused";
+          answer = liveMissLine(need);
+          resp = { ...resp, content: [{ type: "text", text: answer }] };
+        } else if (!need && !toolResults(resp) && LIVE_CLAIM.test(answer) && !HONEST_MISS.test(answer)) {
+          guard = "caveat";
+          answer += "\n\nI didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
+          resp = { ...resp, content: [{ type: "text", text: answer }] };
+        }
+        onVoiceMeta == null ? void 0 : onVoiceMeta({ guard, tools: toolResults(resp) });
         const served = typeof resp.model === "string" ? resp.model : void 0;
         if (resp.stop_reason === "refusal") {
           patchAssistant({ content: answer, status: "error", model: served });

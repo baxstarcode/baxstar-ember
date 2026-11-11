@@ -63,6 +63,12 @@ this publication does not perform it. The existing intermittent board multi-tab
 save issue is disclosed and remains open; a later green test is not a repair.
 
 
+**Voice trace route (2026-11-11):** `/api/voice/trace` (Pages allowlist + Worker) accepts
+one small JSON record per spoken turn, keeps only allowlisted fields
+(`proxy/voice-trace.mjs`), writes one `voice-trace` line to Workers Logs and answers 204.
+No secrets, bindings or settings change; it ships with the next merge through Pages and
+Workers Builds.
+
 **Voice preview addition (2026-10-17):** the branch adds exact
 `/api/voice/transcribe` and `/api/voice/speak` routes, disabled until explicitly
 configured. Follow `docs/VOICE-REBUILD.md` for the AI binding, activation, single-writer
