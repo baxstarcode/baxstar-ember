@@ -13,7 +13,8 @@ self-reports its timeline and last-words-to-first-sound time to Workers Logs
 connector at all, so schedule, email, call and file questions now need a real tool result
 in that turn, or Ember re-asks once and then says it couldn't check. Tested in the
 container only (Chromium with an iPhone user agent; Playwright WebKit is not installed);
-real-device behavior is PROVISIONAL. Details: `docs/VOICE-REBUILD.md`.
+real-device behavior is PROVISIONAL. The voice panel also lost its lab-era Review/Send box and
+test buttons; unsent words go to the Ask Ember box. Details: `docs/VOICE-REBUILD.md`.
 
 **Second-turn mic check — November 11, 2026 (Claude):** on iPhone, Ember's automatic restart
 after Jenny's first answer reported LISTENING while the phone gave it no sound (Safari mic

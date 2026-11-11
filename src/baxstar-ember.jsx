@@ -1454,10 +1454,10 @@ function voiceUaFamily() {
 }
 // Every iOS browser is WebKit; so is Mac Safari. Chrome on the Mac keeps the player.
 const voiceWebKit = () => /^(ios-|mac-safari)/.test(voiceUaFamily());
-function useEmberVoice({ onSend, blocked, enabled }) {
+function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
-  options.current = { onSend, blocked, enabled };
+  options.current = { onSend, onDraft, blocked, enabled };
   const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
   const c = control.current;
   const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -1572,12 +1572,16 @@ function useEmberVoice({ onSend, blocked, enabled }) {
       timer("next", () => { if (c.live && c.conversation && !document.hidden) start(true); }, delay);
       return;
     }
-    const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
+    const note = c.releaseNote || (c.draft.trim() ? "Microphone stopped." : "Microphone stopped. Tap the mouth to try again.");
     c.releaseNote = ""; patch({ phase: "ready", note });
     if (c.conversation && c.draft.trim() && !c.partial && !document.hidden) { send(); }
     else {
-      traceEnd(c.draft.trim() ? "unfinished" : "no-words");
-      if (c.conversation) { pauseConversation(); releaseWake(); patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn’t catch any words. Tap the mouth to resume." }); }
+      const words = c.draft.trim();
+      traceEnd(words ? "unfinished" : "no-words");
+      if (c.conversation) { pauseConversation(); releaseWake(); if (!words) patch({ note: "I didn’t catch any words. Tap the mouth to resume." }); }
+      // Unsent words go to the Ask Ember box (RUN sends them as text); the voice
+      // panel has no review step of its own any more.
+      if (words) { c.draft = ""; c.interrupted = false; c.partial = false; patch({ open: false, draft: "", partial: false, note: `${note} Your words are in the Ask Ember box.` }); options.current.onDraft?.(words); }
     }
   }
   // A re-armed mic that heard nothing: retry once, then say so and wait for a tap
@@ -1893,29 +1897,29 @@ function useEmberVoice({ onSend, blocked, enabled }) {
   return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
     mouth: () => c.conversation || c.rec || c.request || c.phase === "playing" ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
     close: () => { stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
-    edit: value => { c.draft = value; c.partial = false; patch({ draft: value, partial: false }); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
     paused: () => { if (audioRef.current?.ended && c.stream?.epoch === c.epoch) return; if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
 function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
+  // VOICE PANEL (2026-11-11, Brady: the review box and test buttons looked like
+  // a reliability test, not Ember). Conversation is the only mode: tap the mouth,
+  // talk, Jenny answers, Ember listens again. The panel keeps her status and the
+  // few controls a driver needs; unsent words go to the Ask Ember box.
   return <section className="foreground-voice" aria-label="Ember voice controls" hidden={!voice.open} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); voice.close(); } }}>
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
-      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.answer && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>{voice.draft ? "Talk again" : "Talk"}</button>}
+      {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.conversation && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>Talk</button>}
       <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
-      <button className="chip ghost" onClick={() => { voice.close(); requestAnimationFrame(() => document.querySelector('.chat-composer textarea')?.focus()); }}>Type instead</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
       <button className="chip ghost" aria-pressed={fast} disabled={voice.busy} onClick={onFast} title={fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies."}>{fast ? "Fast replies: on" : "Fast replies: off"}</button>
     </div>
-    <div className="voice-review" hidden={voice.conversation || !!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
     {voice.conversation && !voice.answer && voice.draft && <p className="voice-live-words" aria-label="Heard words">{voice.draft}</p>}
-    {voice.partial && !voice.conversation && <small>These words may be unfinished. Review before sending.</small>}
     <audio ref={voice.audioRef} controls playsInline preload="none" hidden={!voice.audioReady} aria-label="Ember reply" onPlaying={voice.playing} onPause={voice.paused} onEnded={voice.ended} onError={voice.audioError} onTimeUpdate={e => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration)}/>
-    <div className="voice-footnote"><span data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake…", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" })[voice.wake]}</span><span>Keep Ember visible · mouth starts/stops conversation.</span></div>
-    {!voice.production && <small>Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com.</small>}
+    <span className="sr-only" data-wake={voice.wake}>{({ held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" })[voice.wake]}</span>
+    {!voice.production && <small>Preview: microphone checks only. Replies work on ember.baxstarfishing.com.</small>}
   </section>;
 }
 
@@ -2052,7 +2056,7 @@ export default function BaxstarEmber() {
   // turns this off, and the choice persists.
   const [voiceFast, setVoiceFast] = useState(true);
   const [chatReady, setChatReady] = useState(false);
-  const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
+  const voice = useEmberVoice({ onSend: sendCommand, onDraft: (words) => setCommand((typed) => typed.trim() ? `${typed.trim()} ${words}` : words), blocked: thinking || !chatReady, enabled: view === "ops" });
   const [chatError, setChatError] = useState("");
   const [chatConnectors, setChatConnectors] = useState("");
   const [chatFeedback, setChatFeedback] = useState("");

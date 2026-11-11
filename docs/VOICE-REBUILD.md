@@ -82,6 +82,15 @@ until the result arrives, with "One moment, checking your calendar." if it takes
 without a lookup gets an "I didn't check" caveat. The prompt now says earlier replies are
 not tool results.
 
+**Voice panel cleanup (2026-11-11, Brady, after a 12:04 CST iPhone test of the still-live PR #67
+build):** "It shows a part that looks like it's from a voice reliability test, not a part of my
+actual Ember build." The panel's Review box, Send, Type instead and screen-awake/footnote lines
+were left over from the voice lab's explicit-turn design. They did not cause the stop:
+"Paused: no words heard" comes from the mic watchdog, and the Review box only appeared after
+that pause. They are removed. The panel keeps her status, Talk (only while paused), Answer
+now, Stop voice, Read reply and Fast replies. Unsent words go to the Ask Ember box, and the
+panel closes so the box is visible on desktop.
+
 **Stale text below (found 2026-11-11):** "Current integration" still says review-then-Send
 and "No microphone auto-start/rearm". Since 10-26 the code auto-sends and re-arms (the
 banner at the top says so); the code wins.
