@@ -1,5 +1,31 @@
 # Ember — Current State
 
+**Second-turn mic check — November 11, 2026 (Claude):** on iPhone, Ember's automatic restart
+after Jenny's first answer reported LISTENING while the phone gave it no sound (Safari mic
+light off; in Chrome no second request). Jenny's player is now torn down before the restart,
+and WebKit waits 800 ms. An automatic turn that shows no audio start (after one retry) or no
+words within 10 s pauses with a "tap the mouth" note instead of fake LISTENING. PROVISIONAL on
+device; details and the one diagnostic question are in `docs/VOICE-REBUILD.md`.
+
+**Fast replies for spoken turns — November 10, 2026 (Claude; Brady: "make changes to improve her"):**
+Workers Logs of Brady's real iPhone conversation (11-09 17:19–17:21 CST, 3 turns) show
+8–14 s from Send to Jenny's first clip. Nearly all of it is Opus 5.5 thinking at High
+effort before the first sentence; TTS took under 1 s. Spoken turns now run at Low effort
+on whichever model he picked, and typed chat keeps his Model/Effort choice. A persistent
+**Fast replies** switch in the voice panel turns this off. No Worker, connector, grace or
+voice change. The gain is PROVISIONAL until his next real use is measured from the same
+logs; no lab run is needed. iOS still ends the conversation when Safari is hidden or
+locked, and the CarPlay fan treats Jenny as media; see `docs/VOICE-REBUILD.md`.
+
+**iPhone voice cutoff — November 10, 2026 (recorded by Claude, from Brady's lab v6 report):**
+Brady: “Cut me off on a long sentence so I didn’t get my full thought through.” iPhone
+Safari 27.0.1 finalized a phrase at a pause 11.3 s into the turn and reported nothing for
+750 ms, so the lab's default grace stopped capture and Ember answered half the thought. A
+first turn returned no final phrase in 14.1 s and ended in Safari `aborted`; nothing was
+sent. A reply kept playing through a 1.8 s page hide (v6 `playback-kept`); audibility
+unrecorded. No Pass added; the five-turn gate stays 3 of 5. The dashboard's 1100 ms
+auto-send grace is untested against this pause. Details: `docs/VOICE-REBUILD.md`.
+
 **Quo root cause and deploy path — November 8, 2026, second pass (Claude, Brady: "Fix this once and for all. Go"):**
 Root cause: the token owner made every failed Quo renewal a permanent, unrecorded stop,
 and Quo rotates refresh tokens, so one transient fault (429, 5xx, a reply over 8 s) or a

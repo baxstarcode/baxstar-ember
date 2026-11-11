@@ -6,7 +6,9 @@ foreground session. The user's new instruction supersedes older mandatory
 review/Send and no-rearm requirements below. Stop/close/hidden-page/typing ends the
 session; unfinished or failed turns pause for recovery. Typed questions stay
 text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
-one-time migration; subsequent choices persist. Desktop no-scroll and the pinned
+one-time migration; subsequent choices persist. Since 2026-11-10, spoken turns run at
+Low effort on the chosen model (Fast replies, a switch in the voice panel); typed chat
+keeps the Model/Effort choice. Desktop no-scroll and the pinned
 dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
 sources, implementation boundaries and the outstanding physical-device proof.
 
@@ -59,6 +61,129 @@ background/app-switch test is requested. Existing device reports remain historic
 evidence. The following entries describe prior experiments, not the current scope.
 
 ## Historical experiments
+
+**Second-turn mic check — November 11, 2026 (Claude, from ChatGPT's 11-10 Ember log handoff):**
+Brady on iPhone (11-10, about 6:50 PM CST): Ember “can listen to me for just one round,
+and then the light on Safari at least goes off, and the mic quits listening”, and the
+truck's blower rises again. In Chrome on the same phone the mic indicator stayed on
+“but she did not respond anymore”. Both screenshots show the reactor reading
+**LISTENING…**, which renders only after the browser reports the automatic restart as
+started. Workers Logs agree: Chrome made one spoken request (18:51:56 CST; Jenny's
+first clip about 4 s later) and no second one. Safari made requests at 18:54:12 and
+18:55:17; the second is presumably a manual re-tap. So the browser accepted the
+automatic restart about 0.45 s after Jenny stopped, but the phone fed it no sound.
+Likely cause, not proven: switching from Jenny's playback session back to capture
+with no tap.
+
+- **Change (dashboard).** Jenny's player and playback session are torn down when her
+  reply ends, not in the same tick as the restart. The restart then waits 800 ms in
+  WebKit browsers (450 ms elsewhere). An automatic turn must prove itself: where the
+  browser has reported audio start on an earlier turn, it must report it again within
+  2.5 s (one quiet retry 1.5 s later). Any automatic turn must also produce words within
+  10 s. Otherwise the conversation pauses with a plain note ("Your phone didn’t reopen
+  the microphone after Jenny spoke. Tap the mouth to answer." or "Paused: no words
+  heard."), releases the screen lock and stops showing LISTENING. Tap-started turns
+  are unchanged.
+- **Tests.** 10 new foreground-voice checks cover a dead re-arm (retry, then pause, no
+  fake LISTENING, no request, wake released, tap restarts), a successful retry carrying
+  the conversation on, a live re-arm surviving the audio check, and a silent re-arm
+  pausing at 10 s. The full release suite passes.
+- **PROVISIONAL, one diagnostic question, no test loop.** On Brady's next ordinary use,
+  which happens after Jenny's first answer? (a) she keeps listening, meaning the longer
+  handoff fixed it; (b) "Your phone didn’t reopen the microphone…", meaning the phone
+  refuses a restart without a tap; or (c) "Paused: no words heard". If (b), the iPhone
+  path needs one tap per turn, or a native path; a browser change cannot force capture.
+
+**Real-use diagnosis and Fast replies — November 10, 2026 (Claude):** Brady, after
+three more lab runs: “When I try to use Ember, it just is very slow. It doesn't work
+really for much at all. I can't have a back-and-forth conversation with her for sure.
+That never works when I'm using her for real. Investigate this and make changes to
+improve her.”
+
+- **Where the wait is (Workers Logs, read-only).** His real dashboard conversation on
+  iPhone, 2026-11-09 17:19–17:21 CST, ran 3 spoken turns. From each text request to
+  Jenny's first clip request took 11.7 s, 13.6 s and 8.3 s. (If the log timestamps
+  mark request start rather than end, those become 10.1, 11.4 and 6.3 s.) Jenny's first clips took 0.7–0.8 s. Those
+  streamed requests reached their first response bytes in 2.3–2.9 s with the four
+  connectors attached; the connector-free lab requests did so in 0.5–1.1 s. Nearly all
+  of the remaining wait is the model thinking before its first sentence: every
+  spoken turn ran Opus 5.5 at **High** effort with a 12000-token budget and the prompt
+  line “reason carefully step-by-step before answering; be thorough and double-check
+  specifics”. The 7–14 s coordinator `/access` wall times in the same logs end after
+  the request that called them, so they are not a wait the caller saw.
+- **Change (dashboard only).** Spoken turns now run at Low effort (4000-token budget,
+  the LOW prompt line) on whichever model Brady picked. Typed chat keeps his
+  Model/Effort choice (Opus 5.5 / High by default). The voice panel gained a persistent
+  **Fast replies** switch; off restores the chat setting for spoken turns. No Worker,
+  connector, grace, voice or TTS change. Opus 5.5 cannot turn thinking off, so effort is
+  the lever. Fast mode (`speed: "fast"`, 2x price) was not enabled: it costs money and
+  needs Brady's yes plus a Worker allowlist change.
+- **Measured afterwards without lab runs.** The same log query on his next real use
+  gives the new send-to-first-clip time. Until then the gain is PROVISIONAL.
+- **The other two lab reports that morning.** `13:42:59Z`: locking the screen 3.0 s into
+  recognition stopped capture by design (`stop-all / tab-hidden`), kept the provisional
+  words, and the reviewed draft completed a full Send/Play cycle. The Play tap he noted
+  is the lab's explicit Play, not an autoplay failure. `13:45:42Z`: one long paragraph
+  stayed one recognition phrase for 19.8 s, then the 750 ms grace ended it. Text and
+  Jenny completed, and he recorded **Limited** (mic off, reply audible), noting that
+  pauses “seemed to have high fidelity with the .75 second buffer”. The five-turn gate
+  stays at 3 of 5. Raw reports:
+  `docs/verification/2026-11-10-iphone-voice-lab-v6-lock.json`,
+  `docs/verification/2026-11-10-iphone-voice-lab-v6-long.json`.
+- **CarPlay fan (inference, not tested).** The truck lowers its blower for iPhone voice
+  sessions such as Siri and calls. Safari dictation sometimes registered as one (fan
+  down at 13:42) and sometimes not (13:45). Jenny plays in the `playback` media session
+  that v4 requests, which is what fixed the 10-20 silent replies, so the truck treats
+  her like music: blower back up, media volume. A web page cannot choose the phone-call
+  channel, and switching to `play-and-record` risks re-breaking the audibility v4 fixed,
+  so nothing was changed for the fan.
+- **Lock screen and app switch.** iOS stops a hidden Safari page's microphone, and the
+  conversation ends with it. A web page cannot fix this. Only a native path such as the
+  prepared, not-live Shortcut (draft PR #48) can talk with the phone locked.
+- **What the lab is still for.** It proved capture, Jenny over CarPlay, mic release and
+  playback through a hide on this iPhone. It does not exercise the dashboard's model,
+  connectors or speed, which is where real use was failing. Its five-turn gate predates
+  Brady's 10-26 approval of dashboard voice and no longer blocks anything.
+  Recommendation: stop running the lab and judge Ember by real use, measured from the
+  logs.
+
+**iPhone long-sentence cutoff — November 10, 2026 (lab v6, recorded by Claude):**
+Brady's report began `2026-11-10T13:36:20.410Z` (07:36 CST): iPhone Safari 27.0.1
+(user agent says iPhone OS 18_7), phone experiment opted in, pause window at the
+750 ms default. His device note, verbatim: “Cut me off on a long sentence so I didn’t
+get my full thought through.” Raw report:
+`docs/verification/2026-11-10-iphone-voice-lab-v6.json`.
+
+- **Turn 2 is the cutoff.** Recognition started 5 ms after Talk. Safari returned its
+  first final phrase at 11306 ms and the lab armed the 750 ms grace. No new result and
+  no sound/speech event arrived in that window (there is no
+  `end-of-speech-grace-cancelled`), so the grace elapsed at 12057 ms, the lab requested
+  stop, and recognition ended 9 ms later. The rest of the chain ran: Send at 17368 ms,
+  first streamed text 919 ms later, text complete at 19635 ms, reply TTS HTTP 200/audio
+  (76752 bytes in 2438 ms), playing at 22809 ms. Ember answered the first part of the
+  thought.
+- **Turn 1 captured nothing.** Recognition ran 14.1 s with no final phrase. Stop was
+  requested at 14501 ms by a Finish/Talk tap (no grace, 30-second cap or page-hide
+  event precedes it). Safari answered `aborted` 48 ms later and the turn ended with no
+  transcript. Nothing was sent.
+- **What it shows.** On Brady's iPhone, Safari can finalize a phrase at a mid-thought
+  pause and then report nothing (no result, no activity event) for longer than 750 ms
+  before his next words. The lab's grace then ends the turn, as designed. This is the
+  physical early-cutoff retest the 750 ms grace was waiting on; on iPhone it is **not
+  resolved for long sentences**. The report does not show how long the pause was.
+  Inference, not tested: the dashboard's conversation mode uses an 1100 ms grace and
+  sends automatically when recognition ends, so the same pause there would send half a
+  thought with no review step. Whether 1100 ms would have held this sentence is unknown.
+- **Side result for v6.** During the reply the page was hidden at 32108 ms with
+  `tab-hidden / playback-kept`, returned at 33917 ms (1.8 s away), and the clip ended
+  normally at 37173 ms. This is the first real-iPhone browser evidence that v6 keeps a
+  playing reply going through a hide. Audibility while away and the output route
+  (phone speaker or CarPlay) are unrecorded.
+- **Gate.** Both turns' observations are unrecorded and turn 2 lost words, so this adds
+  no Pass. The five-turn gate stays at 3 of 5.
+- **Superseded the same morning:** the 13:45 report below carried a long paragraph
+  cleanly at 750 ms. The 1.6 s retest is no longer requested, and the grace values are
+  unchanged.
 
 
 **Voice check v6 background playback — October 22, 2026 (Claude):**

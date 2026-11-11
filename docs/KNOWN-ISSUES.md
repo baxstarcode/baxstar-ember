@@ -233,6 +233,21 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**November 11 second-turn restart:** on iPhone (Safari and Chrome) the automatic restart after
+Jenny's first answer reported LISTENING with no sound reaching it. Automatic turns now pause
+with a "tap the mouth" note when no audio start (after one retry) or no words arrive within
+10 s. Whether the longer handoff restores tapless back-and-forth on iPhone is PROVISIONAL.
+
+**November 10 iPhone lab runs (v6):** one turn cut Brady off mid-sentence (Safari
+finalized a phrase at a pause and reported nothing for 750 ms). A later run carried a long
+paragraph cleanly at 750 ms (Limited: mic off, reply audible). Locking the screen stops
+capture: iOS ends a hidden page's microphone, and no web page can avoid that. Only a native
+path such as the prepared Shortcut (draft PR #48) works locked. Over CarPlay the truck
+lowers its fan for iPhone voice sessions but treats Jenny's `playback` media session like
+music. That is inference, untested, and left unchanged because `play-and-record` risks the
+audibility v4 fixed. No further lab test is requested; see the Voice Rebuild entries for
+2026-11-10.
+
 **October 22 background playback (v6):** switching apps no longer cuts off a reply
 that is already playing; the mic and in-flight requests still stop. Whether iOS
 keeps a backgrounded Safari reply audible over CarPlay is the next physical check.
@@ -532,8 +547,11 @@ and a test.
   were `[skip ci]`). Its no-retry/backoff choice differs from ROADMAP item 134 and needs
   Brady's sign-off.
 - **Voice speed.** Spoken replies now stream sentence by sentence (see CURRENT-STATE).
-  The 1100 ms end-of-speech grace and the model's thinking time are unchanged and are the
-  largest remaining waits; lowering either changes the approved experience.
+  **2026-11-10:** Brady's real 11-09 iPhone conversation still took 8–14 s from Send to
+  Jenny's first clip, almost all of it High-effort thinking, and he asked for her to be
+  improved. Spoken turns now run at Low effort on the chosen model (Fast replies switch
+  in the voice panel; typed chat unchanged). The gain is PROVISIONAL until his next real
+  use is measured from Workers Logs. The 1100 ms end-of-speech grace is unchanged.
 
 ## Expected behavior that is not a bug
 

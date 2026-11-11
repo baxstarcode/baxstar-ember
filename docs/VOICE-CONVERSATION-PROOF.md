@@ -28,14 +28,18 @@ playback separately. The new automatic sequence remains PROVISIONAL on hardware.
 A finalized phrase gets a 1100ms grace period before recognition stops. Once the
 browser reports recognition ended, the answer is sent automatically. Interim-only
 words, failed microphone release, denied permission and failed requests never
-trigger an automatic send/retry. Playback completion schedules the next turn after
-450ms, only if the same conversation is still active and visible. Generation guards
+trigger an automatic send/retry. Playback completion releases Jenny's player and schedules the next turn after
+450ms (800ms in WebKit browsers), only if the same conversation is still active and visible.
+Since 2026-11-11 an automatic turn that reports no audio start (after one retry, where the
+browser reported it before) or no words within 10 s pauses with a "tap the mouth" note. Generation guards
 and Stop cancel pending work. The mic is off while Jenny speaks, preventing her
 reply from being captured as the next question. This is turn-taking, not full-duplex
 barge-in or a claim of ChatGPT's realtime architecture. Foreground scope is unchanged.
 
 Opus 5.5 / High defaults apply once to existing preferences (v5); later explicit
-choices persist. Dashboard sync remains Haiku/Low. The separate Voice Lab is historical.
+choices persist. Spoken turns run at Low effort on the chosen model (Fast replies,
+2026-11-10, after Brady's real-use logs showed 8-14 s before Jenny's first sentence at
+High); the voice panel's Fast replies switch restores the chat setting for spoken turns. Dashboard sync remains Haiku/Low. The separate Voice Lab is historical.
 
 Browser tests simulate recognition and provider responses with real HTML audio
 playback. They cover three automatic turns from one mouth tap, no microphone over

@@ -1370,6 +1370,17 @@ function emberPhrases(text) {
   if (phrase) pieces.push(phrase);
   return pieces;
 }
+// SECOND-TURN MIC CHECK (2026-11-11). Brady, iPhone: "she can listen to me for just
+// one round, and then the light on Safari at least goes off, and the mic quits
+// listening"; in Chrome the mic indicator stayed on "but she did not respond anymore".
+// Both screens read LISTENING… and Workers Logs show no second request: the browser
+// reported the automatic restart as started while the phone fed it no sound. An
+// automatic (re-armed) turn now has to prove itself: audio start within 2.5 s where
+// the browser reported audio start before (one quiet retry), and some words within
+// 10 s. Otherwise the conversation pauses with a "tap the mouth" note. A tap-started
+// turn is unchanged.
+const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500;
+const REARM_AUDIO_MS = 2500, REARM_WORDS_MS = 10000;
 function useEmberVoice({ onSend, blocked, enabled }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
@@ -1408,15 +1419,29 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     c.url = ""; c.phraseIndex = -1; session("auto");
     patch({ audioReady: false, phrase: "" });
   }
-  function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = null; }
+  function detach(rec) { rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = rec.onaudiostart = null; }
   function pauseConversation() { c.conversation = false; patch({ conversation: false }); }
   function released(rec) {
     if (c.rec !== rec) return;
     detach(rec); c.rec = null; c.mic = "off"; clearTimers();
+    if (c.retryMic) {
+      c.retryMic = false; c.releaseNote = ""; c.conversation = true;
+      patch({ conversation: true, phase: "ready", note: "Reopening the microphone…" });
+      timer("next", () => { if (c.live && c.conversation && !document.hidden) start(true); }, REARM_RETRY_MS);
+      return;
+    }
     const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
     c.releaseNote = ""; patch({ phase: "ready", note });
     if (c.conversation && c.draft.trim() && !c.partial && !document.hidden) { send(); }
     else if (c.conversation) { pauseConversation(); releaseWake(); patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn’t catch any words. Tap the mouth to resume." }); }
+  }
+  // A re-armed mic that the phone never actually opened: retry once, then say so
+  // and wait for a tap instead of showing LISTENING over a dead microphone.
+  function deadMic(rec, retry, note) {
+    if (c.rec !== rec || !["starting", "listening"].includes(c.mic)) return;
+    c.retryMic = retry; c.releaseNote = retry ? "" : note;
+    clearTimers(); abortMic();
+    if (!retry) releaseWake();
   }
   function abortMic() {
     pauseConversation();
@@ -1448,6 +1473,8 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     if (c.rec || c.request || options.current.blocked || !options.current.enabled || document.hidden) return;
     patch({ open: true });
     if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
+    const rearm = continuing === true;
+    if (!rearm) c.retried = false;
     stop(); c.conversation = true; c.partial = false; patch({ conversation: true }); c.releaseNote = ""; c.blob = null; c.answer = "";
     const prefix = c.interrupted ? c.draft.trim() : "";
     c.draft = prefix; patch({ draft: prefix, answer: "", partial: false });
@@ -1456,15 +1483,22 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     try { rec = new Recognition(); } catch { pauseConversation(); patch({ note: "The browser could not start speech recognition. Try again when ready." }); return; }
     c.rec = rec; c.mic = "starting"; keepAwake(); session("auto");
     rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    let audioSeen = false, wordsSeen = false;
+    rec.onaudiostart = () => { if (c.rec !== rec) return; audioSeen = true; c.audioEvidence = true; if (rearm) c.retried = false; };
     rec.onstart = () => {
       if (c.rec !== rec || c.mic !== "starting") return;
-      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: "Listening. Pause when you’re done; I’ll answer aloud." });
+      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: rearm ? "Your turn. I’m listening." : "Listening. Pause when you’re done; I’ll answer aloud." });
       timer("turn", finish, 30000);
+      if (rearm) {
+        // Only a browser that reported audio start on an earlier turn is held to it.
+        if (c.audioEvidence) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Jenny spoke. Tap the mouth to answer."); } }, REARM_AUDIO_MS);
+        timer("words", () => { if (!wordsSeen && c.mic === "listening") deadMic(rec, false, "Paused: no words heard. Tap the mouth to answer."); }, REARM_WORDS_MS);
+      }
     };
     rec.onsoundstart = rec.onspeechstart = () => { if (c.rec === rec) clearTimeout(c.timers.grace); };
     rec.onresult = event => {
       if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
-      clearTimeout(c.timers.grace);
+      clearTimeout(c.timers.grace); wordsSeen = true;
       const results = Array.from(event.results), words = results.map(r => r[0]?.transcript || "").join(" ").trim();
       c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2000);
       c.partial = results.some(r => !r.isFinal);
@@ -1639,8 +1673,11 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     session("auto");
     if (!c.url || !c.conversation || document.hidden || !options.current.enabled) { releaseWake(); patch({ phase: "ready", phrase: "" }); return; }
     const epoch = c.epoch;
+    // Release Jenny's player and playback session now, not in the same tick as the
+    // mic restart; WebKit gets a longer handoff (it is the engine with audioSession).
+    clearAudio();
     patch({ phase: "ready", phrase: "", note: "Your turn…" });
-    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, 450);
+    timer("next", () => { if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true); }, navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
   }
   useEffect(() => {
     c.live = true;
@@ -1660,7 +1697,7 @@ function useEmberVoice({ onSend, blocked, enabled }) {
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
-function ForegroundVoice({ voice, chatBusy }) {
+function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
   return <section className="foreground-voice" aria-label="Ember voice controls" hidden={!voice.open} onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); voice.close(); } }}>
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
@@ -1669,6 +1706,7 @@ function ForegroundVoice({ voice, chatBusy }) {
       <button className="chip ghost" onClick={() => { voice.close(); requestAnimationFrame(() => document.querySelector('.chat-composer textarea')?.focus()); }}>Type instead</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
+      <button className="chip ghost" aria-pressed={fast} disabled={voice.busy} onClick={onFast} title={fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies."}>{fast ? "Fast replies: on" : "Fast replies: off"}</button>
     </div>
     <div className="voice-review" hidden={voice.conversation || !!voice.answer}><label className="sr-only" htmlFor="voice-words">Review your words</label><textarea id="voice-words" rows={2} maxLength={2000} value={voice.draft} disabled={voice.busy} onChange={e => voice.edit(e.target.value)} placeholder="Your words appear here. Review, then Send."/><button className="chip solid" onClick={voice.send} disabled={voice.busy || chatBusy || !voice.production || !voice.draft.trim()}>Send</button></div>
     {voice.conversation && !voice.answer && voice.draft && <p className="voice-live-words" aria-label="Heard words">{voice.draft}</p>}
@@ -1802,6 +1840,15 @@ export default function BaxstarEmber() {
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
   const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
+  // FAST REPLIES FOR SPOKEN TURNS (2026-11-10). Brady: "When I try to use Ember, it
+  // just is very slow ... I can't have a back-and-forth conversation with her ...
+  // make changes to improve her." Workers Logs of his real 11-09 iPhone conversation
+  // show 8.3-13.6 s from sending his words to Jenny's first sentence, nearly all of
+  // it the model thinking at High effort (TTS took under 1 s). Spoken turns therefore
+  // run at Low effort on whichever model he picked; typed chat keeps his Model/Effort
+  // choice (Opus 5.5 / High by default). The voice panel's "Fast replies" switch
+  // turns this off, and the choice persists.
+  const [voiceFast, setVoiceFast] = useState(true);
   const [chatReady, setChatReady] = useState(false);
   const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
   const [chatError, setChatError] = useState("");
@@ -1922,6 +1969,7 @@ export default function BaxstarEmber() {
           const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
           if (Object.hasOwn(EFFORT, effort)) setChatEffort(effort);
         }
+        if (typeof prefs.voiceFast === "boolean") setVoiceFast(prefs.voiceFast);
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
         if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
@@ -2034,8 +2082,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (chatReady) saveChat(chatMsgs); }, [chatMsgs, chatReady]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
-  }, [surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
+    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, voiceFast, lake, postWindow: postTime, studioTool, coreMode, revToday });
+  }, [surfaces, chatModel, chatEffort, voiceFast, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -2175,16 +2223,18 @@ export default function BaxstarEmber() {
     setChatFeedback("");
     setCopiedChatId(null);
     if (!retryId) setCommand("");
+    // Spoken turns run at Low effort unless Brady switched Fast replies off.
+    const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
     try {
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
       ];
       // No automatic model retry: connector calls may already have run upstream.
       const resp = await callClaude(messages, {
-        useTools: true, model: chatModel, effort: EFFORT[chatEffort]?.api, maxTokens: EFFORT[chatEffort]?.budget,
+        useTools: true, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
         signal: request.controller.signal,
         onDelta: (content) => { patchAssistant({ content }); if (isCurrent()) onVoiceText?.(content); },
         onMeta: ({ degraded }) => { if (isCurrent() && degraded) setChatConnectors(degradedChatNote(connStatusRef.current)); },
@@ -4604,7 +4654,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
               )}
 
-              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} />
+              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} fast={voiceFast} onFast={() => setVoiceFast((v) => !v)} />
 
               {chatConnectors && <div className="chat-connectors" role="status">{chatConnectors}</div>}
               {chatError && <div className="chat-error" role="alert">{chatError}</div>}

@@ -18,7 +18,7 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
   if(prefs)localStorage.setItem("ember-prefs",JSON.stringify(prefs));
   window.recs=[];window.recMode='normal';window.wakes=[];window.wakeMode=wake;
   class Rec {
-   start(){this.active=true;recs.push(this);if(recMode==='denied')setTimeout(()=>this.onerror?.({error:'not-allowed'}),0);else if(recMode!=='pending')setTimeout(()=>this.onstart?.(),0)}
+   start(){this.active=true;recs.push(this);if(recMode==='denied')setTimeout(()=>this.onerror?.({error:'not-allowed'}),0);else if(recMode!=='pending')setTimeout(()=>{this.onstart?.();const dead=window.deadAudio>0&&recs.length>1;if(dead)window.deadAudio--;else if(window.audioStart)this.onaudiostart?.()},0)}
    stop(){if(recMode!=='unconfirmed'){this.active=false;setTimeout(()=>this.onend?.(),0)}}
    abort(){this.stop()}
   }
@@ -105,7 +105,7 @@ try{
   await f.panel.locator('[data-wake="held"]').waitFor();await f.finish();
   check(`${width}: capture ends before Send`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
   await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
-  check(`${width}: selected Opus/High uses normal chat`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='high'&&c.body.messages.at(-1)?.content==='Check my next trip.'));
+  check(`${width}: spoken turn keeps the selected Opus model at Fast-replies Low effort`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='low'&&c.body.max_tokens===4000&&c.body.messages[0]?.content.includes('Effort: LOW')&&!c.body.messages[0]?.content.includes('Effort: HIGH')&&c.body.messages.at(-1)?.content==='Check my next trip.'));
   check(`${width}: Jenny uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-JennyNeural'));
   check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
@@ -130,6 +130,54 @@ try{
   check(`${width}: return never rearms mic`,await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
   check(`${width}: dock unchanged`,(await f.page.locator('.dock-label').allTextContents()).map(t=>t.replace(/\u00ad/g,'')).join('|')==='OPS|Caption Studio|Knowledge Graph|Google Drive|FareHarbor|Projects');
   check(`${width}: no runtime errors`,f.errors.length===0);await f.context.close();
+ }
+ {
+  // Fast replies is the default for spoken turns only; typed chat keeps Brady's Model/Effort.
+  const f=await fixture({prefs:{v:5,chatModel:'claude-opus-5-5',chatEffort:'high'}});
+  await f.page.getByRole('textbox',{name:'Ask Ember'}).fill('Typed question');await f.page.getByRole('textbox',{name:'Ask Ember'}).press('Enter');
+  await f.page.waitForFunction(()=>document.querySelector('.home-thread [data-role="assistant"]')?.innerText.includes('Your voice is connected'));
+  check('typed chat keeps selected Opus/High while Fast replies is on',f.calls.some(c=>c.path==='/api/messages'&&c.body.output_config?.effort==='high'&&c.body.max_tokens===12000&&c.body.messages.at(-1)?.content==='Typed question'));
+  await f.start();const toggle=f.panel.getByRole('button',{name:/Fast replies/});
+  check('Fast replies defaults on and is visible in the voice panel',await toggle.getAttribute('aria-pressed')==='true');
+  check('Fast replies cannot change mid-capture',await toggle.isDisabled());
+  await f.finish();await toggle.click();
+  check('Fast replies toggles off',await toggle.getAttribute('aria-pressed')==='false');
+  await f.page.waitForFunction(()=>JSON.parse(localStorage.getItem('ember-prefs')||'{}').voiceFast===false);check('Fast replies choice persists',true);
+  await f.panel.getByRole('button',{name:'Send',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('Fast replies off: spoken turn uses the selected Opus/High',f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='high'&&c.body.messages.at(-1)?.content==='Check my next trip.'));
+  check('Fast replies toggle adds no runtime errors',f.errors.length===0);await f.context.close();
+ }
+ {
+  const f=await fixture({prefs:{v:5,chatModel:'claude-sonnet-5-5',chatEffort:'medium',voiceFast:false}});
+  await f.start();check('saved Fast replies off is restored',await f.panel.getByRole('button',{name:/Fast replies/}).getAttribute('aria-pressed')==='false');await f.context.close();
+ }
+ {
+  // Second-turn mic check (2026-11-11): an automatic turn whose mic the phone never opens.
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=2});
+  await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
+  await f.page.getByText(/Reopening the microphone/).waitFor();check('dead re-armed mic gets one quiet retry',await f.page.evaluate(()=>recs.length===2&&!recs[1].active));
+  await f.page.getByText(/didn’t reopen the microphone after Jenny spoke/).waitFor({timeout:15000});
+  check('second dead re-arm pauses with a tap-the-mouth note',await f.page.evaluate(()=>recs.length===3&&recs.every(r=>!r.active)));
+  check('dead re-arm never shows LISTENING',await f.page.locator('[data-voice-phase="listening"]').count()===0);
+  check('dead re-arm sends nothing',f.calls.filter(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||'')).length===1);
+  check('dead re-arm releases the screen lock',await f.page.evaluate(()=>wakes.every(w=>w.released)));
+  await f.start();check('a tap after the pause starts a normal turn',await f.page.evaluate(()=>recs.length===4&&recs[3].active));
+  check('second-turn check adds no runtime errors',f.errors.length===0);await f.context.close();
+ }
+ {
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=1});
+  await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
+  await f.page.getByText(/Reopening the microphone/).waitFor();await f.page.waitForFunction(()=>recs.length===3&&recs[2].active);await f.page.locator('[data-voice-phase="listening"]').waitFor();
+  await f.page.evaluate(()=>say('Second question'));await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('a successful retry carries the conversation to the next reply',f.calls.some(c=>c.path==='/api/messages'&&c.body.messages?.at(-1)?.content==='Second question'));await f.context.close();
+ }
+ {
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true});
+  await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
+  await f.page.waitForFunction(()=>recs.length===2&&recs[1].active);await f.page.locator('[data-voice-phase="listening"]').waitFor();
+  check('a re-armed mic that opens keeps listening past the audio check',await (async()=>{await f.page.waitForTimeout(3000);return f.page.evaluate(()=>recs[1].active)})());
+  await f.page.getByText(/Paused: no words heard/).waitFor({timeout:15000});
+  check('a silent re-armed turn pauses instead of listening for 30 s',await f.page.evaluate(()=>recs.every(r=>!r.active))&&await f.page.locator('[data-voice-phase="listening"]').count()===0);await f.context.close();
  }
  {
   const f=await fixture({preview:true});await f.start();await f.finish();check('preview Send is gated',await f.panel.getByRole('button',{name:'Send',exact:true}).isDisabled());check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();

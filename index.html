@@ -792,7 +792,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-09 05:37Z".startsWith("__") ? "dev" : "2026-11-09 05:37Z";
+  const BUILD_STAMP = "2026-11-11 03:32Z".startsWith("__") ? "dev" : "2026-11-11 03:32Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1456,6 +1456,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     if (phrase) pieces.push(phrase);
     return pieces;
   }
+  const REARM_HANDOFF_MS = 450;
+  const REARM_HANDOFF_WEBKIT_MS = 800;
+  const REARM_RETRY_MS = 1500;
+  const REARM_AUDIO_MS = 2500;
+  const REARM_WORDS_MS = 1e4;
   function useEmberVoice({ onSend, blocked, enabled }) {
     const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
     const audioRef = useRef(null), options = useRef(null);
@@ -1540,7 +1545,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       patch({ audioReady: false, phrase: "" });
     }
     function detach(rec) {
-      rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = null;
+      rec.onstart = rec.onresult = rec.onerror = rec.onend = rec.onspeechstart = rec.onsoundstart = rec.onaudiostart = null;
     }
     function pauseConversation() {
       c.conversation = false;
@@ -1552,6 +1557,16 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       c.rec = null;
       c.mic = "off";
       clearTimers();
+      if (c.retryMic) {
+        c.retryMic = false;
+        c.releaseNote = "";
+        c.conversation = true;
+        patch({ conversation: true, phase: "ready", note: "Reopening the microphone\u2026" });
+        timer("next", () => {
+          if (c.live && c.conversation && !document.hidden) start(true);
+        }, REARM_RETRY_MS);
+        return;
+      }
       const note = c.releaseNote || (c.draft.trim() ? "Check your words, then Send. The browser reports the mic stopped." : "Microphone stopped. Tap the mouth to try again.");
       c.releaseNote = "";
       patch({ phase: "ready", note });
@@ -1562,6 +1577,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         releaseWake();
         patch({ note: c.draft.trim() ? "I kept your unfinished words. Resume talking or edit and send them." : "I didn\u2019t catch any words. Tap the mouth to resume." });
       }
+    }
+    function deadMic(rec, retry, note) {
+      if (c.rec !== rec || !["starting", "listening"].includes(c.mic)) return;
+      c.retryMic = retry;
+      c.releaseNote = retry ? "" : note;
+      clearTimers();
+      abortMic();
+      if (!retry) releaseWake();
     }
     function abortMic() {
       pauseConversation();
@@ -1627,6 +1650,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." });
         return;
       }
+      const rearm = continuing === true;
+      if (!rearm) c.retried = false;
       stop();
       c.conversation = true;
       c.partial = false;
@@ -1654,12 +1679,31 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       rec.continuous = true;
       rec.interimResults = true;
       rec.maxAlternatives = 1;
+      let audioSeen = false, wordsSeen = false;
+      rec.onaudiostart = () => {
+        if (c.rec !== rec) return;
+        audioSeen = true;
+        c.audioEvidence = true;
+        if (rearm) c.retried = false;
+      };
       rec.onstart = () => {
         if (c.rec !== rec || c.mic !== "starting") return;
         clearTimers();
         c.mic = "listening";
-        patch({ phase: "listening", note: "Listening. Pause when you\u2019re done; I\u2019ll answer aloud." });
+        patch({ phase: "listening", note: rearm ? "Your turn. I\u2019m listening." : "Listening. Pause when you\u2019re done; I\u2019ll answer aloud." });
         timer("turn", finish, 3e4);
+        if (rearm) {
+          if (c.audioEvidence) timer("live", () => {
+            if (!audioSeen) {
+              const retry = !c.retried;
+              c.retried = true;
+              deadMic(rec, retry, "Your phone didn\u2019t reopen the microphone after Jenny spoke. Tap the mouth to answer.");
+            }
+          }, REARM_AUDIO_MS);
+          timer("words", () => {
+            if (!wordsSeen && c.mic === "listening") deadMic(rec, false, "Paused: no words heard. Tap the mouth to answer.");
+          }, REARM_WORDS_MS);
+        }
       };
       rec.onsoundstart = rec.onspeechstart = () => {
         if (c.rec === rec) clearTimeout(c.timers.grace);
@@ -1667,6 +1711,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       rec.onresult = (event) => {
         if (c.rec !== rec || !["starting", "listening", "stopping"].includes(c.mic)) return;
         clearTimeout(c.timers.grace);
+        wordsSeen = true;
         const results = Array.from(event.results), words = results.map((r) => {
           var _a;
           return ((_a = r[0]) == null ? void 0 : _a.transcript) || "";
@@ -1950,10 +1995,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         return;
       }
       const epoch = c.epoch;
+      clearAudio();
       patch({ phase: "ready", phrase: "", note: "Your turn\u2026" });
       timer("next", () => {
         if (c.live && c.conversation && c.epoch === epoch && !document.hidden) start(true);
-      }, 450);
+      }, navigator.audioSession ? REARM_HANDOFF_WEBKIT_MS : REARM_HANDOFF_MS);
     }
     useEffect(() => {
       var _a, _b;
@@ -2040,7 +2086,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
     };
   }
-  function ForegroundVoice({ voice, chatBusy }) {
+  function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
     return /* @__PURE__ */ React.createElement("section", { className: "foreground-voice", "aria-label": "Ember voice controls", hidden: !voice.open, onKeyDown: (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -2052,7 +2098,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         var _a;
         return (_a = document.querySelector(".chat-composer textarea")) == null ? void 0 : _a.focus();
       });
-    } }, "Type instead"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off")), /* @__PURE__ */ React.createElement("div", { className: "voice-review", hidden: voice.conversation || !!voice.answer }, /* @__PURE__ */ React.createElement("label", { className: "sr-only", htmlFor: "voice-words" }, "Review your words"), /* @__PURE__ */ React.createElement("textarea", { id: "voice-words", rows: 2, maxLength: 2e3, value: voice.draft, disabled: voice.busy, onChange: (e) => voice.edit(e.target.value), placeholder: "Your words appear here. Review, then Send." }), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.send, disabled: voice.busy || chatBusy || !voice.production || !voice.draft.trim() }, "Send")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), voice.partial && !voice.conversation && /* @__PURE__ */ React.createElement("small", null, "These words may be unfinished. Review before sending."), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("div", { className: "voice-footnote" }, /* @__PURE__ */ React.createElement("span", { "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake\u2026", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" }[voice.wake]), /* @__PURE__ */ React.createElement("span", null, "Keep Ember visible \xB7 mouth starts/stops conversation.")), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com."));
+    } }, "Type instead"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-pressed": fast, disabled: voice.busy, onClick: onFast, title: fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies." }, fast ? "Fast replies: on" : "Fast replies: off")), /* @__PURE__ */ React.createElement("div", { className: "voice-review", hidden: voice.conversation || !!voice.answer }, /* @__PURE__ */ React.createElement("label", { className: "sr-only", htmlFor: "voice-words" }, "Review your words"), /* @__PURE__ */ React.createElement("textarea", { id: "voice-words", rows: 2, maxLength: 2e3, value: voice.draft, disabled: voice.busy, onChange: (e) => voice.edit(e.target.value), placeholder: "Your words appear here. Review, then Send." }), /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.send, disabled: voice.busy || chatBusy || !voice.production || !voice.draft.trim() }, "Send")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), voice.partial && !voice.conversation && /* @__PURE__ */ React.createElement("small", null, "These words may be unfinished. Review before sending."), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("div", { className: "voice-footnote" }, /* @__PURE__ */ React.createElement("span", { "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake\u2026", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake: off" }[voice.wake]), /* @__PURE__ */ React.createElement("span", null, "Keep Ember visible \xB7 mouth starts/stops conversation.")), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Send and Jenny replies work on ember.baxstarfishing.com."));
   }
   function BaxstarEmber() {
     var _a, _b, _c, _d, _e, _f;
@@ -2156,6 +2202,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const [chatMsgs, setChatMsgs] = useState([]);
     const [chatModel, setChatModel] = useState(DEFAULT_MODEL);
     const [chatEffort, setChatEffort] = useState(DEFAULT_EFFORT);
+    const [voiceFast, setVoiceFast] = useState(true);
     const [chatReady, setChatReady] = useState(false);
     const voice = useEmberVoice({ onSend: sendCommand, blocked: thinking || !chatReady, enabled: view === "ops" });
     const [chatError, setChatError] = useState("");
@@ -2266,6 +2313,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
             if (Object.hasOwn(EFFORT, effort)) setChatEffort(effort);
           }
+          if (typeof prefs.voiceFast === "boolean") setVoiceFast(prefs.voiceFast);
           if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
           if (prefs.lake) setLake(prefs.lake);
           if (prefs.postWindow) setPostTime(toPostTime(prefs.postWindow));
@@ -2370,8 +2418,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24));
     }, [driveMsgs]);
     useEffect(() => {
-      if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, lake, postWindow: postTime, studioTool, coreMode, revToday });
-    }, [surfaces, chatModel, chatEffort, lake, postTime, studioTool, coreMode, revToday]);
+      if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, voiceFast, lake, postWindow: postTime, studioTool, coreMode, revToday });
+    }, [surfaces, chatModel, chatEffort, voiceFast, lake, postTime, studioTool, coreMode, revToday]);
     async function saveBg(next) {
       setBg(next);
       setBgMenu(false);
@@ -2499,9 +2547,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       setChatFeedback("");
       setCopiedChatId(null);
       if (!retryId) setCommand("");
+      const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
       try {
         const messages = [
-          { role: "user", content: bradyContext() + EFFORT[chatEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }
@@ -2509,8 +2558,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const resp = await callClaude(messages, {
           useTools: true,
           model: chatModel,
-          effort: (_a2 = EFFORT[chatEffort]) == null ? void 0 : _a2.api,
-          maxTokens: (_b2 = EFFORT[chatEffort]) == null ? void 0 : _b2.budget,
+          effort: (_a2 = EFFORT[turnEffort]) == null ? void 0 : _a2.api,
+          maxTokens: (_b2 = EFFORT[turnEffort]) == null ? void 0 : _b2.budget,
           signal: request.controller.signal,
           onDelta: (content) => {
             patchAssistant({ content });
@@ -4778,7 +4827,7 @@ Check Gmail for anything newer.`;
         /* @__PURE__ */ React.createElement("div", { className: "chat-message-actions" }, m.status === "complete" ? /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-label": "Copy reply", onClick: () => copyChat(m) }, copiedChatId === m.id ? "Copied" : "Copy") : /* @__PURE__ */ React.createElement("span", { className: "chat-message-status" }, { streaming: "Replying\u2026", stopped: "Stopped \xB7 not saved", truncated: "Incomplete \xB7 output limit", error: "Incomplete \xB7 not saved" }[m.status]))
       )),
       /* @__PURE__ */ React.createElement("div", { ref: chatEndRef })
-    ), /* @__PURE__ */ React.createElement(ForegroundVoice, { voice, chatBusy: thinking || !chatReady }), chatConnectors && /* @__PURE__ */ React.createElement("div", { className: "chat-connectors", role: "status" }, chatConnectors), chatError && /* @__PURE__ */ React.createElement("div", { className: "chat-error", role: "alert" }, chatError), chatFeedback && /* @__PURE__ */ React.createElement("div", { className: "chat-feedback", role: "status" }, chatFeedback), /* @__PURE__ */ React.createElement("span", { className: "sr-only", role: "status" }, thinking ? "Ember is replying. Stop is available." : ((_d = chatMsgs.at(-1)) == null ? void 0 : _d.status) === "complete" && ((_e = chatMsgs.at(-1)) == null ? void 0 : _e.role) === "assistant" ? "Reply complete." : ""), /* @__PURE__ */ React.createElement("div", { className: "chat-composer reveal", style: { animationDelay: "0.55s" } }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(ForegroundVoice, { voice, chatBusy: thinking || !chatReady, fast: voiceFast, onFast: () => setVoiceFast((v) => !v) }), chatConnectors && /* @__PURE__ */ React.createElement("div", { className: "chat-connectors", role: "status" }, chatConnectors), chatError && /* @__PURE__ */ React.createElement("div", { className: "chat-error", role: "alert" }, chatError), chatFeedback && /* @__PURE__ */ React.createElement("div", { className: "chat-feedback", role: "status" }, chatFeedback), /* @__PURE__ */ React.createElement("span", { className: "sr-only", role: "status" }, thinking ? "Ember is replying. Stop is available." : ((_d = chatMsgs.at(-1)) == null ? void 0 : _d.status) === "complete" && ((_e = chatMsgs.at(-1)) == null ? void 0 : _e.role) === "assistant" ? "Reply complete." : ""), /* @__PURE__ */ React.createElement("div", { className: "chat-composer reveal", style: { animationDelay: "0.55s" } }, /* @__PURE__ */ React.createElement(
       "textarea",
       {
         ref: cmdInputRef,
