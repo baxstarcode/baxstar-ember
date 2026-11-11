@@ -1,5 +1,14 @@
 # Ember — Current State
 
+**First real iPhone result and the next voice pass — November 11, 2026 evening (Claude):** on the
+live PR #68 build (main `87c1d99`, Pages `840aff40`, Worker `69bb1abe`) Brady's iPhone Safari
+held three spoken turns from one tap; both automatic restarts heard him (Workers Logs
+`voice-trace`). Last word to Jenny's first sound measured 6.3–8.9 s, and her replies ran 31–46 s
+with no way to cut in. Next pass, on the same branch: 1–3 sentence spoken answers,
+tap-to-interrupt, a "checking" line for any lookup, Drive attached for files questions, and
+finer timing. Audio route in the Nissan (phone speaker, then car) is unexplained and unchanged.
+Details: `docs/VOICE-REBUILD.md`.
+
 **Deaf second turn, slow replies, invented calendar — November 11, 2026 (Claude, PR #68,
 merged on Brady's "merge PR #68"):** WebKit source shows PR #67's iPhone
 mic check could never fire: iOS sends `audiostart` whether or not sound arrives, so only

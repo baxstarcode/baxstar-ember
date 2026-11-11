@@ -792,7 +792,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-11 18:58Z".startsWith("__") ? "dev" : "2026-11-11 18:58Z";
+  const BUILD_STAMP = "2026-11-11 23:45Z".startsWith("__") ? "dev" : "2026-11-11 23:45Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1063,6 +1063,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const LIVE_CLAIM = /\b(your (?:calendar|schedule|inbox|email|voicemail|calls?|texts?|messages)|meetings?|appointments?|birthdays?|missed call|voicemail|unread)\b/i;
   const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|didn'?t|did not)\b[^.]{0,40}\b(see|check|reach|access|look|read|get|pull)\b|\b(unavailable|offline)\b/i;
   const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
+  const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
   const toolResults = (resp) => ((resp == null ? void 0 : resp.content) || []).filter((b) => (b == null ? void 0 : b.type) === "mcp_tool_result" && b.is_error === false).length;
   const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
   const LIVE_RETRY_NOTE = (need) => `
@@ -1976,6 +1977,28 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         patch({ note: "The microphone could not start. Try again when ready." });
       }
     }
+    function interrupt() {
+      if (c.phase !== "playing") return;
+      traceEnd("interrupted");
+      stop("Go ahead. I\u2019m listening.");
+      c.conversation = true;
+      c.nextTrigger = "interrupt";
+      patch({ conversation: true });
+      let tries = 0;
+      const go = () => {
+        if (!c.live || !c.conversation || c.rec || document.hidden) return;
+        if ((c.request || options.current.blocked) && ++tries < 15) {
+          timer("next", go, 100);
+          return;
+        }
+        start(true);
+        if (!c.rec) {
+          pauseConversation();
+          patch({ note: "Tap the mouth to talk." });
+        }
+      };
+      go();
+    }
     function phraseAt(time, duration) {
       if (!c.phrases.length || c.phase !== "playing") return;
       const index = Number.isFinite(duration) && duration > 0 ? Math.min(c.phrases.length - 1, Math.floor(time / duration * c.phrases.length)) : 0;
@@ -2202,7 +2225,11 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
               queueClip(s, line);
             }
           },
-          onVoiceMeta: (meta) => {
+          onVoiceMeta: ({ headers, ...meta }) => {
+            if (headers) {
+              mark("reply-headers");
+              return;
+            }
             if (c.trace) c.trace.reply = { ...c.trace.reply || {}, ...meta };
             if (meta.tool) mark("tool-result");
           }
@@ -2248,7 +2275,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (c.phase !== "playing") (_b = document.querySelector(".reactor-stage, .scope-bezel")) == null ? void 0 : _b.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       session("playback");
       keepAwake();
-      patch({ phase: "playing", note: c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Your microphone is off." });
+      patch({ phase: "playing", note: c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
       if (c.web) phraseAt(0, c.web.duration);
       else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
     }
@@ -2301,13 +2328,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         stop("Voice stopped. Your completed conversation is saved.");
         closeContext();
       };
-      const interrupt = () => {
+      const interrupt2 = () => {
         var _a2;
         if (((_a2 = navigator.audioSession) == null ? void 0 : _a2.state) === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth.");
       };
       document.addEventListener("visibilitychange", hidden);
       window.addEventListener("pagehide", exit);
-      (_b = (_a = navigator.audioSession) == null ? void 0 : _a.addEventListener) == null ? void 0 : _b.call(_a, "statechange", interrupt);
+      (_b = (_a = navigator.audioSession) == null ? void 0 : _a.addEventListener) == null ? void 0 : _b.call(_a, "statechange", interrupt2);
       return () => {
         var _a2, _b2;
         c.live = false;
@@ -2325,7 +2352,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         clearTimers();
         document.removeEventListener("visibilitychange", hidden);
         window.removeEventListener("pagehide", exit);
-        (_b2 = (_a2 = navigator.audioSession) == null ? void 0 : _a2.removeEventListener) == null ? void 0 : _b2.call(_a2, "statechange", interrupt);
+        (_b2 = (_a2 = navigator.audioSession) == null ? void 0 : _a2.removeEventListener) == null ? void 0 : _b2.call(_a2, "statechange", interrupt2);
       };
     }, []);
     useEffect(() => {
@@ -2349,7 +2376,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       playing,
       ended,
       phraseAt,
-      mouth: () => c.conversation || c.rec || c.request || c.phase === "playing" ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
+      interrupt,
+      // While Jenny talks, a tap on her interrupts and listens; otherwise the mouth starts or stops the conversation.
+      mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
       close: () => {
         var _a;
         stop();
@@ -2383,7 +2412,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         e.preventDefault();
         voice.close();
       }
-    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-pressed": fast, disabled: voice.busy, onClick: onFast, title: fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies." }, fast ? "Fast replies: on" : "Fast replies: off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
+    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), voice.phase === "playing" && voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.interrupt }, "Interrupt"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-pressed": fast, disabled: voice.busy, onClick: onFast, title: fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies." }, fast ? "Fast replies: on" : "Fast replies: off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
   }
   function BaxstarEmber() {
     var _a, _b, _c, _d, _e, _f;
@@ -2834,7 +2863,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
       try {
         const messages = [
-          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }
@@ -2848,7 +2877,9 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         const ask = (msgs) => {
           var _a2, _b2;
           return callClaude(msgs, {
+            // Drive rides along only for a question about files; it is not on every turn.
             useTools: true,
+            servers: need === "files" ? [...MCP_SERVERS, DRIVE_SERVER] : void 0,
             model: chatModel,
             effort: (_a2 = EFFORT[turnEffort]) == null ? void 0 : _a2.api,
             maxTokens: (_b2 = EFFORT[turnEffort]) == null ? void 0 : _b2.budget,
@@ -2859,12 +2890,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
               if (isCurrent() && !held) onVoiceText == null ? void 0 : onVoiceText(content);
             },
             onMeta: ({ degraded: d }) => {
+              onVoiceMeta == null ? void 0 : onVoiceMeta({ headers: true });
               degraded || (degraded = d);
               if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current));
             },
             // Jenny speaks a live-data answer only once a real connector result is in.
             onTool: (block) => {
-              if (block.type !== "mcp_tool_result" || block.is_error || !isCurrent()) return;
+              if (!isCurrent()) return;
+              if (block.type === "mcp_tool_use") {
+                if (voiceSignal && !need && !latest.trim()) onVoiceHold == null ? void 0 : onVoiceHold(`One moment, checking your ${LIVE_SERVER_LABEL[block.server_name] || "records"}.`);
+                return;
+              }
+              if (block.type !== "mcp_tool_result" || block.is_error) return;
               onVoiceMeta == null ? void 0 : onVoiceMeta({ tool: true });
               if (held) {
                 held = false;

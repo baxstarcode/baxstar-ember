@@ -1,5 +1,43 @@
 # Ember voice — current foreground integration and historical evidence
 
+## First real-device result on PR #68 — 2026-11-11 17:34 CST (iPhone Safari 27.0.1, Nissan over Bluetooth)
+
+**Tapless turns work.** `voice-trace` lines in Workers Logs (Worker `69bb1abe`, 23:35–23:37 UTC):
+turn 1 `trigger:tap, outcome:spoke, out:web`; turn 2 `trigger:auto, sinceReplyEndMs:802,
+outcome:spoke`; turn 3 `trigger:auto, sinceReplyEndMs:803`, words heard and a reply playing
+when Brady switched apps (`outcome:stopped`). Two of two automatic restarts heard him with no
+tap. Before PR #68 that was zero of every attempt, so the Web Audio path is the fix for the
+deaf second turn (candidate A above; a tap is not required, so B is ruled out).
+
+**Measured last word → Jenny's first sound:** 6.3 s (no lookup); 2.9 s to "One moment,
+checking your email." and about 7 s to the answer itself (email lookup); 8.9 s (a lookup the
+question patterns did not predict, so no "checking" line). Where turn 1's 6.3 s went: 1.1 s
+end-of-speech pause, 4.6 s until the model's first words, 0.6 s Jenny's first clip. Worker wall
+time before the model's response starts was 2.4–3.3 s on all three turns (connectors attached).
+Turn 1's microphone took 2.5 s to start after the tap; later turns 0.01–0.02 s.
+
+**Replies ran 31 s and 46 s**, and Brady could not cut in: "I tried to respond to her in the
+middle of her talking, and she cannot hear me, and she just keeps kind of rambling on."
+
+**Built next (branch `claude/ember-voice-debugging-t0ezm0`, second PR):**
+- Spoken answers are capped by prompt at 1 to 3 short sentences (about 40 words, at most 3
+  items); was "normally under 120 words".
+- A tap on her while she talks (or the panel's Interrupt button) stops Jenny and opens the mic
+  at once. The mic stays off during playback on purpose: through car speakers it would hear
+  her, and on iOS 27 an open mic degrades playback (WebKit 326286). Voice barge-in is therefore
+  not built; whether iOS could do it in a page is unproven.
+- A lookup the patterns did not predict now says "One moment, checking your …" when the
+  model starts the tool call.
+- A files question attaches the Drive connector for that turn (before, the live-data guard
+  could only refuse it, because chat never had Drive).
+- Timing: the trace adds `reply-headers`; the Worker logs one `messages-timing` line per chat
+  request (connector sign-in ms, ms until the model's response starts, connector count).
+
+**Audio route (not changed, not understood):** the first reply played from the iPhone speaker
+and the second through the car; the car showed a call timer and hang-up button, which stayed
+after Brady left Safari until another app took the microphone. The call screen means the car
+treats the open microphone as a phone call. A web page cannot choose or see the output route.
+
 ## Second-turn deaf mic, slow replies, invented calendar — diagnosis 2026-11-11 (Claude)
 
 **Evidence used (no device test asked of Brady):** his 11-11 iPhone Safari screen recording

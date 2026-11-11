@@ -6,16 +6,16 @@
 export const VOICE_TRACE_BYTES = 4096;
 const MARKS = new Set([
   "start-called", "onstart", "audiostart", "soundstart", "speechstart", "first-result", "first-final",
-  "last-result", "finish", "error", "end", "send", "tool-result", "first-text", "first-clip-request",
+  "last-result", "finish", "error", "end", "send", "reply-headers", "tool-result", "first-text", "first-clip-request",
   "first-clip-ready", "first-sound", "reply-complete", "reply-ended",
 ]);
 const ENUMS = {
   ua: /^(ios-safari|ios-chrome|ios-firefox|ios-edge|mac-chrome|mac-safari|chrome|edge|other)$/,
   engine: /^(webkit|other)$/,
-  trigger: /^(tap|auto|retry|deaf-retry)$/,
-  outcome: /^(spoke|not-spoken|stopped|replaced|unfinished|no-words|no-words-retry|no-audio|no-audio-retry|speech-failed|reply-failed)$/,
+  trigger: /^(tap|auto|retry|deaf-retry|interrupt)$/,
+  outcome: /^(spoke|not-spoken|stopped|interrupted|replaced|unfinished|no-words|no-words-retry|no-audio|no-audio-retry|speech-failed|reply-failed)$/,
   out: /^(web|element)$/,
-  session: /^(auto|playback|transient|transient-solo|ambient|play-and-record)\/(active|inactive|interrupted)$/,
+  session: /^(auto|playback|transient|transient-solo|ambient|play-and-record)\/(active|inactive|interrupted|undefined)$/,
   error: /^[a-z-]{1,24}$/,
 };
 const LIVE = /^(calendar|email|calls and texts|files|messages)$/;
