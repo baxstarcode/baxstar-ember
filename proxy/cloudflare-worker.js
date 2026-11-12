@@ -1645,6 +1645,7 @@ export default {
     try { validateMessagesBody(body); }
     catch (error) { return json({ error: error.message }, 400, cors); }
     const requestedServers = body.mcp_servers;
+    const startedAt = Date.now();
     body = messagesPayload(body);
     let connectorsDegraded = false;
     if (requestedServers) {
@@ -1671,9 +1672,14 @@ export default {
         body: JSON.stringify(payload),
       });
 
+    const tokensAt = Date.now();
     let upstream;
     try {
       upstream = await call(body, requestHeaders);
+      // Where a reply's wait goes, numbers only: connector sign-in, then the time
+      // until the model's response starts (with its connectors attached).
+      console.log(JSON.stringify({ event: "messages-timing", stream: body.stream === true, servers: body.mcp_servers?.length || 0,
+        tokenMs: tokensAt - startedAt, headersMs: Date.now() - tokensAt, status: upstream.status }));
     } catch (e) {
       return json(
         { error: "Upstream request failed." },

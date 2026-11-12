@@ -233,6 +233,12 @@ stale recovery guidance without discarding the previously verified data.
 
 **Status: PROVISIONAL — Brady's physical gate required**
 
+**November 11 evening, first device result:** tapless turns work on iPhone Safari 27.0.1 (two of
+two automatic restarts heard Brady; `voice-trace` lines). Open: 6.3–8.9 s from his last word to
+Jenny's first sound (mostly the model and connector setup); no voice barge-in (one tap
+interrupts instead); in a Bluetooth car the first reply came from the phone speaker and the car
+kept showing a call screen after he left Safari.
+
 **November 11, later (branch `claude/ember-voice-debugging-t0ezm0`):** the PR #67 audio-start
 check cannot detect a dead mic on iPhone (WebKit fires `audiostart` regardless; proven
 from source). Likely cause: WebKit bug 321436, a deaf recognition session after `<audio>`

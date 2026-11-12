@@ -801,6 +801,7 @@ const LIVE_CLAIM = /\b(your (?:calendar|schedule|inbox|email|voicemail|calls?|te
 const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|didn'?t|did not)\b[^.]{0,40}\b(see|check|reach|access|look|read|get|pull)\b|\b(unavailable|offline)\b/i;
 // What a made-up lookup sounds like: times, weekdays, "you have…", named items.
 const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
+const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
 const toolResults = (resp) => (resp?.content || []).filter((b) => b?.type === "mcp_tool_result" && b.is_error === false).length;
 const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
 const LIVE_RETRY_NOTE = (need) => `\n\n[Ember check: this question needs Brady's live ${need}. Call the matching read-only tool in THIS turn before answering. Facts in earlier replies are not tool results. If the tool fails, say you couldn't check.]`;
@@ -1691,6 +1692,26 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     timer("start", () => { if (c.rec === rec) { abortMic(); releaseWake(); patch({ note: "Microphone start timed out. Check permissions before retrying." }); } }, 15000);
     try { rec.start(); } catch { pauseConversation(); released(rec); releaseWake(); patch({ note: "The microphone could not start. Try again when ready." }); }
   }
+  // INTERRUPT (2026-11-11, Brady: "I tried to respond to her in the middle of her
+  // talking, and she cannot hear me, and she just keeps kind of rambling on").
+  // The mic is off while Jenny plays, on purpose: through a car's speakers it
+  // would hear her and answer itself, and on iOS 27 an open mic degrades playback
+  // (WebKit 326286). So one tap on her cuts her off and listens at once.
+  function interrupt() {
+    if (c.phase !== "playing") return;
+    traceEnd("interrupted");
+    stop("Go ahead. I’m listening.");
+    c.conversation = true; c.nextTrigger = "interrupt"; patch({ conversation: true });
+    let tries = 0;
+    const go = () => {
+      if (!c.live || !c.conversation || c.rec || document.hidden) return;
+      // The cancelled reply takes a moment to release the chat.
+      if ((c.request || options.current.blocked) && ++tries < 15) { timer("next", go, 100); return; }
+      start(true);
+      if (!c.rec) { pauseConversation(); patch({ note: "Tap the mouth to talk." }); }
+    };
+    go();
+  }
   function phraseAt(time, duration) {
     if (!c.phrases.length || c.phase !== "playing") return;
     const index = Number.isFinite(duration) && duration > 0 ? Math.min(c.phrases.length - 1, Math.floor(time / duration * c.phrases.length)) : 0;
@@ -1838,7 +1859,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
         // A live-data question holds Jenny until a real tool result arrives; this
         // short line keeps the wait from sounding like silence.
         onVoiceHold: (line) => { const s = c.stream; if (s?.epoch === epoch && !s.clips.length) { s.lead = 1; queueClip(s, line); } },
-        onVoiceMeta: (meta) => { if (c.trace) c.trace.reply = { ...(c.trace.reply || {}), ...meta }; if (meta.tool) mark("tool-result"); },
+        onVoiceMeta: ({ headers, ...meta }) => { if (headers) { mark("reply-headers"); return; } if (c.trace) c.trace.reply = { ...(c.trace.reply || {}), ...meta }; if (meta.tool) mark("tool-result"); },
       });
       if (!c.live || epoch !== c.epoch) return;
       c.request = null;
@@ -1858,7 +1879,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Sending from the phone's controls can leave the mouth above the viewport.
     // Bring the speaking face back once; later scrolling stays under user control.
     if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
-    session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Your microphone is off." });
+    session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
     if (c.web) phraseAt(0, c.web.duration); else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {
@@ -1895,7 +1916,9 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   }, []);
   useEffect(() => { if (!enabled) { stop(); closeContext(); patch({ open: false }); } }, [enabled]);
   return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
-    mouth: () => c.conversation || c.rec || c.request || c.phase === "playing" ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
+    interrupt,
+    // While Jenny talks, a tap on her interrupts and listens; otherwise the mouth starts or stops the conversation.
+    mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
     close: () => { stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
     paused: () => { if (audioRef.current?.ended && c.stream?.epoch === c.epoch) return; if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
@@ -1911,6 +1934,7 @@ function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
       {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.conversation && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>Talk</button>}
+      {voice.phase === "playing" && voice.conversation && <button className="chip solid" onClick={voice.interrupt}>Interrupt</button>}
       <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
@@ -2433,7 +2457,7 @@ export default function BaxstarEmber() {
     const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
     try {
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation. Give a useful, concise answer in plain sentences, normally under 120 words. Avoid tables and markdown unless requested." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
@@ -2447,13 +2471,17 @@ export default function BaxstarEmber() {
       const holdTimer = held ? setTimeout(() => { if (held && isCurrent()) onVoiceHold?.(`One moment, checking your ${need}.`); }, 900) : null;
       onVoiceMeta?.({ live: need });
       const ask = (msgs) => callClaude(msgs, {
-        useTools: true, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
+        // Drive rides along only for a question about files; it is not on every turn.
+        useTools: true, servers: need === "files" ? [...MCP_SERVERS, DRIVE_SERVER] : undefined, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
         signal: request.controller.signal,
         onDelta: (content) => { latest = content; patchAssistant({ content }); if (isCurrent() && !held) onVoiceText?.(content); },
-        onMeta: ({ degraded: d }) => { degraded ||= d; if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current)); },
+        onMeta: ({ degraded: d }) => { onVoiceMeta?.({ headers: true }); degraded ||= d; if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current)); },
         // Jenny speaks a live-data answer only once a real connector result is in.
         onTool: (block) => {
-          if (block.type !== "mcp_tool_result" || block.is_error || !isCurrent()) return;
+          if (!isCurrent()) return;
+          // A lookup the question patterns did not predict: say so instead of going quiet.
+          if (block.type === "mcp_tool_use") { if (voiceSignal && !need && !latest.trim()) onVoiceHold?.(`One moment, checking your ${LIVE_SERVER_LABEL[block.server_name] || "records"}.`); return; }
+          if (block.type !== "mcp_tool_result" || block.is_error) return;
           onVoiceMeta?.({ tool: true });
           if (held) { held = false; if (latest) onVoiceText?.(latest); }
         },

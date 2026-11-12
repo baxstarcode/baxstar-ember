@@ -25,7 +25,8 @@ function wav(seconds) {
 }
 const clip = wav(0.35);
 
-async function fixture({ ua = IPHONE, width = 390, decodeFails = false } = {}) {
+async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeconds = 0.35 } = {}) {
+  const audio = clipSeconds === 0.35 ? clip : wav(clipSeconds);
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, userAgent: ua, hasTouch: width < 600 });
   const page = await context.newPage(), calls = [], errors = [];
   const state = { mode: 'tool' };
@@ -58,7 +59,7 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false } = {}) {
       calls.push({ path: u.pathname, body, at: Date.now() });
       if (u.pathname === '/api/connectors/status') return route.fulfill({ json: { connectors: {} } });
       if (u.pathname === '/api/voice/trace') return route.fulfill({ status: 204, body: '' });
-      if (u.pathname === '/api/tts') return route.fulfill({ contentType: 'audio/wav', body: clip }).catch(() => {});
+      if (u.pathname === '/api/tts') return route.fulfill({ contentType: 'audio/wav', body: audio }).catch(() => {});
       const q = body.messages?.at(-1)?.content || '';
       if (/ONLY valid JSON/.test(q)) return route.fulfill({ json: { content: [{ type: 'text', text: '{"voicemails":[],"emails":[],"events":[]}' }], stop_reason: 'end_turn' } });
       const retry = q.includes('[Ember check');
@@ -67,6 +68,7 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false } = {}) {
       if (state.mode === 'noTool') return reply('You have a 2 PM charter with Dale and a birthday on Friday.', false);
       if (state.mode === 'toolOnRetry') return reply(retry ? 'Your 2 PM charter with Dale is on the calendar.' : 'You have a 2 PM charter with Dale.', retry);
       if (state.mode === 'claimNoTool') return reply('Sure. Also, your calendar shows a meeting at 3.', false);
+      if (state.mode === 'slow') { await new Promise((r) => setTimeout(r, 1500)); return reply('Short answer.', false); }
       if (state.mode === 'plain') return reply('Here is a short draft: Running late, see you soon.', false);
       return reply('Your next trip is at 6 AM tomorrow.', true);
     }
@@ -135,6 +137,27 @@ try {
     await f.context.close();
   }
 
+  {
+    // One tap on her while she talks: Jenny stops and Ember listens, no second tap.
+    const f = await fixture({ clipSeconds: 6 });
+    await f.tap(); await f.page.evaluate(() => say('Tell me a long story')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
+    check('while Jenny talks the panel offers Interrupt and says how', await f.panel.getByRole('button', { name: 'Interrupt' }).isVisible() && (await f.panel.innerText()).includes('Tap her to interrupt'));
+    await f.page.getByRole('button', { name: 'Talk to Ember', exact: true }).click();
+    await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 4000 });
+    check('a tap on her stops Jenny and opens the mic at once', await f.page.evaluate(() => recs.length === 2 && recs[1].active && micDuringPlay === 0));
+    const t = await f.page.evaluate(() => emberVoiceTraces.at(-1));
+    check('the cut-off turn is reported as interrupted', t.outcome === 'interrupted' && t.marks['first-sound'] > 0);
+    await f.page.evaluate(() => say('Actually, a different question')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
+    check('the conversation carries on from the interruption', f.chats().some((c) => c.body.messages.at(-1).content === 'Actually, a different question') && await f.page.evaluate(() => emberVoiceTraces.length >= 1));
+    await f.panel.getByRole('button', { name: 'Interrupt' }).click(); await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 4000 });
+    check('the Interrupt button does the same', await f.page.evaluate(() => recs.length === 3 && recs[2].active));
+    await f.page.evaluate(() => say('Third question')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
+    check('the turn after an interruption reports its trigger', await f.page.evaluate(() => emberVoiceTraces.some((x) => x.trigger === 'interrupt')) );
+    check('spoken turns ask for 1 to 3 short sentences', f.chats().every((c) => c.body.messages[0].content.includes('1 to 3 short plain sentences') && c.body.messages[0].content.includes('Never read out more than 3 items')));
+    check('interrupting adds no runtime errors', f.errors.length === 0);
+    await f.context.close();
+  }
+
   // ---- Live-data guard ----
   const typed = async (f, text) => {
     await f.page.getByRole('textbox', { name: 'Ask Ember' }).fill(text);
@@ -159,6 +182,9 @@ try {
     f.state.mode = 'claimNoTool';
     const caveat = await typed(f, 'Give me a pep talk');
     check('an unasked-for live claim without a lookup is flagged in the reply', /didn't check your live calendar, email or calls/.test(caveat) && f.chats().length === 6);
+    f.state.mode = 'tool';
+    await typed(f, 'Search my drive for the handoff log');
+    check('a files question attaches Drive for that turn only', f.chats().at(-1).body.mcp_servers.some((m) => m.name === 'gdrive') && f.chats().slice(0, -1).every((c) => !c.body.mcp_servers.some((m) => m.name === 'gdrive')));
     check('every request still carries the read-only connectors', f.chats().every((c) => c.body.mcp_servers?.length > 0));
     check('the prompt says earlier replies are not tool results', f.chats().every((c) => c.body.messages[0].content.includes('Facts in earlier replies of this conversation are not tool results')));
     await f.context.close();
@@ -211,6 +237,41 @@ try {
     await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 10000 });
     const trace = await f.page.evaluate(() => emberVoiceTraces.filter((t) => t.outcome === 'spoke').at(-1));
     check('the spoken trace records the guard and the lookup', trace.reply?.live === 'calendar' && trace.reply?.guard === 'retried' && trace.reply?.tools === 1 && trace.marks['tool-result'] > 0);
+    await f.context.close();
+  }
+  {
+    // A lookup the question patterns did not predict still gets a spoken "checking" line.
+    const f = await fixture();
+    await f.page.evaluate(() => {
+      const real = window.fetch.bind(window); window.ttsTexts = [];
+      window.fetch = async (input, init = {}) => {
+        const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+        if (url.pathname === '/api/tts') window.ttsTexts.push(JSON.parse(init.body).text);
+        if (url.pathname !== '/api/messages') return real(input, init);
+        const body = JSON.parse(init.body);
+        if (!body.stream || /ONLY valid JSON/.test(body.messages.at(-1).content)) return real(input, init);
+        const enc = new TextEncoder(), ev = (o) => enc.encode(`event: ${o.type}\ndata: ${JSON.stringify(o)}\n\n`);
+        return new Response(new ReadableStream({ async start(ctl) {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          ctl.enqueue(ev({ type: 'message_start', message: { model: body.model } }));
+          await wait(300);
+          ctl.enqueue(ev({ type: 'content_block_start', index: 0, content_block: { type: 'mcp_tool_use', id: 't1', name: 'search_threads', server_name: 'gmail' } }));
+          await wait(1200);
+          ctl.enqueue(ev({ type: 'content_block_start', index: 1, content_block: { type: 'mcp_tool_result', tool_use_id: 't1', is_error: false, content: [] } }));
+          ctl.enqueue(ev({ type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } }));
+          ctl.enqueue(ev({ type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'Dale replied yes at noon.' } }));
+          ctl.enqueue(ev({ type: 'message_delta', delta: { stop_reason: 'end_turn' } }));
+          ctl.enqueue(ev({ type: 'message_stop' })); ctl.close();
+        } }), { headers: { 'Content-Type': 'text/event-stream' } });
+      };
+    });
+    await f.tap(); await f.page.evaluate(() => say('Did Dale ever get back to me?'));
+    await f.page.waitForFunction(() => window.ttsTexts.some((t) => /Dale replied/.test(t)), null, { timeout: 15000 });
+    const said = await f.page.evaluate(() => window.ttsTexts);
+    check('an unpredicted lookup says what it is checking before the answer', said[0] === 'One moment, checking your email.' && /Dale replied/.test(said[1]) && said.length === 2);
+    await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 10000 });
+    const t = await f.page.evaluate(() => emberVoiceTraces.filter((x) => x.outcome === 'spoke').at(-1));
+    check('the trace times the reply headers and the lookup', t.marks['reply-headers'] > 0 && t.marks['tool-result'] > t.marks['reply-headers']);
     await f.context.close();
   }
   console.log(`iPhone voice path and live-data guard: ${checks} checks passed.`);
