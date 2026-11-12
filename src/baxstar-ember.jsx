@@ -435,6 +435,13 @@ const DEFAULT_MODEL = "claude-opus-5-5";
 const DEFAULT_EFFORT = "high";
 // v5 applies Opus / High once; subsequent explicit selections persist.
 const PREFS_V = 5;
+// FRESH CONVERSATIONS (2026-11-11, Brady: "I just want real time where it clears
+// the chat in between uses, so she doesn't dive back into whatever's in the chat.
+// There's a button now that says clear chat, but I want it to automatically do
+// that."). A thread that has been quiet this long is finished: opening Ember, or
+// the next question, starts an empty one. The finished thread is kept in a small
+// on-device archive (no screen for it yet; he may want to pick a past chat later).
+const CHAT_IDLE_MS = 10 * 60 * 1000, CHAT_ARCHIVE_MAX = 20;
 
 // `api` is the real output_config.effort level. All four current models accept
 // low/medium/high/xhigh, and Opus 5.5 and Haiku 5.5 default to medium when it is
@@ -2095,6 +2102,21 @@ export default function BaxstarEmber() {
     historyRef.current = validChatMessages(next);
     setChatMsgs(next);
   }
+  const chatAtRef = useRef(0), chatArchiveRef = useRef([]);
+  function touchChat() { chatAtRef.current = Date.now(); persist("ember-chat-at", { t: chatAtRef.current }); }
+  // True when a quiet thread was put away and an empty one started.
+  function freshChatIfIdle() {
+    if (activeChatRef.current || !chatMsgsRef.current.length || Date.now() - chatAtRef.current <= CHAT_IDLE_MS) return false;
+    const old = validChatMessages(chatMsgsRef.current);
+    if (old.length) {
+      chatArchiveRef.current = [...chatArchiveRef.current, { endedAt: chatAtRef.current || null, messages: old }].slice(-CHAT_ARCHIVE_MAX);
+      persist("ember-chat-archive", chatArchiveRef.current);
+    }
+    updateChat(() => []); saveChat([]);
+    setChatError(""); setChatConnectors(""); setCopiedChatId(null);
+    setChatFeedback("New conversation. The last one ended more than 10 minutes ago.");
+    return true;
+  }
   useEffect(() => () => { activeChatRef.current?.controller.abort(); activeChatRef.current = null; }, []);
 
   /* Today's revenue is MANUAL — Brady sets it, nothing invents it. The panel
@@ -2185,8 +2207,8 @@ export default function BaxstarEmber() {
           return v ? JSON.parse(v) : null;
         } catch (e) { return null; }
       };
-      const [b, prefs, chat, drive] = await Promise.all([
-        load("ember-bg"), load("ember-prefs"), load("ember-chat"), load("ember-drive"),
+      const [b, prefs, chat, drive, chatAt, chatArchive] = await Promise.all([
+        load("ember-bg"), load("ember-prefs"), load("ember-chat"), load("ember-drive"), load("ember-chat-at"), load("ember-chat-archive"),
       ]);
       if (b?.choice) setBg(b);
       if (prefs) {
@@ -2206,7 +2228,11 @@ export default function BaxstarEmber() {
         if (prefs.coreMode) setCoreMode(prefs.coreMode);
         if (prefs.studioTool) setStudioTool(prefs.studioTool === "chat" ? "captions" : prefs.studioTool);
       }
+      chatAtRef.current = Number(chatAt?.t) || 0;
+      if (Array.isArray(chatArchive)) chatArchiveRef.current = chatArchive.slice(-CHAT_ARCHIVE_MAX);
       updateChat(() => validChatMessages(chat));
+      // A thread left over from an earlier use does not come back.
+      freshChatIfIdle();
       if (Array.isArray(drive)) setDriveMsgs(drive);
       hydrated.current = true;
       setChatReady(true);
@@ -2427,6 +2453,9 @@ export default function BaxstarEmber() {
     if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
     // Ref guard is synchronous: two clicks in one render cannot launch two requests.
     if (activeChatRef.current || !chatReady || voiceSignal?.aborted) return null;
+    // A question after a quiet spell starts a new conversation, not the old one.
+    if (!retryId) freshChatIfIdle();
+    touchChat();
     const current = chatMsgsRef.current;
     const lastUser = [...current].reverse().find((m) => m.role === "user");
     const retryIndex = retryId ? current.findIndex((m) => m.id === retryId && m.role === "user") : -1;
@@ -2533,6 +2562,7 @@ export default function BaxstarEmber() {
       return null;
     } finally {
       voiceSignal?.removeEventListener("abort", cancelVoice);
+      touchChat();
       if (isCurrent()) { activeChatRef.current = null; setThinking(false); }
     }
   }

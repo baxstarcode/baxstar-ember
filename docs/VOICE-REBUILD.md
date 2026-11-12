@@ -19,7 +19,7 @@ Turn 1's microphone took 2.5 s to start after the tap; later turns 0.01–0.02 s
 **Replies ran 31 s and 46 s**, and Brady could not cut in: "I tried to respond to her in the
 middle of her talking, and she cannot hear me, and she just keeps kind of rambling on."
 
-**Built next (branch `claude/ember-voice-debugging-t0ezm0`, second PR):**
+**Built next (PR #69, merged 2026-11-12 00:15 UTC as main `53589cc`):**
 - Spoken answers are capped by prompt at 1 to 3 short sentences (about 40 words, at most 3
   items); was "normally under 120 words".
 - A tap on her while she talks (or the panel's Interrupt button) stops Jenny and opens the mic

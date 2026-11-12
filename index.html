@@ -743,6 +743,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const DEFAULT_MODEL = "claude-opus-5-5";
   const DEFAULT_EFFORT = "high";
   const PREFS_V = 5;
+  const CHAT_IDLE_MS = 10 * 60 * 1e3;
+  const CHAT_ARCHIVE_MAX = 20;
   const EFFORT = {
     low: { label: "Low", api: "low", budget: 4e3, note: "\nEffort: LOW \u2014 shortest useful answer. No elaboration." },
     medium: { label: "Med", api: "medium", budget: 8e3, note: "" },
@@ -792,7 +794,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-11 23:45Z".startsWith("__") ? "dev" : "2026-11-11 23:45Z";
+  const BUILD_STAMP = "2026-11-12 00:06Z".startsWith("__") ? "dev" : "2026-11-12 00:06Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -2533,6 +2535,26 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       historyRef.current = validChatMessages(next);
       setChatMsgs(next);
     }
+    const chatAtRef = useRef(0), chatArchiveRef = useRef([]);
+    function touchChat() {
+      chatAtRef.current = Date.now();
+      persist("ember-chat-at", { t: chatAtRef.current });
+    }
+    function freshChatIfIdle() {
+      if (activeChatRef.current || !chatMsgsRef.current.length || Date.now() - chatAtRef.current <= CHAT_IDLE_MS) return false;
+      const old = validChatMessages(chatMsgsRef.current);
+      if (old.length) {
+        chatArchiveRef.current = [...chatArchiveRef.current, { endedAt: chatAtRef.current || null, messages: old }].slice(-CHAT_ARCHIVE_MAX);
+        persist("ember-chat-archive", chatArchiveRef.current);
+      }
+      updateChat(() => []);
+      saveChat([]);
+      setChatError("");
+      setChatConnectors("");
+      setCopiedChatId(null);
+      setChatFeedback("New conversation. The last one ended more than 10 minutes ago.");
+      return true;
+    }
     useEffect(() => () => {
       var _a2;
       (_a2 = activeChatRef.current) == null ? void 0 : _a2.controller.abort();
@@ -2610,11 +2632,13 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             return null;
           }
         };
-        const [b, prefs, chat, drive] = await Promise.all([
+        const [b, prefs, chat, drive, chatAt, chatArchive] = await Promise.all([
           load("ember-bg"),
           load("ember-prefs"),
           load("ember-chat"),
-          load("ember-drive")
+          load("ember-drive"),
+          load("ember-chat-at"),
+          load("ember-chat-archive")
         ]);
         if (b == null ? void 0 : b.choice) setBg(b);
         if (prefs) {
@@ -2634,7 +2658,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           if (prefs.coreMode) setCoreMode(prefs.coreMode);
           if (prefs.studioTool) setStudioTool(prefs.studioTool === "chat" ? "captions" : prefs.studioTool);
         }
+        chatAtRef.current = Number(chatAt == null ? void 0 : chatAt.t) || 0;
+        if (Array.isArray(chatArchive)) chatArchiveRef.current = chatArchive.slice(-CHAT_ARCHIVE_MAX);
         updateChat(() => validChatMessages(chat));
+        freshChatIfIdle();
         if (Array.isArray(drive)) setDriveMsgs(drive);
         hydrated.current = true;
         setChatReady(true);
@@ -2832,6 +2859,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     async function sendCommand(text, { retryId, voiceSignal, onVoiceText, onVoiceHold, onVoiceMeta } = {}) {
       if (!voiceSignal && voice.conversation) voice.stop("Switched to text chat.");
       if (activeChatRef.current || !chatReady || (voiceSignal == null ? void 0 : voiceSignal.aborted)) return null;
+      if (!retryId) freshChatIfIdle();
+      touchChat();
       const current = chatMsgsRef.current;
       const lastUser = [...current].reverse().find((m) => m.role === "user");
       const retryIndex = retryId ? current.findIndex((m) => m.id === retryId && m.role === "user") : -1;
@@ -2959,6 +2988,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         return null;
       } finally {
         voiceSignal == null ? void 0 : voiceSignal.removeEventListener("abort", cancelVoice);
+        touchChat();
         if (isCurrent()) {
           activeChatRef.current = null;
           setThinking(false);
