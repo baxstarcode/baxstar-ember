@@ -1,10 +1,20 @@
 # Ember — Current State
 
+**Fresh conversations — November 11, 2026 night (Claude; Brady: "I just want real time where it
+clears the chat in between uses, so she doesn't dive back into whatever's in the chat"):** a chat
+thread that has been quiet for more than 10 minutes is finished. Opening Ember, or asking the
+next question (typed or spoken), then starts an empty thread, so old replies are no longer sent
+to the model as context. The finished thread goes to a small on-device archive
+(`ember-chat-archive`, last 20, no screen for it yet). Follow-ups inside 10 minutes keep their
+context. Clear thread still works by hand. The 10 minutes is Claude's assumption, one constant
+(`CHAT_IDLE_MS`). PR #69 (short spoken answers, tap to interrupt) merged the same night as main
+`53589cc`.
+
 **First real iPhone result and the next voice pass — November 11, 2026 evening (Claude):** on the
 live PR #68 build (main `87c1d99`, Pages `840aff40`, Worker `69bb1abe`) Brady's iPhone Safari
 held three spoken turns from one tap; both automatic restarts heard him (Workers Logs
 `voice-trace`). Last word to Jenny's first sound measured 6.3–8.9 s, and her replies ran 31–46 s
-with no way to cut in. Next pass, on the same branch: 1–3 sentence spoken answers,
+with no way to cut in. Next pass (PR #69, merged as main `53589cc`): 1–3 sentence spoken answers,
 tap-to-interrupt, a "checking" line for any lookup, Drive attached for files questions, and
 finer timing. Audio route in the Nissan (phone speaker, then car) is unexplained and unchanged.
 Details: `docs/VOICE-REBUILD.md`.

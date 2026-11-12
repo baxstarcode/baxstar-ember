@@ -92,6 +92,8 @@ async function fixture({ legacy, storage = {}, syncData = { voicemails: [], emai
   await context.addInitScript(({ legacy, storage, syncData }) => {
     if (!sessionStorage.getItem('chat-fixture-seeded')) {
       if (legacy !== undefined) localStorage.setItem('ember-chat', JSON.stringify(legacy));
+      // A seeded thread is a recent one unless the test says how old it is.
+      if (legacy !== undefined) localStorage.setItem('ember-chat-at', JSON.stringify({ t: Date.now() }));
       for (const [key, value] of Object.entries(storage)) localStorage.setItem(key, JSON.stringify(value));
       sessionStorage.setItem('chat-fixture-seeded', 'yes');
     }
@@ -195,6 +197,43 @@ async function test(name, run, options) {
 }
 
 try {
+  const oldThread = [{ role: 'user', content: 'Old question.' }, { role: 'assistant', content: 'Old answer with a long list.' }];
+  await test('a thread quiet for over 10 minutes does not come back when Ember opens', async (f) => {
+    assert.equal(await f.users.count(), 0);
+    assert.match(await f.page.locator('body').innerText(), /New conversation\. The last one ended more than 10 minutes ago\./);
+    await f.plan(reply('Fresh answer.'));
+    await f.send('What day is it?');
+    await f.settle();
+    const messages = (await f.requests())[0].body.messages;
+    assert(!JSON.stringify(messages).includes('Old answer'), 'the old thread must not be sent as context');
+    assert.equal(messages.length, 3);
+    const kept = await f.page.evaluate(() => JSON.parse(localStorage.getItem('ember-chat-archive') || '[]'));
+    assert.equal(kept.length, 1);
+    assert.deepEqual(kept[0].messages.map((m) => m.content), ['Old question.', 'Old answer with a long list.']);
+  }, { legacy: oldThread, storage: { 'ember-chat-at': { t: Date.now() - 11 * 60 * 1000 } } });
+
+  await test('a thread with no saved time is treated as finished', async (f) => {
+    assert.equal(await f.users.count(), 0);
+  }, { legacy: oldThread, storage: { 'ember-chat-at': null } });
+
+  await test('the next question after a quiet spell starts a new conversation', async (f) => {
+    assert.equal(await f.users.count(), 1);
+    // The page stays open while the thread goes quiet.
+    await f.page.evaluate(() => { const real = Date.now; Date.now = () => real() + 11 * 60 * 1000; });
+    await f.plan(reply('Fresh answer.'));
+    await f.send('New topic.');
+    await f.settle();
+    const messages = (await f.requests())[0].body.messages;
+    assert(!JSON.stringify(messages).includes('Old answer'), 'the old thread must not be sent as context');
+    assert.equal(await f.users.count(), 1);
+    assert.match(await f.users.first().innerText(), /New topic\./);
+    await f.plan(reply('Follow-up answer.'));
+    await f.send('And a follow-up.');
+    await f.settle();
+    const follow = (await f.requests())[1].body.messages;
+    assert(JSON.stringify(follow).includes('Fresh answer.'), 'a follow-up inside 10 minutes keeps its context');
+  }, { legacy: oldThread });
+
   await test('legacy hydration restores valid request context', async (f) => {
     assert.equal(await f.users.count(), 1);
     assert.equal(await f.assistants.count(), 1);
