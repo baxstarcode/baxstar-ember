@@ -7,8 +7,9 @@ remains provisional. Background listening is not supported or required. The old
 recording-only modal, full Worker activation requirement, and five-turn integration
 hold below are historical; Brady authorized the narrower foreground integration.
 See `docs/VOICE-REBUILD.md`. Jenny's unofficial Edge TTS service remains an existing
-availability dependency. Full replies are kept in chat; spoken excerpts are labeled
-when the current endpoint's 1000-character limit is exceeded.
+availability dependency. Full replies are kept in chat. Since 2026-11-14 a conversation turn
+speaks at most 4 sentences, 3 times of day or 420 characters ("Short version spoken"; "keep going"
+reads on); an explicit Read reply is labeled when the 1000-character endpoint limit is exceeded.
 
 
 Last updated from the working repository on **2026-10-26 (America/Chicago)**. Recorded production

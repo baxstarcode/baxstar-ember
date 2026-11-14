@@ -141,7 +141,8 @@ session; unfinished or failed turns pause for recovery. Typed questions stay
 text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
 one-time migration; subsequent choices persist. Since 2026-11-10, spoken turns run at
 Low effort on the chosen model (Fast replies, a switch in the voice panel); typed chat
-keeps the Model/Effort choice. Desktop no-scroll and the pinned
+keeps the Model/Effort choice. Since 2026-11-14 a spoken turn stops at 4 sentences, 3 times of
+day or 420 characters, in code; the full reply stays on screen and "keep going" reads on. Desktop no-scroll and the pinned
 dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
 sources, implementation boundaries and the outstanding physical-device proof.
 

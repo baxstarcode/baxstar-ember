@@ -8,7 +8,8 @@ session; unfinished or failed turns pause for recovery. Typed questions stay
 text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
 one-time migration; subsequent choices persist. Since 2026-11-10, spoken turns run at
 Low effort on the chosen model (Fast replies, a switch in the voice panel); typed chat
-keeps the Model/Effort choice. Desktop no-scroll and the pinned
+keeps the Model/Effort choice. Since 2026-11-14 a spoken turn stops at 4 sentences, 3 times of
+day or 420 characters, in code; the full reply stays on screen and "keep going" reads on. Desktop no-scroll and the pinned
 dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
 sources, implementation boundaries and the outstanding physical-device proof.
 
@@ -86,8 +87,11 @@ of links to Brady's other properties.
 - **Claude, 2026-11-14 — live weather (National Weather Service):** Brady chose NWS over an
   OpenWeather key ("NWS"). New Worker route `/api/weather` (`proxy/weather.mjs`, Pages
   allowlist), the weather block in chat context, the Brief my day weather line and the
-  forecast-versus-calendar guard change in `src/baxstar-ember.jsx`. Record:
-  `docs/CURRENT-STATE.md`, `docs/DEPLOY.md` "Weather route", `docs/KNOWN-ISSUES.md` 13.
+  forecast-versus-calendar guard change in `src/baxstar-ember.jsx`. Same PR (#71): the hard
+  spoken turn cap, the always-spoken live-data warning, narration skip and "keep going" in
+  `useEmberVoice`, after Brady's "DO NOT have her dumbass voice talk forever". Record:
+  `docs/CURRENT-STATE.md`, `docs/DEPLOY.md` "Weather route", `docs/KNOWN-ISSUES.md` 13,
+  `docs/VOICE-REBUILD.md` (2026-11-14).
 - **Claude, 2026-11-08 (second pass) — Quo root cause, retry schedule, 207 status,
   Workers Builds:** continued `claude/brave-tesla-xnlnr6` rather than rebuilding. Ambiguous
   renewals retry instead of stopping; status answers 207 while a connector is down; Worker
