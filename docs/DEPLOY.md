@@ -63,6 +63,17 @@ this publication does not perform it. The existing intermittent board multi-tab
 save issue is disclosed and remains open; a later green test is not a repair.
 
 
+**Weather route (2026-11-14):** `/api/weather` (Pages allowlist + Worker, `proxy/weather.mjs`)
+takes an empty POST and returns the National Weather Service report for the one place named in
+`WEATHER_PLACE` (Detroit Lakes). The browser sends nothing that selects a URL. The Worker calls
+only `api.weather.gov` (points, forecast, hourly forecast, active alerts), with a generic
+`User-Agent` and no contact details, an 8 s timeout per call and no redirects. Reports are
+cached in the isolate for 10 minutes and the grid lookup for a day; an outage serves the last
+report marked `stale` for up to 3 hours, then answers 502 `weather_unavailable` and writes one
+`{"ember":"weather","outcome":"unavailable"}` line to Workers Logs. No secret, binding or
+setting is needed; it ships with the merge through Pages and Workers Builds. To move the
+location, change `WEATHER_PLACE` and the place name follows.
+
 **Voice trace route (2026-11-11):** `/api/voice/trace` (Pages allowlist + Worker) accepts
 one small JSON record per spoken turn, keeps only allowlisted fields
 (`proxy/voice-trace.mjs`), writes one `voice-trace` line to Workers Logs and answers 204.
