@@ -115,6 +115,10 @@ async function fixture({ legacy, storage = {}, syncData = { voicemails: [], emai
         return new Response(JSON.stringify({ connectors: { quo: 'connected', gmail: 'connected', calendar: 'connected', gdrive: 'connected' } }),
           { status: 200, headers: { 'content-type': 'application/json' } });
       }
+      // The forecast lookup (2026-11-14) is a known route; these chat checks run without one.
+      if (new URL(url, location.href).pathname === '/api/weather' && init.method === 'POST') {
+        return new Response(JSON.stringify({ error: 'weather_unavailable' }), { status: 502, headers: { 'content-type': 'application/json' } });
+      }
       if (!Array.isArray(body?.messages)) {
         if (new URL(url, location.href).origin === location.origin && (!init.method || init.method === 'GET')) return originalFetch(input, init);
         mock.unexpected.push({ url, method: init.method });

@@ -109,6 +109,7 @@ function readOnlyToolset(name) {
 
 import { handleVoice } from "./voice.mjs";
 import { handleVoiceTrace, VOICE_TRACE_BYTES } from "./voice-trace.mjs";
+import { handleWeather } from "./weather.mjs";
 import { edgeGecV2 } from "./vendor/edge-gec-v2.mjs";
 
 const POST_ROUTES = new Map([
@@ -117,6 +118,7 @@ const POST_ROUTES = new Map([
   ["/api/voice/transcribe", "voice-transcribe"],
   ["/api/voice/speak", "voice-speak"],
   ["/api/voice/trace", "trace"],
+  ["/api/weather", "weather"],
   ["/api/connectors/status", "connectors"],
   ["/api/connectors/reconnect", "reconnect"],
   ["/api/outbox", "outbox"],
@@ -1612,14 +1614,16 @@ export default {
       return json({ error: "Origin not allowed." }, 403, cors);
     }
     let body;
-    try { body = await readJsonBody(request, route === "connectors",
-      route === "voice-transcribe" ? 3 * 1024 * 1024 : route === "voice-speak" ? 16 * 1024 : route === "trace" ? VOICE_TRACE_BYTES : MAX_BODY_BYTES); }
+    try { body = await readJsonBody(request, route === "connectors" || route === "weather",
+      route === "voice-transcribe" ? 3 * 1024 * 1024 : route === "voice-speak" ? 16 * 1024 : route === "trace" ? VOICE_TRACE_BYTES : route === "weather" ? 1024 : MAX_BODY_BYTES); }
     catch (error) {
       return json({ error: error instanceof RequestInputError ? error.message : "Could not read request body." },
         error instanceof RequestInputError ? error.status : 400, cors);
     }
     if (route.startsWith("voice-")) return handleVoice(route, body, env, cors, request.signal);
     if (route === "trace") return handleVoiceTrace(body, cors);
+    // Public forecast data, no key and no request parameters: the place is a server constant.
+    if (route === "weather") return handleWeather(cors, fetchImpl, now);
     // The natural voice needs no Anthropic key — routed after the origin gate
     // but before the key check, so a voice-only misconfiguration still speaks.
     if (route === "tts") {

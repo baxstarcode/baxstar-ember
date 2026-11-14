@@ -794,7 +794,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-12 00:06Z".startsWith("__") ? "dev" : "2026-11-12 00:06Z";
+  const BUILD_STAMP = "2026-11-14 16:07Z".startsWith("__") ? "dev" : "2026-11-14 16:07Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -802,6 +802,60 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { server: "gmail", key: "emails", label: "Gmail", what: "email" },
     { server: "calendar", key: "events", label: "Calendar", what: "schedule" }
   ];
+  const WEATHER_ENDPOINT = STATUS_ENDPOINT.replace(/\/connectors\/status$/, "/weather");
+  const WEATHER_FRESH_MS = 10 * 60 * 1e3;
+  const WEATHER_USABLE_MS = 90 * 60 * 1e3;
+  const WEATHER_WAIT_MS = 6e3;
+  const WEATHER_Q = /\b(weather|forecasts?|temperatures?|temps?|degrees|wind(?:y|s)?|gusts?|rain(?:ing|y|s)?|snow(?:ing|y|s)?|sleet|hail|storms?|thunder(?:storms?)?|lightning|sunny|cloud(?:y|s)|fog(?:gy)?|humid(?:ity)?|freez(?:e|ing)|frost|wind ?chill|heat index|advisor(?:y|ies)|radar)\b|\b(?:how|what)(?:'s| is| does) it (?:look(?:ing)? )?(?:like )?outside\b/i;
+  const BRIEF_Q = /\bbrief (?:me|my)\b/i;
+  const weatherStore = { report: null, at: 0, pending: null };
+  function validWeather(d) {
+    return d && typeof d === "object" && typeof d.place === "string" && typeof d.fetchedAt === "string" && Array.isArray(d.periods) && d.periods.length > 0 && d.periods.every((p) => p && typeof p.name === "string" && Number.isFinite(p.temp)) && Array.isArray(d.hours) && Array.isArray(d.alerts);
+  }
+  const weatherAge = () => weatherStore.report ? Date.now() - weatherStore.at : Infinity;
+  function loadWeather() {
+    if (weatherStore.pending) return weatherStore.pending;
+    weatherStore.pending = (async () => {
+      try {
+        const res = await fetch(WEATHER_ENDPOINT, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(WEATHER_WAIT_MS) });
+        const data = res.ok ? await res.json() : null;
+        if (validWeather(data)) {
+          weatherStore.report = data;
+          weatherStore.at = Date.now();
+        }
+      } catch {
+      }
+      weatherStore.pending = null;
+      return weatherStore.report;
+    })();
+    return weatherStore.pending;
+  }
+  const chicagoClock = (iso, withDay) => {
+    const t = Date.parse(iso);
+    return Number.isFinite(t) ? new Date(t).toLocaleString("en-US", { timeZone: "America/Chicago", ...withDay ? { weekday: "short" } : {}, hour: "numeric", minute: "2-digit" }) : "";
+  };
+  function weatherContext() {
+    const r = weatherStore.report;
+    if (!r || weatherAge() > WEATHER_USABLE_MS) {
+      return "\nLIVE WEATHER: unavailable right now (the National Weather Service lookup did not answer). If asked about weather, wind or outdoor conditions, say you can't see the forecast right now. Never guess weather.";
+    }
+    const text = (v, max) => String(v != null ? v : "").replace(/\s+/g, " ").slice(0, max);
+    const pct = (v) => Number.isFinite(v) ? `, precip ${v}%` : "";
+    const periods = r.periods.slice(0, 6).map((p) => `${text(p.name, 24)} (${p.day === false ? "low" : "high"} ${p.temp}\xB0${p.unit === "C" ? "C" : "F"}${p.wind ? `, wind ${text(p.wind, 30)}` : ""}${pct(p.pop)}): ${text(p.detail || p.short, 260)}`);
+    const hours = r.hours.slice(0, 12).map((h) => {
+      const at = Date.parse(h.at);
+      const label = Number.isFinite(at) ? new Date(at).toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric" }) : "";
+      return label && Number.isFinite(h.temp) ? `${label} ${h.temp}\xB0${h.wind ? ` ${text(h.wind, 20)}` : ""}${Number.isFinite(h.pop) ? ` ${h.pop}%` : ""}` : null;
+    }).filter(Boolean);
+    const alerts = r.alertsChecked === false ? "not checked (the alert lookup failed); do not say there are none." : !r.alerts.length ? "none active." : r.alerts.slice(0, 5).map((a) => `${text(a.event, 60)}${a.severity ? ` (${text(a.severity, 12)})` : ""}${a.ends ? ` until ${chicagoClock(a.ends, true)}` : ""}${a.headline ? `: ${text(a.headline, 220)}` : ""}`).join(" | ");
+    const mins = Math.max(0, Math.round((Date.now() - Date.parse(r.fetchedAt)) / 6e4));
+    return `
+LIVE WEATHER: ${text(r.source || "National Weather Service", 40)} forecast for ${text(r.place, 40)}, fetched ${chicagoClock(r.fetchedAt)} Central${r.updatedAt ? ` (forecast issued ${chicagoClock(r.updatedAt, true)})` : ""}.${r.stale || mins > 30 ? ` This copy is about ${mins} minutes old; say so if asked.` : ""}
+${periods.join("\n")}${hours.length ? `
+Hourly (time, temp, wind, precip chance): ${hours.join("; ")}` : ""}
+Weather alerts: ${alerts}
+Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.`;
+  }
   const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
   const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
   const CONNECTOR_ISSUE_TEXT = {
@@ -1057,8 +1111,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     ["messages", /\bwhat(?: did|'d) i miss\b|\bbrief (?:me|my)\b|\bcatch me up\b|\banything (?:new|urgent|important)\b/i]
   ];
   const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|translate)\b|^\s*(how (?:do|can|would|should) (?:i|you)|what is an? |explain|define)\b/i;
+  const DAY_WORDS = /\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b/gi;
   function liveDataNeed(text) {
     if (LIVE_EXEMPT.test(text)) return null;
+    if (WEATHER_Q.test(text)) text = text.replace(DAY_WORDS, " ");
     for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
     return null;
   }
@@ -2891,8 +2947,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!retryId) setCommand("");
       const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
       try {
+        if (weatherAge() > WEATHER_FRESH_MS) {
+          if (WEATHER_Q.test(q) || BRIEF_Q.test(q)) {
+            const wxHold = voiceSignal ? setTimeout(() => {
+              if (isCurrent()) onVoiceHold == null ? void 0 : onVoiceHold("One moment, checking the forecast.");
+            }, 900) : null;
+            await loadWeather();
+            clearTimeout(wxHold);
+            if (!isCurrent()) return null;
+          } else loadWeather();
+        }
         const messages = [
-          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + weatherContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }
@@ -3033,6 +3099,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       setSyncing(true);
       setError("");
       lastSyncRef.current = Date.now();
+      loadWeather();
       let landed = [];
       let problems = [];
       try {
@@ -3568,7 +3635,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     const ACTIONS = [
       { id: "miss", label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
       { id: "triage", label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
-      { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." }
+      { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: open with one weather line for tomorrow from the live weather block (high and low, wind, precipitation chance, any active alert), then calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." }
       // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
       // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
       // tool still covers manual pulls.

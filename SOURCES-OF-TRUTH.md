@@ -83,6 +83,11 @@ of links to Brady's other properties.
 
 ## Provenance — who did what
 
+- **Claude, 2026-11-14 — live weather (National Weather Service):** Brady chose NWS over an
+  OpenWeather key ("NWS"). New Worker route `/api/weather` (`proxy/weather.mjs`, Pages
+  allowlist), the weather block in chat context, the Brief my day weather line and the
+  forecast-versus-calendar guard change in `src/baxstar-ember.jsx`. Record:
+  `docs/CURRENT-STATE.md`, `docs/DEPLOY.md` "Weather route", `docs/KNOWN-ISSUES.md` 13.
 - **Claude, 2026-11-08 (second pass) — Quo root cause, retry schedule, 207 status,
   Workers Builds:** continued `claude/brave-tesla-xnlnr6` rather than rebuilding. Ambiguous
   renewals retry instead of stopping; status answers 207 while a connector is down; Worker

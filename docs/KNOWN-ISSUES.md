@@ -582,6 +582,16 @@ how-to questions are exempt), so an unusual phrasing can slip past. A miss there
 reply-side "I didn't check" caveat only when the reply names meetings, voicemail or similar.
 Live check: the `voice-trace` line's `reply.guard` (`ok`, `retried`, `refused`, `caveat`).
 
+## 13. Live weather is unverified on the signed-in site (2026-11-14)
+
+**Status: PROVISIONAL**
+
+`/api/weather` and the weather block in chat context are tested with recorded National Weather
+Service replies and a stubbed model. Not yet observed: a real signed-in answer, and how the
+model words a forecast aloud. The forecast is for Detroit Lakes only (one grid point), covers
+about three days, and has no lake-specific data such as water temperature or ice thickness.
+`api.weather.gov` has occasional outages; Ember then says she can't see the forecast.
+
 ## Expected behavior that is not a bug
 
 - In the Knowledge Graph overlay, Escape closes it unless focus is inside the embedded

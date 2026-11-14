@@ -1,5 +1,18 @@
 # Ember — Current State
 
+**Live weather — November 14, 2026 (Claude; Brady: "NWS"):** Brady asked whether Ember could
+"check the weather on a daily basis" from an OpenWeather key, and chose the National Weather
+Service instead (free, no key, official forecast and alerts). The Worker's new `/api/weather`
+route fetches api.weather.gov for Detroit Lakes server-side and returns one small report: six
+forecast periods (three days), twelve hourly rows with wind, and active alerts. It is cached 10
+minutes, and served stale and labelled for up to 3 hours if NWS is down. The dashboard puts the
+report in every chat turn's context, so typed and spoken weather questions are answered from it
+with no connector round trip, and **Brief my day** opens with a weather line. With no report,
+Ember is told to say she can't see the forecast. Forecast questions such as "how does tomorrow
+look for wind" no longer force a calendar lookup; a question that names a trip or booking still
+does. No screen readout was added. No secret, binding or setting changed. PROVISIONAL until the
+first signed-in production answer; details in `docs/DEPLOY.md` ("Weather route").
+
 **Fresh conversations — November 11, 2026 night (Claude; Brady: "I just want real time where it
 clears the chat in between uses, so she doesn't dive back into whatever's in the chat"):** a chat
 thread that has been quiet for more than 10 minutes is finished. Opening Ember, or asking the

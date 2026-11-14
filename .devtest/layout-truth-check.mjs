@@ -154,6 +154,11 @@ try {
             body: JSON.stringify({ connectors: { quo: 'connected', gmail: 'connected', calendar: 'connected', gdrive: 'connected' } }) });
           return;
         }
+        // The forecast lookup (2026-11-14) is a known route; layout checks run without one.
+        if (!external && new URL(request.url()).pathname === '/api/weather') {
+          await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'weather_unavailable' }) });
+          return;
+        }
         if (!Array.isArray(body?.messages)) {
           unexpectedApis.push(`${request.method()} ${request.url()}`);
           await route.fulfill({ status: 501, contentType: 'application/json', body: JSON.stringify({ error: 'Unrecognised API request in offline test' }) });
