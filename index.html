@@ -794,7 +794,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-14 22:07Z".startsWith("__") ? "dev" : "2026-11-14 22:07Z";
+  const BUILD_STAMP = "2026-11-14 23:14Z".startsWith("__") ? "dev" : "2026-11-14 23:14Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -834,7 +834,8 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     const t = Date.parse(iso);
     return Number.isFinite(t) ? new Date(t).toLocaleString("en-US", { timeZone: "America/Chicago", ...withDay ? { weekday: "short" } : {}, hour: "numeric", minute: "2-digit" }) : "";
   };
-  function weatherContext() {
+  const WEATHER_VOICE_RULE = '\nWeather by voice: answer the question asked in one or two short sentences, leading with any active alert. A general question gets the headline: sky, high or low, wind, rain chance. For wind, boating or fishing, use the hourly rows to give the wind now and when it changes, as one or two times, never a list. "The next few days" gets one short clause per day, at most 3 days. Read hours out only when Brady asks for the hourly forecast, and then at most 3.';
+  function weatherContext(voice = false) {
     const r = weatherStore.report;
     if (!r || weatherAge() > WEATHER_USABLE_MS) {
       return "\nLIVE WEATHER: unavailable right now (the National Weather Service lookup did not answer). If asked about weather, wind or outdoor conditions, say you can't see the forecast right now. Never guess weather.";
@@ -854,8 +855,7 @@ LIVE WEATHER: ${text(r.source || "National Weather Service", 40)} forecast for $
 ${periods.join("\n")}${hours.length ? `
 Hourly (time, temp, wind, precip chance): ${hours.join("; ")}` : ""}
 Weather alerts: ${alerts}
-Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.
-Weather answer length: a general weather question gets ONE sentence, the headline only: sky, high or low, wind, rain chance, and an active alert if there is one. The hourly rows are reference, never a script: use them only to answer a question about a specific time ("when does the wind drop?") with one time or one short range. Never read out the hours or more than one day unless Brady asks for them by name.`;
+Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.${voice ? WEATHER_VOICE_RULE : ""}`;
   }
   const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
   const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
@@ -1124,6 +1124,7 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
   const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
   const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
   const toolResults = (resp) => ((resp == null ? void 0 : resp.content) || []).filter((b) => (b == null ? void 0 : b.type) === "mcp_tool_result" && b.is_error === false).length;
+  const LIVE_CAVEAT = "I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
   const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
   const LIVE_RETRY_NOTE = (need) => `
 
@@ -2094,24 +2095,27 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
       }
     }
     const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
-    const TURN_SENTENCES = 3, TURN_SPOKEN_MAX = 420;
-    const ABBREV = /^(?:[ap]\.m\.|(?:mr|mrs|ms|dr|st|vs|approx)\.|e\.g\.|i\.e\.)$/i;
-    function spokenStop(text, final) {
+    const TURN_SENTENCES = 4, TURN_TIMES = 3, TURN_SPOKEN_MAX = 420;
+    const ABBREV = /^(?:[ap]\.m\.|u\.s\.|e\.g\.|i\.e\.|(?:mr|mrs|ms|dr|st|vs|approx|jr|sr|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\.)$/i;
+    const TIME_OF_DAY = /\b\d{1,2}(?::\d{2})?\s?[ap]\.?m\b\.?|\bnoon\b|\bmidnight\b/gi;
+    function sentenceStop(text, final) {
       var _a;
-      const re = /[.!?…]["”’)\]]*(?=\s|$)|\n+/g;
+      const re = /[.!?…]["”’)\]]*(?=\s|$)|;(?=\s)|\n+/g;
       let count = 0, inside = -1, prev = -1, m;
       while (m = re.exec(text)) {
         const at = m.index + m[0].length;
         if (at > TURN_SPOKEN_MAX) break;
         if (at >= text.length && !final) break;
-        const joined = m.index === prev;
+        const before = text.slice(0, m.index);
         if (m[0][0] === ".") {
           const tok = ((_a = text.slice(0, m.index + 1).match(/\S+$/)) == null ? void 0 : _a[0]) || "";
           const pre = text.slice(0, m.index + 1 - tok.length);
-          if (ABBREV.test(tok) || /^\d{1,2}\.$/.test(tok) && (!pre.trim() || /[.!?:…]\s*$|\n\s*$/.test(pre))) continue;
+          if (/^[A-Z]\.$/.test(tok) || ABBREV.test(tok) || /^\d\.$/.test(tok) && (!pre.trim() || /[.!?…]\s*$|\n\s*$/.test(pre))) continue;
         }
+        const joined = m.index === prev;
+        if (m[0][0] === "\n" && /:\s*$/.test(before)) continue;
         prev = at;
-        if (joined || !text.slice(0, m.index).trim()) {
+        if (joined || !before.trim()) {
           if (inside >= 0) inside = at;
           continue;
         }
@@ -2126,11 +2130,38 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
       }
       return final ? { end: text.length, cut: false } : null;
     }
+    function timeStop(text) {
+      const re = new RegExp(TIME_OF_DAY.source, "gi");
+      let m, n = 0;
+      while (m = re.exec(text)) {
+        if (++n <= TURN_TIMES) continue;
+        const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n/g;
+        let b, end = -1, sentence = false;
+        while (b = bre.exec(head)) {
+          end = b.index + (b[1] ? 0 : b[2] ? b[2].length : 0);
+          sentence = !b[1];
+        }
+        if (end <= 0) {
+          const sp = head.trimEnd().lastIndexOf(" ");
+          end = sp > 0 ? sp : head.length;
+          sentence = false;
+        }
+        return { end, cut: !sentence };
+      }
+      return null;
+    }
+    function spokenStop(text, final) {
+      const a = sentenceStop(text, final), b = timeStop(text);
+      if (!b) return a;
+      return !a || b.end < a.end ? b : a;
+    }
     function spokenPart(text) {
       const stop2 = spokenStop(text, true);
       const head = text.slice(0, stop2.end).trim();
-      return { text: stop2.cut ? head + "\u2026" : head, capped: stop2.end < text.trimEnd().length };
+      const capped = stop2.end < text.trimEnd().length;
+      return { text: stop2.cut && capped ? head.replace(/[,;:]$/, "") + "\u2026" : head, capped, rest: capped ? text.slice(stop2.end).replace(/^[\s,;:]+/, "").trim() : "" };
     }
+    const MORE_Q = /^(?:(?:ok(?:ay)?|yes|yeah|sure)[,\s]+)?(?:keep going|go on|go ahead|continue|(?:tell me |read me |read |give me )?the rest(?: of it)?|what else|(?:tell me )?more)[.!?\s]*$/i;
     function endStream() {
       const s = c.stream;
       c.stream = null;
@@ -2148,14 +2179,21 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
       }
       return end;
     }
-    function feedSpeech(epoch, text, final = false) {
+    function feedSpeech(epoch, text, final = false, base = 0, tail = "") {
       const s = c.stream;
       if (!s || s.epoch !== epoch || !c.live) return;
       if (!final) {
         s.streamed = true;
         mark("first-text");
       }
-      const stop2 = spokenStop(text, final);
+      if (base > (s.base || 0) && base <= text.length) {
+        s.base = base;
+        if (s.said < base) s.said = base;
+        s.capped = false;
+      }
+      const from = s.base || 0;
+      const found = spokenStop(text.slice(from), final);
+      const stop2 = found && { end: from + found.end, cut: found.cut };
       const view = stop2 ? text.slice(0, stop2.end) : text, viewFinal = final || Boolean(stop2);
       while (!s.capped && s.spoken < SPOKEN_MAX) {
         const rest = view.slice(s.said);
@@ -2169,7 +2207,7 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
         if (end < 0) break;
         let piece = rest.slice(0, end).trim();
         s.said += end;
-        if ((stop2 == null ? void 0 : stop2.cut) && s.said >= view.length && piece) piece += "\u2026";
+        if ((stop2 == null ? void 0 : stop2.cut) && s.said >= view.length && piece && stop2.end < text.trimEnd().length) piece = piece.replace(/[,;:]$/, "") + "\u2026";
         const room = SPOKEN_MAX - s.spoken;
         if (piece.length > room) {
           piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "\u2026";
@@ -2184,8 +2222,13 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
       if (final) {
         s.done = true;
         if (stop2 && stop2.end < text.trimEnd().length) {
+          c.rest = text.slice(stop2.end).replace(/^[\s,;:]+/, "").trim();
           c.spokenShort = true;
           if (c.phase === "playing") patch({ note: SHORT_NOTE });
+        }
+        if (tail && !s.tail) {
+          s.tail = true;
+          queueClip(s, tail);
         }
         if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) {
           s.waiting = false;
@@ -2261,14 +2304,24 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
         }
       }).finally(() => clearTimeout(c.timers.play));
     }
-    async function speak(turn = false) {
-      if (!c.answer || c.rec || c.request || !production || document.hidden) return;
+    async function speak(turn = false, source) {
+      const full = typeof source === "string" ? source : c.answer;
+      if (!full || c.rec || c.request || !production || document.hidden) return;
       const epoch = ++c.epoch;
       keepAwake();
       ensureContext();
-      const long = c.answer.length > 1e3, part = turn === true ? spokenPart(c.answer) : null;
-      const spoken = part ? part.text : long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : c.answer;
+      let part = null;
+      if (turn === true) {
+        const caveat = full.endsWith(LIVE_CAVEAT) ? LIVE_CAVEAT : "";
+        const body = caveat ? full.slice(0, -caveat.length).trimEnd() : full;
+        const kept = spokenPart(body);
+        c.rest = kept.rest;
+        part = { text: caveat ? `${kept.text} ${caveat}` : kept.text, capped: kept.capped };
+      }
+      const long = full.length > 1e3;
+      const spoken = part ? part.text : long ? full.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : full;
       c.spokenShort = part ? part.capped : false;
+      const whole = !part || !part.capped && full === c.answer;
       c.phrases = emberPhrases(spoken);
       if (c.blob && !part) {
         await playReply(epoch);
@@ -2290,7 +2343,7 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
         c.request = null;
         mark("first-clip-ready");
         await playReply(epoch);
-        if ((part == null ? void 0 : part.capped) && c.blob === blob) c.blob = null;
+        if (!whole && c.blob === blob) c.blob = null;
       } catch (error) {
         if (c.live && epoch === c.epoch) {
           traceEnd("speech-failed");
@@ -2306,10 +2359,20 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
     async function send() {
       var _a;
       if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
+      if (c.rest && MORE_Q.test(c.draft.trim())) {
+        const rest = c.rest;
+        c.rest = "";
+        mark("send");
+        endStream();
+        clearAudio();
+        await speak(true, rest);
+        return;
+      }
       const epoch = ++c.epoch, controller = new AbortController();
       c.request = controller;
       c.answer = "";
       c.blob = null;
+      c.rest = "";
       c.interrupted = false;
       c.spokenShort = false;
       clearAudio();
@@ -2319,11 +2382,15 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
       c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
       patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
       mark("send");
+      let heard = { text: "", base: 0 };
       const timeout = setTimeout(() => controller.abort(), 6e4);
       try {
         const result = await options.current.onSend(c.draft.trim(), {
           voiceSignal: controller.signal,
-          onVoiceText: (text) => feedSpeech(epoch, text),
+          onVoiceText: (text, base = 0) => {
+            heard = { text, base };
+            feedSpeech(epoch, text, false, base);
+          },
           // A live-data question holds Jenny until a real tool result arrives; this
           // short line keeps the wait from sounding like silence.
           onVoiceHold: (line) => {
@@ -2355,7 +2422,11 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
         mark("reply-complete");
         c.answer = result;
         patch({ answer: result });
-        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
+        const caveat = result.endsWith(LIVE_CAVEAT) ? LIVE_CAVEAT : "";
+        const body = caveat ? result.slice(0, -caveat.length).trimEnd() : result;
+        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && (c.stream.streamed || c.stream.clips.length)) {
+          feedSpeech(epoch, c.stream.streamed ? heard.text : body, true, c.stream.streamed ? heard.base : 0, caveat);
+        }
         if (c.spokeEpoch !== epoch) {
           c.stream = null;
           await speak(true);
@@ -3008,13 +3079,13 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
           } else loadWeather();
         }
         const messages = [
-          { role: "user", content: bradyContext() + weatherContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }
         ];
         const need = liveDataNeed(q);
-        let held = Boolean(voiceSignal && need), latest = "", degraded = false, resp, guard = need ? "ok" : null;
+        let held = Boolean(voiceSignal && need), latest = "", answerFrom = 0, degraded = false, resp, guard = need ? "ok" : null;
         const holdTimer = held ? setTimeout(() => {
           if (held && isCurrent()) onVoiceHold == null ? void 0 : onVoiceHold(`One moment, checking your ${need}.`);
         }, 900) : null;
@@ -3032,7 +3103,7 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
             onDelta: (content) => {
               latest = content;
               patchAssistant({ content });
-              if (isCurrent() && !held) onVoiceText == null ? void 0 : onVoiceText(content);
+              if (isCurrent() && !held) onVoiceText == null ? void 0 : onVoiceText(content, answerFrom);
             },
             onMeta: ({ degraded: d }) => {
               onVoiceMeta == null ? void 0 : onVoiceMeta({ headers: true });
@@ -3048,9 +3119,10 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
               }
               if (block.type !== "mcp_tool_result" || block.is_error) return;
               onVoiceMeta == null ? void 0 : onVoiceMeta({ tool: true });
+              answerFrom = latest.length;
               if (held) {
                 held = false;
-                if (latest) onVoiceText == null ? void 0 : onVoiceText(latest);
+                if (latest) onVoiceText == null ? void 0 : onVoiceText(latest, answerFrom);
               }
             }
           });
@@ -3060,6 +3132,7 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
         if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
           guard = "retried";
           latest = "";
+          answerFrom = 0;
           patchAssistant({ content: "" });
           const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
           resp = await ask(again);
@@ -3074,7 +3147,7 @@ Weather answer length: a general weather question gets ONE sentence, the headlin
           resp = { ...resp, content: [{ type: "text", text: answer }] };
         } else if (!need && !toolResults(resp) && LIVE_CLAIM.test(answer) && !HONEST_MISS.test(answer)) {
           guard = "caveat";
-          answer += "\n\nI didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
+          answer += "\n\n" + LIVE_CAVEAT;
           resp = { ...resp, content: [{ type: "text", text: answer }] };
         }
         onVoiceMeta == null ? void 0 : onVoiceMeta({ guard, tools: toolResults(resp) });

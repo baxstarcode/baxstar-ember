@@ -26,10 +26,11 @@ const REPLY = "Your next trip is tomorrow at 6 AM on Detroit Lake with a party o
 const PREINSTALLED = "/opt/pw-browsers/chromium";
 const executablePath = process.env.CHROME_PATH || (fs.existsSync(PREINSTALLED) ? PREINSTALLED : undefined);
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
+const CLAIM = "Sarah wanted to move Saturday's charter to 9. She said so in her voicemail. She would like a call back today. She also asked about the pontoon. She sounded happy.";
 async function measure(run, scenario = "latency") {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
-  await page.addInitScript(({ MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL }) => {
+  await page.addInitScript(({ MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL, SCENARIO, CLAIM }) => {
     window.recs = []; window.marks = {};
     class Rec {
       start() { this.active = true; recs.push(this); setTimeout(() => this.onstart?.(), 0); }
@@ -70,17 +71,34 @@ async function measure(run, scenario = "latency") {
           async start(ctl) {
             const wait = (ms) => new Promise((r) => setTimeout(r, ms));
             ctl.enqueue(sse({ type: "message_start", message: { model: body.model } }));
+            if (SCENARIO === "caveat") {
+              // No lookup at all: an unverified claim, streamed as plain text.
+              ctl.enqueue(sse({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
+              for (let i = 0; i < CLAIM.length; i += 14) { ctl.enqueue(sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: CLAIM.slice(i, i + 14) } })); await wait(10); }
+              ctl.enqueue(sse({ type: "content_block_stop", index: 0 }));
+              ctl.enqueue(sse({ type: "message_delta", delta: { stop_reason: "end_turn" } }));
+              ctl.enqueue(sse({ type: "message_stop" }));
+              ctl.close();
+              return;
+            }
+            let block = 0;
+            if (SCENARIO === "narration") {
+              // The model narrates before its lookup; that line must never be read out.
+              ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "text", text: "" } }));
+              ctl.enqueue(sse({ type: "content_block_delta", index: block, delta: { type: "text_delta", text: "Let me check your calendar for tomorrow." } }));
+              ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
+            }
             await wait(TOOL.resultMs);
-            ctl.enqueue(sse({ type: "content_block_start", index: 0, content_block: { type: "mcp_tool_use", id: "t1", name: "list_events", server_name: "calendar", input: {} } }));
-            ctl.enqueue(sse({ type: "content_block_stop", index: 0 }));
-            ctl.enqueue(sse({ type: "content_block_start", index: 1, content_block: { type: "mcp_tool_result", tool_use_id: "t1", is_error: false, content: [] } }));
-            ctl.enqueue(sse({ type: "content_block_stop", index: 1 }));
+            ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "mcp_tool_use", id: "t1", name: "list_events", server_name: "calendar", input: {} } }));
+            ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
+            ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "mcp_tool_result", tool_use_id: "t1", is_error: false, content: [] } }));
+            ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
             marks.toolResult = performance.now();
             await wait(MODEL.firstTokenMs - TOOL.resultMs);
             marks.firstToken = performance.now();
-            ctl.enqueue(sse({ type: "content_block_start", index: 2, content_block: { type: "text", text: "" } }));
+            ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "text", text: "" } }));
             for (let i = 0; i < REPLY.length; i += 14) {
-              ctl.enqueue(sse({ type: "content_block_delta", index: 2, delta: { type: "text_delta", text: REPLY.slice(i, i + 14) } }));
+              ctl.enqueue(sse({ type: "content_block_delta", index: block, delta: { type: "text_delta", text: REPLY.slice(i, i + 14) } }));
               await wait(14 / MODEL.charsPerSecond * 1000);
             }
             marks.lastToken = performance.now();
@@ -94,7 +112,7 @@ async function measure(run, scenario = "latency") {
       return realFetch(input, init);
     };
     document.addEventListener("playing", () => { marks.firstAudio ??= performance.now(); (marks.playTimes ||= []).push(performance.now()); marks.plays = (marks.plays || 0) + 1; }, true);
-  }, { MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL });
+  }, { MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL, SCENARIO: scenario, CLAIM });
   const origin = "https://ember.baxstarfishing.com";
   await page.route("**/*", async (route) => {
     const u = new URL(route.request().url());
@@ -106,7 +124,7 @@ async function measure(run, scenario = "latency") {
   await page.goto(origin);
   await page.getByRole("button", { name: "Talk to Ember", exact: true }).click();
   await page.locator('[data-voice-phase="listening"]').waitFor();
-  await page.evaluate(() => say("What does tomorrow look like?"));
+  await page.evaluate((q) => say(q), scenario === "caveat" ? "What did Sarah want?" : "What does tomorrow look like?");
   await page.waitForFunction(() => window.marks.firstAudio, null, { timeout: 30000 });
   if (scenario === "latency") {
     // The answer's first clip follows the hold line; play the hold line out.
@@ -117,7 +135,7 @@ async function measure(run, scenario = "latency") {
     }
   }
   await page.waitForTimeout(200);
-  if (scenario === "sequence") {
+  if (scenario === "sequence" || scenario === "narration" || scenario === "caveat") {
     // Play every clip to its end; the turn must finish and the mic re-arm once.
     for (let i = 0; i < 20 && !(await page.locator('[data-voice-phase="listening"]').count()); i++) {
       await page.locator('audio[aria-label="Ember reply"]').evaluate((a) => { if (a.duration) a.currentTime = a.duration - 0.05; });
@@ -156,15 +174,27 @@ try {
     // The lookup took over 0.9 s, so Jenny first says she is checking; nothing of
     // the answer is spoken before the calendar result arrives.
     // Spoken turn cap (2026-11-14): the 5-sentence reply is spoken only up to its
-    // third sentence; the rest stays on screen.
-    const firstThree = REPLY.match(/[^.!?]+[.!?]/g).slice(0, 3).join("").trim();
-    assert.equal(said, ("One moment, checking your calendar. " + firstThree).replace(/\s+/g, " ").trim(), "the hold line, then the first 3 sentences once, in order");
+    // fourth sentence; the rest stays on screen.
+    const firstFour = REPLY.match(/[^.!?]+[.!?]/g).slice(0, 4).join("").trim();
+    assert.equal(said, ("One moment, checking your calendar. " + firstFour).replace(/\s+/g, " ").trim(), "the hold line, then the first 4 sentences once, in order");
     assert.ok(seq.ttsTexts.every((t) => t.length <= 420), "no clip over the 420-character turn cap");
     assert.ok(seq.thread.includes("Nothing needs a reply before your first trip."), "the full reply stays in the conversation");
     assert.ok(seq.ttsTexts.length >= 2 && seq.plays >= seq.ttsTexts.length, `all ${seq.ttsTexts.length} clips played`);
     assert.equal(seq.phase, "listening", "the conversation hands the turn back after the last clip");
     assert.equal(seq.recs, 2, "the mic re-arms exactly once");
-    console.log(`PASS streamed reply: ${seq.ttsTexts.length} clips (${seq.ttsTexts.map((t) => t.length).join("/")} chars) played in order, capped at 3 sentences; mic re-armed once`);
+    console.log(`PASS streamed reply: ${seq.ttsTexts.length} clips (${seq.ttsTexts.map((t) => t.length).join("/")} chars) played in order, capped at 4 sentences; mic re-armed once`);
+    const narrated = await measure(0, "narration");
+    const narratedSaid = narrated.ttsTexts.join(" ");
+    assert.ok(!narratedSaid.includes("Let me check your calendar"), "narration written before a lookup is never read out");
+    assert.ok(narratedSaid.includes("Your next trip is tomorrow at 6 AM"), "the answer after the lookup is spoken");
+    assert.equal(narrated.phase, "listening", "the turn still hands back after narration was skipped");
+    console.log(`PASS narration before a lookup skipped: ${narrated.ttsTexts.length} clips, answer spoken from its first sentence`);
+    const warned = await measure(0, "caveat");
+    const warnedSaid = warned.ttsTexts.join(" ").replace(/\s+/g, " ");
+    assert.ok(warnedSaid.endsWith("I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up."), "a streamed unverified claim ends with the spoken warning");
+    assert.ok(!warnedSaid.includes("She sounded happy."), "the claim itself is capped at 4 sentences");
+    assert.equal(warned.phase, "listening", "the turn hands back after the warning");
+    console.log(`PASS streamed unverified claim: capped, warning spoken last (${warned.ttsTexts.length} clips)`);
     const stopped = await measure(0, "stop");
     assert.ok(stopped.paused && !stopped.active && stopped.recs === 1, "Stop mid-reply silences Jenny and never re-arms the mic");
     assert.ok((stopped.plays || 0) === 1, "no later clip starts after Stop");

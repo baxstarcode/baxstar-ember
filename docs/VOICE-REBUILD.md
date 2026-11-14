@@ -195,6 +195,31 @@ evidence. The following entries describe prior experiments, not the current scop
 
 ## Historical experiments
 
+**Spoken turn cap and weather wording — November 14, 2026 (Claude):** Brady read that the weather
+report carries "hour-by-hour wind for the next 12 hours" and said: "DO NOT have her dumbass voice
+talk forever to tell me 12 hours worth of information". The hourly rows were reference data for
+timing questions, but the only limit on speech was the PR #69 prompt rule. The code still allowed
+1000 characters per turn.
+
+- **Stand-in model run (workflow, 54 agents).** Ten spoken weather questions were answered by
+  models reading Ember's exact spoken-turn instruction text with the recorded 11-14 forecast. No
+  answer under the old rules recited the hours: average 25 words, at most 37 words and 2 times of
+  day. A first stricter rule ("ONE sentence, the headline only") cut the average to 22 words, but
+  made Haiku answer wind and pontoon questions with the day's 7–10 mph headline while the hourly
+  rows showed 13–14 mph now, and answer "the next few days" with today only. Every new-rule answer
+  was faithful to the forecast (20 of 20, independent judges). The shipped voice rule asks for the
+  question's answer in one or two sentences, leading with any alert, with hourly data used for wind
+  and timing. These were stand-ins (low effort, single turns, one forecast), not the live product.
+- **Adversarial review (3 reviewers + critic).** Found that a 12-hour list written as one sentence
+  or as "3 PM: 41." lines passed the first cap; the live-data warning was cut (a regression from the
+  11-11 guard); a weather alert in a 4th short sentence was dropped; narration before a lookup used
+  up the count; headings, initials, "Aug." and "U.S." ended sentences early; "keep going" had
+  nothing to continue; and the weather rule leaked into typed chat. All are fixed and covered by
+  tests: `.devtest/spoken-cap.test.mjs` (7 rule tests), 10 new foreground-voice checks, iPhone Web
+  Audio path checks, and streamed-reply scenarios for narration and the warning.
+- **Not measured:** Jenny's real spoken duration (420 written characters was estimated) and a live
+  signed-in answer.
+
 **Second-turn mic check — November 11, 2026 (Claude, from ChatGPT's 11-10 Ember log handoff):**
 Brady on iPhone (11-10, about 6:50 PM CST): Ember “can listen to me for just one round,
 and then the light on Safari at least goes off, and the mic quits listening”, and the
