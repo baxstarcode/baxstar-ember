@@ -794,7 +794,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-12 00:06Z".startsWith("__") ? "dev" : "2026-11-12 00:06Z";
+  const BUILD_STAMP = "2026-11-14 23:27Z".startsWith("__") ? "dev" : "2026-11-14 23:27Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -802,6 +802,61 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     { server: "gmail", key: "emails", label: "Gmail", what: "email" },
     { server: "calendar", key: "events", label: "Calendar", what: "schedule" }
   ];
+  const WEATHER_ENDPOINT = STATUS_ENDPOINT.replace(/\/connectors\/status$/, "/weather");
+  const WEATHER_FRESH_MS = 10 * 60 * 1e3;
+  const WEATHER_USABLE_MS = 90 * 60 * 1e3;
+  const WEATHER_WAIT_MS = 6e3;
+  const WEATHER_Q = /\b(weather|forecasts?|temperatures?|temps?|degrees|wind(?:y|s)?|gusts?|rain(?:ing|y|s)?|snow(?:ing|y|s)?|sleet|hail|storms?|thunder(?:storms?)?|lightning|sunny|cloud(?:y|s)|fog(?:gy)?|humid(?:ity)?|freez(?:e|ing)|frost|wind ?chill|heat index|advisor(?:y|ies)|radar)\b|\b(?:how|what)(?:'s| is| does) it (?:look(?:ing)? )?(?:like )?outside\b/i;
+  const BRIEF_Q = /\bbrief (?:me|my)\b/i;
+  const weatherStore = { report: null, at: 0, pending: null };
+  function validWeather(d) {
+    return d && typeof d === "object" && typeof d.place === "string" && typeof d.fetchedAt === "string" && Array.isArray(d.periods) && d.periods.length > 0 && d.periods.every((p) => p && typeof p.name === "string" && Number.isFinite(p.temp)) && Array.isArray(d.hours) && Array.isArray(d.alerts);
+  }
+  const weatherAge = () => weatherStore.report ? Date.now() - weatherStore.at : Infinity;
+  function loadWeather() {
+    if (weatherStore.pending) return weatherStore.pending;
+    weatherStore.pending = (async () => {
+      try {
+        const res = await fetch(WEATHER_ENDPOINT, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(WEATHER_WAIT_MS) });
+        const data = res.ok ? await res.json() : null;
+        if (validWeather(data)) {
+          weatherStore.report = data;
+          weatherStore.at = Date.now();
+        }
+      } catch {
+      }
+      weatherStore.pending = null;
+      return weatherStore.report;
+    })();
+    return weatherStore.pending;
+  }
+  const chicagoClock = (iso, withDay) => {
+    const t = Date.parse(iso);
+    return Number.isFinite(t) ? new Date(t).toLocaleString("en-US", { timeZone: "America/Chicago", ...withDay ? { weekday: "short" } : {}, hour: "numeric", minute: "2-digit" }) : "";
+  };
+  const WEATHER_VOICE_RULE = '\nWeather by voice: answer the question asked in one or two short sentences, leading with any active alert. A general question gets the headline: sky, high or low, wind, rain chance. For wind, boating or fishing, use the hourly rows to give the wind now and when it changes, as one or two times, never a list. "The next few days" gets one short clause per day, at most 3 days. Read hours out only when Brady asks for the hourly forecast, and then at most 3.';
+  function weatherContext(voice = false) {
+    const r = weatherStore.report;
+    if (!r || weatherAge() > WEATHER_USABLE_MS) {
+      return "\nLIVE WEATHER: unavailable right now (the National Weather Service lookup did not answer). If asked about weather, wind or outdoor conditions, say you can't see the forecast right now. Never guess weather.";
+    }
+    const text = (v, max) => String(v != null ? v : "").replace(/\s+/g, " ").slice(0, max);
+    const pct = (v) => Number.isFinite(v) ? `, precip ${v}%` : "";
+    const periods = r.periods.slice(0, 6).map((p) => `${text(p.name, 24)} (${p.day === false ? "low" : "high"} ${p.temp}\xB0${p.unit === "C" ? "C" : "F"}${p.wind ? `, wind ${text(p.wind, 30)}` : ""}${pct(p.pop)}): ${text(p.detail || p.short, 260)}`);
+    const hours = r.hours.slice(0, 12).map((h) => {
+      const at = Date.parse(h.at);
+      const label = Number.isFinite(at) ? new Date(at).toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric" }) : "";
+      return label && Number.isFinite(h.temp) ? `${label} ${h.temp}\xB0${h.wind ? ` ${text(h.wind, 20)}` : ""}${Number.isFinite(h.pop) ? ` ${h.pop}%` : ""}` : null;
+    }).filter(Boolean);
+    const alerts = r.alertsChecked === false ? "not checked (the alert lookup failed); do not say there are none." : !r.alerts.length ? "none active." : r.alerts.slice(0, 5).map((a) => `${text(a.event, 60)}${a.severity ? ` (${text(a.severity, 12)})` : ""}${a.ends ? ` until ${chicagoClock(a.ends, true)}` : ""}${a.headline ? `: ${text(a.headline, 220)}` : ""}`).join(" | ");
+    const mins = Math.max(0, Math.round((Date.now() - Date.parse(r.fetchedAt)) / 6e4));
+    return `
+LIVE WEATHER: ${text(r.source || "National Weather Service", 40)} forecast for ${text(r.place, 40)}, fetched ${chicagoClock(r.fetchedAt)} Central${r.updatedAt ? ` (forecast issued ${chicagoClock(r.updatedAt, true)})` : ""}.${r.stale || mins > 30 ? ` This copy is about ${mins} minutes old; say so if asked.` : ""}
+${periods.join("\n")}${hours.length ? `
+Hourly (time, temp, wind, precip chance): ${hours.join("; ")}` : ""}
+Weather alerts: ${alerts}
+Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.${voice ? WEATHER_VOICE_RULE : ""}`;
+  }
   const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
   const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
   const CONNECTOR_ISSUE_TEXT = {
@@ -1057,8 +1112,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     ["messages", /\bwhat(?: did|'d) i miss\b|\bbrief (?:me|my)\b|\bcatch me up\b|\banything (?:new|urgent|important)\b/i]
   ];
   const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|translate)\b|^\s*(how (?:do|can|would|should) (?:i|you)|what is an? |explain|define)\b/i;
+  const DAY_WORDS = /\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b/gi;
   function liveDataNeed(text) {
     if (LIVE_EXEMPT.test(text)) return null;
+    if (WEATHER_Q.test(text)) text = text.replace(DAY_WORDS, " ");
     for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
     return null;
   }
@@ -1067,6 +1124,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
   const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
   const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
   const toolResults = (resp) => ((resp == null ? void 0 : resp.content) || []).filter((b) => (b == null ? void 0 : b.type) === "mcp_tool_result" && b.is_error === false).length;
+  const LIVE_CAVEAT = "I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
   const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
   const LIVE_RETRY_NOTE = (need) => `
 
@@ -1487,6 +1545,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     if (phrase) pieces.push(phrase);
     return pieces;
   }
+  const SHORT_NOTE = "Short version spoken. The full reply is in the conversation below. Tap her to interrupt.";
   const REARM_HANDOFF_MS = 450;
   const REARM_HANDOFF_WEBKIT_MS = 800;
   const REARM_RETRY_MS = 1500;
@@ -1845,6 +1904,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         return;
       }
       const rearm = continuing === true;
+      if (!rearm) c.rest = "";
       const trigger = rearm ? c.nextTrigger || "auto" : "tap";
       c.nextTrigger = null;
       if (!rearm) {
@@ -2036,6 +2096,79 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
     }
     const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
+    const TURN_SENTENCES = 4, TURN_TIMES = 3, TURN_SPOKEN_MAX = 420;
+    const ABBREV = /^(?:[ap]\.m\.|u\.s\.|e\.g\.|i\.e\.|(?:mr|mrs|ms|dr|st|vs|approx|jr|sr|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\.)$/i;
+    const TIME_OF_DAY = /\b\d{1,2}(?::\d{2})?\s?[ap]\.?m\b\.?|\bnoon\b|\bmidnight\b/gi;
+    function sentenceStop(text, final) {
+      var _a;
+      const re = /[.!?…]["”’)\]]*(?=\s|$)|;(?=\s)|\n+/g;
+      let count = 0, inside = -1, prev = -1, m;
+      while (m = re.exec(text)) {
+        const at = m.index + m[0].length;
+        if (at > TURN_SPOKEN_MAX) break;
+        if (at >= text.length && !final) break;
+        const before = text.slice(0, m.index);
+        if (m[0][0] === ".") {
+          const tok = ((_a = text.slice(0, m.index + 1).match(/\S+$/)) == null ? void 0 : _a[0]) || "";
+          const pre = text.slice(0, m.index + 1 - tok.length);
+          if (/^[A-Z]\.$/.test(tok) || ABBREV.test(tok) || /^\d\.$/.test(tok) && (!pre.trim() || /[.!?…]\s*$|\n\s*$/.test(pre))) continue;
+        }
+        const joined = m.index === prev;
+        if (m[0][0] === "\n" && /:\s*$/.test(before)) continue;
+        prev = at;
+        if (joined || !before.trim()) {
+          if (inside >= 0) inside = at;
+          continue;
+        }
+        count++;
+        inside = at;
+        if (count >= TURN_SENTENCES) return { end: at, cut: false };
+      }
+      if (text.length > TURN_SPOKEN_MAX) {
+        if (inside > 0) return { end: inside, cut: false };
+        const space = text.lastIndexOf(" ", TURN_SPOKEN_MAX);
+        return { end: space > 0 ? space : TURN_SPOKEN_MAX, cut: true };
+      }
+      return final ? { end: text.length, cut: false } : null;
+    }
+    const TIME_RANGE = new RegExp("^\\s*(?:to|until|till|through|thru|[-\u2013\u2014])\\s*(?:" + TIME_OF_DAY.source + ")", "i");
+    function timeStop(text) {
+      const re = new RegExp(TIME_OF_DAY.source, "gi");
+      let m, n = 0, third = 0;
+      while (m = re.exec(text)) {
+        const range = TIME_RANGE.exec(text.slice(re.lastIndex));
+        if (range) re.lastIndex += range[0].length;
+        if (++n <= TURN_TIMES) {
+          third = re.lastIndex;
+          continue;
+        }
+        const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n|\s(?:[-–—]|and)\s/g;
+        let b, end = -1, sentence = false;
+        while (b = bre.exec(head)) {
+          if (b.index < third) continue;
+          end = b[1] || b[2] ? b.index + (b[2] ? b[2].length : 0) : b[0][0] === "\n" ? b.index : b.index;
+          sentence = Boolean(b[2]) || b[0][0] === "\n";
+        }
+        if (end < third) {
+          end = head.trimEnd().length;
+          sentence = false;
+        }
+        return { end, cut: !sentence };
+      }
+      return null;
+    }
+    function spokenStop(text, final) {
+      const a = sentenceStop(text, final), b = timeStop(text);
+      if (!b) return a;
+      return !a || b.end < a.end ? b : a;
+    }
+    function spokenPart(text) {
+      const stop2 = spokenStop(text, true);
+      const head = text.slice(0, stop2.end).trim();
+      const capped = stop2.end < text.trimEnd().length;
+      return { text: stop2.cut && capped ? head.replace(/[,;:]$/, "") + "\u2026" : head, capped, rest: capped ? text.slice(stop2.end).replace(/^[\s,;:]+/, "").trim() : "" };
+    }
+    const MORE_Q = /^(?:(?:ok(?:ay)?|yes|yeah|sure)[,\s]+)?(?:keep going|go on|go ahead|continue|(?:tell me |read me |read |give me )?the rest(?: of it)?|what else|(?:tell me )?more)[.!?\s]*$/i;
     function endStream() {
       const s = c.stream;
       c.stream = null;
@@ -2053,25 +2186,34 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       }
       return end;
     }
-    function feedSpeech(epoch, text, final = false) {
+    function feedSpeech(epoch, text, final = false, base = 0, tail = "") {
       const s = c.stream;
       if (!s || s.epoch !== epoch || !c.live) return;
       if (!final) {
         s.streamed = true;
         mark("first-text");
       }
+      if (base > (s.base || 0) && base <= text.length && s.said <= (s.base || 0)) {
+        s.base = base;
+        s.said = base;
+      }
+      const from = s.base || 0;
+      const found = spokenStop(text.slice(from), final);
+      const stop2 = found && { end: from + found.end, cut: found.cut };
+      const view = stop2 ? text.slice(0, stop2.end) : text, viewFinal = final || Boolean(stop2);
       while (!s.capped && s.spoken < SPOKEN_MAX) {
-        const rest = text.slice(s.said);
+        const rest = view.slice(s.said);
         if (!rest.trim()) {
-          s.said = text.length;
+          s.said = view.length;
           break;
         }
         const first = s.clips.length === (s.lead || 0);
         let end = clipEnd(rest, first ? FIRST_CLIP_MIN : CLIP_MIN, first);
-        if (end < 0 && final) end = rest.length;
+        if (end < 0 && viewFinal) end = rest.length;
         if (end < 0) break;
         let piece = rest.slice(0, end).trim();
         s.said += end;
+        if ((stop2 == null ? void 0 : stop2.cut) && s.said >= view.length && piece && stop2.end < text.trimEnd().length) piece = piece.replace(/[,;:]$/, "") + "\u2026";
         const room = SPOKEN_MAX - s.spoken;
         if (piece.length > room) {
           piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "\u2026";
@@ -2082,8 +2224,18 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           queueClip(s, piece);
         }
       }
+      if (stop2 && s.said >= view.length) s.capped = true;
       if (final) {
         s.done = true;
+        if (stop2 && stop2.end < text.trimEnd().length) {
+          c.rest = text.slice(stop2.end).replace(/^[\s,;:]+/, "").trim();
+          c.spokenShort = true;
+          if (c.phase === "playing") patch({ note: SHORT_NOTE });
+        }
+        if (tail && !s.tail) {
+          s.tail = true;
+          queueClip(s, tail);
+        }
         if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) {
           s.waiting = false;
           finishTurn();
@@ -2158,15 +2310,26 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         }
       }).finally(() => clearTimeout(c.timers.play));
     }
-    async function speak() {
-      if (!c.answer || c.rec || c.request || !production || document.hidden) return;
+    async function speak(turn = false, source) {
+      const full = typeof source === "string" ? source : c.answer;
+      if (!full || c.rec || c.request || !production || document.hidden) return;
       const epoch = ++c.epoch;
       keepAwake();
       ensureContext();
-      const long = c.answer.length > 1e3;
-      const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : c.answer;
+      let part = null;
+      if (turn === true) {
+        const caveat = full.endsWith(LIVE_CAVEAT) ? LIVE_CAVEAT : "";
+        const body = caveat ? full.slice(0, -caveat.length).trimEnd() : full;
+        const kept = spokenPart(body);
+        c.rest = kept.rest;
+        part = { text: caveat ? `${kept.text} ${caveat}` : kept.text, capped: kept.capped };
+      }
+      const long = full.length > 1e3;
+      const spoken = part ? part.text : long ? full.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : full;
+      c.spokenShort = part ? part.capped : false;
+      const whole = !part || !part.capped && full === c.answer;
       c.phrases = emberPhrases(spoken);
-      if (c.blob) {
+      if (c.blob && !part) {
         await playReply(epoch);
         return;
       }
@@ -2186,6 +2349,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         c.request = null;
         mark("first-clip-ready");
         await playReply(epoch);
+        if (!whole && c.blob === blob) c.blob = null;
       } catch (error) {
         if (c.live && epoch === c.epoch) {
           traceEnd("speech-failed");
@@ -2201,11 +2365,22 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
     async function send() {
       var _a;
       if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
+      if (c.rest && MORE_Q.test(c.draft.trim())) {
+        const rest = c.rest;
+        c.rest = "";
+        mark("send");
+        endStream();
+        clearAudio();
+        await speak(true, rest);
+        return;
+      }
       const epoch = ++c.epoch, controller = new AbortController();
       c.request = controller;
       c.answer = "";
       c.blob = null;
+      c.rest = "";
       c.interrupted = false;
+      c.spokenShort = false;
       clearAudio();
       keepAwake();
       endStream();
@@ -2213,11 +2388,15 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
       patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
       mark("send");
+      let heard = { text: "", base: 0 };
       const timeout = setTimeout(() => controller.abort(), 6e4);
       try {
         const result = await options.current.onSend(c.draft.trim(), {
           voiceSignal: controller.signal,
-          onVoiceText: (text) => feedSpeech(epoch, text),
+          onVoiceText: (text, base = 0) => {
+            heard = { text, base };
+            feedSpeech(epoch, text, false, base);
+          },
           // A live-data question holds Jenny until a real tool result arrives; this
           // short line keeps the wait from sounding like silence.
           onVoiceHold: (line) => {
@@ -2249,10 +2428,14 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         mark("reply-complete");
         c.answer = result;
         patch({ answer: result });
-        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
+        const caveat = result.endsWith(LIVE_CAVEAT) ? LIVE_CAVEAT : "";
+        const body = caveat ? result.slice(0, -caveat.length).trimEnd() : result;
+        if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && (c.stream.streamed || c.stream.clips.length)) {
+          feedSpeech(epoch, c.stream.streamed ? heard.text : body, true, c.stream.streamed ? heard.base : 0, caveat);
+        }
         if (c.spokeEpoch !== epoch) {
           c.stream = null;
-          await speak();
+          await speak(true);
         }
       } catch {
         if (c.live && epoch === c.epoch) {
@@ -2277,7 +2460,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (c.phase !== "playing") (_b = document.querySelector(".reactor-stage, .scope-bezel")) == null ? void 0 : _b.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       session("playback");
       keepAwake();
-      patch({ phase: "playing", note: c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
+      patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
       if (c.web) phraseAt(0, c.web.duration);
       else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
     }
@@ -2374,15 +2557,19 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       finish,
       send,
       speak,
-      stop,
+      stop: (note) => {
+        c.rest = "";
+        stop(note);
+      },
       playing,
       ended,
       phraseAt,
       interrupt,
       // While Jenny talks, a tap on her interrupts and listens; otherwise the mouth starts or stops the conversation.
-      mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
+      mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? (c.rest = "", stop("Conversation stopped. Tap the mouth to start again.")) : start(),
       close: () => {
         var _a;
+        c.rest = "";
         stop();
         closeContext();
         patch({ open: false });
@@ -2891,14 +3078,24 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       if (!retryId) setCommand("");
       const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
       try {
+        if (weatherAge() > WEATHER_FRESH_MS) {
+          if (WEATHER_Q.test(q) || BRIEF_Q.test(q)) {
+            const wxHold = voiceSignal ? setTimeout(() => {
+              if (isCurrent()) onVoiceHold == null ? void 0 : onVoiceHold("One moment, checking the forecast.");
+            }, 900) : null;
+            await loadWeather();
+            clearTimeout(wxHold);
+            if (!isCurrent()) return null;
+          } else loadWeather();
+        }
         const messages = [
-          { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }
         ];
         const need = liveDataNeed(q);
-        let held = Boolean(voiceSignal && need), latest = "", degraded = false, resp, guard = need ? "ok" : null;
+        let held = Boolean(voiceSignal && need), latest = "", answerFrom = 0, degraded = false, resp, guard = need ? "ok" : null;
         const holdTimer = held ? setTimeout(() => {
           if (held && isCurrent()) onVoiceHold == null ? void 0 : onVoiceHold(`One moment, checking your ${need}.`);
         }, 900) : null;
@@ -2916,7 +3113,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
             onDelta: (content) => {
               latest = content;
               patchAssistant({ content });
-              if (isCurrent() && !held) onVoiceText == null ? void 0 : onVoiceText(content);
+              if (isCurrent() && !held) onVoiceText == null ? void 0 : onVoiceText(content, answerFrom);
             },
             onMeta: ({ degraded: d }) => {
               onVoiceMeta == null ? void 0 : onVoiceMeta({ headers: true });
@@ -2932,9 +3129,10 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
               }
               if (block.type !== "mcp_tool_result" || block.is_error) return;
               onVoiceMeta == null ? void 0 : onVoiceMeta({ tool: true });
+              answerFrom = latest.length;
               if (held) {
                 held = false;
-                if (latest) onVoiceText == null ? void 0 : onVoiceText(latest);
+                if (latest) onVoiceText == null ? void 0 : onVoiceText(latest, answerFrom);
               }
             }
           });
@@ -2944,6 +3142,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
         if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
           guard = "retried";
           latest = "";
+          answerFrom = 0;
           patchAssistant({ content: "" });
           const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
           resp = await ask(again);
@@ -2958,7 +3157,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
           resp = { ...resp, content: [{ type: "text", text: answer }] };
         } else if (!need && !toolResults(resp) && LIVE_CLAIM.test(answer) && !HONEST_MISS.test(answer)) {
           guard = "caveat";
-          answer += "\n\nI didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
+          answer += "\n\n" + LIVE_CAVEAT;
           resp = { ...resp, content: [{ type: "text", text: answer }] };
         }
         onVoiceMeta == null ? void 0 : onVoiceMeta({ guard, tools: toolResults(resp) });
@@ -3033,6 +3232,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       setSyncing(true);
       setError("");
       lastSyncRef.current = Date.now();
+      loadWeather();
       let landed = [];
       let problems = [];
       try {
@@ -3568,7 +3768,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
     const ACTIONS = [
       { id: "miss", label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
       { id: "triage", label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
-      { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." }
+      { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: open with one weather line for tomorrow from the live weather block (high and low, wind, precipitation chance, any active alert), then calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." }
       // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
       // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
       // tool still covers manual pulls.

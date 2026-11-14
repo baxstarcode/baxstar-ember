@@ -141,7 +141,8 @@ session; unfinished or failed turns pause for recovery. Typed questions stay
 text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
 one-time migration; subsequent choices persist. Since 2026-11-10, spoken turns run at
 Low effort on the chosen model (Fast replies, a switch in the voice panel); typed chat
-keeps the Model/Effort choice. Desktop no-scroll and the pinned
+keeps the Model/Effort choice. Since 2026-11-14 a spoken turn stops at 4 sentences, 3 times of
+day or 420 characters, in code; the full reply stays on screen and "keep going" reads on. Desktop no-scroll and the pinned
 dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
 sources, implementation boundaries and the outstanding physical-device proof.
 
@@ -194,6 +195,41 @@ background/app-switch test is requested. Existing device reports remain historic
 evidence. The following entries describe prior experiments, not the current scope.
 
 ## Historical experiments
+
+**Spoken turn cap and weather wording — November 14, 2026 (Claude):** Brady read that the weather
+report carries "hour-by-hour wind for the next 12 hours" and said: "DO NOT have her dumbass voice
+talk forever to tell me 12 hours worth of information". The hourly rows were reference data for
+timing questions, but the only limit on speech was the PR #69 prompt rule. The code still allowed
+1000 characters per turn.
+
+- **Stand-in model run (workflow, 54 agents).** Ten spoken weather questions were answered by
+  models reading Ember's exact spoken-turn instruction text with the recorded 11-14 forecast. No
+  answer under the old rules recited the hours: average 25 words, at most 37 words and 2 times of
+  day. A first stricter rule ("ONE sentence, the headline only") cut the average to 22 words, but
+  made Haiku answer wind and pontoon questions with the day's 7–10 mph headline while the hourly
+  rows showed 13–14 mph now, and answer "the next few days" with today only. Every new-rule answer
+  was faithful to the forecast (20 of 20, independent judges). The shipped voice rule asks for the
+  question's answer in one or two sentences, leading with any alert, with hourly data used for wind
+  and timing. These were stand-ins (low effort, single turns, one forecast), not the live product.
+- **Adversarial review (3 reviewers + critic).** Found that a 12-hour list written as one sentence
+  or as "3 PM: 41." lines passed the first cap; the live-data warning was cut (a regression from the
+  11-11 guard); a weather alert in a 4th short sentence was dropped; narration before a lookup used
+  up the count; headings, initials, "Aug." and "U.S." ended sentences early; "keep going" had
+  nothing to continue; and the weather rule leaked into typed chat. All are fixed and covered by
+  tests: `.devtest/spoken-cap.test.mjs` (7 rule tests), 10 new foreground-voice checks, iPhone Web
+  Audio path checks, and streamed-reply scenarios for narration and the warning.
+- **Second pass (21 agents).** A re-review confirmed all 9 earlier findings fixed by running the
+  real functions, and found 3 new ones in the fix: a second lookup reset the cap; the "keep going"
+  leftover outlived Stop and typed chat, so a later "What else?" could replay an old unchecked
+  reply; and a time range counted as two times. It also found two small ones: dash- or
+  "and"-joined lists cut too early, and an alert after three timed items in a brief was dropped.
+  All are fixed (the alert by a spoken-prompt rule to put any active alert first). Stand-ins under
+  the final wording, including a forecast with an active Wind Advisory, mentioned the alert in 10
+  of 10 answers, reflected the current 13-14 mph wind in 9 of 10, and answered the question in 10
+  of 10. Judges found one understated wind range (Haiku, Sunday "around 10" vs 9-14 mph). Answers
+  averaged 30 words, often 3 short sentences; the code cap bounds that at 4.
+- **Not measured:** Jenny's real spoken duration (420 written characters was estimated) and a live
+  signed-in answer.
 
 **Second-turn mic check — November 11, 2026 (Claude, from ChatGPT's 11-10 Ember log handoff):**
 Brady on iPhone (11-10, about 6:50 PM CST): Ember “can listen to me for just one round,

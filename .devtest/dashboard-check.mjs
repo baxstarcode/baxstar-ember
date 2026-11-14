@@ -69,6 +69,8 @@ const check = (label, condition, extra = "") => {
 const ALL_CONNECTED = { quo: "connected", gmail: "connected", calendar: "connected", gdrive: "connected" };
 
 async function routeStatus(page, connectors, extra = {}) {
+  // The forecast lookup (2026-11-14) is a known route; these checks run without a forecast.
+  await page.route(`${ORIGIN}/api/weather`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
   await page.route(`${ORIGIN}/api/connectors/status`, (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ connectors, ...extra }),
   }));

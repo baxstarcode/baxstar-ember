@@ -1,5 +1,38 @@
 # Ember — Current State
 
+**Spoken replies hard-capped — November 14, 2026 (Claude; Brady: "DO NOT have her dumbass voice
+talk forever to tell me 12 hours worth of information"):** the "1 to 3 short sentences" spoken
+rule from PR #69 was only a prompt instruction; the code still let Jenny read up to 1000
+characters (about a minute). A conversation turn now stops speaking at the first of: 4 sentences
+(a line break or ";" counts; a heading line ending in ":" does not), the 4th time of day ("3 PM",
+"noon"; a range like "6 AM to noon" counts once), so an hour-by-hour list stops at 3 hours even
+written as one sentence, or the last
+sentence end inside 420 written characters. "3 p.m.", "Dr.", "Mike T.", "Aug.", "U.S." and list
+numbers are not sentence ends. The live-data guard's "I didn't check" warning is never cut: it is
+spoken after the kept part. Narration written before a lookup ("Let me check your calendar.") is
+skipped, and a second lookup in the same turn does not reset the count. Saying "keep going" (also
+"go on", "the rest", "more") right after a shortened reply reads the next part with no new
+request; a tap, Stop or closing voice clears that leftover. The full reply stays on screen, the panel says "Short version spoken", and an explicit
+Read reply keeps the 1000-character limit. The prompt now tells the model where Jenny stops and to
+put any active weather alert first. By
+voice, weather answers the question asked in one or two sentences, leading with any active alert
+and using the hourly rows for wind and timing, never as a list. Typed chat keeps fuller weather
+answers. An adversarial review and a stand-in model run shaped this (`docs/VOICE-REBUILD.md`,
+2026-11-14).
+
+**Live weather — November 14, 2026 (Claude; Brady: "NWS"):** Brady asked whether Ember could
+"check the weather on a daily basis" from an OpenWeather key, and chose the National Weather
+Service instead (free, no key, official forecast and alerts). The Worker's new `/api/weather`
+route fetches api.weather.gov for Detroit Lakes server-side and returns one small report: six
+forecast periods (three days), twelve hourly rows with wind, and active alerts. It is cached 10
+minutes, and served stale and labelled for up to 3 hours if NWS is down. The dashboard puts the
+report in every chat turn's context, so typed and spoken weather questions are answered from it
+with no connector round trip (by voice: one or two sentences, see the entry above), and **Brief my day** opens with a weather line. With no report,
+Ember is told to say she can't see the forecast. Forecast questions such as "how does tomorrow
+look for wind" no longer force a calendar lookup; a question that names a trip or booking still
+does. No screen readout was added. No secret, binding or setting changed. PROVISIONAL until the
+first signed-in production answer; details in `docs/DEPLOY.md` ("Weather route").
+
 **Fresh conversations — November 11, 2026 night (Claude; Brady: "I just want real time where it
 clears the chat in between uses, so she doesn't dive back into whatever's in the chat"):** a chat
 thread that has been quiet for more than 10 minutes is finished. Opening Ember, or asking the

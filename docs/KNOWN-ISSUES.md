@@ -7,8 +7,9 @@ remains provisional. Background listening is not supported or required. The old
 recording-only modal, full Worker activation requirement, and five-turn integration
 hold below are historical; Brady authorized the narrower foreground integration.
 See `docs/VOICE-REBUILD.md`. Jenny's unofficial Edge TTS service remains an existing
-availability dependency. Full replies are kept in chat; spoken excerpts are labeled
-when the current endpoint's 1000-character limit is exceeded.
+availability dependency. Full replies are kept in chat. Since 2026-11-14 a conversation turn
+speaks at most 4 sentences, 3 times of day or 420 characters ("Short version spoken"; "keep going"
+reads on); an explicit Read reply is labeled when the 1000-character endpoint limit is exceeded.
 
 
 Last updated from the working repository on **2026-10-26 (America/Chicago)**. Recorded production
@@ -581,6 +582,20 @@ answers wait for the result. Limits: the question patterns are keyword-based (dr
 how-to questions are exempt), so an unusual phrasing can slip past. A miss there gets the
 reply-side "I didn't check" caveat only when the reply names meetings, voicemail or similar.
 Live check: the `voice-trace` line's `reply.guard` (`ok`, `retried`, `refused`, `caveat`).
+
+## 13. Live weather is unverified on the signed-in site (2026-11-14)
+
+**Status: PROVISIONAL**
+
+`/api/weather` and the weather block in chat context are tested with recorded National Weather
+Service replies and a stubbed model. Spoken length is enforced in code (4 sentences, 3 times of
+day or 420 characters per turn), and stand-in models reading the exact instruction text were
+measured before merge (`docs/VOICE-REBUILD.md`, 2026-11-14). Not yet observed: a real signed-in
+answer, how the live model words a forecast aloud, and Jenny's real spoken length (420 written
+characters was estimated, not timed; units like "mph" run longer aloud). After a shortened
+streamed reply the mic waits until the model finishes writing the unspoken rest. The forecast is for Detroit Lakes only (one grid point), covers
+about three days, and has no lake-specific data such as water temperature or ice thickness.
+`api.weather.gov` has occasional outages; Ember then says she can't see the forecast.
 
 ## Expected behavior that is not a bug
 

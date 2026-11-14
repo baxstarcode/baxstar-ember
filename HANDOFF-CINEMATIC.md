@@ -1,5 +1,12 @@
 # Ember — Living Cinematic Handoff
 
+**2026-11-14 — Live weather from the National Weather Service (Claude):** Ember now knows the
+Detroit Lakes forecast, hourly wind and active alerts (`/api/weather`, no key). Ask her by
+voice or text, and Brief my day opens with a weather line. Every spoken turn is now hard-capped:
+4 sentences, 3 times of day or 420 characters, whichever comes first; the "I didn't check" warning
+is always spoken, and "keep going" reads the rest. The full reply stays on screen. PROVISIONAL
+until the first signed-in production answer. Details: `docs/CURRENT-STATE.md`.
+
 **2026-11-11 — Second-turn mic check (Claude):** after Jenny's first answer the iPhone showed
 LISTENING over a dead mic. Automatic turns now must show audio and words, or they pause with a
 "tap the mouth" note; Jenny's player is released before the restart. PROVISIONAL on device.

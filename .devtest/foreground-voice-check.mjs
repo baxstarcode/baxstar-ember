@@ -33,12 +33,13 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
   if(u.pathname.startsWith('/api/')){
    const body=route.request().postDataJSON();calls.push({path:u.pathname,body});
    if(u.pathname==='/api/connectors/status')return route.fulfill({json:{connectors:{}}});
+   if(u.pathname==='/api/weather')return route.fulfill({json:{place:'Detroit Lakes, MN',source:'National Weather Service',fetchedAt:new Date().toISOString(),periods:[{name:'Today',day:true,temp:41,unit:'F',wind:'SSE 7 to 10 mph',pop:0,short:'Mostly Sunny',detail:'Mostly sunny. High near 41.'}],hours:[],alertsChecked:true,alerts:[]}});
    if((mode==='chatPending'&&u.pathname==='/api/messages')||(mode==='ttsPending'&&u.pathname==='/api/tts'))await new Promise(r=>pending.push(r));
    if(u.pathname==='/api/tts')return route.fulfill(mode==='ttsFailure'?{status:502,json:{error:'provider-refused'}}:{contentType:'audio/wav',body:wav}).catch(()=>{});
    const q=body.messages?.at(-1)?.content||'';
-   const text=/ONLY valid JSON/.test(q)?'{"voicemails":[],"emails":[],"events":[]}':mode==='long'?'This is the complete long reply. '.repeat(45):'Your voice is connected. The boat is ready, and your next trip is on the calendar.';
+   const text=/ONLY valid JSON/.test(q)?'{"voicemails":[],"emails":[],"events":[]}':mode==='long'?'This is the complete long reply. '.repeat(45):mode==='hourly'?'Next 12 hours: 9 AM 32° S 7 mph 0%; 10 AM 35° S 8 mph 0%; 11 AM 37° S 9 mph 0%; 12 PM 39° S 10 mph 0%; 1 PM 41° S 10 mph 0%; 2 PM 42° S 12 mph 5%; 3 PM 41° S 12 mph 5%; 4 PM 40° S 11 mph 5%; 5 PM 37° S 10 mph 5%; 6 PM 35° S 9 mph 5%; 7 PM 33° S 8 mph 10%; 8 PM 30° S 6 mph 10%.':mode==='claim'?"Sarah wanted to move Saturday's charter to 9. She said so in her voicemail. She would like a call back today. She also asked about the pontoon. She sounded happy.":'Your voice is connected. The boat is ready, and your next trip is on the calendar.';
    // A verified lookup: the live-data guard requires a real connector result.
-   const tools=/ONLY valid JSON/.test(q)||mode==='noTool'?[]:[{type:'mcp_tool_use',id:'t1',name:'list_events',server_name:'calendar'},{type:'mcp_tool_result',tool_use_id:'t1',is_error:false,content:[]}];
+   const tools=/ONLY valid JSON/.test(q)||mode==='noTool'||mode==='claim'?[]:[{type:'mcp_tool_use',id:'t1',name:'list_events',server_name:'calendar'},{type:'mcp_tool_result',tool_use_id:'t1',is_error:false,content:[]}];
    return route.fulfill({json:{model:body.model,content:[...tools,{type:'text',text}],stop_reason:'end_turn'}}).catch(()=>{});
   }
   const rel=u.pathname==='/'?'index.html':u.pathname.slice(1),file=path.resolve(root,rel);
@@ -189,6 +190,54 @@ try{
   check('traces reach the self-report route on production',f.calls.filter(c=>c.path==='/api/voice/trace').length>=3);await f.context.close();
  }
  {
+  // A spoken weather question waits for the forecast and carries the voice-only weather rule.
+  const f=await fixture();await f.start();await f.ask("What's the weather?");await f.panel.locator('[data-phase="playing"]').waitFor();
+  const turn=f.calls.find(c=>c.path==='/api/messages'&&c.body.messages?.at(-1)?.content==="What's the weather?");
+  check('a spoken weather question carries the forecast',turn?.body.messages[0].content.includes('LIVE WEATHER: National Weather Service forecast for Detroit Lakes, MN'));
+  check('a spoken weather question carries the voice-only weather rule',turn?.body.messages[0].content.includes('Weather by voice: answer the question asked in one or two short sentences, leading with any active alert.'));
+  check('the spoken prompt says where Jenny stops',turn?.body.messages[0].content.includes('Jenny stops speaking after 4 sentences or 3 times of day'));
+  await f.context.close();
+ }
+ {
+  // "Keep going" reads the next part of a shortened reply with no new model request.
+  const f=await fixture();await f.start();f.mode('long');await f.ask('Tell me everything.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  const asks=()=>f.calls.filter(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||'')).length;
+  const before=asks(),ttsBefore=f.calls.filter(c=>c.path==='/api/tts').length;
+  await f.end();await f.page.waitForFunction(()=>recs.length===2&&recs[1].active,null,{timeout:10000});await f.page.locator('[data-voice-phase="listening"]').waitFor();
+  await f.page.evaluate(()=>say('Keep going.'));
+  await f.page.waitForFunction(()=>document.querySelector('[data-phase="playing"]'),null,{timeout:10000});
+  const next=f.calls.filter(c=>c.path==='/api/tts').slice(ttsBefore);
+  check('"keep going" sends no new model request',asks()===before);
+  check('"keep going" speaks the next 4 sentences',next.length===1&&next[0].body.text==='This is the complete long reply. '.repeat(4).trim());
+  check('"keep going" adds no runtime errors',f.errors.length===0);await f.context.close();
+ }
+ {
+  // After Stop, an old reply's leftover is gone: "keep going" asks the model again.
+  const f=await fixture();await f.start();f.mode('long');await f.ask('Tell me everything.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  const asks=()=>f.calls.filter(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||''));
+  await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.locator('[data-phase="ready"]').waitFor();
+  f.mode('normal');await f.start();await f.ask('Keep going.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('after Stop, "keep going" is a new question, not an old leftover',asks().length===2&&asks()[1].body.messages.at(-1).content==='Keep going.');
+  await f.context.close();
+ }
+ {
+  // The live-data guard's warning is never cut by the spoken cap.
+  const f=await fixture();await f.start();f.mode('claim');await f.ask('What did Sarah want?');await f.panel.locator('[data-phase="playing"]').waitFor();
+  const said=f.calls.filter(c=>c.path==='/api/tts').map(c=>c.body.text).join(' ');
+  check("a capped unverified reply still speaks the \"didn't check\" warning",said.includes("I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up."));
+  check('the warning follows the kept part of the answer',said.startsWith("Sarah wanted to move Saturday's charter to 9.")&&!said.includes('She sounded happy.'));
+  await f.context.close();
+ }
+ {
+  // An hour-by-hour list written as one sentence stops at 3 times of day.
+  const f=await fixture();await f.start();f.mode('hourly');await f.ask('Give me the hourly forecast.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  const said=f.calls.filter(c=>c.path==='/api/tts').map(c=>c.body.text).join(' ');
+  const times=(said.match(/\b\d{1,2}(?::\d{2})?\s?[AP]M\b/g)||[]).length;
+  check('a one-sentence 12-hour list is spoken only to its 3rd hour',times===3&&said.startsWith('Next 12 hours: 9 AM 32°')&&said.endsWith('…'));
+  check('the panel says a short version was spoken',(await f.panel.innerText()).includes('Short version spoken'));
+  await f.context.close();
+ }
+ {
   const f=await fixture({preview:true});await f.start();await f.finish();check('preview sends nothing and keeps the words in the Ask Ember box',!f.calls.some(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||''))&&(await f.page.getByRole('textbox',{name:'Ask Ember'}).inputValue()).includes('next trip'));check('preview makes no TTS calls',!f.calls.some(c=>c.path==='/api/tts'));await f.context.close();
  }
  {
@@ -216,10 +265,17 @@ try{
  }
  {
   const f=await fixture({reduced:true});await f.start();f.mode('long');await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
-  check('long reply explicitly announces partial speech',(await f.panel.innerText()).includes('Speaking the first part only'));
+  check('long spoken reply says it spoke the short version',(await f.panel.innerText()).includes('Short version spoken'));
   check('long reply retained in full',await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.length>1000));
-  check('TTS respects 1000-character Worker cap',f.calls.find(c=>c.path==='/api/tts').body.text.length<=1000);
+  // Hard spoken cap (2026-11-14): a conversation turn speaks at most 3 sentences / 420 characters.
+  const spokenTurn=f.calls.find(c=>c.path==='/api/tts').body.text;
+  check('a spoken turn stops after 4 sentences',spokenTurn==='This is the complete long reply. '.repeat(4).trim());
+  check('a spoken turn never exceeds 420 characters',f.calls.filter(c=>c.path==='/api/tts').every(c=>c.body.text.length<=420));
   check('reduced motion disables branding transform',await f.page.locator('.brand-phrase').evaluate(e=>getComputedStyle(e).animationName==='none'&&getComputedStyle(e).transform==='none'));
+  await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.getByRole('button',{name:'Read first part',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  const replay=f.calls.filter(c=>c.path==='/api/tts').at(-1).body.text;
+  check('an explicit Read reply still reads up to the 1000-character limit',replay.length>420&&replay.length<=1000);
+  check('an explicit Read reply never reuses the shortened audio',f.calls.filter(c=>c.path==='/api/tts').length===2);
   await f.context.close();
  }
  {

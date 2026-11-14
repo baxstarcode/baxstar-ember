@@ -514,6 +514,68 @@ const OPS_FEEDS = [
   { server: "gmail",    key: "emails",     label: "Gmail",    what: "email" },
   { server: "calendar", key: "events",     label: "Calendar", what: "schedule" },
 ];
+// LIVE WEATHER (2026-11-14). Brady asked for Ember to "check the weather on a daily
+// basis" and chose the National Weather Service ("NWS"): free, no key, the official
+// forecast and alerts. The Worker's /api/weather returns one small report for Detroit
+// Lakes; it rides in the chat context, so a weather question is answered from real
+// data with no connector round trip, and "Brief my day" opens with a weather line.
+// No report means Ember says she can't see the forecast. She never guesses.
+const WEATHER_ENDPOINT = STATUS_ENDPOINT.replace(/\/connectors\/status$/, "/weather");
+const WEATHER_FRESH_MS = 10 * 60 * 1000, WEATHER_USABLE_MS = 90 * 60 * 1000, WEATHER_WAIT_MS = 6000;
+const WEATHER_Q = /\b(weather|forecasts?|temperatures?|temps?|degrees|wind(?:y|s)?|gusts?|rain(?:ing|y|s)?|snow(?:ing|y|s)?|sleet|hail|storms?|thunder(?:storms?)?|lightning|sunny|cloud(?:y|s)|fog(?:gy)?|humid(?:ity)?|freez(?:e|ing)|frost|wind ?chill|heat index|advisor(?:y|ies)|radar)\b|\b(?:how|what)(?:'s| is| does) it (?:look(?:ing)? )?(?:like )?outside\b/i;
+const BRIEF_Q = /\bbrief (?:me|my)\b/i;
+const weatherStore = { report: null, at: 0, pending: null };
+function validWeather(d) {
+  return d && typeof d === "object" && typeof d.place === "string" && typeof d.fetchedAt === "string" &&
+    Array.isArray(d.periods) && d.periods.length > 0 && d.periods.every((p) => p && typeof p.name === "string" && Number.isFinite(p.temp)) &&
+    Array.isArray(d.hours) && Array.isArray(d.alerts);
+}
+const weatherAge = () => weatherStore.report ? Date.now() - weatherStore.at : Infinity;
+function loadWeather() {
+  if (weatherStore.pending) return weatherStore.pending;
+  weatherStore.pending = (async () => {
+    try {
+      const res = await fetch(WEATHER_ENDPOINT, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}", signal: AbortSignal.timeout(WEATHER_WAIT_MS) });
+      const data = res.ok ? await res.json() : null;
+      if (validWeather(data)) { weatherStore.report = data; weatherStore.at = Date.now(); }
+    } catch {}
+    weatherStore.pending = null;
+    return weatherStore.report;
+  })();
+  return weatherStore.pending;
+}
+const chicagoClock = (iso, withDay) => {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t).toLocaleString("en-US", { timeZone: "America/Chicago", ...(withDay ? { weekday: "short" } : {}), hour: "numeric", minute: "2-digit" }) : "";
+};
+// Spoken turns only (Brady's complaint was about the voice). Earlier wording ("ONE
+// sentence, the headline only") made stand-in models answer a wind or pontoon question
+// with the day's generic 7-10 mph headline while the hourly rows showed 13-14 mph now,
+// and answer "the next few days" with today only; this asks for the question's answer.
+const WEATHER_VOICE_RULE = "\nWeather by voice: answer the question asked in one or two short sentences, leading with any active alert. A general question gets the headline: sky, high or low, wind, rain chance. For wind, boating or fishing, use the hourly rows to give the wind now and when it changes, as one or two times, never a list. \"The next few days\" gets one short clause per day, at most 3 days. Read hours out only when Brady asks for the hourly forecast, and then at most 3.";
+function weatherContext(voice = false) {
+  const r = weatherStore.report;
+  if (!r || weatherAge() > WEATHER_USABLE_MS) {
+    return "\nLIVE WEATHER: unavailable right now (the National Weather Service lookup did not answer). If asked about weather, wind or outdoor conditions, say you can't see the forecast right now. Never guess weather.";
+  }
+  const text = (v, max) => String(v ?? "").replace(/\s+/g, " ").slice(0, max);
+  const pct = (v) => Number.isFinite(v) ? `, precip ${v}%` : "";
+  const periods = r.periods.slice(0, 6).map((p) =>
+    `${text(p.name, 24)} (${p.day === false ? "low" : "high"} ${p.temp}°${p.unit === "C" ? "C" : "F"}${p.wind ? `, wind ${text(p.wind, 30)}` : ""}${pct(p.pop)}): ${text(p.detail || p.short, 260)}`);
+  const hours = r.hours.slice(0, 12).map((h) => {
+    const at = Date.parse(h.at);
+    const label = Number.isFinite(at) ? new Date(at).toLocaleString("en-US", { timeZone: "America/Chicago", hour: "numeric" }) : "";
+    return label && Number.isFinite(h.temp) ? `${label} ${h.temp}°${h.wind ? ` ${text(h.wind, 20)}` : ""}${Number.isFinite(h.pop) ? ` ${h.pop}%` : ""}` : null;
+  }).filter(Boolean);
+  const alerts = r.alertsChecked === false ? "not checked (the alert lookup failed); do not say there are none."
+    : !r.alerts.length ? "none active."
+    : r.alerts.slice(0, 5).map((a) => `${text(a.event, 60)}${a.severity ? ` (${text(a.severity, 12)})` : ""}${a.ends ? ` until ${chicagoClock(a.ends, true)}` : ""}${a.headline ? `: ${text(a.headline, 220)}` : ""}`).join(" | ");
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(r.fetchedAt)) / 60000));
+  return `\nLIVE WEATHER: ${text(r.source || "National Weather Service", 40)} forecast for ${text(r.place, 40)}, fetched ${chicagoClock(r.fetchedAt)} Central${r.updatedAt ? ` (forecast issued ${chicagoClock(r.updatedAt, true)})` : ""}.${r.stale || mins > 30 ? ` This copy is about ${mins} minutes old; say so if asked.` : ""}
+${periods.join("\n")}${hours.length ? `\nHourly (time, temp, wind, precip chance): ${hours.join("; ")}` : ""}
+Weather alerts: ${alerts}
+Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.${voice ? WEATHER_VOICE_RULE : ""}`;
+}
 // Signed-in Ember starts a fresh sign-in here; the Worker saves the new grant itself.
 const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
 const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
@@ -797,8 +859,13 @@ const LIVE_DATA = [
 ];
 // Drafting and how-to questions are not fact claims about Brady's data.
 const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|translate)\b|^\s*(how (?:do|can|would|should) (?:i|you)|what is an? |explain|define)\b/i;
+// "How does tomorrow look for wind?" is a forecast question. The day words that make
+// the loose calendar patterns fire are set aside for it; a real calendar word
+// ("my trips", "am I free", "bookings") still asks for the calendar.
+const DAY_WORDS = /\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b/gi;
 function liveDataNeed(text) {
   if (LIVE_EXEMPT.test(text)) return null;
+  if (WEATHER_Q.test(text)) text = text.replace(DAY_WORDS, " ");
   for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
   return null;
 }
@@ -810,6 +877,9 @@ const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|d
 const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
 const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
 const toolResults = (resp) => (resp?.content || []).filter((b) => b?.type === "mcp_tool_result" && b.is_error === false).length;
+// Appended by code to an unverified reply. The voice cap never cuts it: it is always
+// spoken after whatever part of the answer was kept.
+const LIVE_CAVEAT = "I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
 const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
 const LIVE_RETRY_NOTE = (need) => `\n\n[Ember check: this question needs Brady's live ${need}. Call the matching read-only tool in THIS turn before answering. Facts in earlier replies are not tool results. If the tool fails, say you couldn't check.]`;
 
@@ -1449,6 +1519,7 @@ function emberPhrases(text) {
 // "Now Playing". An automatic turn that hears no words gets one fresh restart
 // after a 3 s gap, then pauses. Every turn reports its event timeline to
 // Workers Logs (/api/voice/trace, no words or audio) so the device answers.
+const SHORT_NOTE = "Short version spoken. The full reply is in the conversation below. Tap her to interrupt.";
 const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500, REARM_DEAF_RETRY_MS = 3000;
 const REARM_AUDIO_MS = 2500, REARM_WORDS_MS = 10000;
 function voiceUaFamily() {
@@ -1634,6 +1705,8 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     patch({ open: true });
     if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
     const rearm = continuing === true;
+    // A tap starts a new conversation: an old reply's leftover is not "the rest" any more.
+    if (!rearm) c.rest = "";
     const trigger = rearm ? c.nextTrigger || "auto" : "tap";
     c.nextTrigger = null;
     if (!rearm) { c.retried = false; c.deafRetried = false; }
@@ -1744,6 +1817,95 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   // clips, fetched in parallel and played in order on the same player. Same 1000
   // character spoken cap, same voice, same Stop/interrupt rules.
   const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1000;
+  // SPOKEN TURN CAP (2026-11-14). Brady: "DO NOT have her dumbass voice talk forever
+  // to tell me 12 hours worth of information". The 1-3 sentence rule was only a
+  // prompt instruction, so nothing stopped a long answer from being read out. A
+  // conversation turn now stops speaking at the first of:
+  //   - 4 sentences (a line break or ";" counts; a heading line ending in ":" does not),
+  //   - the 4th time of day ("3 PM", "noon"): an hour-by-hour list stops at 3 hours,
+  //     cut at the comma or semicolon before it, even when written as one sentence,
+  //   - the last sentence end inside 420 written characters (units such as "mph"
+  //     and "°" are longer spoken, so this is roughly 25 to 35 seconds).
+  // "3 p.m.", "Dr.", "Mike T.", "Aug.", "U.S." and list markers like "2." are not
+  // sentence ends; "the high is 41." is. The live-data guard's warning is never cut
+  // (it is spoken after the kept part), narration before a lookup is skipped, and
+  // "keep going" reads the next part. The full reply always stays on screen; an
+  // explicit Read reply keeps the older 1000-character limit.
+  const TURN_SENTENCES = 4, TURN_TIMES = 3, TURN_SPOKEN_MAX = 420;
+  const ABBREV = /^(?:[ap]\.m\.|u\.s\.|e\.g\.|i\.e\.|(?:mr|mrs|ms|dr|st|vs|approx|jr|sr|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\.)$/i;
+  const TIME_OF_DAY = /\b\d{1,2}(?::\d{2})?\s?[ap]\.?m\b\.?|\bnoon\b|\bmidnight\b/gi;
+  // Where a sentence-count or length limit stops the text, or null while streaming
+  // text has not reached it. A sentence end at the very end of still-streaming text
+  // is not trusted yet.
+  function sentenceStop(text, final) {
+    const re = /[.!?…]["”’)\]]*(?=\s|$)|;(?=\s)|\n+/g;
+    let count = 0, inside = -1, prev = -1, m;
+    while ((m = re.exec(text))) {
+      const at = m.index + m[0].length;
+      if (at > TURN_SPOKEN_MAX) break;
+      if (at >= text.length && !final) break;
+      const before = text.slice(0, m.index);
+      if (m[0][0] === ".") {
+        const tok = text.slice(0, m.index + 1).match(/\S+$/)?.[0] || "";
+        const pre = text.slice(0, m.index + 1 - tok.length);
+        // A one-letter initial ("Mike T."), a known abbreviation, or a list number
+        // at the start of a line or right after a sentence end ("Saturday. 2. Sarah").
+        if (/^[A-Z]\.$/.test(tok) || ABBREV.test(tok) ||
+            (/^\d\.$/.test(tok) && (!pre.trim() || /[.!?…]\s*$|\n\s*$/.test(pre)))) continue;
+      }
+      // A line break straight after a sentence end is the same boundary, not another,
+      // and a heading line ("Top three voicemails:") is not a sentence.
+      const joined = m.index === prev;
+      if (m[0][0] === "\n" && /:\s*$/.test(before)) continue;
+      prev = at;
+      if (joined || !before.trim()) { if (inside >= 0) inside = at; continue; }
+      count++; inside = at;
+      if (count >= TURN_SENTENCES) return { end: at, cut: false };
+    }
+    if (text.length > TURN_SPOKEN_MAX) {
+      if (inside > 0) return { end: inside, cut: false };
+      const space = text.lastIndexOf(" ", TURN_SPOKEN_MAX);
+      return { end: space > 0 ? space : TURN_SPOKEN_MAX, cut: true };
+    }
+    return final ? { end: text.length, cut: false } : null;
+  }
+  // Stop before the 4th time of day, at the last comma, semicolon, colon, dash, "and",
+  // sentence end or line break after the 3rd. A range ("6 AM to noon", "1-5 PM",
+  // "from 2 PM until 4 PM") counts as one time.
+  const TIME_RANGE = new RegExp("^\\s*(?:to|until|till|through|thru|[-–—])\\s*(?:" + TIME_OF_DAY.source + ")", "i");
+  function timeStop(text) {
+    const re = new RegExp(TIME_OF_DAY.source, "gi");
+    let m, n = 0, third = 0;
+    while ((m = re.exec(text))) {
+      const range = TIME_RANGE.exec(text.slice(re.lastIndex));
+      if (range) re.lastIndex += range[0].length;
+      if (++n <= TURN_TIMES) { third = re.lastIndex; continue; }
+      const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n|\s(?:[-–—]|and)\s/g;
+      let b, end = -1, sentence = false;
+      while ((b = bre.exec(head))) {
+        if (b.index < third) continue;
+        end = b[1] || b[2] ? b.index + (b[2] ? b[2].length : 0) : b[0][0] === "\n" ? b.index : b.index;
+        sentence = Boolean(b[2]) || b[0][0] === "\n";
+      }
+      if (end < third) { end = head.trimEnd().length; sentence = false; }
+      return { end, cut: !sentence };
+    }
+    return null;
+  }
+  function spokenStop(text, final) {
+    const a = sentenceStop(text, final), b = timeStop(text);
+    if (!b) return a;
+    // Streaming: the time limit is already known even when the sentence limit is not.
+    return !a || b.end < a.end ? b : a;
+  }
+  function spokenPart(text) {
+    const stop = spokenStop(text, true);
+    const head = text.slice(0, stop.end).trim();
+    const capped = stop.end < text.trimEnd().length;
+    return { text: stop.cut && capped ? head.replace(/[,;:]$/, "") + "…" : head, capped, rest: capped ? text.slice(stop.end).replace(/^[\s,;:]+/, "").trim() : "" };
+  }
+  // Brady's way to hear what the cap left out, without a new model request.
+  const MORE_Q = /^(?:(?:ok(?:ay)?|yes|yeah|sure)[,\s]+)?(?:keep going|go on|go ahead|continue|(?:tell me |read me |read |give me )?the rest(?: of it)?|what else|(?:tell me )?more)[.!?\s]*$/i;
   function endStream() { const s = c.stream; c.stream = null; s?.controller.abort(); }
   function clipEnd(text, min, first) {
     const re = /[.!?…]["”’)\]]*(?=\s)|\n+/g;
@@ -1754,25 +1916,43 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     }
     return end;
   }
-  function feedSpeech(epoch, text, final = false) {
+  function feedSpeech(epoch, text, final = false, base = 0, tail = "") {
     const s = c.stream;
     if (!s || s.epoch !== epoch || !c.live) return;
     if (!final) { s.streamed = true; mark("first-text"); }
+    // Text before a lookup result is narration: skipped while nothing after the current
+    // start point has been spoken. Once the answer has started, a later lookup in the
+    // same turn moves nothing, so the cap counts across the whole turn.
+    if (base > (s.base || 0) && base <= text.length && s.said <= (s.base || 0)) { s.base = base; s.said = base; }
+    const from = s.base || 0;
+    // Only the text up to the turn cap is ever spoken; once the cap point is known,
+    // that prefix is complete even if the model is still writing.
+    const found = spokenStop(text.slice(from), final);
+    const stop = found && { end: from + found.end, cut: found.cut };
+    const view = stop ? text.slice(0, stop.end) : text, viewFinal = final || Boolean(stop);
     while (!s.capped && s.spoken < SPOKEN_MAX) {
-      const rest = text.slice(s.said);
-      if (!rest.trim()) { s.said = text.length; break; }
+      const rest = view.slice(s.said);
+      if (!rest.trim()) { s.said = view.length; break; }
       const first = s.clips.length === (s.lead || 0);
       let end = clipEnd(rest, first ? FIRST_CLIP_MIN : CLIP_MIN, first);
-      if (end < 0 && final) end = rest.length;
+      if (end < 0 && viewFinal) end = rest.length;
       if (end < 0) break;
       let piece = rest.slice(0, end).trim();
       s.said += end;
+      if (stop?.cut && s.said >= view.length && piece && stop.end < text.trimEnd().length) piece = piece.replace(/[,;:]$/, "") + "…";
       const room = SPOKEN_MAX - s.spoken;
       if (piece.length > room) { piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "…"; s.capped = true; }
       if (piece) { s.spoken += piece.length; queueClip(s, piece); }
     }
+    if (stop && s.said >= view.length) s.capped = true;
     if (final) {
       s.done = true;
+      if (stop && stop.end < text.trimEnd().length) {
+        c.rest = text.slice(stop.end).replace(/^[\s,;:]+/, "").trim(); c.spokenShort = true;
+        if (c.phase === "playing") patch({ note: SHORT_NOTE });
+      }
+      // The live-data guard's warning is always spoken, after whatever the cap kept.
+      if (tail && !s.tail) { s.tail = true; queueClip(s, tail); }
       if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) { s.waiting = false; finishTurn(); }
     }
   }
@@ -1828,13 +2008,26 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       .catch(() => { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); pauseConversation(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } })
       .finally(() => clearTimeout(c.timers.play));
   }
-  async function speak() {
-    if (!c.answer || c.rec || c.request || !production || document.hidden) return;
+  async function speak(turn = false, source) {
+    // The Read reply button passes its click event as `turn`; only true caps the turn.
+    const full = typeof source === "string" ? source : c.answer;
+    if (!full || c.rec || c.request || !production || document.hidden) return;
     const epoch = ++c.epoch; keepAwake(); ensureContext();
-    const long = c.answer.length > 1000;
-    const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "…" : c.answer;
+    let part = null;
+    if (turn === true) {
+      const caveat = full.endsWith(LIVE_CAVEAT) ? LIVE_CAVEAT : "";
+      const body = caveat ? full.slice(0, -caveat.length).trimEnd() : full;
+      const kept = spokenPart(body);
+      c.rest = kept.rest;
+      part = { text: caveat ? `${kept.text} ${caveat}` : kept.text, capped: kept.capped };
+    }
+    const long = full.length > 1000;
+    const spoken = part ? part.text : long ? full.slice(0, 997).replace(/\s+\S*$/, "") + "…" : full;
+    c.spokenShort = part ? part.capped : false;
+    // Only audio of the whole reply may be reused by Read reply.
+    const whole = !part || (!part.capped && full === c.answer);
     c.phrases = emberPhrases(spoken);
-    if (c.blob) { await playReply(epoch); return; }
+    if (c.blob && !part) { await playReply(epoch); return; }
     const controller = new AbortController(); c.request = controller;
     patch({ phase: "preparing", note: "Preparing Jenny’s voice…" });
     mark("first-clip-request");
@@ -1848,21 +2041,29 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       if (!c.live || epoch !== c.epoch) return;
       c.blob = blob; c.request = null; mark("first-clip-ready");
       await playReply(epoch);
+      if (!whole && c.blob === blob) c.blob = null;
     } catch (error) { if (c.live && epoch === c.epoch) { traceEnd("speech-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   async function send() {
     if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
+    // "Keep going" after a shortened spoken reply: the next part, with no new request.
+    if (c.rest && MORE_Q.test(c.draft.trim())) {
+      const rest = c.rest; c.rest = ""; mark("send"); endStream(); clearAudio();
+      await speak(true, rest);
+      return;
+    }
     const epoch = ++c.epoch, controller = new AbortController(); c.request = controller;
-    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake(); endStream(); ensureContext();
+    c.answer = ""; c.blob = null; c.rest = ""; c.interrupted = false; c.spokenShort = false; clearAudio(); keepAwake(); endStream(); ensureContext();
     c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
     patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
     mark("send");
+    let heard = { text: "", base: 0 };
     const timeout = setTimeout(() => controller.abort(), 60000);
     try {
       const result = await options.current.onSend(c.draft.trim(), {
         voiceSignal: controller.signal,
-        onVoiceText: (text) => feedSpeech(epoch, text),
+        onVoiceText: (text, base = 0) => { heard = { text, base }; feedSpeech(epoch, text, false, base); },
         // A live-data question holds Jenny until a real tool result arrives; this
         // short line keeps the wait from sounding like silence.
         onVoiceHold: (line) => { const s = c.stream; if (s?.epoch === epoch && !s.clips.length) { s.lead = 1; queueClip(s, line); } },
@@ -1875,8 +2076,14 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       c.answer = result; patch({ answer: result });
       // Streamed sentences are already playing or queued; a reply that arrived in one
       // piece (no stream) is spoken the old way. A failed clip has already said why.
-      if (c.stream?.epoch === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
-      if (c.spokeEpoch !== epoch) { c.stream = null; await speak(); }
+      // The guard's warning rides as a tail the cap never cuts. A streamed reply finishes
+      // on the text that was streamed, so its offsets still line up.
+      const caveat = result.endsWith(LIVE_CAVEAT) ? LIVE_CAVEAT : "";
+      const body = caveat ? result.slice(0, -caveat.length).trimEnd() : result;
+      if (c.stream?.epoch === epoch && (c.stream.streamed || c.stream.clips.length)) {
+        feedSpeech(epoch, c.stream.streamed ? heard.text : body, true, c.stream.streamed ? heard.base : 0, caveat);
+      }
+      if (c.spokeEpoch !== epoch) { c.stream = null; await speak(true); }
     } catch { if (c.live && epoch === c.epoch) { traceEnd("reply-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
@@ -1886,7 +2093,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Sending from the phone's controls can leave the mouth above the viewport.
     // Bring the speaking face back once; later scrolling stays under user control.
     if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
-    session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
+    session("playback"); keepAwake(); patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
     if (c.web) phraseAt(0, c.web.duration); else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {
@@ -1922,11 +2129,11 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     return () => { c.live = false; stop(); closeContext(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", interrupt); };
   }, []);
   useEffect(() => { if (!enabled) { stop(); closeContext(); patch({ open: false }); } }, [enabled]);
-  return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
+  return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop: (note) => { c.rest = ""; stop(note); }, playing, ended, phraseAt,
     interrupt,
     // While Jenny talks, a tap on her interrupts and listens; otherwise the mouth starts or stops the conversation.
-    mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
-    close: () => { stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
+    mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? (c.rest = "", stop("Conversation stopped. Tap the mouth to start again.")) : start(),
+    close: () => { c.rest = ""; stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
     paused: () => { if (audioRef.current?.ended && c.stream?.epoch === c.epoch) return; if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
@@ -2485,8 +2692,18 @@ export default function BaxstarEmber() {
     // Spoken turns run at Low effort unless Brady switched Fast replies off.
     const turnEffort = voiceSignal && voiceFast ? "low" : chatEffort;
     try {
+      // A weather or daily-brief question waits (briefly) for a fresh forecast; any
+      // other turn uses the copy on hand and refreshes it in the background.
+      if (weatherAge() > WEATHER_FRESH_MS) {
+        if (WEATHER_Q.test(q) || BRIEF_Q.test(q)) {
+          const wxHold = voiceSignal ? setTimeout(() => { if (isCurrent()) onVoiceHold?.("One moment, checking the forecast."); }, 900) : null;
+          await loadWeather();
+          clearTimeout(wxHold);
+          if (!isCurrent()) return null;
+        } else loadWeather();
+      }
       const messages = [
-        { role: "user", content: bradyContext() + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
@@ -2495,7 +2712,9 @@ export default function BaxstarEmber() {
       // upstream. The one exception is the live-data guard below, which re-asks only
       // when no connector result came back at all (connectors are read-only).
       const need = liveDataNeed(q);
-      let held = Boolean(voiceSignal && need), latest = "", degraded = false, resp, guard = need ? "ok" : null;
+      // answerFrom: where the text after the latest lookup result starts. Narration written
+      // before a lookup ("Let me check your calendar.") is not read out or counted.
+      let held = Boolean(voiceSignal && need), latest = "", answerFrom = 0, degraded = false, resp, guard = need ? "ok" : null;
       // Only when the lookup is slow: a quick result goes straight to the answer.
       const holdTimer = held ? setTimeout(() => { if (held && isCurrent()) onVoiceHold?.(`One moment, checking your ${need}.`); }, 900) : null;
       onVoiceMeta?.({ live: need });
@@ -2503,7 +2722,7 @@ export default function BaxstarEmber() {
         // Drive rides along only for a question about files; it is not on every turn.
         useTools: true, servers: need === "files" ? [...MCP_SERVERS, DRIVE_SERVER] : undefined, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
         signal: request.controller.signal,
-        onDelta: (content) => { latest = content; patchAssistant({ content }); if (isCurrent() && !held) onVoiceText?.(content); },
+        onDelta: (content) => { latest = content; patchAssistant({ content }); if (isCurrent() && !held) onVoiceText?.(content, answerFrom); },
         onMeta: ({ degraded: d }) => { onVoiceMeta?.({ headers: true }); degraded ||= d; if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current)); },
         // Jenny speaks a live-data answer only once a real connector result is in.
         onTool: (block) => {
@@ -2512,13 +2731,14 @@ export default function BaxstarEmber() {
           if (block.type === "mcp_tool_use") { if (voiceSignal && !need && !latest.trim()) onVoiceHold?.(`One moment, checking your ${LIVE_SERVER_LABEL[block.server_name] || "records"}.`); return; }
           if (block.type !== "mcp_tool_result" || block.is_error) return;
           onVoiceMeta?.({ tool: true });
-          if (held) { held = false; if (latest) onVoiceText?.(latest); }
+          answerFrom = latest.length;
+          if (held) { held = false; if (latest) onVoiceText?.(latest, answerFrom); }
         },
       });
       resp = await ask(messages);
       if (!isCurrent()) return null;
       if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
-        guard = "retried"; latest = ""; patchAssistant({ content: "" });
+        guard = "retried"; latest = ""; answerFrom = 0; patchAssistant({ content: "" });
         const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
         resp = await ask(again);
         if (!isCurrent()) return null;
@@ -2530,7 +2750,7 @@ export default function BaxstarEmber() {
         guard = "refused"; answer = liveMissLine(need);
         resp = { ...resp, content: [{ type: "text", text: answer }] };
       } else if (!need && !toolResults(resp) && LIVE_CLAIM.test(answer) && !HONEST_MISS.test(answer)) {
-        guard = "caveat"; answer += "\n\nI didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
+        guard = "caveat"; answer += "\n\n" + LIVE_CAVEAT;
         resp = { ...resp, content: [{ type: "text", text: answer }] };
       }
       onVoiceMeta?.({ guard, tools: toolResults(resp) });
@@ -2611,6 +2831,7 @@ export default function BaxstarEmber() {
     setError("");
     // Stamped at the attempt, so a fully offline round still retries on return.
     lastSyncRef.current = Date.now();
+    loadWeather();
     let landed = [];
     let problems = [];
     try {
@@ -3237,7 +3458,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
   const ACTIONS = [
     { id: "miss", label: "What'd I miss", primary: true, prompt: "What did I miss? Check missed calls and voicemails on both Quo inboxes (last 24h), unread Gmail (last 24h), and today's + tomorrow's calendar. BLUF summary, then anything needing a reply." },
     { id: "triage", label: "Triage inbox", dot: "var(--ember-orange)", prompt: "Triage my unread Gmail from the last 24h: bucket into NEEDS REPLY / FYI / IGNORE, one line each. Suggest a one-sentence reply for each NEEDS REPLY." },
-    { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
+    { id: "brief", label: "Brief my day", dot: "var(--brass)", prompt: "Brief me on tomorrow: open with one weather line for tomorrow from the live weather block (high and low, wind, precipitation chance, any active alert), then calendar events in order with times, plus any open loops from today's calls or emails I should handle before the first event." },
     // Handoff draft was dropped from the dock 2026-08-01 to make room for Projects —
     // Rule 15 makes log writes Claude's job automatically, and the AI Handoff studio
     // tool still covers manual pulls.

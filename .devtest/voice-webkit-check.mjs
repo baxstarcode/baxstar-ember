@@ -70,6 +70,7 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeco
       if (state.mode === 'claimNoTool') return reply('Sure. Also, your calendar shows a meeting at 3.', false);
       if (state.mode === 'slow') { await new Promise((r) => setTimeout(r, 1500)); return reply('Short answer.', false); }
       if (state.mode === 'plain') return reply('Here is a short draft: Running late, see you soon.', false);
+      if (state.mode === 'long') return reply('Sentence one is here. Sentence two is here. Sentence three is here. Sentence four is here. Sentence five is here. Sentence six is here.', false);
       return reply('Your next trip is at 6 AM tomorrow.', true);
     }
     const file = path.resolve(root, u.pathname === '/' ? 'index.html' : u.pathname.slice(1));
@@ -155,6 +156,25 @@ try {
     check('the turn after an interruption reports its trigger', await f.page.evaluate(() => emberVoiceTraces.some((x) => x.trigger === 'interrupt')) );
     check('spoken turns ask for 1 to 3 short sentences', f.chats().every((c) => c.body.messages[0].content.includes('1 to 3 short plain sentences') && c.body.messages[0].content.includes('Never read out more than 3 items')));
     check('interrupting adds no runtime errors', f.errors.length === 0);
+    await f.context.close();
+  }
+
+  {
+    // Spoken turn cap on the iPhone Web Audio path: 4 sentences, the mic comes back by
+    // itself, and "keep going" reads the next part with no new request.
+    const f = await fixture();
+    f.state.mode = 'long';
+    await f.tap(); await f.page.evaluate(() => say('Tell me everything'));
+    await f.page.locator('[data-voice-phase="playing"]').waitFor();
+    await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 8000 });
+    const said = f.calls.filter((c) => c.path === '/api/tts').map((c) => c.body.text);
+    check('iPhone: a long reply is spoken only to its 4th sentence', said.length === 1 && said[0] === 'Sentence one is here. Sentence two is here. Sentence three is here. Sentence four is here.');
+    check('iPhone: the mic reopens after a shortened reply with no tap', await f.page.evaluate(() => recs.length === 2 && recs[1].active));
+    await f.page.evaluate(() => say('Keep going')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
+    await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 8000 });
+    const next = f.calls.filter((c) => c.path === '/api/tts').map((c) => c.body.text);
+    check('iPhone: "keep going" speaks the rest with no new model request', next.length === 2 && next[1] === 'Sentence five is here. Sentence six is here.' && f.chats().length === 1);
+    check('iPhone: the cap adds no runtime errors', f.errors.length === 0);
     await f.context.close();
   }
 
