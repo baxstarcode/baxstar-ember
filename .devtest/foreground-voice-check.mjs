@@ -216,10 +216,17 @@ try{
  }
  {
   const f=await fixture({reduced:true});await f.start();f.mode('long');await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
-  check('long reply explicitly announces partial speech',(await f.panel.innerText()).includes('Speaking the first part only'));
+  check('long spoken reply says it spoke the short version',(await f.panel.innerText()).includes('Short version spoken'));
   check('long reply retained in full',await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.length>1000));
-  check('TTS respects 1000-character Worker cap',f.calls.find(c=>c.path==='/api/tts').body.text.length<=1000);
+  // Hard spoken cap (2026-11-14): a conversation turn speaks at most 3 sentences / 420 characters.
+  const spokenTurn=f.calls.find(c=>c.path==='/api/tts').body.text;
+  check('a spoken turn stops after 3 sentences',spokenTurn==='This is the complete long reply. '.repeat(3).trim());
+  check('a spoken turn never exceeds 420 characters',f.calls.filter(c=>c.path==='/api/tts').every(c=>c.body.text.length<=420));
   check('reduced motion disables branding transform',await f.page.locator('.brand-phrase').evaluate(e=>getComputedStyle(e).animationName==='none'&&getComputedStyle(e).transform==='none'));
+  await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.getByRole('button',{name:'Read first part',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();
+  const replay=f.calls.filter(c=>c.path==='/api/tts').at(-1).body.text;
+  check('an explicit Read reply still reads up to the 1000-character limit',replay.length>420&&replay.length<=1000);
+  check('an explicit Read reply never reuses the shortened audio',f.calls.filter(c=>c.path==='/api/tts').length===2);
   await f.context.close();
  }
  {

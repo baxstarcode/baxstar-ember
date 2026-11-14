@@ -794,7 +794,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-14 16:07Z".startsWith("__") ? "dev" : "2026-11-14 16:07Z";
+  const BUILD_STAMP = "2026-11-14 22:07Z".startsWith("__") ? "dev" : "2026-11-14 22:07Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -854,7 +854,8 @@ LIVE WEATHER: ${text(r.source || "National Weather Service", 40)} forecast for $
 ${periods.join("\n")}${hours.length ? `
 Hourly (time, temp, wind, precip chance): ${hours.join("; ")}` : ""}
 Weather alerts: ${alerts}
-Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.`;
+Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.
+Weather answer length: a general weather question gets ONE sentence, the headline only: sky, high or low, wind, rain chance, and an active alert if there is one. The hourly rows are reference, never a script: use them only to answer a question about a specific time ("when does the wind drop?") with one time or one short range. Never read out the hours or more than one day unless Brady asks for them by name.`;
   }
   const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
   const STATUS_CONNECTORS = ["quo", "gmail", "calendar", "gdrive"];
@@ -1543,6 +1544,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
     if (phrase) pieces.push(phrase);
     return pieces;
   }
+  const SHORT_NOTE = "Short version spoken. The full reply is in the conversation below. Tap her to interrupt.";
   const REARM_HANDOFF_MS = 450;
   const REARM_HANDOFF_WEBKIT_MS = 800;
   const REARM_RETRY_MS = 1500;
@@ -2092,6 +2094,43 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       }
     }
     const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
+    const TURN_SENTENCES = 3, TURN_SPOKEN_MAX = 420;
+    const ABBREV = /^(?:[ap]\.m\.|(?:mr|mrs|ms|dr|st|vs|approx)\.|e\.g\.|i\.e\.)$/i;
+    function spokenStop(text, final) {
+      var _a;
+      const re = /[.!?…]["”’)\]]*(?=\s|$)|\n+/g;
+      let count = 0, inside = -1, prev = -1, m;
+      while (m = re.exec(text)) {
+        const at = m.index + m[0].length;
+        if (at > TURN_SPOKEN_MAX) break;
+        if (at >= text.length && !final) break;
+        const joined = m.index === prev;
+        if (m[0][0] === ".") {
+          const tok = ((_a = text.slice(0, m.index + 1).match(/\S+$/)) == null ? void 0 : _a[0]) || "";
+          const pre = text.slice(0, m.index + 1 - tok.length);
+          if (ABBREV.test(tok) || /^\d{1,2}\.$/.test(tok) && (!pre.trim() || /[.!?:…]\s*$|\n\s*$/.test(pre))) continue;
+        }
+        prev = at;
+        if (joined || !text.slice(0, m.index).trim()) {
+          if (inside >= 0) inside = at;
+          continue;
+        }
+        count++;
+        inside = at;
+        if (count >= TURN_SENTENCES) return { end: at, cut: false };
+      }
+      if (text.length > TURN_SPOKEN_MAX) {
+        if (inside > 0) return { end: inside, cut: false };
+        const space = text.lastIndexOf(" ", TURN_SPOKEN_MAX);
+        return { end: space > 0 ? space : TURN_SPOKEN_MAX, cut: true };
+      }
+      return final ? { end: text.length, cut: false } : null;
+    }
+    function spokenPart(text) {
+      const stop2 = spokenStop(text, true);
+      const head = text.slice(0, stop2.end).trim();
+      return { text: stop2.cut ? head + "\u2026" : head, capped: stop2.end < text.trimEnd().length };
+    }
     function endStream() {
       const s = c.stream;
       c.stream = null;
@@ -2116,18 +2155,21 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         s.streamed = true;
         mark("first-text");
       }
+      const stop2 = spokenStop(text, final);
+      const view = stop2 ? text.slice(0, stop2.end) : text, viewFinal = final || Boolean(stop2);
       while (!s.capped && s.spoken < SPOKEN_MAX) {
-        const rest = text.slice(s.said);
+        const rest = view.slice(s.said);
         if (!rest.trim()) {
-          s.said = text.length;
+          s.said = view.length;
           break;
         }
         const first = s.clips.length === (s.lead || 0);
         let end = clipEnd(rest, first ? FIRST_CLIP_MIN : CLIP_MIN, first);
-        if (end < 0 && final) end = rest.length;
+        if (end < 0 && viewFinal) end = rest.length;
         if (end < 0) break;
         let piece = rest.slice(0, end).trim();
         s.said += end;
+        if ((stop2 == null ? void 0 : stop2.cut) && s.said >= view.length && piece) piece += "\u2026";
         const room = SPOKEN_MAX - s.spoken;
         if (piece.length > room) {
           piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "\u2026";
@@ -2138,8 +2180,13 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           queueClip(s, piece);
         }
       }
+      if (stop2 && s.said >= view.length) s.capped = true;
       if (final) {
         s.done = true;
+        if (stop2 && stop2.end < text.trimEnd().length) {
+          c.spokenShort = true;
+          if (c.phase === "playing") patch({ note: SHORT_NOTE });
+        }
         if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) {
           s.waiting = false;
           finishTurn();
@@ -2214,15 +2261,16 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         }
       }).finally(() => clearTimeout(c.timers.play));
     }
-    async function speak() {
+    async function speak(turn = false) {
       if (!c.answer || c.rec || c.request || !production || document.hidden) return;
       const epoch = ++c.epoch;
       keepAwake();
       ensureContext();
-      const long = c.answer.length > 1e3;
-      const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : c.answer;
+      const long = c.answer.length > 1e3, part = turn === true ? spokenPart(c.answer) : null;
+      const spoken = part ? part.text : long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : c.answer;
+      c.spokenShort = part ? part.capped : false;
       c.phrases = emberPhrases(spoken);
-      if (c.blob) {
+      if (c.blob && !part) {
         await playReply(epoch);
         return;
       }
@@ -2242,6 +2290,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         c.request = null;
         mark("first-clip-ready");
         await playReply(epoch);
+        if ((part == null ? void 0 : part.capped) && c.blob === blob) c.blob = null;
       } catch (error) {
         if (c.live && epoch === c.epoch) {
           traceEnd("speech-failed");
@@ -2262,6 +2311,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       c.answer = "";
       c.blob = null;
       c.interrupted = false;
+      c.spokenShort = false;
       clearAudio();
       keepAwake();
       endStream();
@@ -2308,7 +2358,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         if (((_a = c.stream) == null ? void 0 : _a.epoch) === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
         if (c.spokeEpoch !== epoch) {
           c.stream = null;
-          await speak();
+          await speak(true);
         }
       } catch {
         if (c.live && epoch === c.epoch) {
@@ -2333,7 +2383,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       if (c.phase !== "playing") (_b = document.querySelector(".reactor-stage, .scope-bezel")) == null ? void 0 : _b.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       session("playback");
       keepAwake();
-      patch({ phase: "playing", note: c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
+      patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
       if (c.web) phraseAt(0, c.web.duration);
       else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
     }

@@ -123,7 +123,7 @@ async function measure(run, scenario = "latency") {
       await page.locator('audio[aria-label="Ember reply"]').evaluate((a) => { if (a.duration) a.currentTime = a.duration - 0.05; });
       await page.waitForTimeout(400);
     }
-    const m = await page.evaluate(() => ({ ...window.marks, recs: recs.length, phase: document.querySelector("[data-voice-phase]")?.dataset.voicePhase }));
+    const m = await page.evaluate(() => ({ ...window.marks, recs: recs.length, phase: document.querySelector("[data-voice-phase]")?.dataset.voicePhase, thread: document.querySelector(".home-thread")?.innerText || "" }));
     await context.close();
     return m;
   }
@@ -155,11 +155,16 @@ try {
     const said = seq.ttsTexts.join(" ").replace(/\s+/g, " ").trim();
     // The lookup took over 0.9 s, so Jenny first says she is checking; nothing of
     // the answer is spoken before the calendar result arrives.
-    assert.equal(said, ("One moment, checking your calendar. " + REPLY).replace(/\s+/g, " ").trim(), "the hold line, then every sentence once, in order");
+    // Spoken turn cap (2026-11-14): the 5-sentence reply is spoken only up to its
+    // third sentence; the rest stays on screen.
+    const firstThree = REPLY.match(/[^.!?]+[.!?]/g).slice(0, 3).join("").trim();
+    assert.equal(said, ("One moment, checking your calendar. " + firstThree).replace(/\s+/g, " ").trim(), "the hold line, then the first 3 sentences once, in order");
+    assert.ok(seq.ttsTexts.every((t) => t.length <= 420), "no clip over the 420-character turn cap");
+    assert.ok(seq.thread.includes("Nothing needs a reply before your first trip."), "the full reply stays in the conversation");
     assert.ok(seq.ttsTexts.length >= 2 && seq.plays >= seq.ttsTexts.length, `all ${seq.ttsTexts.length} clips played`);
     assert.equal(seq.phase, "listening", "the conversation hands the turn back after the last clip");
     assert.equal(seq.recs, 2, "the mic re-arms exactly once");
-    console.log(`PASS streamed reply: ${seq.ttsTexts.length} clips (${seq.ttsTexts.map((t) => t.length).join("/")} chars) played in order; mic re-armed once`);
+    console.log(`PASS streamed reply: ${seq.ttsTexts.length} clips (${seq.ttsTexts.map((t) => t.length).join("/")} chars) played in order, capped at 3 sentences; mic re-armed once`);
     const stopped = await measure(0, "stop");
     assert.ok(stopped.paused && !stopped.active && stopped.recs === 1, "Stop mid-reply silences Jenny and never re-arms the mic");
     assert.ok((stopped.plays || 0) === 1, "no later clip starts after Stop");

@@ -587,8 +587,10 @@ Live check: the `voice-trace` line's `reply.guard` (`ok`, `retried`, `refused`, 
 **Status: PROVISIONAL**
 
 `/api/weather` and the weather block in chat context are tested with recorded National Weather
-Service replies and a stubbed model. Not yet observed: a real signed-in answer, and how the
-model words a forecast aloud. The forecast is for Detroit Lakes only (one grid point), covers
+Service replies and a stubbed model. Spoken length is enforced in code (3 sentences or 420
+characters per turn) and the weather block asks for one sentence; stand-in models reading the
+exact instruction text were measured before merge (`docs/VOICE-REBUILD.md`, 2026-11-14). Not yet
+observed: a real signed-in answer, and how the live model words a forecast aloud. The forecast is for Detroit Lakes only (one grid point), covers
 about three days, and has no lake-specific data such as water temperature or ice thickness.
 `api.weather.gov` has occasional outages; Ember then says she can't see the forecast.
 

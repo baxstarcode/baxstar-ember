@@ -569,7 +569,8 @@ function weatherContext() {
   return `\nLIVE WEATHER: ${text(r.source || "National Weather Service", 40)} forecast for ${text(r.place, 40)}, fetched ${chicagoClock(r.fetchedAt)} Central${r.updatedAt ? ` (forecast issued ${chicagoClock(r.updatedAt, true)})` : ""}.${r.stale || mins > 30 ? ` This copy is about ${mins} minutes old; say so if asked.` : ""}
 ${periods.join("\n")}${hours.length ? `\nHourly (time, temp, wind, precip chance): ${hours.join("; ")}` : ""}
 Weather alerts: ${alerts}
-Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.`;
+Weather rules: answer weather, wind and outdoor-conditions questions only from this block. It covers through ${text(r.periods[Math.min(5, r.periods.length - 1)].name, 24)}; for anything later or not listed here, say this forecast doesn't cover it. Never invent conditions. Bring weather up only when asked, in a daily brief, or when an active alert matters to what Brady asked.
+Weather answer length: a general weather question gets ONE sentence, the headline only: sky, high or low, wind, rain chance, and an active alert if there is one. The hourly rows are reference, never a script: use them only to answer a question about a specific time ("when does the wind drop?") with one time or one short range. Never read out the hours or more than one day unless Brady asks for them by name.`;
 }
 // Signed-in Ember starts a fresh sign-in here; the Worker saves the new grant itself.
 const RECONNECT_ENDPOINT = STATUS_ENDPOINT.replace(/\/status$/, "/reconnect");
@@ -1511,6 +1512,7 @@ function emberPhrases(text) {
 // "Now Playing". An automatic turn that hears no words gets one fresh restart
 // after a 3 s gap, then pauses. Every turn reports its event timeline to
 // Workers Logs (/api/voice/trace, no words or audio) so the device answers.
+const SHORT_NOTE = "Short version spoken. The full reply is in the conversation below. Tap her to interrupt.";
 const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500, REARM_DEAF_RETRY_MS = 3000;
 const REARM_AUDIO_MS = 2500, REARM_WORDS_MS = 10000;
 function voiceUaFamily() {
@@ -1806,6 +1808,51 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   // clips, fetched in parallel and played in order on the same player. Same 1000
   // character spoken cap, same voice, same Stop/interrupt rules.
   const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1000;
+  // SPOKEN TURN CAP (2026-11-14). Brady: "DO NOT have her dumbass voice talk forever
+  // to tell me 12 hours worth of information". The 1-3 sentence rule was only a
+  // prompt instruction, so nothing stopped a long answer from being read out. A
+  // conversation turn now stops speaking after 3 sentences (a line break counts, so
+  // a list stops after 3 items) or at the last sentence end inside 420 characters,
+  // about 25 seconds of Jenny. The full reply stays in the conversation on screen.
+  // An explicit Read reply keeps the older 1000-character limit.
+  const TURN_SENTENCES = 3, TURN_SPOKEN_MAX = 420;
+  const ABBREV = /^(?:[ap]\.m\.|(?:mr|mrs|ms|dr|st|vs|approx)\.|e\.g\.|i\.e\.)$/i;
+  // Where a spoken turn stops, or -1 while the text so far has not reached the cap.
+  // A sentence end at the very end of still-streaming text is not trusted yet.
+  function spokenStop(text, final) {
+    const re = /[.!?…]["”’)\]]*(?=\s|$)|\n+/g;
+    let count = 0, inside = -1, prev = -1, m;
+    while ((m = re.exec(text))) {
+      const at = m.index + m[0].length;
+      if (at > TURN_SPOKEN_MAX) break;
+      if (at >= text.length && !final) break;
+      // A line break straight after a sentence end is the same boundary, not another.
+      const joined = m.index === prev;
+      // "3 p.m.", "Dr.", "e.g." and list markers ("Saturday. 2. Sarah emailed") are not
+      // sentence ends; "the high is 41." is. Missing a real one only lets her say a
+      // little more; the 420 limit still holds.
+      if (m[0][0] === ".") {
+        const tok = text.slice(0, m.index + 1).match(/\S+$/)?.[0] || "";
+        const pre = text.slice(0, m.index + 1 - tok.length);
+        if (ABBREV.test(tok) || (/^\d{1,2}\.$/.test(tok) && (!pre.trim() || /[.!?:…]\s*$|\n\s*$/.test(pre)))) continue;
+      }
+      prev = at;
+      if (joined || !text.slice(0, m.index).trim()) { if (inside >= 0) inside = at; continue; }
+      count++; inside = at;
+      if (count >= TURN_SENTENCES) return { end: at, cut: false };
+    }
+    if (text.length > TURN_SPOKEN_MAX) {
+      if (inside > 0) return { end: inside, cut: false };
+      const space = text.lastIndexOf(" ", TURN_SPOKEN_MAX);
+      return { end: space > 0 ? space : TURN_SPOKEN_MAX, cut: true };
+    }
+    return final ? { end: text.length, cut: false } : null;
+  }
+  function spokenPart(text) {
+    const stop = spokenStop(text, true);
+    const head = text.slice(0, stop.end).trim();
+    return { text: stop.cut ? head + "…" : head, capped: stop.end < text.trimEnd().length };
+  }
   function endStream() { const s = c.stream; c.stream = null; s?.controller.abort(); }
   function clipEnd(text, min, first) {
     const re = /[.!?…]["”’)\]]*(?=\s)|\n+/g;
@@ -1820,21 +1867,28 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     const s = c.stream;
     if (!s || s.epoch !== epoch || !c.live) return;
     if (!final) { s.streamed = true; mark("first-text"); }
+    // Only the text up to the turn cap is ever spoken; once the cap point is known,
+    // that prefix is complete even if the model is still writing.
+    const stop = spokenStop(text, final);
+    const view = stop ? text.slice(0, stop.end) : text, viewFinal = final || Boolean(stop);
     while (!s.capped && s.spoken < SPOKEN_MAX) {
-      const rest = text.slice(s.said);
-      if (!rest.trim()) { s.said = text.length; break; }
+      const rest = view.slice(s.said);
+      if (!rest.trim()) { s.said = view.length; break; }
       const first = s.clips.length === (s.lead || 0);
       let end = clipEnd(rest, first ? FIRST_CLIP_MIN : CLIP_MIN, first);
-      if (end < 0 && final) end = rest.length;
+      if (end < 0 && viewFinal) end = rest.length;
       if (end < 0) break;
       let piece = rest.slice(0, end).trim();
       s.said += end;
+      if (stop?.cut && s.said >= view.length && piece) piece += "…";
       const room = SPOKEN_MAX - s.spoken;
       if (piece.length > room) { piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "…"; s.capped = true; }
       if (piece) { s.spoken += piece.length; queueClip(s, piece); }
     }
+    if (stop && s.said >= view.length) s.capped = true;
     if (final) {
       s.done = true;
+      if (stop && stop.end < text.trimEnd().length) { c.spokenShort = true; if (c.phase === "playing") patch({ note: SHORT_NOTE }); }
       if (s.clips.length && s.waiting && s.playing >= 0 && s.playing + 1 >= s.clips.length) { s.waiting = false; finishTurn(); }
     }
   }
@@ -1890,13 +1944,15 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       .catch(() => { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); pauseConversation(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } })
       .finally(() => clearTimeout(c.timers.play));
   }
-  async function speak() {
+  async function speak(turn = false) {
     if (!c.answer || c.rec || c.request || !production || document.hidden) return;
     const epoch = ++c.epoch; keepAwake(); ensureContext();
-    const long = c.answer.length > 1000;
-    const spoken = long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "…" : c.answer;
+    const long = c.answer.length > 1000, part = turn === true ? spokenPart(c.answer) : null;
+    const spoken = part ? part.text : long ? c.answer.slice(0, 997).replace(/\s+\S*$/, "") + "…" : c.answer;
+    c.spokenShort = part ? part.capped : false;
     c.phrases = emberPhrases(spoken);
-    if (c.blob) { await playReply(epoch); return; }
+    // A shortened turn never leaves its audio behind for Read reply to reuse.
+    if (c.blob && !part) { await playReply(epoch); return; }
     const controller = new AbortController(); c.request = controller;
     patch({ phase: "preparing", note: "Preparing Jenny’s voice…" });
     mark("first-clip-request");
@@ -1910,13 +1966,14 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       if (!c.live || epoch !== c.epoch) return;
       c.blob = blob; c.request = null; mark("first-clip-ready");
       await playReply(epoch);
+      if (part?.capped && c.blob === blob) c.blob = null;
     } catch (error) { if (c.live && epoch === c.epoch) { traceEnd("speech-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   async function send() {
     if (c.rec || c.request || options.current.blocked || !c.draft.trim() || !production || document.hidden) return;
     const epoch = ++c.epoch, controller = new AbortController(); c.request = controller;
-    c.answer = ""; c.blob = null; c.interrupted = false; clearAudio(); keepAwake(); endStream(); ensureContext();
+    c.answer = ""; c.blob = null; c.interrupted = false; c.spokenShort = false; clearAudio(); keepAwake(); endStream(); ensureContext();
     c.stream = { epoch, said: 0, spoken: 0, clips: [], playing: -1, waiting: true, done: false, capped: false, controller: new AbortController() };
     patch({ phase: "thinking", answer: "", note: "Ember is thinking. Your words are in the conversation below." });
     mark("send");
@@ -1938,7 +1995,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       // Streamed sentences are already playing or queued; a reply that arrived in one
       // piece (no stream) is spoken the old way. A failed clip has already said why.
       if (c.stream?.epoch === epoch && (c.stream.streamed || c.stream.clips.length)) feedSpeech(epoch, result, true);
-      if (c.spokeEpoch !== epoch) { c.stream = null; await speak(); }
+      if (c.spokeEpoch !== epoch) { c.stream = null; await speak(true); }
     } catch { if (c.live && epoch === c.epoch) { traceEnd("reply-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
@@ -1948,7 +2005,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Sending from the phone's controls can leave the mouth above the viewport.
     // Bring the speaking face back once; later scrolling stays under user control.
     if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
-    session("playback"); keepAwake(); patch({ phase: "playing", note: c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
+    session("playback"); keepAwake(); patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
     if (c.web) phraseAt(0, c.web.duration); else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {

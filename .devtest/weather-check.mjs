@@ -75,6 +75,8 @@ try {
     check('hourly wind is included', /Hourly \(time, temp, wind, precip chance\): \d{1,2} [AP]M -?\d+° [A-Z]{1,3} \d+ mph \d+%/.test(first));
     check('a checked, empty alert list reads "none active"', first.includes('Weather alerts: none active.'));
     check('the block tells Ember how far the forecast reaches and never to invent', /It covers through [A-Z][A-Za-z ]+; .*Never invent conditions\./.test(first));
+    check('a general weather question is limited to one spoken sentence', first.includes('a general weather question gets ONE sentence, the headline only'));
+    check('the hourly rows are marked reference, never read out unless asked', first.includes('The hourly rows are reference, never a script') && first.includes('Never read out the hours or more than one day unless Brady asks for them by name.'));
     check('the weather request sends no question, place or personal data', f.calls.filter((c) => c.path === '/api/weather').every((c) => JSON.stringify(c.body) === '{}'));
     check('the answer is shown without a "did not check" caveat', await f.page.locator('.home-thread [data-role="assistant"]').last().innerText().then((t) => t.includes('Tomorrow looks calm.') && !/didn't check|couldn't get a live result/.test(t)));
     const weatherCalls = f.calls.filter((c) => c.path === '/api/weather').length;

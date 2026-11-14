@@ -1,5 +1,17 @@
 # Ember — Current State
 
+**Spoken replies hard-capped; weather by voice is one sentence — November 14, 2026 (Claude; Brady:
+"DO NOT have her dumbass voice talk forever to tell me 12 hours worth of information"):** the
+"1 to 3 short sentences" spoken rule from PR #69 was only a prompt instruction; the code still
+let Jenny read up to 1000 characters (about a minute). Every conversation turn now stops speaking
+after 3 sentences (a line break counts, so a list stops at 3 lines) or at the last sentence end
+inside 420 characters, about 25 seconds. "3 p.m.", "Dr.", "e.g." and list markers like "2." do
+not count as sentence ends. The full reply stays in the conversation, and the panel says "Short
+version spoken". An explicit Read reply keeps the 1000-character limit. The weather block now
+tells Ember a general weather question gets one sentence (sky, high or low, wind, rain chance,
+any alert), and the twelve hourly rows are reference for a "when" question, answered with one
+time, never read out unless Brady asks for the hours by name. Not yet merged (PR #71).
+
 **Live weather — November 14, 2026 (Claude; Brady: "NWS"):** Brady asked whether Ember could
 "check the weather on a daily basis" from an OpenWeather key, and chose the National Weather
 Service instead (free, no key, official forecast and alerts). The Worker's new `/api/weather`
@@ -7,7 +19,7 @@ route fetches api.weather.gov for Detroit Lakes server-side and returns one smal
 forecast periods (three days), twelve hourly rows with wind, and active alerts. It is cached 10
 minutes, and served stale and labelled for up to 3 hours if NWS is down. The dashboard puts the
 report in every chat turn's context, so typed and spoken weather questions are answered from it
-with no connector round trip, and **Brief my day** opens with a weather line. With no report,
+with no connector round trip (by voice: one sentence, see the entry above), and **Brief my day** opens with a weather line. With no report,
 Ember is told to say she can't see the forecast. Forecast questions such as "how does tomorrow
 look for wind" no longer force a calendar lookup; a question that names a trip or booking still
 does. No screen readout was added. No secret, binding or setting changed. PROVISIONAL until the
