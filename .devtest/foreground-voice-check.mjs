@@ -212,6 +212,15 @@ try{
   check('"keep going" adds no runtime errors',f.errors.length===0);await f.context.close();
  }
  {
+  // After Stop, an old reply's leftover is gone: "keep going" asks the model again.
+  const f=await fixture();await f.start();f.mode('long');await f.ask('Tell me everything.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  const asks=()=>f.calls.filter(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||''));
+  await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.panel.locator('[data-phase="ready"]').waitFor();
+  f.mode('normal');await f.start();await f.ask('Keep going.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('after Stop, "keep going" is a new question, not an old leftover',asks().length===2&&asks()[1].body.messages.at(-1).content==='Keep going.');
+  await f.context.close();
+ }
+ {
   // The live-data guard's warning is never cut by the spoken cap.
   const f=await fixture();await f.start();f.mode('claim');await f.ask('What did Sarah want?');await f.panel.locator('[data-phase="playing"]').waitFor();
   const said=f.calls.filter(c=>c.path==='/api/tts').map(c=>c.body.text).join(' ');

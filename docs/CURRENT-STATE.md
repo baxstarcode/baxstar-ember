@@ -5,13 +5,16 @@ talk forever to tell me 12 hours worth of information"):** the "1 to 3 short sen
 rule from PR #69 was only a prompt instruction; the code still let Jenny read up to 1000
 characters (about a minute). A conversation turn now stops speaking at the first of: 4 sentences
 (a line break or ";" counts; a heading line ending in ":" does not), the 4th time of day ("3 PM",
-"noon"), so an hour-by-hour list stops at 3 hours even written as one sentence, or the last
+"noon"; a range like "6 AM to noon" counts once), so an hour-by-hour list stops at 3 hours even
+written as one sentence, or the last
 sentence end inside 420 written characters. "3 p.m.", "Dr.", "Mike T.", "Aug.", "U.S." and list
 numbers are not sentence ends. The live-data guard's "I didn't check" warning is never cut: it is
 spoken after the kept part. Narration written before a lookup ("Let me check your calendar.") is
-skipped. Saying "keep going" (also "go on", "the rest", "more") reads the next part with no new
-request. The full reply stays on screen, the panel says "Short version spoken", and an explicit
-Read reply keeps the 1000-character limit. The prompt now tells the model where Jenny stops. By
+skipped, and a second lookup in the same turn does not reset the count. Saying "keep going" (also
+"go on", "the rest", "more") right after a shortened reply reads the next part with no new
+request; a tap, Stop or closing voice clears that leftover. The full reply stays on screen, the panel says "Short version spoken", and an explicit
+Read reply keeps the 1000-character limit. The prompt now tells the model where Jenny stops and to
+put any active weather alert first. By
 voice, weather answers the question asked in one or two sentences, leading with any active alert
 and using the hourly rows for wind and timing, never as a list. Typed chat keeps fuller weather
 answers. An adversarial review and a stand-in model run shaped this (`docs/VOICE-REBUILD.md`,

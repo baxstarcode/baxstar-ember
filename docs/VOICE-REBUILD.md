@@ -217,6 +217,16 @@ timing questions, but the only limit on speech was the PR #69 prompt rule. The c
   nothing to continue; and the weather rule leaked into typed chat. All are fixed and covered by
   tests: `.devtest/spoken-cap.test.mjs` (7 rule tests), 10 new foreground-voice checks, iPhone Web
   Audio path checks, and streamed-reply scenarios for narration and the warning.
+- **Second pass (21 agents).** A re-review confirmed all 9 earlier findings fixed by running the
+  real functions, and found 3 new ones in the fix: a second lookup reset the cap; the "keep going"
+  leftover outlived Stop and typed chat, so a later "What else?" could replay an old unchecked
+  reply; and a time range counted as two times. It also found two small ones: dash- or
+  "and"-joined lists cut too early, and an alert after three timed items in a brief was dropped.
+  All are fixed (the alert by a spoken-prompt rule to put any active alert first). Stand-ins under
+  the final wording, including a forecast with an active Wind Advisory, mentioned the alert in 10
+  of 10 answers, reflected the current 13-14 mph wind in 9 of 10, and answered the question in 10
+  of 10. Judges found one understated wind range (Haiku, Sunday "around 10" vs 9-14 mph). Answers
+  averaged 30 words, often 3 short sentences; the code cap bounds that at 4.
 - **Not measured:** Jenny's real spoken duration (420 written characters was estimated) and a live
   signed-in answer.
 

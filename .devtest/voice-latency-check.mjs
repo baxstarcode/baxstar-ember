@@ -94,6 +94,25 @@ async function measure(run, scenario = "latency") {
             ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "mcp_tool_result", tool_use_id: "t1", is_error: false, content: [] } }));
             ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
             marks.toolResult = performance.now();
+            if (SCENARIO === "twotools") {
+              // Two lookups in one turn: the cap must count across both answers.
+              const A = "You have three events today. A 6 AM charter. A noon lunch. A 3 PM call. A 5 PM dinner. Let me also check your email.";
+              const B = "You have two new emails. Mike asked about Sunday. Sarah wants a refund. Tom sent photos.";
+              ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "text", text: "" } }));
+              for (let i = 0; i < A.length; i += 14) { ctl.enqueue(sse({ type: "content_block_delta", index: block, delta: { type: "text_delta", text: A.slice(i, i + 14) } })); await wait(10); }
+              ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
+              ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "mcp_tool_use", id: "t2", name: "search_threads", server_name: "gmail", input: {} } }));
+              ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
+              ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "mcp_tool_result", tool_use_id: "t2", is_error: false, content: [] } }));
+              ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
+              ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "text", text: "" } }));
+              for (let i = 0; i < B.length; i += 14) { ctl.enqueue(sse({ type: "content_block_delta", index: block, delta: { type: "text_delta", text: B.slice(i, i + 14) } })); await wait(10); }
+              ctl.enqueue(sse({ type: "content_block_stop", index: block++ }));
+              ctl.enqueue(sse({ type: "message_delta", delta: { stop_reason: "end_turn" } }));
+              ctl.enqueue(sse({ type: "message_stop" }));
+              ctl.close();
+              return;
+            }
             await wait(MODEL.firstTokenMs - TOOL.resultMs);
             marks.firstToken = performance.now();
             ctl.enqueue(sse({ type: "content_block_start", index: block, content_block: { type: "text", text: "" } }));
@@ -135,7 +154,7 @@ async function measure(run, scenario = "latency") {
     }
   }
   await page.waitForTimeout(200);
-  if (scenario === "sequence" || scenario === "narration" || scenario === "caveat") {
+  if (scenario === "sequence" || scenario === "narration" || scenario === "caveat" || scenario === "twotools") {
     // Play every clip to its end; the turn must finish and the mic re-arm once.
     for (let i = 0; i < 20 && !(await page.locator('[data-voice-phase="listening"]').count()); i++) {
       await page.locator('audio[aria-label="Ember reply"]').evaluate((a) => { if (a.duration) a.currentTime = a.duration - 0.05; });
@@ -195,6 +214,11 @@ try {
     assert.ok(!warnedSaid.includes("She sounded happy."), "the claim itself is capped at 4 sentences");
     assert.equal(warned.phase, "listening", "the turn hands back after the warning");
     console.log(`PASS streamed unverified claim: capped, warning spoken last (${warned.ttsTexts.length} clips)`);
+    const two = await measure(0, "twotools");
+    const twoSaid = two.ttsTexts.filter((t) => !t.startsWith("One moment")).join(" ").replace(/\s+/g, " ");
+    assert.equal(twoSaid, "You have three events today. A 6 AM charter. A noon lunch. A 3 PM call.", "two lookups in one turn: one 4-sentence cap across the turn");
+    assert.equal(two.phase, "listening", "the two-lookup turn hands back");
+    console.log(`PASS two lookups in one turn: one cap across both answers (${two.ttsTexts.length} clips)`);
     const stopped = await measure(0, "stop");
     assert.ok(stopped.paused && !stopped.active && stopped.recs === 1, "Stop mid-reply silences Jenny and never re-arms the mic");
     assert.ok((stopped.plays || 0) === 1, "no later clip starts after Stop");

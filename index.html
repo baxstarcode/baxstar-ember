@@ -794,7 +794,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-14 23:14Z".startsWith("__") ? "dev" : "2026-11-14 23:14Z";
+  const BUILD_STAMP = "2026-11-14 23:27Z".startsWith("__") ? "dev" : "2026-11-14 23:27Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1904,6 +1904,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         return;
       }
       const rearm = continuing === true;
+      if (!rearm) c.rest = "";
       const trigger = rearm ? c.nextTrigger || "auto" : "tap";
       c.nextTrigger = null;
       if (!rearm) {
@@ -2130,20 +2131,26 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       }
       return final ? { end: text.length, cut: false } : null;
     }
+    const TIME_RANGE = new RegExp("^\\s*(?:to|until|till|through|thru|[-\u2013\u2014])\\s*(?:" + TIME_OF_DAY.source + ")", "i");
     function timeStop(text) {
       const re = new RegExp(TIME_OF_DAY.source, "gi");
-      let m, n = 0;
+      let m, n = 0, third = 0;
       while (m = re.exec(text)) {
-        if (++n <= TURN_TIMES) continue;
-        const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n/g;
+        const range = TIME_RANGE.exec(text.slice(re.lastIndex));
+        if (range) re.lastIndex += range[0].length;
+        if (++n <= TURN_TIMES) {
+          third = re.lastIndex;
+          continue;
+        }
+        const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n|\s(?:[-–—]|and)\s/g;
         let b, end = -1, sentence = false;
         while (b = bre.exec(head)) {
-          end = b.index + (b[1] ? 0 : b[2] ? b[2].length : 0);
-          sentence = !b[1];
+          if (b.index < third) continue;
+          end = b[1] || b[2] ? b.index + (b[2] ? b[2].length : 0) : b[0][0] === "\n" ? b.index : b.index;
+          sentence = Boolean(b[2]) || b[0][0] === "\n";
         }
-        if (end <= 0) {
-          const sp = head.trimEnd().lastIndexOf(" ");
-          end = sp > 0 ? sp : head.length;
+        if (end < third) {
+          end = head.trimEnd().length;
           sentence = false;
         }
         return { end, cut: !sentence };
@@ -2186,10 +2193,9 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         s.streamed = true;
         mark("first-text");
       }
-      if (base > (s.base || 0) && base <= text.length) {
+      if (base > (s.base || 0) && base <= text.length && s.said <= (s.base || 0)) {
         s.base = base;
-        if (s.said < base) s.said = base;
-        s.capped = false;
+        s.said = base;
       }
       const from = s.base || 0;
       const found = spokenStop(text.slice(from), final);
@@ -2551,15 +2557,19 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       finish,
       send,
       speak,
-      stop,
+      stop: (note) => {
+        c.rest = "";
+        stop(note);
+      },
       playing,
       ended,
       phraseAt,
       interrupt,
       // While Jenny talks, a tap on her interrupts and listens; otherwise the mouth starts or stops the conversation.
-      mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
+      mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? (c.rest = "", stop("Conversation stopped. Tap the mouth to start again.")) : start(),
       close: () => {
         var _a;
+        c.rest = "";
         stop();
         closeContext();
         patch({ open: false });
@@ -3079,7 +3089,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           } else loadWeather();
         }
         const messages = [
-          { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }

@@ -28,6 +28,26 @@ test("an hour-by-hour list stops at its 3rd hour, however it is written", () => 
   assert.equal(spokenPart(hourly).text, "Hourly: 10 AM 32° SSE 13 mph 0%; 11 AM 35° SSE 14 mph 0%; 12 PM 38° SSE 13 mph 0%…");
 });
 
+test("a time range counts once, so an ordinary schedule is not cut mid-item", () => {
+  for (const text of [
+    "Tomorrow you have a charter 6 AM to noon and a pontoon rental 1 PM to 5 PM. That's it.",
+    "Three things tomorrow: a charter from 6 AM to noon, a pontoon rental from 1 PM until 5 PM, and a call with Sarah at 7 PM.",
+    "The dock is booked 9-11 AM, then 1 PM to 3 PM, and again from 5 PM through 7 PM.",
+  ]) assert.deepEqual(spokenPart(text), { text, capped: false, rest: "" });
+});
+
+test("dash-, 'and'- and space-separated hour lists keep exactly 3 hours", () => {
+  for (const [text, spoken] of [
+    ["Wind today: 9 AM 7 mph — 10 AM 8 mph — 11 AM 9 mph — noon 12 mph — 1 PM 13 mph.", "Wind today: 9 AM 7 mph — 10 AM 8 mph — 11 AM 9 mph…"],
+    ["Today, wind is 7 mph at 9 AM, rising to 8 at 10 AM and 9 at 11 AM and 12 by noon.", "Today, wind is 7 mph at 9 AM, rising to 8 at 10 AM and 9 at 11 AM…"],
+    ["3pm 41 4pm 42 5pm 40 6pm 38", "3pm 41 4pm 42 5pm 40…"],
+  ]) {
+    const p = spokenPart(text);
+    assert.equal(p.text, spoken, text);
+    assert.equal(times(p.text), 3, text);
+  }
+});
+
 test("four sentences at most; a 5th waits for 'keep going'", () => {
   const p = spokenPart("Mostly sunny today with a high of 41. Wind out of the south at 10. Tonight drops to 25. Sunday reaches 46. Monday hits 51.");
   assert.equal(p.text, "Mostly sunny today with a high of 41. Wind out of the south at 10. Tonight drops to 25. Sunday reaches 46.");

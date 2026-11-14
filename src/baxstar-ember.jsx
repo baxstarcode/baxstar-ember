@@ -1705,6 +1705,8 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     patch({ open: true });
     if (!capable) { patch({ note: "Voice recognition is unavailable in this browser. Use the text box, or try Safari on iPhone or Chrome on Mac." }); return; }
     const rearm = continuing === true;
+    // A tap starts a new conversation: an old reply's leftover is not "the rest" any more.
+    if (!rearm) c.rest = "";
     const trigger = rearm ? c.nextTrigger || "auto" : "tap";
     c.nextTrigger = null;
     if (!rearm) { c.retried = false; c.deafRetried = false; }
@@ -1867,17 +1869,25 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     }
     return final ? { end: text.length, cut: false } : null;
   }
-  // Stop before the 4th time of day, at the last comma, semicolon, colon, sentence end
-  // or line break before it.
+  // Stop before the 4th time of day, at the last comma, semicolon, colon, dash, "and",
+  // sentence end or line break after the 3rd. A range ("6 AM to noon", "1-5 PM",
+  // "from 2 PM until 4 PM") counts as one time.
+  const TIME_RANGE = new RegExp("^\\s*(?:to|until|till|through|thru|[-–—])\\s*(?:" + TIME_OF_DAY.source + ")", "i");
   function timeStop(text) {
     const re = new RegExp(TIME_OF_DAY.source, "gi");
-    let m, n = 0;
+    let m, n = 0, third = 0;
     while ((m = re.exec(text))) {
-      if (++n <= TURN_TIMES) continue;
-      const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n/g;
+      const range = TIME_RANGE.exec(text.slice(re.lastIndex));
+      if (range) re.lastIndex += range[0].length;
+      if (++n <= TURN_TIMES) { third = re.lastIndex; continue; }
+      const head = text.slice(0, m.index), bre = /([,;:])\s|([.!?…]["”’)\]]*)\s|\n|\s(?:[-–—]|and)\s/g;
       let b, end = -1, sentence = false;
-      while ((b = bre.exec(head))) { end = b.index + (b[1] ? 0 : b[2] ? b[2].length : 0); sentence = !b[1]; }
-      if (end <= 0) { const sp = head.trimEnd().lastIndexOf(" "); end = sp > 0 ? sp : head.length; sentence = false; }
+      while ((b = bre.exec(head))) {
+        if (b.index < third) continue;
+        end = b[1] || b[2] ? b.index + (b[2] ? b[2].length : 0) : b[0][0] === "\n" ? b.index : b.index;
+        sentence = Boolean(b[2]) || b[0][0] === "\n";
+      }
+      if (end < third) { end = head.trimEnd().length; sentence = false; }
       return { end, cut: !sentence };
     }
     return null;
@@ -1910,9 +1920,10 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     const s = c.stream;
     if (!s || s.epoch !== epoch || !c.live) return;
     if (!final) { s.streamed = true; mark("first-text"); }
-    // Text before the latest lookup result is narration: skipped unless already spoken,
-    // and the cap counts from the answer that follows it.
-    if (base > (s.base || 0) && base <= text.length) { s.base = base; if (s.said < base) s.said = base; s.capped = false; }
+    // Text before a lookup result is narration: skipped while nothing after the current
+    // start point has been spoken. Once the answer has started, a later lookup in the
+    // same turn moves nothing, so the cap counts across the whole turn.
+    if (base > (s.base || 0) && base <= text.length && s.said <= (s.base || 0)) { s.base = base; s.said = base; }
     const from = s.base || 0;
     // Only the text up to the turn cap is ever spoken; once the cap point is known,
     // that prefix is complete even if the model is still writing.
@@ -2118,11 +2129,11 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     return () => { c.live = false; stop(); closeContext(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", interrupt); };
   }, []);
   useEffect(() => { if (!enabled) { stop(); closeContext(); patch({ open: false }); } }, [enabled]);
-  return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop, playing, ended, phraseAt,
+  return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop: (note) => { c.rest = ""; stop(note); }, playing, ended, phraseAt,
     interrupt,
     // While Jenny talks, a tap on her interrupts and listens; otherwise the mouth starts or stops the conversation.
-    mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? stop("Conversation stopped. Tap the mouth to start again.") : start(),
-    close: () => { stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
+    mouth: () => c.phase === "playing" ? interrupt() : c.conversation || c.rec || c.request ? (c.rest = "", stop("Conversation stopped. Tap the mouth to start again.")) : start(),
+    close: () => { c.rest = ""; stop(); closeContext(); patch({ open: false }); document.querySelector('.reactor-stage, .scope-bezel')?.focus(); },
     confirmReleased: () => { if (c.mic === "unconfirmed" && c.rec) released(c.rec); },
     paused: () => { if (audioRef.current?.ended && c.stream?.epoch === c.epoch) return; if (c.phase === "playing") { session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Playback paused. Press Play to continue." }); } },
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
@@ -2692,7 +2703,7 @@ export default function BaxstarEmber() {
         } else loadWeather();
       }
       const messages = [
-        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
