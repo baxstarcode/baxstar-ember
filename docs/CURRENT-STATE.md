@@ -1,5 +1,17 @@
 # Ember — Current State
 
+**Voice selection — November 17, 2026 (Codex):** Brady chose Aria after comparing
+Jenny, Aria and Michelle. Main conversation speech and explicit Read reply now
+use `en-US-AriaNeural` through the same existing `/api/tts`; the Voice Lab uses
+Aria too. The comparison page labels Aria as current while retaining all samples.
+Recognition, Web Audio handoff, timing, Fast replies and short-answer limits are
+unchanged. This is a Pages-only update; Aria is already in the Worker allowlist.
+Older Jenny references below describe the previous voice and its test history.
+Validation: Pages build, 136 foreground checks, 51 WebKit-path checks, 50 lab
+checks and 28 sample-page checks passed. These use simulated recognition/audio;
+outgoing conversation requests were explicitly checked for Aria. The lab script
+URL is versioned for Aria so its prior cache cannot silently keep Jenny.
+
 **Docs routing, visible Fast replies and voice comparisons — November 17, 2026 (Codex):**
 Brady reports a successful multiple-round phone conversation. Keep the working
 foreground voice path; he is not being sent through another microphone test.

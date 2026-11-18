@@ -353,6 +353,7 @@ if ("serviceWorker" in navigator) {
     { name: "gdrive" }
   ];
   const DRIVE_SERVER = { name: "gdrive" };
+  const EMBER_VOICE = "en-US-AriaNeural";
   const DRIVE_URL = "https://drive.google.com/";
   const FAREHARBOR_URL = "https://fareharbor.com/baxstarfishing/dashboard/";
   const HANDOFF_DOC_URL = "https://docs.google.com/document/d/1Gfs1H5KTmj5C7_-wm6AVs1IUO9ET1as8gVibHvdybns/edit";
@@ -797,7 +798,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-18 00:31Z".startsWith("__") ? "dev" : "2026-11-18 00:31Z";
+  const BUILD_STAMP = "2026-11-18 01:27Z".startsWith("__") ? "dev" : "2026-11-18 01:27Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1976,7 +1977,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
             if (!audioSeen) {
               const retry = !c.retried;
               c.retried = true;
-              deadMic(rec, retry, "Your phone didn\u2019t reopen the microphone after Jenny spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio");
+              deadMic(rec, retry, "Your phone didn\u2019t reopen the microphone after Aria spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio");
             }
           }, REARM_AUDIO_MS);
           timer("words", () => {
@@ -2095,7 +2096,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       if (c.trace) (_a = c.trace).out || (_a.out = "element");
       audio.src = c.url;
       audio.load();
-      patch({ audioReady: true, phase: "ready", note: "Jenny is ready. Tap Play if playback does not start." });
+      patch({ audioReady: true, phase: "ready", note: "Aria is ready. Tap Play if playback does not start." });
       session("playback");
       try {
         await Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5e3))]);
@@ -2103,7 +2104,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         if (c.live && c.epoch === epoch) {
           session("auto");
           releaseWake();
-          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." });
+          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
         }
       } finally {
         clearTimeout(c.timers.play);
@@ -2264,8 +2265,8 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       const controller = new AbortController();
       s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
       const timeout = setTimeout(() => controller.abort(), 15e3);
-      fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: "en-US-JennyNeural" }) }).then(async (response) => {
-        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny\u2019s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+      fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: EMBER_VOICE }) }).then(async (response) => {
+        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Aria\u2019s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
         if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
         const blob = await response.blob();
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
@@ -2320,7 +2321,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           session("auto");
           releaseWake();
           pauseConversation();
-          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." });
+          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
         }
       }).finally(() => clearTimeout(c.timers.play));
     }
@@ -2349,12 +2350,12 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       }
       const controller = new AbortController();
       c.request = controller;
-      patch({ phase: "preparing", note: "Preparing Jenny\u2019s voice\u2026" });
+      patch({ phase: "preparing", note: "Preparing Aria\u2019s voice\u2026" });
       mark("first-clip-request");
       const timeout = setTimeout(() => controller.abort(), 15e3);
       try {
-        const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: "en-US-JennyNeural" }) });
-        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny\u2019s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+        const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: EMBER_VOICE }) });
+        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Aria\u2019s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
         if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
         const blob = await response.blob();
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
@@ -2474,7 +2475,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       if (c.phase !== "playing") (_b = document.querySelector(".reactor-stage, .scope-bezel")) == null ? void 0 : _b.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       session("playback");
       keepAwake();
-      patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
+      patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1e3 ? "Speaking the first part only. The full reply is in the conversation below." : "Aria is speaking. Tap her to interrupt." });
       if (c.web) phraseAt(0, c.web.duration);
       else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
     }
@@ -3103,7 +3104,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           } else loadWeather();
         }
         const messages = [
-          { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
+          { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Aria stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again.\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions \u2014 just act on them." },
           { role: "assistant", content: "Understood. Ready." },
           ...context,
           { role: "user", content: q }

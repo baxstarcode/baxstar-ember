@@ -221,7 +221,7 @@ try {
 
   await s.page.locator("#play").click();
   await state(s.page, "audio-state", "Playing");
-  assert.deepEqual(s.requests[1].payload, { text: "One calm sentence.", voice: "en-US-JennyNeural" });
+  assert.deepEqual(s.requests[1].payload, { text: "One calm sentence.", voice: "en-US-AriaNeural" });
   assert.equal(await s.page.evaluate(() => window.__mock.starts), 1);
   await s.page.evaluate(() => document.getElementById("audio").dispatchEvent(new Event("ended")));
   await state(s.page, "audio-state", "Playback ended");
@@ -304,7 +304,7 @@ try {
   assert.equal(voiceOnly.requests.length, 1);
   assert.ok(voiceOnly.requests[0].url.endsWith("/api/tts"));
   assert.deepEqual(voiceOnly.requests[0].payload, {
-    text: "Hello, Brady. This is Ember. My voice is ready for your listening test.", voice: "en-US-JennyNeural",
+    text: "Hello, Brady. This is Ember. My voice is ready for your listening test.", voice: "en-US-AriaNeural",
   });
   assert.equal(await voiceOnly.page.evaluate(() => window.__mock.starts), 0);
   assert.equal(await voiceOnly.page.locator("#transcript").inputValue(), "");
@@ -325,7 +325,7 @@ try {
   await voiceOnly.page.locator("#heard").check();
   await voiceOnly.page.locator("#record-result").click();
   await state(voiceOnly.page, "message", "A full pass needs a microphone turn");
-  check("fixed-sentence voice check uses Jenny without mic, transcript, or AI chat and cannot claim a full voice pass");
+  check("fixed-sentence voice check uses Aria without mic, transcript, or AI chat and cannot claim a full voice pass");
 
   for (const [mode, code, status, type, stage] of [
     ["tts-refused", "provider-refused", 502, "json", "http"],
@@ -358,7 +358,7 @@ try {
     assert.equal((await voiceOnly.page.locator("#voice-check-state").innerText()).includes("PRIVATE_PROVIDER_SENTINEL"), false);
     check(`${mode} reports a bounded ${code} diagnostic without raw provider data or a false playback event`);
   }
-  assert.ok(voiceOnly.requests.every(({ url, payload }) => url.endsWith("/api/tts") && payload.voice === "en-US-JennyNeural"));
+  assert.ok(voiceOnly.requests.every(({ url, payload }) => url.endsWith("/api/tts") && payload.voice === "en-US-AriaNeural"));
   assert.equal(await voiceOnly.page.evaluate(() => window.__mock.starts), 0);
   await healthy(voiceOnly);
 

@@ -3,7 +3,7 @@
 const MESSAGE_ENDPOINT = window.EMBER_MESSAGE_ENDPOINT || window.EMBER_API_PROXY || "/api/messages";
 const TTS_ENDPOINT = window.EMBER_TTS_ENDPOINT || "/api/tts";
 const MODEL = "claude-sonnet-4-6";
-const VOICE = "en-US-JennyNeural";
+const VOICE = "en-US-AriaNeural";
 const VOICE_TEST_TEXT = "Hello, Brady. This is Ember. My voice is ready for your listening test.";
 const SAFE_SPEECH_ERRORS = new Set(["provider-refused", "provider-unreachable", "provider-no-audio",
   "http-error", "non-audio", "audio-too-small"]);

@@ -1,5 +1,9 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Current voice — November 17, 2026:** Brady chose Aria. Main conversation,
+Read reply and Voice Lab explicitly request `en-US-AriaNeural` on the existing
+speech endpoint. Earlier Jenny entries retain their historical meaning.
+
 **Conversation mode update — October 26, 2026:** mouth-started voice now automatically
 sends finalized speech, speaks with Jenny and listens again within the active
 foreground session. The user's new instruction supersedes older mandatory

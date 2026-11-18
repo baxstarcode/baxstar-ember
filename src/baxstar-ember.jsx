@@ -32,6 +32,8 @@ const MCP_SERVERS = [
   { name: "gdrive" },
 ];
 const DRIVE_SERVER = { name: "gdrive" };
+// Brady chose Aria after comparing the three voices. Both speech paths share it.
+const EMBER_VOICE = "en-US-AriaNeural";
 
 // Dock destinations (2026-10-15). FareHarbor's company dashboard is confirmed by
 // the "Baxstar FareHarbor Pricing — Operator Playbook" (shortname baxstarfishing).
@@ -1749,7 +1751,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
         // Chrome sends audiostart when capture really begins, so a browser that sent
         // it before is held to it. WebKit sends it whether or not sound will ever
         // arrive (see DEAF SECOND TURN above), so on WebKit only words count.
-        if (c.audioEvidence && !webkit) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Jenny spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio"); } }, REARM_AUDIO_MS);
+        if (c.audioEvidence && !webkit) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Aria spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio"); } }, REARM_AUDIO_MS);
         timer("words", () => {
           if (wordsSeen || c.mic !== "listening") return;
           // One fresh recognizer after a 3 s gap (reports put the iOS recovery
@@ -1820,11 +1822,11 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     if (webReady() && await playWeb(c.blob, epoch)) return;
     if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
     c.url = URL.createObjectURL(c.blob); c.out = "element"; if (c.trace) c.trace.out ||= "element"; audio.src = c.url; audio.load();
-    patch({ audioReady: true, phase: "ready", note: "Jenny is ready. Tap Play if playback does not start." });
+    patch({ audioReady: true, phase: "ready", note: "Aria is ready. Tap Play if playback does not start." });
     session("playback");
     try {
       await Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5000))]);
-    } catch { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } }
+    } catch { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." }); } }
     finally { clearTimeout(c.timers.play); }
   }
   // SENTENCE STREAMING (2026-11-08). A spoken turn used to wait for the whole
@@ -1980,9 +1982,9 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     const controller = new AbortController();
     s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
     const timeout = setTimeout(() => controller.abort(), 15000);
-    fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: "en-US-JennyNeural" }) })
+    fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: EMBER_VOICE }) })
       .then(async (response) => {
-        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Aria’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
         if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
         const blob = await response.blob();
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
@@ -2021,7 +2023,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     if (index === 0) patch({ audioReady: true });
     const epoch = c.epoch;
     Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5000))])
-      .catch(() => { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); pauseConversation(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Jenny." }); } })
+      .catch(() => { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); pauseConversation(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." }); } })
       .finally(() => clearTimeout(c.timers.play));
   }
   async function speak(turn = false, source) {
@@ -2045,12 +2047,12 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     c.phrases = emberPhrases(spoken);
     if (c.blob && !part) { await playReply(epoch); return; }
     const controller = new AbortController(); c.request = controller;
-    patch({ phase: "preparing", note: "Preparing Jenny’s voice…" });
+    patch({ phase: "preparing", note: "Preparing Aria’s voice…" });
     mark("first-clip-request");
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: "en-US-JennyNeural" }) });
-      if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Jenny’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+      const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: EMBER_VOICE }) });
+      if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Aria’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
       if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
       const blob = await response.blob();
       if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
@@ -2109,7 +2111,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Sending from the phone's controls can leave the mouth above the viewport.
     // Bring the speaking face back once; later scrolling stays under user control.
     if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
-    session("playback"); keepAwake(); patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Jenny is speaking. Tap her to interrupt." });
+    session("playback"); keepAwake(); patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Aria is speaking. Tap her to interrupt." });
     if (c.web) phraseAt(0, c.web.duration); else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {
@@ -2718,7 +2720,7 @@ export default function BaxstarEmber() {
         } else loadWeather();
       }
       const messages = [
-        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Jenny stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Aria stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },

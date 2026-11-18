@@ -78,7 +78,7 @@ try{
    await f.page.evaluate(n=>say('Automatic turn '+n),n);
    await f.panel.locator('[data-phase="playing"]').waitFor();
    check(`${width}: automatic turn ${n+1} speaks without Send`,f.calls.filter(c=>c.path==='/api/tts').length===n+1);
-   check(`${width}: no listening over Jenny`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
+   check(`${width}: no listening over Aria`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
    await f.page.locator('audio').evaluate(a=>a.currentTime=a.duration-.05);
    await f.panel.locator('[data-phase="listening"]').waitFor();
   }
@@ -107,10 +107,10 @@ try{
   check(`${width}: mic never starts on load`,await f.page.evaluate(()=>recs.length===0));
   await f.start();check(`${width}: explicit mouth tap starts one session`,await f.page.evaluate(()=>recs.length===1));
   await f.panel.locator('[data-wake="held"]').waitFor();await f.ask();await f.panel.locator('[data-phase="playing"]').waitFor();
-  check(`${width}: capture ends before Jenny speaks`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
+  check(`${width}: capture ends before Aria speaks`,await f.page.evaluate(()=>recs.every(r=>!r.active)));
   check(`${width}: the panel has no review box, Send or Type instead`,await f.panel.locator('textarea').count()===0&&await f.panel.getByRole('button',{name:/^(Send|Type instead)$/}).count()===0);
   check(`${width}: spoken turn keeps the selected Opus model at Fast-replies Low effort`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='low'&&c.body.max_tokens===4000&&c.body.messages[0]?.content.includes('Effort: LOW')&&!c.body.messages[0]?.content.includes('Effort: HIGH')&&c.body.messages.at(-1)?.content==='Check my next trip.'));
-  check(`${width}: Jenny uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-JennyNeural'));
+  check(`${width}: Aria uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-AriaNeural'));
   check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')&&c.path!=='/api/voice/trace'));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
   const after=await hero.boundingBox();check(`${width}: skull does not shrink after reply`,Math.abs(before.width-after.width)<1&&after.width>250);
@@ -162,7 +162,7 @@ try{
   const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=2});
   await f.start();await f.page.evaluate(()=>say('First question'));await f.panel.locator('[data-phase="playing"]').waitFor();await f.end();
   await f.page.getByText(/Reopening the microphone/).waitFor();check('dead re-armed mic gets one quiet retry',await f.page.evaluate(()=>recs.length===2&&!recs[1].active));
-  await f.page.getByText(/didn’t reopen the microphone after Jenny spoke/).waitFor({timeout:15000});
+  await f.page.getByText(/didn’t reopen the microphone after Aria spoke/).waitFor({timeout:15000});
   check('second dead re-arm pauses with a tap-the-mouth note',await f.page.evaluate(()=>recs.length===3&&recs.every(r=>!r.active)));
   check('dead re-arm never shows LISTENING',await f.page.locator('[data-voice-phase="listening"]').count()===0);
   check('dead re-arm sends nothing',f.calls.filter(c=>c.path==='/api/messages'&&!/ONLY valid JSON/.test(c.body.messages?.at(-1)?.content||'')).length===1);
@@ -197,7 +197,7 @@ try{
   const turn=f.calls.find(c=>c.path==='/api/messages'&&c.body.messages?.at(-1)?.content==="What's the weather?");
   check('a spoken weather question carries the forecast',turn?.body.messages[0].content.includes('LIVE WEATHER: National Weather Service forecast for Detroit Lakes, MN'));
   check('a spoken weather question carries the voice-only weather rule',turn?.body.messages[0].content.includes('Weather by voice: answer the question asked in one or two short sentences, leading with any active alert.'));
-  check('the spoken prompt says where Jenny stops',turn?.body.messages[0].content.includes('Jenny stops speaking after 4 sentences or 3 times of day'));
+  check('the spoken prompt says where Aria stops',turn?.body.messages[0].content.includes('Aria stops speaking after 4 sentences or 3 times of day'));
   await f.context.close();
  }
  {
@@ -252,7 +252,7 @@ try{
   const f=await fixture({wake:'pending'});await f.start();await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.page.evaluate(()=>resolveWake());await f.page.waitForFunction(()=>wakes.length&&wakes.every(w=>w.released));check('late wake grant after Stop is released',true);await f.context.close();
  }
  {
-  const f=await fixture();await f.start();f.mode('ttsFailure');await f.ask();await f.page.getByText(/Jenny’s speech service returned HTTP 502/).waitFor();
+  const f=await fixture();await f.start();f.mode('ttsFailure');await f.ask();await f.page.getByText(/Aria’s speech service returned HTTP 502/).waitFor();
   check('failed TTS has no speaking animation',await f.page.locator('.brand-phrase').count()===0);
   const chats=f.calls.filter(c=>c.path==='/api/messages').length;f.mode('normal');await f.panel.getByRole('button',{name:'Read reply',exact:true}).click();await f.panel.locator('[data-phase="playing"]').waitFor();check('speech retry never resends chat',f.calls.filter(c=>c.path==='/api/messages').length===chats);await f.context.close();
  }

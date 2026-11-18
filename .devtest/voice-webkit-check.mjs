@@ -1,7 +1,7 @@
 // iPhone voice path and the live-data guard, on the real rendered app in Chromium
 // with an iPhone Safari user agent (Playwright WebKit is not installed in the
 // build container). Recognition, wake lock and providers are deterministic
-// fixtures; Jenny's clips are real WAV audio decoded and played by Web Audio.
+// fixtures; Aria's clips are real WAV audio decoded and played by Web Audio.
 // These checks prove the page's logic, NOT that iOS reopens the microphone: that
 // answer comes from the device's own /api/voice/trace lines in Workers Logs.
 import assert from 'node:assert/strict';
@@ -85,23 +85,24 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeco
 }
 try {
   {
-    // Five spoken turns from one tap, Jenny through Web Audio, no tap in between.
+    // Five spoken turns from one tap, Aria through Web Audio, no tap in between.
     const f = await fixture();
     await f.tap();
     for (let n = 1; n <= 5; n++) {
       await f.page.evaluate((n) => say(`Tell me fact number ${n}`), n);
       await f.page.locator('[data-voice-phase="playing"]').waitFor();
-      check(`turn ${n}: Jenny plays through Web Audio, not the page player`, await f.page.evaluate(() => !document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src') && document.querySelector('audio[aria-label="Ember reply"]').hidden));
+      check(`turn ${n}: Aria plays through Web Audio, not the page player`, await f.page.evaluate(() => !document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src') && document.querySelector('audio[aria-label="Ember reply"]').hidden));
       await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 8000 });
     }
     check('five turns need exactly one tap: six recognizers, five replies', await f.page.evaluate(() => recs.length === 6) && f.calls.filter((c) => c.path === '/api/tts').length === 5 && f.chats().length === 5);
+    check('every automatic turn requests the selected Aria voice', f.calls.filter(c => c.path === '/api/tts').every(c => c.body.voice === 'en-US-AriaNeural'));
     check('one AudioContext serves the whole conversation and stays running', await f.page.evaluate(() => ctxMade === 1 && lastCtx.state === 'running'));
-    check('the mic is never live while Jenny plays', await f.page.evaluate(() => micDuringPlay === 0));
+    check('the mic is never live while Aria plays', await f.page.evaluate(() => micDuringPlay === 0));
     check('Now Playing is released after each reply', await f.page.evaluate(() => navigator.mediaSession.playbackState === 'none' && navigator.mediaSession.metadata === null));
     const traces = await f.page.evaluate(() => emberVoiceTraces.filter((t) => t.outcome === 'spoke'));
     check('every turn self-reports: tap, then four automatic restarts', traces.map((t) => t.trigger).join() === 'tap,auto,auto,auto,auto' && traces.every((t) => t.out === 'web' && t.engine === 'webkit' && t.ua === 'ios-safari'));
     check('each trace carries last-words-to-first-sound time', traces.every((t) => Number.isInteger(t.lastWordsToSoundMs) && t.lastWordsToSoundMs >= 0 && t.marks['first-sound'] > t.marks.send));
-    check('automatic restarts record the gap after Jenny', traces.slice(1).every((t) => t.sinceReplyEndMs >= 700 && t.sinceReplyEndMs < 3000));
+    check('automatic restarts record the gap after Aria', traces.slice(1).every((t) => t.sinceReplyEndMs >= 700 && t.sinceReplyEndMs < 3000));
     check('traces are posted to the self-report route', f.calls.filter((c) => c.path === '/api/voice/trace' && c.body.v === 1).length >= 5);
     await f.panel.getByRole('button', { name: 'Close voice' }).click();
     check('closing voice closes the AudioContext', await f.page.waitForFunction(() => lastCtx.state === 'closed').then(() => true));
@@ -134,18 +135,18 @@ try {
     // Chrome on the Mac keeps the page player (no change there).
     const f = await fixture({ ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36', width: 1440 });
     await f.tap(); await f.page.evaluate(() => say('Tell me a fact')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
-    check('Mac Chrome plays Jenny through the page player and opens no AudioContext', await f.page.evaluate(() => !!document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src') && ctxMade === 0));
+    check('Mac Chrome plays Aria through the page player and opens no AudioContext', await f.page.evaluate(() => !!document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src') && ctxMade === 0));
     await f.context.close();
   }
 
   {
-    // One tap on her while she talks: Jenny stops and Ember listens, no second tap.
+    // One tap on her while she talks: Aria stops and Ember listens, no second tap.
     const f = await fixture({ clipSeconds: 6 });
     await f.tap(); await f.page.evaluate(() => say('Tell me a long story')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
-    check('while Jenny talks the panel offers Interrupt and says how', await f.panel.getByRole('button', { name: 'Interrupt' }).isVisible() && (await f.panel.innerText()).includes('Tap her to interrupt'));
+    check('while Aria talks the panel offers Interrupt and says how', await f.panel.getByRole('button', { name: 'Interrupt' }).isVisible() && (await f.panel.innerText()).includes('Tap her to interrupt'));
     await f.page.getByRole('button', { name: 'Talk to Ember', exact: true }).click();
     await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 4000 });
-    check('a tap on her stops Jenny and opens the mic at once', await f.page.evaluate(() => recs.length === 2 && recs[1].active && micDuringPlay === 0));
+    check('a tap on her stops Aria and opens the mic at once', await f.page.evaluate(() => recs.length === 2 && recs[1].active && micDuringPlay === 0));
     const t = await f.page.evaluate(() => emberVoiceTraces.at(-1));
     check('the cut-off turn is reported as interrupted', t.outcome === 'interrupted' && t.marks['first-sound'] > 0);
     await f.page.evaluate(() => say('Actually, a different question')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
@@ -210,7 +211,7 @@ try {
     await f.context.close();
   }
   for (const need of ["calendar", "files"]) {
-    // Spoken: Jenny says nothing of the answer before the calendar result arrives.
+    // Spoken: Aria says nothing of the answer before the calendar result arrives.
     const f = await fixture();
     // A timed stream through a page-side fetch override (route bodies are not streamed).
     await f.page.evaluate(({ need }) => {
