@@ -1,5 +1,10 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Spoken stop — November 17, 2026:** Standalone “stop” / “stop listening” while
+Ember is listening ends voice mode locally, without a chat request or automatic
+restart. The existing mic-release gate remains. It does not listen over Aria's
+speech; typed text is unaffected.
+
 **Current voice — November 17, 2026:** Brady chose Aria. Main conversation,
 Read reply and Voice Lab explicitly request `en-US-AriaNeural` on the existing
 speech endpoint. Earlier Jenny entries retain their historical meaning.

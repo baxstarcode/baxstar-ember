@@ -1538,6 +1538,8 @@ function emberPhrases(text) {
 // after a 3 s gap, then pauses. Every turn reports its event timeline to
 // Workers Logs (/api/voice/trace, no words or audio) so the device answers.
 const SHORT_NOTE = "Short version spoken. The full reply is in the conversation below. Tap her to interrupt.";
+// Only a complete, finalized command ends voice; "stop for gas" is a question.
+const VOICE_STOP = /^(?:ember[,\s]+)?stop(?:\s+(?:listening|voice))?[.!?]*$/i;
 const REARM_HANDOFF_MS = 450, REARM_HANDOFF_WEBKIT_MS = 800, REARM_RETRY_MS = 1500, REARM_DEAF_RETRY_MS = 3000;
 const REARM_AUDIO_MS = 2500, REARM_WORDS_MS = 10000;
 function voiceUaFamily() {
@@ -1745,7 +1747,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       if (c.rec !== rec || c.mic !== "starting") return;
       mark("onstart");
       if (c.trace) c.trace.session = navigator.audioSession ? `${navigator.audioSession.type}/${navigator.audioSession.state}` : null;
-      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: rearm ? "Your turn. I’m listening." : "Listening. Pause when you’re done; I’ll answer aloud." });
+      clearTimers(); c.mic = "listening"; patch({ phase: "listening", note: rearm ? "Your turn. Say “stop” to finish." : "Listening. Pause for an answer; say “stop” to finish." });
       timer("turn", finish, 30000);
       if (rearm) {
         // Chrome sends audiostart when capture really begins, so a browser that sent
@@ -1770,10 +1772,23 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       mark("first-result"); mark("last-result", true);
       const results = Array.from(event.results), words = results.map(r => r[0]?.transcript || "").join(" ").trim();
       if (results.some(r => r.isFinal)) mark("first-final");
+      const changed = results.slice(Number.isInteger(event.resultIndex) ? event.resultIndex : 0);
+      const complete = results.length > 0 && results.every(r => r.isFinal) && changed.some(r => r.isFinal);
+      const wholeStop = complete && VOICE_STOP.test(words);
+      const lastStop = complete && VOICE_STOP.test(changed.at(-1)?.[0]?.transcript?.trim() || "");
+      if (wholeStop || lastStop) {
+        // Do not send the command or let recognition's end event auto-send/rearm.
+        // Retain any preceding dictation for manual review, as the Stop button does.
+        const prior = wholeStop ? "" : results.slice(0, -1).map(r => r[0]?.transcript || "").join(" ").trim();
+        c.draft = [prefix, prior].filter(Boolean).join(" ").slice(0, 2000);
+        c.partial = false; c.interrupted = Boolean(c.draft); c.rest = ""; c.retryMic = false; c.nextTrigger = null;
+        patch({ draft: c.draft, partial: false });
+        stop("Voice stopped. Tap the mouth to talk again.");
+        return;
+      }
       c.draft = [prefix, words].filter(Boolean).join(" ").slice(0, 2000);
       c.partial = results.some(r => !r.isFinal);
       patch({ draft: c.draft, partial: c.partial });
-      const changed = results.slice(Number.isInteger(event.resultIndex) ? event.resultIndex : 0);
       if (c.mic === "listening" && words && !results.some(r => !r.isFinal) && changed.some(r => r.isFinal)) timer("grace", finish, 1100);
     };
     rec.onerror = event => {

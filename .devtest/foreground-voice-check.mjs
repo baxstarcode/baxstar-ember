@@ -55,6 +55,48 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
  return {page,context,panel,calls,errors,start,finish,ask,mode:v=>mode=v,resolve:()=>{pending.splice(0).forEach(r=>r())},async end(){await page.locator('audio[aria-label="Ember reply"]').evaluate(a=>a.currentTime=a.duration-.05);await page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'})}};
 }
 try{
+ for(const [width,command] of [[1440,'Stop.'],[390,'STOP LISTENING!'],[390,'Ember, stop.']]){
+  const f=await fixture({width});await f.start();
+  await f.page.evaluate(t=>{window.lateStopResult=recs.at(-1).onresult;say(t)},command);
+  await f.panel.locator('[data-phase="ready"]').waitFor();
+  await f.page.evaluate(()=>{const v=[{transcript:'stale words after stop'}];v.isFinal=true;lateStopResult({results:[v],resultIndex:0});document.querySelector('audio').dispatchEvent(new Event('ended'))});
+  await f.page.waitForTimeout(1300);
+  check(`${width} ${command}: releases mic and never rearms`,await f.page.evaluate(()=>recs.length===1&&recs.every(r=>!r.active)&&wakes.every(w=>w.released)));
+  check(`${width} ${command}: no model or speech request`,!f.calls.some(c=>['/api/messages','/api/tts'].includes(c.path)));
+  check(`${width} ${command}: command and stale result stay out of chat/draft`,(await f.page.locator('[aria-label="Ask Ember"]').inputValue())===''&&!(await f.page.locator('.home-thread').allTextContents()).join(' ').includes(command));
+  check(`${width} ${command}: visibly stopped`,(await f.panel.innerText()).includes('Voice stopped. Tap the mouth to talk again.'));
+  await f.start();await f.ask('A new question');await f.panel.locator('[data-phase="playing"]').waitFor();
+  check(`${width} ${command}: a new explicit tap still works`,f.calls.some(c=>c.path==='/api/messages'&&c.body.messages.at(-1)?.content==='A new question'));
+  check(`${width} ${command}: no runtime errors`,f.errors.length===0);await f.context.close();
+ }
+ {
+  const f=await fixture();await f.start();await f.page.evaluate(()=>say('Stop',false));await f.page.waitForTimeout(1300);
+  check('provisional Stop does not cut off a continuing sentence',await f.page.evaluate(()=>recs.at(-1).active)&&!f.calls.some(c=>c.path==='/api/messages'));
+  await f.ask('Stop by the marina on the way home.');await f.panel.locator('[data-phase="playing"]').waitFor();
+  check('a normal sentence containing stop is sent normally',f.calls.some(c=>c.path==='/api/messages'&&c.body.messages.at(-1)?.content==='Stop by the marina on the way home.'));
+  await f.panel.getByRole('button',{name:'Close voice'}).click();
+  await f.page.getByRole('textbox',{name:'Ask Ember'}).fill('stop');await f.page.getByRole('textbox',{name:'Ask Ember'}).press('Enter');
+  await f.page.waitForFunction(()=>Array.from(document.querySelectorAll('.home-thread [data-role="user"]')).some(e=>e.textContent.startsWith('stop')));
+  check('typed stop remains a normal text message',f.calls.some(c=>c.path==='/api/messages'&&c.body.messages.at(-1)?.content==='stop'));
+  await f.context.close();
+ }
+ {
+  const f=await fixture();await f.start();
+  await f.page.evaluate(()=>{say('Keep my unfinished question.',true);const results=['Keep my unfinished question.','Stop.'].map(transcript=>Object.assign([{transcript}],{isFinal:true}));recs.at(-1).onresult({results,resultIndex:1})});
+  await f.page.waitForFunction(()=>document.querySelector('[aria-label="Ask Ember"]').value==='Keep my unfinished question.');
+  await f.page.waitForTimeout(1300);
+  check('standalone stop after dictation cancels its pending send',!f.calls.some(c=>['/api/messages','/api/tts'].includes(c.path))&&await f.page.evaluate(()=>recs.every(r=>!r.active)));
+  check('preceding dictation stays editable without the command',(await f.page.getByRole('textbox',{name:'Ask Ember'}).inputValue())==='Keep my unfinished question.');
+  await f.context.close();
+ }
+ {
+  const f=await fixture();await f.page.evaluate(()=>window.recMode='unconfirmed');await f.start();await f.ask('Stop listening');
+  await f.panel.getByRole('button',{name:'I checked: mic indicator is off'}).waitFor();
+  check('spoken stop preserves the unconfirmed mic release gate',await f.panel.getByRole('button',{name:'Talk',exact:true}).isDisabled()&&!f.calls.some(c=>c.path==='/api/messages'));
+  await f.page.evaluate(()=>{recs.at(-1).active=false;recs.at(-1).onend()});await f.panel.locator('[data-phase="ready"]').waitFor();
+  check('late mic release after spoken stop never auto-sends',!f.calls.some(c=>['/api/messages','/api/tts'].includes(c.path)));
+  await f.context.close();
+ }
  for(const prefs of [{v:4,chatModel:'claude-sonnet-5-5',chatEffort:'medium'},{v:5,chatModel:'claude-sonnet-5-5',chatEffort:'low'}]){
   const f=await fixture({prefs});const labels=await f.page.locator('.chat-controls button[aria-pressed="true"]').allTextContents();
   check(`preferences v${prefs.v}: requested migration or later override persists`,labels.join('|')===(prefs.v===4?'Opus|High':'Sonnet|Low'));await f.context.close();

@@ -104,6 +104,13 @@ try {
     check('each trace carries last-words-to-first-sound time', traces.every((t) => Number.isInteger(t.lastWordsToSoundMs) && t.lastWordsToSoundMs >= 0 && t.marks['first-sound'] > t.marks.send));
     check('automatic restarts record the gap after Aria', traces.slice(1).every((t) => t.sinceReplyEndMs >= 700 && t.sinceReplyEndMs < 3000));
     check('traces are posted to the self-report route', f.calls.filter((c) => c.path === '/api/voice/trace' && c.body.v === 1).length >= 5);
+    const completedReplies = await f.page.locator('.home-thread [data-role="assistant"]').allTextContents();
+    await f.page.evaluate(() => say('Stop listening.'));
+    await f.panel.locator('[data-phase="ready"]').waitFor();
+    await f.page.waitForTimeout(1500);
+    check('spoken stop after five WebKit turns releases the mic without rearming', await f.page.evaluate(() => recs.length === 6 && recs.every(r => !r.active)));
+    check('spoken stop does not create another chat or speech request', f.chats().length === 5 && f.calls.filter(c => c.path === '/api/tts').length === 5);
+    check('spoken stop leaves completed replies in the conversation', completedReplies.length > 0 && JSON.stringify(await f.page.locator('.home-thread [data-role="assistant"]').allTextContents()) === JSON.stringify(completedReplies));
     await f.panel.getByRole('button', { name: 'Close voice' }).click();
     check('closing voice closes the AudioContext', await f.page.waitForFunction(() => lastCtx.state === 'closed').then(() => true));
     check('no runtime errors across five turns', f.errors.length === 0);

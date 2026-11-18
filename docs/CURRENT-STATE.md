@@ -1,5 +1,21 @@
 # Ember — Current State
 
+**Spoken stop — November 17, 2026 (Codex):** During a listening turn, a finalized
+standalone “stop”, “stop listening” or “Ember, stop” ends the foreground voice
+conversation through the existing Stop path. It cancels pending sends/restarts,
+aborts recognition and preserves the mic-release confirmation gate. The command
+never goes to chat/TTS; earlier dictation remains editable without being sent.
+Interim words and longer sentences containing “stop” remain ordinary dictation;
+typed chat is unchanged. Listening status now mentions the command. This is not
+spoken interruption during Aria's reply: the mic still stays off during playback.
+No Worker, connector, Voice Lab or audio-routing changes.
+Validation: Pages build, 161 foreground voice checks, 54 WebKit-path checks and
+87 layout checks passed. Coverage includes no auto-send/rearm, stale callbacks,
+interim “stop” becoming a normal sentence, retained dictation, the unconfirmed
+mic-release gate and spoken stop after five automatic WebKit-path turns.
+Recognition/device events are simulated; this does not claim physical-device
+recognition of the new command has been tested.
+
 **Voice selection — November 17, 2026 (Codex):** Brady chose Aria after comparing
 Jenny, Aria and Michelle. Main conversation speech and explicit Read reply now
 use `en-US-AriaNeural` through the same existing `/api/tts`; the Voice Lab uses
