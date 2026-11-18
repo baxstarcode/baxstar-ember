@@ -347,7 +347,10 @@ if ("serviceWorker" in navigator) {
     // and read-only toolsets, so client code cannot redirect or expand access.
     { name: "quo" },
     { name: "gmail" },
-    { name: "calendar" }
+    { name: "calendar" },
+    // Docs and follow-ups need Drive even when the user does not say "Drive".
+    // The Worker still owns the read-only allowlist and omits missing grants.
+    { name: "gdrive" }
   ];
   const DRIVE_SERVER = { name: "gdrive" };
   const DRIVE_URL = "https://drive.google.com/";
@@ -794,7 +797,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-14 23:27Z".startsWith("__") ? "dev" : "2026-11-14 23:27Z";
+  const BUILD_STAMP = "2026-11-18 00:31Z".startsWith("__") ? "dev" : "2026-11-18 00:31Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1108,22 +1111,33 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
     ["calendar", /\b(calendar|meetings?|appointments?|birthdays?|bookings?|reservations?|charters?|agenda)\b|\b(?:my|next|any|upcoming|today'?s|tomorrow'?s|this week'?s) (?:events?|trips?|plans?|schedule)\b|\b(?:am i|are we) (?:free|open|busy|booked)\b|\bwhat(?:'s| is) (?:on|happening|going on)\b|\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b[^.?!]{0,30}\b(?:look|got|have|has|doing|going|happening|hold)\b|\b(?:what|how) (?:does|do|will|is|'s) (?:today|tomorrow|tonight|my (?:day|week|morning|afternoon|evening))\b|\b(?:do|did) i have (?:any(?:thing)?|something)\b|\bmy (?:day|week|weekend|morning|afternoon|evening) (?:look|going|hold)/i],
     ["email", /\b(e-?mails?|inbox|gmail)\b|\b(?:my|new|any|unread|recent|latest|last) mail\b/i],
     ["calls and texts", /\b(voicemails?|missed calls?|texted|quo)\b|\b(?:my|new|any|unread|recent|latest|last) (?:calls?|texts?|messages?|sms)\b|\b(?:who|anyone|anybody|someone|somebody) (?:called|call|texted|text|messaged)\b|\bdid (?:\w+ )?(?:call|text)\b/i],
-    ["files", /\b(?:google )?drive\b|\b(?:my|the) (?:docs?|documents?|files?|spreadsheets?|sheets?) (?:about|on|for|called|named)\b|\bhandoff log\b/i],
+    ["files", /\b(?:google\s+)?(?:drive|docs?|documents?|files?|spreadsheets?)\b|\bgoogle sheets\b|docs\.google\.com\/|\bhandoff log\b/i],
     ["messages", /\bwhat(?: did|'d) i miss\b|\bbrief (?:me|my)\b|\bcatch me up\b|\banything (?:new|urgent|important)\b/i]
   ];
   const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|translate)\b|^\s*(how (?:do|can|would|should) (?:i|you)|what is an? |explain|define)\b/i;
   const DAY_WORDS = /\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b/gi;
-  function liveDataNeed(text) {
+  const FILE_FOLLOWUP = /\b(?:it|that|those|them|this one|the first|the second|same one|same connection|zapier)\b|^\s*(?:summari[sz]e|read|open|continue|go on)[.?!\s]*$/i;
+  function liveDataNeed(text, context = []) {
     if (LIVE_EXEMPT.test(text)) return null;
     if (WEATHER_Q.test(text)) text = text.replace(DAY_WORDS, " ");
     for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
+    if (FILE_FOLLOWUP.test(text)) {
+      for (const message of context.filter((m) => m.role === "user").slice(-4).reverse()) {
+        if (LIVE_DATA.find(([label]) => label === "files")[1].test(message.content)) return "files";
+        if (!FILE_FOLLOWUP.test(message.content)) break;
+      }
+    }
     return null;
   }
   const LIVE_CLAIM = /\b(your (?:calendar|schedule|inbox|email|voicemail|calls?|texts?|messages)|meetings?|appointments?|birthdays?|missed call|voicemail|unread)\b/i;
   const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|didn'?t|did not)\b[^.]{0,40}\b(see|check|reach|access|look|read|get|pull)\b|\b(unavailable|offline)\b/i;
   const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
   const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
-  const toolResults = (resp) => ((resp == null ? void 0 : resp.content) || []).filter((b) => (b == null ? void 0 : b.type) === "mcp_tool_result" && b.is_error === false).length;
+  const driveToolIds = (resp) => new Set(((resp == null ? void 0 : resp.content) || []).filter((b) => b.type === "mcp_tool_use" && b.server_name === "gdrive").map((b) => b.id));
+  const toolResults = (resp, need) => {
+    const ids = need === "files" ? driveToolIds(resp) : null;
+    return ((resp == null ? void 0 : resp.content) || []).filter((b) => (b == null ? void 0 : b.type) === "mcp_tool_result" && b.is_error === false && (!ids || ids.has(b.tool_use_id))).length;
+  };
   const LIVE_CAVEAT = "I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
   const liveMissLine = (need) => `I couldn't get a live result from your ${need} just now, so I won't guess. Ask me again in a moment.`;
   const LIVE_RETRY_NOTE = (need) => `
@@ -2595,13 +2609,13 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       }
     };
   }
-  function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
+  function ForegroundVoice({ voice, chatBusy }) {
     return /* @__PURE__ */ React.createElement("section", { className: "foreground-voice", "aria-label": "Ember voice controls", hidden: !voice.open, onKeyDown: (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
         voice.close();
       }
-    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), voice.phase === "playing" && voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.interrupt }, "Interrupt"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-pressed": fast, disabled: voice.busy, onClick: onFast, title: fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies." }, fast ? "Fast replies: on" : "Fast replies: off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
+    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), voice.phase === "playing" && voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.interrupt }, "Interrupt"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
   }
   function BaxstarEmber() {
     var _a, _b, _c, _d, _e, _f;
@@ -3094,18 +3108,18 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           ...context,
           { role: "user", content: q }
         ];
-        const need = liveDataNeed(q);
+        const need = liveDataNeed(q, context);
+        if (need === "files") messages[0].content += "\nGoogle Docs are available through the attached read-only Google Drive tools, subject to the connected account's permissions. Use search_files or get_file_metadata to locate the requested document, then read_file_content before summarizing its contents. A search hit alone is not a document read. Test the requested read before saying access is unavailable; report an actual tool failure honestly. This Ember app has no Zapier chat connector: use Drive directly and never claim you used Zapier. You cannot create, edit or share documents.";
         let held = Boolean(voiceSignal && need), latest = "", answerFrom = 0, degraded = false, resp, guard = need ? "ok" : null;
         const holdTimer = held ? setTimeout(() => {
           if (held && isCurrent()) onVoiceHold == null ? void 0 : onVoiceHold(`One moment, checking your ${need}.`);
         }, 900) : null;
         onVoiceMeta == null ? void 0 : onVoiceMeta({ live: need });
+        const toolServers = /* @__PURE__ */ new Map();
         const ask = (msgs) => {
           var _a2, _b2;
           return callClaude(msgs, {
-            // Drive rides along only for a question about files; it is not on every turn.
             useTools: true,
-            servers: need === "files" ? [...MCP_SERVERS, DRIVE_SERVER] : void 0,
             model: chatModel,
             effort: (_a2 = EFFORT[turnEffort]) == null ? void 0 : _a2.api,
             maxTokens: (_b2 = EFFORT[turnEffort]) == null ? void 0 : _b2.budget,
@@ -3124,10 +3138,12 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
             onTool: (block) => {
               if (!isCurrent()) return;
               if (block.type === "mcp_tool_use") {
+                toolServers.set(block.id, block.server_name);
                 if (voiceSignal && !need && !latest.trim()) onVoiceHold == null ? void 0 : onVoiceHold(`One moment, checking your ${LIVE_SERVER_LABEL[block.server_name] || "records"}.`);
                 return;
               }
               if (block.type !== "mcp_tool_result" || block.is_error) return;
+              if (need === "files" && toolServers.get(block.tool_use_id) !== "gdrive") return;
               onVoiceMeta == null ? void 0 : onVoiceMeta({ tool: true });
               answerFrom = latest.length;
               if (held) {
@@ -3139,11 +3155,12 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         };
         resp = await ask(messages);
         if (!isCurrent()) return null;
-        if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
+        if (need && !toolResults(resp, need) && resp.stop_reason !== "refusal" && (need === "files" ? driveToolIds(resp).size === 0 : !HONEST_MISS.test(extractText(resp))) && !degraded && !resp._connectorsDegraded) {
           guard = "retried";
           latest = "";
           answerFrom = 0;
           patchAssistant({ content: "" });
+          toolServers.clear();
           const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
           resp = await ask(again);
           if (!isCurrent()) return null;
@@ -3151,7 +3168,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         clearTimeout(holdTimer);
         held = false;
         let answer = extractText(resp);
-        if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && resp.stop_reason !== "max_tokens" && !HONEST_MISS.test(answer) && LIVE_FACT.test(answer)) {
+        if (need && !toolResults(resp, need) && resp.stop_reason !== "refusal" && resp.stop_reason !== "max_tokens" && (need === "files" || !HONEST_MISS.test(answer) && LIVE_FACT.test(answer))) {
           guard = "refused";
           answer = liveMissLine(need);
           resp = { ...resp, content: [{ type: "text", text: answer }] };
@@ -3160,7 +3177,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           answer += "\n\n" + LIVE_CAVEAT;
           resp = { ...resp, content: [{ type: "text", text: answer }] };
         }
-        onVoiceMeta == null ? void 0 : onVoiceMeta({ guard, tools: toolResults(resp) });
+        onVoiceMeta == null ? void 0 : onVoiceMeta({ guard, tools: toolResults(resp, need) });
         const served = typeof resp.model === "string" ? resp.model : void 0;
         if (resp.stop_reason === "refusal") {
           patchAssistant({ content: answer, status: "error", model: served });
@@ -5378,7 +5395,19 @@ Check Gmail for anything newer.`;
         style: { color: thinking || syncing ? "var(--ember-orange)" : "var(--ink-faint)" }
       },
       voice.phase === "playing" ? "SPEAKING\u2026" : voice.phase === "listening" ? "LISTENING\u2026" : thinking ? "THINKING\u2026" : syncing ? "SYNCING\u2026" : live ? feedState : "READY"
-    ), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE"), /* @__PURE__ */ React.createElement("a", { className: "seg sm voice-lab-link", href: "/work/desktop-voice-probe/", target: "_blank", rel: "noopener noreferrer" }, "VOICE LAB ", /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", width: "10", height: "10", viewBox: "0 0 12 12", fill: "none", stroke: "currentColor", strokeWidth: "1.5" }, /* @__PURE__ */ React.createElement("path", { d: "M2 10 10 2M3 2h7v7" }))))), /* @__PURE__ */ React.createElement("div", { className: "conversation-workspace" }, chatMsgs.length > 0 && /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "enigma" ? "on" : ""}`, onClick: () => setCoreMode("enigma") }, "ENIGMA"), /* @__PURE__ */ React.createElement("button", { className: `seg sm ${coreMode === "scope" ? "on" : ""}`, onClick: () => setCoreMode("scope") }, "SCOPE"), /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        className: `seg sm voice-fast-toggle ${voiceFast ? "on" : ""}`,
+        "aria-label": `Fast replies: ${voiceFast ? "on" : "off"}`,
+        "aria-pressed": voiceFast,
+        disabled: thinking || voice.busy || !chatReady,
+        onClick: () => setVoiceFast((v) => !v),
+        title: voiceFast ? "Fast spoken replies: Low effort on your selected model. Typed chat keeps its selected effort." : "Spoken replies use your selected effort. Turn on for Low effort and faster replies."
+      },
+      "FAST ",
+      voiceFast ? "ON" : "OFF"
+    ), /* @__PURE__ */ React.createElement("a", { className: "seg sm voice-lab-link", href: "/work/desktop-voice-probe/", target: "_blank", rel: "noopener noreferrer" }, "VOICE LAB ", /* @__PURE__ */ React.createElement("svg", { "aria-hidden": "true", width: "10", height: "10", viewBox: "0 0 12 12", fill: "none", stroke: "currentColor", strokeWidth: "1.5" }, /* @__PURE__ */ React.createElement("path", { d: "M2 10 10 2M3 2h7v7" }))))), /* @__PURE__ */ React.createElement("div", { className: "conversation-workspace" }, chatMsgs.length > 0 && /* @__PURE__ */ React.createElement(
       "div",
       {
         ref: chatThreadRef,
@@ -5419,7 +5448,7 @@ Check Gmail for anything newer.`;
         /* @__PURE__ */ React.createElement("div", { className: "chat-message-actions" }, m.status === "complete" ? /* @__PURE__ */ React.createElement("button", { className: "chip ghost", "aria-label": "Copy reply", onClick: () => copyChat(m) }, copiedChatId === m.id ? "Copied" : "Copy") : /* @__PURE__ */ React.createElement("span", { className: "chat-message-status" }, { streaming: "Replying\u2026", stopped: "Stopped \xB7 not saved", truncated: "Incomplete \xB7 output limit", error: "Incomplete \xB7 not saved" }[m.status]))
       )),
       /* @__PURE__ */ React.createElement("div", { ref: chatEndRef })
-    ), /* @__PURE__ */ React.createElement(ForegroundVoice, { voice, chatBusy: thinking || !chatReady, fast: voiceFast, onFast: () => setVoiceFast((v) => !v) }), chatConnectors && /* @__PURE__ */ React.createElement("div", { className: "chat-connectors", role: "status" }, chatConnectors), chatError && /* @__PURE__ */ React.createElement("div", { className: "chat-error", role: "alert" }, chatError), chatFeedback && /* @__PURE__ */ React.createElement("div", { className: "chat-feedback", role: "status" }, chatFeedback), /* @__PURE__ */ React.createElement("span", { className: "sr-only", role: "status" }, thinking ? "Ember is replying. Stop is available." : ((_d = chatMsgs.at(-1)) == null ? void 0 : _d.status) === "complete" && ((_e = chatMsgs.at(-1)) == null ? void 0 : _e.role) === "assistant" ? "Reply complete." : ""), /* @__PURE__ */ React.createElement("div", { className: "chat-composer reveal", style: { animationDelay: "0.55s" } }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(ForegroundVoice, { voice, chatBusy: thinking || !chatReady }), chatConnectors && /* @__PURE__ */ React.createElement("div", { className: "chat-connectors", role: "status" }, chatConnectors), chatError && /* @__PURE__ */ React.createElement("div", { className: "chat-error", role: "alert" }, chatError), chatFeedback && /* @__PURE__ */ React.createElement("div", { className: "chat-feedback", role: "status" }, chatFeedback), /* @__PURE__ */ React.createElement("span", { className: "sr-only", role: "status" }, thinking ? "Ember is replying. Stop is available." : ((_d = chatMsgs.at(-1)) == null ? void 0 : _d.status) === "complete" && ((_e = chatMsgs.at(-1)) == null ? void 0 : _e.role) === "assistant" ? "Reply complete." : ""), /* @__PURE__ */ React.createElement("div", { className: "chat-composer reveal", style: { animationDelay: "0.55s" } }, /* @__PURE__ */ React.createElement(
       "textarea",
       {
         ref: cmdInputRef,

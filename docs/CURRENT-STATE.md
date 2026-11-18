@@ -1,5 +1,31 @@
 # Ember — Current State
 
+**Docs routing, visible Fast replies and voice comparisons — November 17, 2026 (Codex):**
+Brady reports a successful multiple-round phone conversation. Keep the working
+foreground voice path; he is not being sent through another microphone test.
+The Fast replies switch is now the always-visible **FAST ON/OFF** button beside
+ENIGMA/SCOPE, available before opening voice. On uses Low effort on the selected
+model for spoken requests; off uses the selected effort. Typed chat is unchanged.
+The preference persists and cannot change during an active capture/request.
+
+The deployed `b4114c5` code omitted Drive for “Can you access Google Docs?”, Docs
+URLs and the Zapier follow-up. Ordinary chat now always requests the existing
+read-only Drive connector, so availability is not determined by keywords. Docs
+questions and recent document follow-ups get explicit search/read instructions;
+only a successful Drive result satisfies the document guard. A premature access
+denial with no Drive attempt gets one read-only retry; an actual Drive failure
+does not. Zapier is not an Ember chat connector, and document creation/editing is
+not enabled. This repairs routing; authenticated production document reads still
+need observation before claiming the Google account's full access is verified.
+
+`/work/voice-samples/` compares Jenny, Aria and Michelle using the same fixed text,
+existing `/api/tts`, individual playback/download controls, and cancellation.
+No microphone, chat request, preference change or new provider. Direct speech
+provider access from this cloud computer is blocked by its hostname allowlist,
+so MP3 attachments could not be generated for the chat. Samples instead run through
+the user's existing Ember sign-in. No Worker, OAuth or secret change is required.
+See `docs/HANDOFF-DOCS-FAST-VOICE.md` for validation and publication status.
+
 **Spoken replies hard-capped — November 14, 2026 (Claude; Brady: "DO NOT have her dumbass voice
 talk forever to tell me 12 hours worth of information"):** the "1 to 3 short sentences" spoken
 rule from PR #69 was only a prompt instruction; the code still let Jenny read up to 1000

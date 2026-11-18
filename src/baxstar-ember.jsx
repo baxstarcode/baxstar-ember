@@ -27,6 +27,9 @@ const MCP_SERVERS = [
   { name: "quo" },
   { name: "gmail" },
   { name: "calendar" },
+  // Docs and follow-ups need Drive even when the user does not say "Drive".
+  // The Worker still owns the read-only allowlist and omits missing grants.
+  { name: "gdrive" },
 ];
 const DRIVE_SERVER = { name: "gdrive" };
 
@@ -854,7 +857,7 @@ const LIVE_DATA = [
   ["calendar", /\b(calendar|meetings?|appointments?|birthdays?|bookings?|reservations?|charters?|agenda)\b|\b(?:my|next|any|upcoming|today'?s|tomorrow'?s|this week'?s) (?:events?|trips?|plans?|schedule)\b|\b(?:am i|are we) (?:free|open|busy|booked)\b|\bwhat(?:'s| is) (?:on|happening|going on)\b|\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b[^.?!]{0,30}\b(?:look|got|have|has|doing|going|happening|hold)\b|\b(?:what|how) (?:does|do|will|is|'s) (?:today|tomorrow|tonight|my (?:day|week|morning|afternoon|evening))\b|\b(?:do|did) i have (?:any(?:thing)?|something)\b|\bmy (?:day|week|weekend|morning|afternoon|evening) (?:look|going|hold)/i],
   ["email", /\b(e-?mails?|inbox|gmail)\b|\b(?:my|new|any|unread|recent|latest|last) mail\b/i],
   ["calls and texts", /\b(voicemails?|missed calls?|texted|quo)\b|\b(?:my|new|any|unread|recent|latest|last) (?:calls?|texts?|messages?|sms)\b|\b(?:who|anyone|anybody|someone|somebody) (?:called|call|texted|text|messaged)\b|\bdid (?:\w+ )?(?:call|text)\b/i],
-  ["files", /\b(?:google )?drive\b|\b(?:my|the) (?:docs?|documents?|files?|spreadsheets?|sheets?) (?:about|on|for|called|named)\b|\bhandoff log\b/i],
+  ["files", /\b(?:google\s+)?(?:drive|docs?|documents?|files?|spreadsheets?)\b|\bgoogle sheets\b|docs\.google\.com\/|\bhandoff log\b/i],
   ["messages", /\bwhat(?: did|'d) i miss\b|\bbrief (?:me|my)\b|\bcatch me up\b|\banything (?:new|urgent|important)\b/i],
 ];
 // Drafting and how-to questions are not fact claims about Brady's data.
@@ -863,10 +866,19 @@ const LIVE_EXEMPT = /\b(draft|write|compose|rewrite|reword|polish|proofread|tran
 // the loose calendar patterns fire are set aside for it; a real calendar word
 // ("my trips", "am I free", "bookings") still asks for the calendar.
 const DAY_WORDS = /\b(?:today|tomorrow|tonight|this (?:morning|afternoon|evening|week|weekend)|next week)\b/gi;
-function liveDataNeed(text) {
+const FILE_FOLLOWUP = /\b(?:it|that|those|them|this one|the first|the second|same one|same connection|zapier)\b|^\s*(?:summari[sz]e|read|open|continue|go on)[.?!\s]*$/i;
+function liveDataNeed(text, context = []) {
   if (LIVE_EXEMPT.test(text)) return null;
   if (WEATHER_Q.test(text)) text = text.replace(DAY_WORDS, " ");
   for (const [label, re] of LIVE_DATA) if (re.test(text)) return label;
+  // Resolve "read it"/"try through Zapier" from recent user requests, never from
+  // an assistant's unverified claim that it found or read a document.
+  if (FILE_FOLLOWUP.test(text)) {
+    for (const message of context.filter(m => m.role === "user").slice(-4).reverse()) {
+      if (LIVE_DATA.find(([label]) => label === "files")[1].test(message.content)) return "files";
+      if (!FILE_FOLLOWUP.test(message.content)) break;
+    }
+  }
   return null;
 }
 // A reply that talks about Brady's live data without any tool result is flagged,
@@ -876,7 +888,11 @@ const HONEST_MISS = /\b(can(?:no|')t|couldn'?t|could not|unable to|not able to|d
 // What a made-up lookup sounds like: times, weekdays, "you have…", named items.
 const LIVE_FACT = new RegExp(LIVE_CLAIM.source + "|\\b\\d{1,2}(?::\\d{2})?\\s?(?:am|pm|a\\.m\\.|p\\.m\\.)\\b|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b|\\byou(?: have|'ve got| got)\\b|\\b(?:charter|trip|event|booking|e-?mail|text|call)s?\\b", "i");
 const LIVE_SERVER_LABEL = { calendar: "calendar", gmail: "email", quo: "calls and texts", gdrive: "files" };
-const toolResults = (resp) => (resp?.content || []).filter((b) => b?.type === "mcp_tool_result" && b.is_error === false).length;
+const driveToolIds = (resp) => new Set((resp?.content || []).filter(b => b.type === "mcp_tool_use" && b.server_name === "gdrive").map(b => b.id));
+const toolResults = (resp, need) => {
+  const ids = need === "files" ? driveToolIds(resp) : null;
+  return (resp?.content || []).filter(b => b?.type === "mcp_tool_result" && b.is_error === false && (!ids || ids.has(b.tool_use_id))).length;
+};
 // Appended by code to an unverified reply. The voice cap never cuts it: it is always
 // spoken after whatever part of the answer was kept.
 const LIVE_CAVEAT = "I didn't check your live calendar, email or calls for that, so don't rely on it. Ask me to look it up.";
@@ -2139,7 +2155,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     audioError: () => { pauseConversation(); session("auto"); releaseWake(); patch({ phase: "ready", phrase: "", note: "Audio could not play. Your reply is saved; try Read reply." }); }
   };
 }
-function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
+function ForegroundVoice({ voice, chatBusy }) {
   // VOICE PANEL (2026-11-11, Brady: the review box and test buttons looked like
   // a reliability test, not Ember). Conversation is the only mode: tap the mouth,
   // talk, Jenny answers, Ember listens again. The panel keeps her status and the
@@ -2152,7 +2168,6 @@ function ForegroundVoice({ voice, chatBusy, fast, onFast }) {
       <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
-      <button className="chip ghost" aria-pressed={fast} disabled={voice.busy} onClick={onFast} title={fast ? "Spoken replies use Low effort so Ember answers sooner. Tap to use your chat Model/Effort setting instead." : "Spoken replies use your chat Model/Effort setting. Tap for faster, shorter spoken replies."}>{fast ? "Fast replies: on" : "Fast replies: off"}</button>
     </div>
     {voice.conversation && !voice.answer && voice.draft && <p className="voice-live-words" aria-label="Heard words">{voice.draft}</p>}
     <audio ref={voice.audioRef} controls playsInline preload="none" hidden={!voice.audioReady} aria-label="Ember reply" onPlaying={voice.playing} onPause={voice.paused} onEnded={voice.ended} onError={voice.audioError} onTimeUpdate={e => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration)}/>
@@ -2711,16 +2726,17 @@ export default function BaxstarEmber() {
       // No automatic model retry on errors: connector calls may already have run
       // upstream. The one exception is the live-data guard below, which re-asks only
       // when no connector result came back at all (connectors are read-only).
-      const need = liveDataNeed(q);
+      const need = liveDataNeed(q, context);
+      if (need === "files") messages[0].content += "\nGoogle Docs are available through the attached read-only Google Drive tools, subject to the connected account's permissions. Use search_files or get_file_metadata to locate the requested document, then read_file_content before summarizing its contents. A search hit alone is not a document read. Test the requested read before saying access is unavailable; report an actual tool failure honestly. This Ember app has no Zapier chat connector: use Drive directly and never claim you used Zapier. You cannot create, edit or share documents.";
       // answerFrom: where the text after the latest lookup result starts. Narration written
       // before a lookup ("Let me check your calendar.") is not read out or counted.
       let held = Boolean(voiceSignal && need), latest = "", answerFrom = 0, degraded = false, resp, guard = need ? "ok" : null;
       // Only when the lookup is slow: a quick result goes straight to the answer.
       const holdTimer = held ? setTimeout(() => { if (held && isCurrent()) onVoiceHold?.(`One moment, checking your ${need}.`); }, 900) : null;
       onVoiceMeta?.({ live: need });
+      const toolServers = new Map();
       const ask = (msgs) => callClaude(msgs, {
-        // Drive rides along only for a question about files; it is not on every turn.
-        useTools: true, servers: need === "files" ? [...MCP_SERVERS, DRIVE_SERVER] : undefined, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
+        useTools: true, model: chatModel, effort: EFFORT[turnEffort]?.api, maxTokens: EFFORT[turnEffort]?.budget,
         signal: request.controller.signal,
         onDelta: (content) => { latest = content; patchAssistant({ content }); if (isCurrent() && !held) onVoiceText?.(content, answerFrom); },
         onMeta: ({ degraded: d }) => { onVoiceMeta?.({ headers: true }); degraded ||= d; if (isCurrent() && d) setChatConnectors(degradedChatNote(connStatusRef.current)); },
@@ -2728,8 +2744,9 @@ export default function BaxstarEmber() {
         onTool: (block) => {
           if (!isCurrent()) return;
           // A lookup the question patterns did not predict: say so instead of going quiet.
-          if (block.type === "mcp_tool_use") { if (voiceSignal && !need && !latest.trim()) onVoiceHold?.(`One moment, checking your ${LIVE_SERVER_LABEL[block.server_name] || "records"}.`); return; }
+          if (block.type === "mcp_tool_use") { toolServers.set(block.id, block.server_name); if (voiceSignal && !need && !latest.trim()) onVoiceHold?.(`One moment, checking your ${LIVE_SERVER_LABEL[block.server_name] || "records"}.`); return; }
           if (block.type !== "mcp_tool_result" || block.is_error) return;
+          if (need === "files" && toolServers.get(block.tool_use_id) !== "gdrive") return;
           onVoiceMeta?.({ tool: true });
           answerFrom = latest.length;
           if (held) { held = false; if (latest) onVoiceText?.(latest, answerFrom); }
@@ -2737,15 +2754,17 @@ export default function BaxstarEmber() {
       });
       resp = await ask(messages);
       if (!isCurrent()) return null;
-      if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && !HONEST_MISS.test(extractText(resp)) && !degraded && !resp._connectorsDegraded) {
+      if (need && !toolResults(resp, need) && resp.stop_reason !== "refusal" &&
+          (need === "files" ? driveToolIds(resp).size === 0 : !HONEST_MISS.test(extractText(resp))) && !degraded && !resp._connectorsDegraded) {
         guard = "retried"; latest = ""; answerFrom = 0; patchAssistant({ content: "" });
+        toolServers.clear();
         const again = messages.slice(0, -1).concat({ role: "user", content: q + LIVE_RETRY_NOTE(need) });
         resp = await ask(again);
         if (!isCurrent()) return null;
       }
       clearTimeout(holdTimer); held = false;
       let answer = extractText(resp);
-      if (need && !toolResults(resp) && resp.stop_reason !== "refusal" && resp.stop_reason !== "max_tokens" && !HONEST_MISS.test(answer) && LIVE_FACT.test(answer)) {
+      if (need && !toolResults(resp, need) && resp.stop_reason !== "refusal" && resp.stop_reason !== "max_tokens" && (need === "files" || (!HONEST_MISS.test(answer) && LIVE_FACT.test(answer)))) {
         // Still no lookup and the reply states facts: say so instead.
         guard = "refused"; answer = liveMissLine(need);
         resp = { ...resp, content: [{ type: "text", text: answer }] };
@@ -2753,7 +2772,7 @@ export default function BaxstarEmber() {
         guard = "caveat"; answer += "\n\n" + LIVE_CAVEAT;
         resp = { ...resp, content: [{ type: "text", text: answer }] };
       }
-      onVoiceMeta?.({ guard, tools: toolResults(resp) });
+      onVoiceMeta?.({ guard, tools: toolResults(resp, need) });
       const served = typeof resp.model === "string" ? resp.model : undefined;
       // A refusal is shown as one. Nothing is retried on another model behind
       // Brady's back — he picks the next model and presses Retry himself.
@@ -5134,6 +5153,9 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   </span>
                   <button className={`seg sm ${coreMode === "enigma" ? "on" : ""}`} onClick={() => setCoreMode("enigma")}>ENIGMA</button>
                   <button className={`seg sm ${coreMode === "scope" ? "on" : ""}`} onClick={() => setCoreMode("scope")}>SCOPE</button>
+                  <button className={`seg sm voice-fast-toggle ${voiceFast ? "on" : ""}`} aria-label={`Fast replies: ${voiceFast ? "on" : "off"}`} aria-pressed={voiceFast}
+                    disabled={thinking || voice.busy || !chatReady} onClick={() => setVoiceFast(v => !v)}
+                    title={voiceFast ? "Fast spoken replies: Low effort on your selected model. Typed chat keeps its selected effort." : "Spoken replies use your selected effort. Turn on for Low effort and faster replies."}>FAST {voiceFast ? "ON" : "OFF"}</button>
                   <a className="seg sm voice-lab-link" href="/work/desktop-voice-probe/" target="_blank" rel="noopener noreferrer">VOICE LAB <svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 10 10 2M3 2h7v7" /></svg></a>
                 </div>
               </div>
@@ -5169,7 +5191,7 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                 </div>
               )}
 
-              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} fast={voiceFast} onFast={() => setVoiceFast((v) => !v)} />
+              <ForegroundVoice voice={voice} chatBusy={thinking || !chatReady} />
 
               {chatConnectors && <div className="chat-connectors" role="status">{chatConnectors}</div>}
               {chatError && <div className="chat-error" role="alert">{chatError}</div>}

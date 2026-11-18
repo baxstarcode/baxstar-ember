@@ -141,8 +141,10 @@ try{
   await f.page.getByRole('textbox',{name:'Ask Ember'}).fill('Typed question');await f.page.getByRole('textbox',{name:'Ask Ember'}).press('Enter');
   await f.page.waitForFunction(()=>document.querySelector('.home-thread [data-role="assistant"]')?.innerText.includes('Your voice is connected'));
   check('typed chat keeps selected Opus/High while Fast replies is on',f.calls.some(c=>c.path==='/api/messages'&&c.body.output_config?.effort==='high'&&c.body.max_tokens===12000&&c.body.messages.at(-1)?.content==='Typed question'));
-  await f.start();const toggle=f.panel.getByRole('button',{name:/Fast replies/});
-  check('Fast replies defaults on and is visible in the voice panel',await toggle.getAttribute('aria-pressed')==='true');
+  const toggle=f.page.getByRole('button',{name:/Fast replies/});
+  check('Fast replies is visible and enabled before opening voice',await toggle.isVisible()&&await toggle.isEnabled());
+  check('Fast replies defaults on',await toggle.getAttribute('aria-pressed')==='true');
+  await f.start();
   check('Fast replies cannot change mid-capture',await toggle.isDisabled());
   await f.panel.getByRole('button',{name:'Stop voice'}).click();await f.page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'});await toggle.click();
   check('Fast replies toggles off',await toggle.getAttribute('aria-pressed')==='false');
@@ -153,7 +155,7 @@ try{
  }
  {
   const f=await fixture({prefs:{v:5,chatModel:'claude-sonnet-5-5',chatEffort:'medium',voiceFast:false}});
-  await f.start();check('saved Fast replies off is restored',await f.panel.getByRole('button',{name:/Fast replies/}).getAttribute('aria-pressed')==='false');await f.context.close();
+  await f.start();check('saved Fast replies off is restored',await f.page.getByRole('button',{name:/Fast replies/}).getAttribute('aria-pressed')==='false');await f.context.close();
  }
  {
   // Second-turn mic check (2026-11-11): an automatic turn whose mic the phone never opens.

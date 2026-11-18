@@ -32,6 +32,8 @@ const files = [
   "work/desktop-voice-probe/index.html",
   "work/desktop-voice-probe/probe.js",
   "work/desktop-voice-probe/style.css",
+  "work/voice-samples/index.html",
+  "work/voice-samples/samples.js",
   "assets/ember/icon.svg",
   "assets/ember/raster/command-console@2x.webp",
   "assets/ember/raster/glass-tank@2x.png",

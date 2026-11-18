@@ -204,16 +204,16 @@ try {
     check('an unasked-for live claim without a lookup is flagged in the reply', /didn't check your live calendar, email or calls/.test(caveat) && f.chats().length === 6);
     f.state.mode = 'tool';
     await typed(f, 'Search my drive for the handoff log');
-    check('a files question attaches Drive for that turn only', f.chats().at(-1).body.mcp_servers.some((m) => m.name === 'gdrive') && f.chats().slice(0, -1).every((c) => !c.body.mcp_servers.some((m) => m.name === 'gdrive')));
+    check('Drive stays attached for Docs names and follow-ups without keyword gating', f.chats().every(c => c.body.mcp_servers.some(m => m.name === 'gdrive')));
     check('every request still carries the read-only connectors', f.chats().every((c) => c.body.mcp_servers?.length > 0));
     check('the prompt says earlier replies are not tool results', f.chats().every((c) => c.body.messages[0].content.includes('Facts in earlier replies of this conversation are not tool results')));
     await f.context.close();
   }
-  {
+  for (const need of ["calendar", "files"]) {
     // Spoken: Jenny says nothing of the answer before the calendar result arrives.
     const f = await fixture();
     // A timed stream through a page-side fetch override (route bodies are not streamed).
-    await f.page.evaluate(() => {
+    await f.page.evaluate(({ need }) => {
       const real = window.fetch.bind(window);
       window.toolSent = 0; window.ttsTexts = [];
       window.fetch = async (input, init = {}) => {
@@ -234,8 +234,13 @@ try {
           } else {
             ctl.enqueue(ev({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }));
             ctl.enqueue(ev({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me check. ' } }));
+            if (need === 'files') {
+              ctl.enqueue(ev({ type: 'content_block_start', index: 4, content_block: { type: 'mcp_tool_use', id: 'wrong', name: 'list_events', server_name: 'calendar' } }));
+              ctl.enqueue(ev({ type: 'content_block_start', index: 5, content_block: { type: 'mcp_tool_result', tool_use_id: 'wrong', is_error: false, content: [] } }));
+              ctl.enqueue(ev({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Unverified document claim before Drive. ' } }));
+            }
             await wait(1400);
-            ctl.enqueue(ev({ type: 'content_block_start', index: 1, content_block: { type: 'mcp_tool_use', id: 't1', name: 'list_events', server_name: 'calendar' } }));
+            ctl.enqueue(ev({ type: 'content_block_start', index: 1, content_block: { type: 'mcp_tool_use', id: 't1', name: need === 'files' ? 'read_file_content' : 'list_events', server_name: need === 'files' ? 'gdrive' : 'calendar' } }));
             ctl.enqueue(ev({ type: 'content_block_start', index: 2, content_block: { type: 'mcp_tool_result', tool_use_id: 't1', is_error: false, content: [] } }));
             window.toolSent = performance.now();
             ctl.enqueue(ev({ type: 'content_block_start', index: 3, content_block: { type: 'text', text: '' } }));
@@ -247,16 +252,16 @@ try {
           ctl.close();
         } }), { headers: { 'Content-Type': 'text/event-stream' } });
       };
-    });
-    await f.tap(); await f.page.evaluate(() => say("What's on my calendar tomorrow?"));
+    }, { need });
+    await f.tap(); await f.page.evaluate(q => say(q), need === 'files' ? 'Read my Google Doc' : "What's on my calendar tomorrow?");
     await f.page.waitForFunction(() => window.ttsTexts.some((t) => /Pelican/.test(t.text)), null, { timeout: 15000 });
     const spoken = await f.page.evaluate(() => ({ tts: window.ttsTexts, toolSent: window.toolSent }));
-    check('the made-up first answer is never spoken', !spoken.tts.some((t) => /invented/.test(t.text)));
-    check('a slow lookup gets one "checking your calendar" line first', /^One moment, checking your calendar\.$/.test(spoken.tts[0].text));
-    check('no answer audio is requested before the calendar result', spoken.tts.filter((t) => !/^One moment/.test(t.text)).every((t) => t.at >= spoken.toolSent));
+    check(`${need}: unverified answers are never spoken`, !spoken.tts.some((t) => /invented|Unverified/.test(t.text)));
+    check(`${need}: slow lookup gets the correct checking line`, spoken.tts[0].text === `One moment, checking your ${need}.`);
+    check(`${need}: no answer audio before the matching provider result`, spoken.tts.filter((t) => !/^One moment/.test(t.text)).every((t) => t.at >= spoken.toolSent));
     await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 10000 });
     const trace = await f.page.evaluate(() => emberVoiceTraces.filter((t) => t.outcome === 'spoke').at(-1));
-    check('the spoken trace records the guard and the lookup', trace.reply?.live === 'calendar' && trace.reply?.guard === 'retried' && trace.reply?.tools === 1 && trace.marks['tool-result'] > 0);
+    check('the spoken trace records the guard and the lookup', trace.reply?.live === need && trace.reply?.guard === 'retried' && trace.reply?.tools === 1 && trace.marks['tool-result'] > 0);
     await f.context.close();
   }
   {

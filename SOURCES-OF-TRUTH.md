@@ -7,7 +7,8 @@ review/Send and no-rearm requirements below. Stop/close/hidden-page/typing ends 
 session; unfinished or failed turns pause for recovery. Typed questions stay
 text-only. Main defaults are now Opus 5.5 / High (preferences v5), including a
 one-time migration; subsequent choices persist. Since 2026-11-10, spoken turns run at
-Low effort on the chosen model (Fast replies, a switch in the voice panel); typed chat
+Low effort on the chosen model (Fast replies; since 2026-11-17 the FAST ON/OFF
+button is beside ENIGMA/SCOPE, visible before opening voice); typed chat
 keeps the Model/Effort choice. Since 2026-11-14 a spoken turn stops at 4 sentences, 3 times of
 day or 420 characters, in code; the full reply stays on screen and "keep going" reads on. Desktop no-scroll and the pinned
 dock are retained. See `docs/VOICE-CONVERSATION-PROOF.md` for inspected primary
