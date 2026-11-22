@@ -59,6 +59,10 @@ async function measure(run, scenario = "latency") {
         if (init.signal?.aborted) throw new DOMException("aborted", "AbortError");
         marks.firstTtsRequest ??= performance.now();
         await new Promise((r) => setTimeout(r, TTS.baseMs + TTS.msPerChar * text.length));
+        if (SCENARIO === "clipfail" && marks.ttsTexts.indexOf(text) === 2) {
+          marks.speechFailure = performance.now();
+          return Response.json({ error: "Fixture speech failure" }, { status: 502 });
+        }
         marks.firstTtsReply ??= performance.now();
         return new Response(wav(text.length / SPEECH_CHARS_PER_SECOND), { headers: { "Content-Type": "audio/wav" } });
       }
@@ -71,6 +75,22 @@ async function measure(run, scenario = "latency") {
           async start(ctl) {
             const wait = (ms) => new Promise((r) => setTimeout(r, ms));
             ctl.enqueue(sse({ type: "message_start", message: { model: body.model } }));
+            if (SCENARIO === "short" || SCENARIO === "abbrev") {
+              await wait(MODEL.firstTokenMs);
+              marks.firstToken = performance.now();
+              ctl.enqueue(sse({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
+              ctl.enqueue(sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: SCENARIO === "short" ? "Yes. " : "Dr. " } }));
+              if (SCENARIO === "abbrev") {
+                await wait(300);
+                ctl.enqueue(sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Smith agrees. " } }));
+              }
+              await wait(1800);
+              ctl.enqueue(sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "A short walk is a good way to take a break and clear your head." } }));
+              marks.lastToken = performance.now();
+              ctl.enqueue(sse({ type: "content_block_stop", index: 0 }));
+              ctl.enqueue(sse({ type: "message_delta", delta: { stop_reason: "end_turn" } }));
+              ctl.enqueue(sse({ type: "message_stop" })); ctl.close(); return;
+            }
             if (SCENARIO === "caveat") {
               // No lookup at all: an unverified claim, streamed as plain text.
               ctl.enqueue(sse({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
@@ -143,7 +163,7 @@ async function measure(run, scenario = "latency") {
   await page.goto(origin);
   await page.getByRole("button", { name: "Talk to Ember", exact: true }).click();
   await page.locator('[data-voice-phase="listening"]').waitFor();
-  await page.evaluate((q) => say(q), scenario === "caveat" ? "What did Sarah want?" : "What does tomorrow look like?");
+  await page.evaluate((q) => say(q), ["short", "abbrev"].includes(scenario) ? "Would a short walk be a good break?" : scenario === "caveat" ? "What did Sarah want?" : "What does tomorrow look like?");
   await page.waitForFunction(() => window.marks.firstAudio, null, { timeout: 30000 });
   if (scenario === "latency") {
     // The answer's first clip follows the hold line; play the hold line out.
@@ -154,6 +174,18 @@ async function measure(run, scenario = "latency") {
     }
   }
   await page.waitForTimeout(200);
+  if (scenario === "short" || scenario === "abbrev") {
+    await page.waitForFunction(() => window.marks.lastToken);
+    const m = await page.evaluate(() => window.marks);
+    await context.close();
+    return { firstClip: m.ttsTexts[0], firstRequestMs: Math.round(m.firstTtsRequest - m.speechEnd), firstAudioMs: Math.round(m.firstAudio - m.speechEnd), fullTextMs: Math.round(m.lastToken - m.speechEnd), startedBeforeFullText: m.firstAudio < m.lastToken };
+  }
+  if (scenario === "clipfail") {
+    await page.waitForFunction(() => window.marks.speechFailure);
+    await page.waitForTimeout(400);
+    const m = await page.evaluate(() => ({ phase: document.querySelector('[data-voice-phase]')?.dataset.voicePhase, paused: document.querySelector('audio[aria-label="Ember reply"]').paused, source: document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src'), active: recs.some(r => r.active), recs: recs.length, note: document.querySelector('.voice-status')?.textContent, replyPreserved: document.querySelector('.home-thread')?.textContent.includes('Nothing needs a reply before your first trip.') }));
+    await context.close(); return m;
+  }
   if (scenario === "sequence" || scenario === "narration" || scenario === "caveat" || scenario === "twotools") {
     // Play every clip to its end; the turn must finish and the mic re-arm once.
     for (let i = 0; i < 20 && !(await page.locator('[data-voice-phase="listening"]').count()); i++) {
@@ -179,6 +211,21 @@ async function measure(run, scenario = "latency") {
 }
 
 try {
+  if (process.env.EMBER_SHORT_REPLY_ONLY) {
+    console.log(JSON.stringify(await measure(0, "short")));
+  } else if (process.env.EMBER_CLIP_FAILURE_ONLY) {
+    const failed = await measure(0, "clipfail"); console.log(JSON.stringify(failed));
+    assert.ok(failed.paused && failed.source === null && !failed.active && failed.recs === 1, "speech failure silences every clip and leaves the microphone off");
+    assert.ok(failed.replyPreserved, "the completed text reply survives the speech failure");
+  } else {
+  const short = await measure(0, "short"), abbrev = await measure(0, "abbrev");
+  assert.equal(short.firstClip, "Yes.", "a complete short first sentence is not held for the next sentence");
+  assert.ok(short.startedBeforeFullText, "the short answer starts before the rest is generated");
+  assert.equal(abbrev.firstClip, "Dr. Smith agrees.", "an abbreviation is not spoken alone as a sentence");
+  const failed = await measure(0, "clipfail");
+  assert.ok(failed.paused && failed.source === null && !failed.active && failed.recs === 1, "speech failure silences every clip and leaves the microphone off");
+  assert.ok(failed.replyPreserved, "the completed text reply survives the speech failure");
+  console.log(`PASS short opening: ${short.firstAudioMs}ms to first sound, before full text at ${short.fullTextMs}ms; abbreviation kept intact; failed clip silences playback`);
   const runs = [];
   for (let i = 1; i <= 3; i++) runs.push(await measure(i));
   console.log(`build: ${root}`);
@@ -225,6 +272,7 @@ try {
     console.log(`PASS Stop during the first clip: playback stopped, ${stopped.plays} clip played, mic stayed off`);
   }
   if (process.env.EMBER_LATENCY_BUDGET_MS) assert.ok(median("firstAudio") <= Number(process.env.EMBER_LATENCY_BUDGET_MS), "first audio over budget");
+  }
 } finally {
   await browser.close();
 }

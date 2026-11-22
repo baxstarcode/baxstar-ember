@@ -798,7 +798,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-18 01:46Z".startsWith("__") ? "dev" : "2026-11-18 01:46Z";
+  const BUILD_STAMP = "2026-11-22 04:16Z".startsWith("__") ? "dev" : "2026-11-22 04:16Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1875,6 +1875,10 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
     function stop(note = "Stopped. Your words and replies are still here.") {
       var _a;
       traceEnd("stopped");
+      c.retryMic = false;
+      c.retryDelay = 0;
+      c.retryNote = "";
+      c.nextTrigger = null;
       pauseConversation();
       c.epoch++;
       c.releaseNote = note;
@@ -2130,7 +2134,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         clearTimeout(c.timers.play);
       }
     }
-    const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
+    const FIRST_CLIP_MIN = 1, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
     const TURN_SENTENCES = 4, TURN_TIMES = 3, TURN_SPOKEN_MAX = 420;
     const ABBREV = /^(?:[ap]\.m\.|u\.s\.|e\.g\.|i\.e\.|(?:mr|mrs|ms|dr|st|vs|approx|jr|sr|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)\.)$/i;
     const TIME_OF_DAY = /\b\d{1,2}(?::\d{2})?\s?[ap]\.?m\b\.?|\bnoon\b|\bmidnight\b/gi;
@@ -2210,10 +2214,16 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       s == null ? void 0 : s.controller.abort();
     }
     function clipEnd(text, min, first) {
+      var _a;
       const re = /[.!?…]["”’)\]]*(?=\s)|\n+/g;
       let end = -1, m;
       while (m = re.exec(text)) {
         const at = m.index + m[0].length;
+        if (m[0][0] === ".") {
+          const tok = ((_a = text.slice(0, m.index + 1).match(/\S+$/)) == null ? void 0 : _a[0]) || "";
+          const pre = text.slice(0, m.index + 1 - tok.length);
+          if (/^[A-Z]\.$/.test(tok) || ABBREV.test(tok) || /^\d\.$/.test(tok) && (!pre.trim() || /[.!?…]\s*$|\n\s*$/.test(pre))) continue;
+        }
         if (at >= min) {
           end = at;
           if (first) break;
@@ -2302,6 +2312,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         traceEnd("speech-failed");
         endStream();
         pauseConversation();
+        clearAudio();
         releaseWake();
         patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message });
       }).finally(() => clearTimeout(timeout));
@@ -2456,6 +2467,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           traceEnd("reply-failed");
           endStream();
           pauseConversation();
+          clearAudio();
           releaseWake();
           patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." });
           return;
@@ -2475,7 +2487,9 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       } catch {
         if (c.live && epoch === c.epoch) {
           traceEnd("reply-failed");
+          endStream();
           pauseConversation();
+          clearAudio();
           releaseWake();
           patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." });
         }
@@ -2548,13 +2562,27 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         stop("Voice stopped. Your completed conversation is saved.");
         closeContext();
       };
-      const interrupt2 = () => {
+      const audioInterrupted = () => {
         var _a2;
         if (((_a2 = navigator.audioSession) == null ? void 0 : _a2.state) === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth.");
       };
       document.addEventListener("visibilitychange", hidden);
       window.addEventListener("pagehide", exit);
-      (_b = (_a = navigator.audioSession) == null ? void 0 : _a.addEventListener) == null ? void 0 : _b.call(_a, "statechange", interrupt2);
+      (_b = (_a = navigator.audioSession) == null ? void 0 : _a.addEventListener) == null ? void 0 : _b.call(_a, "statechange", audioInterrupted);
+      const keys = (event) => {
+        var _a2, _b2;
+        if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || document.hidden || !options.current.enabled) return;
+        if ((_b2 = (_a2 = event.target) == null ? void 0 : _a2.closest) == null ? void 0 : _b2.call(_a2, 'input, textarea, select, button, a, [contenteditable], [role="button"], [role="dialog"]')) return;
+        if (event.code === "Space" && c.phase === "playing" && c.conversation) {
+          event.preventDefault();
+          interrupt();
+        } else if (event.key === "Escape" && (c.conversation || c.rec || c.request || c.phase === "playing")) {
+          event.preventDefault();
+          c.rest = "";
+          stop("Voice stopped. Tap the mouth to talk again.");
+        }
+      };
+      window.addEventListener("keydown", keys);
       return () => {
         var _a2, _b2;
         c.live = false;
@@ -2572,7 +2600,8 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         clearTimers();
         document.removeEventListener("visibilitychange", hidden);
         window.removeEventListener("pagehide", exit);
-        (_b2 = (_a2 = navigator.audioSession) == null ? void 0 : _a2.removeEventListener) == null ? void 0 : _b2.call(_a2, "statechange", interrupt2);
+        (_b2 = (_a2 = navigator.audioSession) == null ? void 0 : _a2.removeEventListener) == null ? void 0 : _b2.call(_a2, "statechange", audioInterrupted);
+        window.removeEventListener("keydown", keys);
       };
     }, []);
     useEffect(() => {
@@ -2636,7 +2665,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         e.preventDefault();
         voice.close();
       }
-    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), voice.phase === "playing" && voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.interrupt }, "Interrupt"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop() }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
+    } }, /* @__PURE__ */ React.createElement("div", { className: "voice-topline" }, /* @__PURE__ */ React.createElement("span", { role: "status", className: "voice-status", "data-phase": voice.phase }, voice.note), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.close, "aria-label": "Close voice" }, "\u2715")), /* @__PURE__ */ React.createElement("div", { className: "voice-actions" }, ["starting", "listening"].includes(voice.phase) ? /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.finish }, "Answer now") : !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.start, disabled: !voice.capable || voice.busy || chatBusy }, "Talk"), voice.phase === "playing" && voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip solid", onClick: voice.interrupt, "aria-keyshortcuts": "Space", title: "Interrupt and listen (Space)" }, "Interrupt"), /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: () => voice.stop(), "aria-keyshortcuts": "Escape", title: "Stop voice (Escape)" }, "Stop voice"), voice.answer && !voice.conversation && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", disabled: voice.busy, onClick: voice.speak }, voice.answer.length > 1e3 ? "Read first part" : "Read reply"), voice.phase === "unconfirmed" && /* @__PURE__ */ React.createElement("button", { className: "chip ghost", onClick: voice.confirmReleased }, "I checked: mic indicator is off")), voice.conversation && !voice.answer && voice.draft && /* @__PURE__ */ React.createElement("p", { className: "voice-live-words", "aria-label": "Heard words" }, voice.draft), /* @__PURE__ */ React.createElement("audio", { ref: voice.audioRef, controls: true, playsInline: true, preload: "none", hidden: !voice.audioReady, "aria-label": "Ember reply", onPlaying: voice.playing, onPause: voice.paused, onEnded: voice.ended, onError: voice.audioError, onTimeUpdate: (e) => voice.phraseAt(e.currentTarget.currentTime, e.currentTarget.duration) }), /* @__PURE__ */ React.createElement("span", { className: "sr-only", "data-wake": voice.wake }, { held: "Screen awake", requesting: "Requesting screen awake", unavailable: "Screen-awake unavailable", released: "Screen-awake released", off: "Screen awake off" }[voice.wake]), !voice.production && /* @__PURE__ */ React.createElement("small", null, "Preview: microphone checks only. Replies work on ember.baxstarfishing.com."));
   }
   function BaxstarEmber() {
     var _a, _b, _c, _d, _e, _f;

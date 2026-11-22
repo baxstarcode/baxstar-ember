@@ -1,5 +1,29 @@
 # Ember — Current State
 
+**Voice speed and recovery hardening — November 21, 2026 (Codex):** Brady asked
+for faster, more natural voice with no new paid service. The first complete
+sentence now enters TTS even when shorter than 24 characters, keeping abbreviations
+and initials together. A controlled short-answer test improved first sound from
+6051 ms to 4143 ms with identical simulated providers; real-device speed is not
+measured by that test. Model, effort, Aria, recognition grace period and audio
+routing are unchanged.
+
+Two regressions were reproduced before fixing: Stop during a delayed microphone
+retry could reopen capture, and a failed later speech clip could leave earlier
+audio playing behind an error state. Stop now clears retry state; failed speech
+or chat turns cancel queued/current audio and retain the text response. Space
+interrupts an active spoken conversation and listens; Escape stops voice. These
+keyboard shortcuts leave text editing, existing controls and modified keys alone.
+The physical no-touch spoken-interruption question remains open; this change
+does not listen over Aria or change the foreground-only policy.
+
+Validation: Pages build, 167 foreground checks, 54 WebKit-path checks, 87 layout
+checks, nine spoken-cap tests and the streaming/latency suite passed using
+simulated recognition/providers. Includes short-answer timing, abbreviation
+boundaries, delayed retry cancellation, text preservation and keyboard controls.
+No Worker/connector/native-app change or additional paid service.
+See `docs/HANDOFF-VOICE-HARDENING.md` for a focused independent-review handoff.
+
 **Spoken stop — November 17, 2026 (Codex):** During a listening turn, a finalized
 standalone “stop”, “stop listening” or “Ember, stop” ends the foreground voice
 conversation through the existing Stop path. It cancels pending sends/restarts,

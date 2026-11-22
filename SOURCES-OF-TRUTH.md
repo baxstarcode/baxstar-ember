@@ -1,5 +1,12 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Voice hardening — November 21, 2026:** Short complete opening sentences stream
+without waiting for a 24-character minimum. Stop cancels pending microphone
+retries, and speech/chat failure stops all reply audio. Space interrupts an active
+voice conversation; Escape ends it (editing controls keep their own shortcuts).
+No change to Aria, selected model/effort, mic grace, foreground scope or paid
+providers. Hands-free spoken interruption during playback remains unverified.
+
 **Spoken stop — November 17, 2026:** Standalone “stop” / “stop listening” while
 Ember is listening ends voice mode locally, without a chat request or automatic
 restart. The existing mic-release gate remains. It does not listen over Aria's

@@ -130,8 +130,13 @@ try {
   }
   {
     // A clip Web Audio cannot decode falls back to the page player.
-    const f = await fixture({ decodeFails: true });
-    await f.tap(); await f.page.evaluate(() => say('Tell me a fact')); await f.page.locator('[data-voice-phase="playing"]').waitFor();
+    // Keep the playing state observable under parallel test load.
+    const f = await fixture({ decodeFails: true, clipSeconds: 1.5 });
+    await f.tap(); await f.page.evaluate(() => say('Tell me a fact'));
+    await f.page.locator('[data-voice-phase="playing"]').waitFor().catch(async error => {
+      console.log('Fallback playback state:', await f.page.evaluate(() => ({ phase: document.querySelector('[data-voice-phase]')?.dataset.voicePhase, note: document.querySelector('.voice-status')?.textContent, paused: document.querySelector('audio').paused, source: Boolean(document.querySelector('audio').getAttribute('src')), context: window.lastCtx?.state })), f.errors);
+      throw error;
+    });
     check('undecodable clip falls back to the page player', await f.page.evaluate(() => !!document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src')));
     await f.page.locator('audio[aria-label="Ember reply"]').evaluate((a) => { a.currentTime = Math.max(0, a.duration - 0.02); });
     await f.page.locator('[data-voice-phase="listening"]').waitFor({ timeout: 8000 });

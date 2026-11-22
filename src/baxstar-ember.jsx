@@ -1704,6 +1704,8 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   }
   function stop(note = "Stopped. Your words and replies are still here.") {
     traceEnd("stopped");
+    // A late recognition end must not revive a retry after Stop/close/hidden-page.
+    c.retryMic = false; c.retryDelay = 0; c.retryNote = ""; c.nextTrigger = null;
     pauseConversation(); c.epoch++; c.releaseNote = note; c.request?.abort(); c.request = null; clearTimers(); endStream();
     if (c.rec && c.draft.trim()) c.interrupted = true;
     // Preserve the mic-release gate even when Stop is pressed more than once.
@@ -1849,7 +1851,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   // while the rest is still being written; later sentences are grouped into larger
   // clips, fetched in parallel and played in order on the same player. Same 1000
   // character spoken cap, same voice, same Stop/interrupt rules.
-  const FIRST_CLIP_MIN = 24, CLIP_MIN = 160, SPOKEN_MAX = 1000;
+  const FIRST_CLIP_MIN = 1, CLIP_MIN = 160, SPOKEN_MAX = 1000;
   // SPOKEN TURN CAP (2026-11-14). Brady: "DO NOT have her dumbass voice talk forever
   // to tell me 12 hours worth of information". The 1-3 sentence rule was only a
   // prompt instruction, so nothing stopped a long answer from being read out. A
@@ -1945,6 +1947,14 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     let end = -1, m;
     while ((m = re.exec(text))) {
       const at = m.index + m[0].length;
+      // A short complete answer can speak now; an abbreviation is not an answer.
+      // Match the spoken-cap rules so "Dr. Smith" and "3 p.m." stay together.
+      if (m[0][0] === ".") {
+        const tok = text.slice(0, m.index + 1).match(/\S+$/)?.[0] || "";
+        const pre = text.slice(0, m.index + 1 - tok.length);
+        if (/^[A-Z]\.$/.test(tok) || ABBREV.test(tok) ||
+            (/^\d\.$/.test(tok) && (!pre.trim() || /[.!?…]\s*$|\n\s*$/.test(pre)))) continue;
+      }
       if (at >= min) { end = at; if (first) break; }
     }
     return end;
@@ -2011,7 +2021,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       .catch((error) => {
         if (c.stream !== s || !c.live) return;
         traceEnd("speech-failed");
-        endStream(); pauseConversation(); releaseWake();
+        endStream(); pauseConversation(); clearAudio(); releaseWake();
         patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message });
       })
       .finally(() => clearTimeout(timeout));
@@ -2104,7 +2114,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       });
       if (!c.live || epoch !== c.epoch) return;
       c.request = null;
-      if (!result) { traceEnd("reply-failed"); endStream(); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
+      if (!result) { traceEnd("reply-failed"); endStream(); pauseConversation(); clearAudio(); releaseWake(); patch({ phase: "ready", note: "The reply did not finish. Check the chat below before retrying." }); return; }
       mark("reply-complete");
       c.answer = result; patch({ answer: result });
       // Streamed sentences are already playing or queued; a reply that arrived in one
@@ -2117,7 +2127,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
         feedSpeech(epoch, c.stream.streamed ? heard.text : body, true, c.stream.streamed ? heard.base : 0, caveat);
       }
       if (c.spokeEpoch !== epoch) { c.stream = null; await speak(true); }
-    } catch { if (c.live && epoch === c.epoch) { traceEnd("reply-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
+    } catch { if (c.live && epoch === c.epoch) { traceEnd("reply-failed"); endStream(); pauseConversation(); clearAudio(); releaseWake(); patch({ phase: "ready", note: "The conversation could not finish. Your words remain available." }); } }
     finally { clearTimeout(timeout); if (c.request === controller) c.request = null; }
   }
   function playing() {
@@ -2157,9 +2167,16 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     c.live = true;
     const hidden = () => { if (document.hidden) { stop("Paused when Ember left the screen. Review your words before continuing."); closeContext(); } };
     const exit = () => { stop("Voice stopped. Your completed conversation is saved."); closeContext(); };
-    const interrupt = () => { if (navigator.audioSession?.state === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth."); };
-    document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit); navigator.audioSession?.addEventListener?.("statechange", interrupt);
-    return () => { c.live = false; stop(); closeContext(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", interrupt); };
+    const audioInterrupted = () => { if (navigator.audioSession?.state === "interrupted") stop("Audio was interrupted. Finish the call or alert, then tap the mouth."); };
+    document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit); navigator.audioSession?.addEventListener?.("statechange", audioInterrupted);
+    const keys = event => {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || document.hidden || !options.current.enabled) return;
+      if (event.target?.closest?.('input, textarea, select, button, a, [contenteditable], [role="button"], [role="dialog"]')) return;
+      if (event.code === "Space" && c.phase === "playing" && c.conversation) { event.preventDefault(); interrupt(); }
+      else if (event.key === "Escape" && (c.conversation || c.rec || c.request || c.phase === "playing")) { event.preventDefault(); c.rest = ""; stop("Voice stopped. Tap the mouth to talk again."); }
+    };
+    window.addEventListener("keydown", keys);
+    return () => { c.live = false; stop(); closeContext(); if (c.rec) { const rec = c.rec; detach(rec); try { rec.abort(); } catch {} c.rec = null; } clearTimers(); document.removeEventListener("visibilitychange", hidden); window.removeEventListener("pagehide", exit); navigator.audioSession?.removeEventListener?.("statechange", audioInterrupted); window.removeEventListener("keydown", keys); };
   }, []);
   useEffect(() => { if (!enabled) { stop(); closeContext(); patch({ open: false }); } }, [enabled]);
   return { ...state, audioRef, capable, production, busy: ["starting", "listening", "stopping", "releasing", "unconfirmed", "thinking", "preparing"].includes(state.phase), start, finish, send, speak, stop: (note) => { c.rest = ""; stop(note); }, playing, ended, phraseAt,
@@ -2181,8 +2198,8 @@ function ForegroundVoice({ voice, chatBusy }) {
     <div className="voice-topline"><span role="status" className="voice-status" data-phase={voice.phase}>{voice.note}</span><button className="chip ghost" onClick={voice.close} aria-label="Close voice">✕</button></div>
     <div className="voice-actions">
       {["starting", "listening"].includes(voice.phase) ? <button className="chip solid" onClick={voice.finish}>Answer now</button> : !voice.conversation && <button className="chip solid" onClick={voice.start} disabled={!voice.capable || voice.busy || chatBusy}>Talk</button>}
-      {voice.phase === "playing" && voice.conversation && <button className="chip solid" onClick={voice.interrupt}>Interrupt</button>}
-      <button className="chip ghost" onClick={() => voice.stop()}>Stop voice</button>
+      {voice.phase === "playing" && voice.conversation && <button className="chip solid" onClick={voice.interrupt} aria-keyshortcuts="Space" title="Interrupt and listen (Space)">Interrupt</button>}
+      <button className="chip ghost" onClick={() => voice.stop()} aria-keyshortcuts="Escape" title="Stop voice (Escape)">Stop voice</button>
       {voice.answer && !voice.conversation && <button className="chip ghost" disabled={voice.busy} onClick={voice.speak}>{voice.answer.length > 1000 ? "Read first part" : "Read reply"}</button>}
       {voice.phase === "unconfirmed" && <button className="chip ghost" onClick={voice.confirmReleased}>I checked: mic indicator is off</button>}
     </div>

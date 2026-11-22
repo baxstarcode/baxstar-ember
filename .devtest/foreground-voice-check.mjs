@@ -19,7 +19,7 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
   window.recs=[];window.recMode='normal';window.wakes=[];window.wakeMode=wake;
   class Rec {
    start(){this.active=true;recs.push(this);if(recMode==='denied')setTimeout(()=>this.onerror?.({error:'not-allowed'}),0);else if(recMode!=='pending')setTimeout(()=>{this.onstart?.();const dead=window.deadAudio>0&&recs.length>1;if(dead)window.deadAudio--;else if(window.audioStart)this.onaudiostart?.()},0)}
-   stop(){if(recMode!=='unconfirmed'){this.active=false;setTimeout(()=>this.onend?.(),0)}}
+   stop(){if(recMode!=='unconfirmed'){this.active=false;setTimeout(()=>this.onend?.(),window.recEndDelay||0)}}
    abort(){this.stop()}
   }
   window.SpeechRecognition=recognition?Rec:undefined;window.webkitSpeechRecognition=undefined;
@@ -55,6 +55,34 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
  return {page,context,panel,calls,errors,start,finish,ask,mode:v=>mode=v,resolve:()=>{pending.splice(0).forEach(r=>r())},async end(){await page.locator('audio[aria-label="Ember reply"]').evaluate(a=>a.currentTime=a.duration-.05);await page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'})}};
 }
 try{
+ for(const action of ['stop','hide']){
+  const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=1});await f.start();await f.ask('First turn');
+  await f.panel.locator('[data-phase="playing"]').waitFor();await f.panel.locator('audio').evaluate(a=>a.currentTime=a.duration-.05);
+  await f.page.waitForFunction(()=>recs.length===2&&recs[1].active);
+  await f.page.evaluate(()=>window.recEndDelay=700);await f.panel.locator('[data-phase="releasing"]').waitFor();
+  if(action==='stop')await f.panel.getByRole('button',{name:'Stop voice'}).click();
+  else await f.page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'))});
+  await f.page.waitForTimeout(2500);
+  if(action==='hide')await f.page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'))});
+  await f.page.waitForTimeout(300);
+  check(`${action} during a delayed microphone retry never reopens capture`,await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
+  await f.context.close();
+ }
+ {
+  const f=await fixture();await f.start();await f.ask('One answer');await f.panel.locator('[data-phase="playing"]').waitFor();
+  await f.page.evaluate(()=>{const t=document.createElement('textarea');t.id='voice-key-fixture';t.style='position:fixed;top:0;left:0;z-index:9999';document.body.append(t)});
+  await f.page.locator('#voice-key-fixture').fill('draft');await f.page.locator('#voice-key-fixture').press('Space');await f.page.locator('#voice-key-fixture').press('Escape');
+  check('voice keyboard shortcuts leave text editing alone',(await f.page.locator('#voice-key-fixture').inputValue())==='draft '&&await f.panel.locator('[data-phase="playing"]').count()===1);
+  await f.page.locator('#voice-key-fixture').evaluate(t=>t.remove());
+  await f.page.evaluate(()=>{document.body.dispatchEvent(new KeyboardEvent('keydown',{code:'Space',key:' ',bubbles:true,repeat:true}));document.body.dispatchEvent(new KeyboardEvent('keydown',{code:'Space',key:' ',bubbles:true,ctrlKey:true}))});
+  check('held keys and modified shortcuts do not interrupt voice',await f.panel.locator('[data-phase="playing"]').count()===1);
+  await f.page.locator('body').click({position:{x:1,y:1}});await f.page.keyboard.press('Space');
+  await f.panel.locator('[data-phase="listening"]').waitFor({timeout:4000});
+  check('Space cuts off the reply and opens one listening turn',await f.page.evaluate(()=>recs.length===2&&recs[1].active&&document.querySelector('audio').paused));
+  await f.page.keyboard.press('Escape');await f.panel.locator('[data-phase="ready"]').waitFor({state:'attached'});await f.page.waitForTimeout(1000);
+  check('Escape stops voice without restarting',await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
+  await f.context.close();
+ }
  for(const [width,command] of [[1440,'Stop.'],[390,'STOP LISTENING!'],[390,'Ember, stop.']]){
   const f=await fixture({width});await f.start();
   await f.page.evaluate(t=>{window.lateStopResult=recs.at(-1).onresult;say(t)},command);
