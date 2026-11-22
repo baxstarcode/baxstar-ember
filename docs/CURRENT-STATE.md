@@ -1,5 +1,17 @@
 # Ember — Current State
 
+**Mac app installation — November 22, 2026:** Chrome installation now launches the
+main Ember screen, with 192px/512px PNG app icons and a 180px Apple touch icon derived
+from the existing artwork. Explicit manifest identity preserves previous caption
+installations; Caption Studio remains a shortcut. The manifest uses credentials
+for Cloudflare Access. Local Chromium reports no installability errors and verifies
+cookie-gated manifest loading and fresh document delivery on reload. Actual Mac
+installation, production Access session behavior and installed-window physical voice
+remain unverified. See `docs/MAC-APP.md`; no browser-control tool is available in the
+current Codex environment. No app-source, Worker, service-worker or voice changes.
+Validation: the full `npm run test:release` completed with exit 0, and the separate
+`npm run test:app-install` passed against the final versioned manifest link.
+
 **Claude review follow-up — November 22, 2026 (Codex):** Reproduced the reported
 two-sentence pre-tool lead-in on `77096b1`: “Sure. Let me check your files.”
 consumed two answer slots. A short acknowledgement before the first successful

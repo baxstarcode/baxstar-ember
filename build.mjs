@@ -137,8 +137,8 @@ const html = `<!DOCTYPE html>
      Self-contained: React and the compiled app are inlined, so this file loads with
      no CDN. The only network Ember needs is its API proxy. -->
 <link rel="icon" href="assets/ember/icon.svg" type="image/svg+xml"/>
-<link rel="manifest" href="manifest.webmanifest"/>
-<link rel="apple-touch-icon" href="assets/ember/icon.svg"/>
+<link rel="manifest" href="manifest.webmanifest?v=20261122" crossorigin="use-credentials"/>
+<link rel="apple-touch-icon" href="assets/ember/icon-180.png" sizes="180x180"/>
 <style id="ember-tailwind-compiled">${tailwindCss}</style>
 <style>html,body,#root{margin:0;height:100%;background:#000;}</style>
 <script>
