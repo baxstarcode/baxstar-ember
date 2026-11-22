@@ -1,12 +1,52 @@
 # Ember — Current State
 
+**Claude review follow-up — November 22, 2026 (Codex):** Reproduced the reported
+two-sentence pre-tool lead-in on `77096b1`: “Sure. Let me check your files.”
+consumed two answer slots. A short acknowledgement before the first successful
+lookup now permits rebasing the answer; the lookup boundary is published even
+for tools not predicted by the live-data guard. Successful lookups are counted
+so a second lookup cannot reset the four-sentence cap after a short real answer.
+Whitespace and decorative-only lines do not consume extra sentence slots.
+
+Both audio races raised by reading were reproduced with controlled delays:
+`decodeAudioData` could revive playback after a speech failure, and a late
+`audio.play()` rejection could replace the failure note. Clearing audio now
+invalidates pending audio work independently of the chat generation, preserving
+the completed text reply. Each playback timeout belongs to its own attempt.
+Decorative-only clips never go to TTS; a wholly symbolic answer remains on screen
+and pauses voice without a speech request. This does not assert what the live
+speech provider would return for emoji; it removes that dependency.
+
+New regressions cover the reported lead-in, a second lookup after tiny answers,
+decorations plus four answer sentences, both late-audio races and symbolic replies.
+No Worker, provider, model/effort, foreground scope or spoken-interruption change.
+
+Validation: the full `CHROME_PATH=/usr/bin/chromium npm run test:release`
+completed with exit 0 on this repair, including 167 foreground checks, 61
+simulated iPhone-path checks, 11 spoken-cap tests, and the full streaming/latency
+suite (including narration and both second-lookup scenarios). Desktop and phone
+layout checks passed. Browser speech/providers are simulated; this is not a new
+physical-phone, CarPlay, or live speech-provider result.
+
 **Voice speed and recovery hardening — November 21, 2026 (Codex):** Brady asked
 for faster, more natural voice with no new paid service. The first complete
 sentence now enters TTS even when shorter than 24 characters, keeping abbreviations
-and initials together. A controlled short-answer test improved first sound from
-6051 ms to 4143 ms with identical simulated providers; real-device speed is not
-measured by that test. Model, effort, Aria, recognition grace period and audio
-routing are unchanged.
+and initials together. **Speed claim corrected November 22:** the 6051 ms to
+4143 ms result applies only to a fixture that deliberately pauses generation for
+1800 ms after “Yes.” Early audio can be followed by silence while the rest arrives;
+it is not a general two-second response-time improvement. Claude Code's supplied
+review reported these comparisons with simulated providers:
+
+| Reply shape | Before → after first audio | Qualification |
+| --- | --- | --- |
+| 1800 ms pause after “Yes.” | 5970 → 4009 ms | Followed by a 1565 ms silence |
+| Same reply continuously at 280 characters/s | 4394 → 3974 ms | About 420 ms sooner; 46 ms gap |
+| One sentence | 4380 → 4378 ms | No meaningful improvement |
+
+First sentences already 24+ characters gain nothing from this threshold change.
+These review measurements were supplied by Claude, not physical-phone results.
+No speed gain has been measured on Brady's phone. Model, effort, Aria, recognition
+grace period and audio routing are unchanged.
 
 Two regressions were reproduced before fixing: Stop during a delayed microphone
 retry could reopen capture, and a failed later speech clip could leave earlier

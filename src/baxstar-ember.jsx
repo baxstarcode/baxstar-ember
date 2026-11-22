@@ -1557,7 +1557,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
   options.current = { onSend, onDraft, blocked, enabled };
-  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
+  const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, audioEpoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
   const c = control.current;
   const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   const production = location.hostname === "ember.baxstarfishing.com";
@@ -1612,10 +1612,10 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
   }
   // Resolves true when Jenny's clip is playing through Web Audio, false to fall back.
   async function playWeb(blob, epoch) {
-    const ctx = c.ctx;
+    const ctx = c.ctx, audioEpoch = c.audioEpoch;
     try {
       const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
-      if (!c.live || c.epoch !== epoch || c.rec || document.hidden || c.ctx !== ctx || ctx.state !== "running") return true;
+      if (!c.live || c.epoch !== epoch || c.audioEpoch !== audioEpoch || c.rec || document.hidden || c.ctx !== ctx || ctx.state !== "running") return true;
       stopWeb();
       const src = ctx.createBufferSource();
       src.buffer = buffer; src.connect(ctx.destination);
@@ -1651,6 +1651,8 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     finally { if (c.wakePending === epoch) c.wakePending = null; }
   }
   function clearAudio() {
+    // Invalidate pending decode/play work without discarding the chat's text result.
+    c.audioEpoch++;
     const audio = audioRef.current;
     if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
     if (c.url) URL.revokeObjectURL(c.url);
@@ -1832,19 +1834,30 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     const index = Number.isFinite(duration) && duration > 0 ? Math.min(c.phrases.length - 1, Math.floor(time / duration * c.phrases.length)) : 0;
     if (index !== c.phraseIndex) { c.phraseIndex = index; patch({ phrase: c.phrases[index], phraseKey: ++c.phraseKey }); }
   }
+  async function playElement(epoch, pauseOnFail = false) {
+    const audioEpoch = c.audioEpoch;
+    let timeout;
+    try {
+      const deadline = new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("playback-timeout")), 5000); c.timers.play = timeout; });
+      await Promise.race([audioRef.current.play(), deadline]);
+    } catch {
+      if (c.live && c.epoch === epoch && c.audioEpoch === audioEpoch) {
+        session("auto"); releaseWake(); if (pauseOnFail) pauseConversation();
+        patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
+      }
+    } finally { clearTimeout(timeout); if (c.timers.play === timeout) delete c.timers.play; }
+  }
   async function playReply(epoch) {
     if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
     const audio = audioRef.current;
     clearAudio();
+    const audioEpoch = c.audioEpoch;
     if (webReady() && await playWeb(c.blob, epoch)) return;
-    if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
+    if (!c.live || c.epoch !== epoch || c.audioEpoch !== audioEpoch || c.rec || document.hidden) return;
     c.url = URL.createObjectURL(c.blob); c.out = "element"; if (c.trace) c.trace.out ||= "element"; audio.src = c.url; audio.load();
     patch({ audioReady: true, phase: "ready", note: "Aria is ready. Tap Play if playback does not start." });
     session("playback");
-    try {
-      await Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5000))]);
-    } catch { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." }); } }
-    finally { clearTimeout(c.timers.play); }
+    await playElement(epoch);
   }
   // SENTENCE STREAMING (2026-11-08). A spoken turn used to wait for the whole
   // reply and then for one MP3 of all of it. Now the first sentence goes to Jenny
@@ -1890,10 +1903,10 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       }
       // A line break straight after a sentence end is the same boundary, not another,
       // and a heading line ("Top three voicemails:") is not a sentence.
-      const joined = m.index === prev;
+      const joined = prev >= 0 && !/[\p{L}\p{N}]/u.test(text.slice(prev, m.index));
       if (m[0][0] === "\n" && /:\s*$/.test(before)) continue;
       prev = at;
-      if (joined || !before.trim()) { if (inside >= 0) inside = at; continue; }
+      if (joined || !/[\p{L}\p{N}]/u.test(before)) { if (inside >= 0) inside = at; continue; }
       count++; inside = at;
       if (count >= TURN_SENTENCES) return { end: at, cut: false };
     }
@@ -1966,7 +1979,12 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Text before a lookup result is narration: skipped while nothing after the current
     // start point has been spoken. Once the answer has started, a later lookup in the
     // same turn moves nothing, so the cap counts across the whole turn.
-    if (base > (s.base || 0) && base <= text.length && s.said <= (s.base || 0)) { s.base = base; s.said = base; }
+    if (base > (s.base || 0) && base <= text.length &&
+        (s.said <= (s.base || 0) || (s.lookups === 1 && s.spoken < 24))) {
+      // A short acknowledgement before the first lookup is not an answer. Only
+      // the first lookup gets this allowance: a later lookup cannot reset the cap.
+      s.base = base; s.said = base; s.spoken = 0; s.capped = false; s.lead = s.clips.length;
+    }
     const from = s.base || 0;
     // Only the text up to the turn cap is ever spoken; once the cap point is known,
     // that prefix is complete even if the model is still writing.
@@ -1985,7 +2003,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
       if (stop?.cut && s.said >= view.length && piece && stop.end < text.trimEnd().length) piece = piece.replace(/[,;:]$/, "") + "…";
       const room = SPOKEN_MAX - s.spoken;
       if (piece.length > room) { piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "…"; s.capped = true; }
-      if (piece) { s.spoken += piece.length; queueClip(s, piece); }
+      if (/[\p{L}\p{N}]/u.test(piece)) { s.spoken += piece.length; queueClip(s, piece); }
     }
     if (stop && s.said >= view.length) s.capped = true;
     if (final) {
@@ -2032,8 +2050,8 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     s.playing = index;
     c.phrases = emberPhrases(clip.text); c.phraseIndex = -1;
     if (webReady()) {
-      const epoch = c.epoch; keepAwake();
-      playWeb(clip.blob, epoch).then(ok => { if (!ok && c.stream === s && s.playing === index && c.epoch === epoch) playClipElement(s, index); });
+      const epoch = c.epoch, audioEpoch = c.audioEpoch; keepAwake();
+      playWeb(clip.blob, epoch).then(ok => { if (!ok && c.stream === s && s.playing === index && c.epoch === epoch && c.audioEpoch === audioEpoch) playClipElement(s, index); });
       return;
     }
     playClipElement(s, index);
@@ -2046,10 +2064,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     audio.src = c.url; audio.load();
     session("playback"); keepAwake();
     if (index === 0) patch({ audioReady: true });
-    const epoch = c.epoch;
-    Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5000))])
-      .catch(() => { if (c.live && c.epoch === epoch) { session("auto"); releaseWake(); pauseConversation(); patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." }); } })
-      .finally(() => clearTimeout(c.timers.play));
+    playElement(c.epoch, true);
   }
   async function speak(turn = false, source) {
     // The Read reply button passes its click event as `turn`; only true caps the turn.
@@ -2066,6 +2081,10 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     }
     const long = full.length > 1000;
     const spoken = part ? part.text : long ? full.slice(0, 997).replace(/\s+\S*$/, "") + "…" : full;
+    if (!/[\p{L}\p{N}]/u.test(spoken)) {
+      endStream(); pauseConversation(); clearAudio(); releaseWake();
+      patch({ phase: "ready", note: "The reply is on screen; there are no words to read aloud." }); return;
+    }
     c.spokenShort = part ? part.capped : false;
     // Only audio of the whole reply may be reused by Read reply.
     const whole = !part || (!part.capped && full === c.answer);
@@ -2110,7 +2129,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
         // A live-data question holds Jenny until a real tool result arrives; this
         // short line keeps the wait from sounding like silence.
         onVoiceHold: (line) => { const s = c.stream; if (s?.epoch === epoch && !s.clips.length) { s.lead = 1; queueClip(s, line); } },
-        onVoiceMeta: ({ headers, ...meta }) => { if (headers) { mark("reply-headers"); return; } if (c.trace) c.trace.reply = { ...(c.trace.reply || {}), ...meta }; if (meta.tool) mark("tool-result"); },
+        onVoiceMeta: ({ headers, ...meta }) => { if (headers) { mark("reply-headers"); return; } if (c.trace) c.trace.reply = { ...(c.trace.reply || {}), ...meta }; if (meta.tool) { mark("tool-result"); if (c.stream?.epoch === epoch) c.stream.lookups = (c.stream.lookups || 0) + 1; } },
       });
       if (!c.live || epoch !== c.epoch) return;
       c.request = null;
@@ -2783,7 +2802,9 @@ export default function BaxstarEmber() {
           if (need === "files" && toolServers.get(block.tool_use_id) !== "gdrive") return;
           onVoiceMeta?.({ tool: true });
           answerFrom = latest.length;
-          if (held) { held = false; if (latest) onVoiceText?.(latest, answerFrom); }
+          held = false;
+          // Publish the lookup boundary immediately, even for an unpredicted tool.
+          if (latest) onVoiceText?.(latest, answerFrom);
         },
       });
       resp = await ask(messages);

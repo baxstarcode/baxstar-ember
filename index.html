@@ -798,7 +798,7 @@ READ ONLY \u2014 never modify files. BLUF answers. Name the doc(s) you pulled fr
       { time: "2:00 PM", title: "Pontoon turnover", detail: "SLIP 3" }
     ]
   };
-  const BUILD_STAMP = "2026-11-22 04:22Z".startsWith("__") ? "dev" : "2026-11-22 04:22Z";
+  const BUILD_STAMP = "2026-11-22 16:23Z".startsWith("__") ? "dev" : "2026-11-22 16:23Z";
   const API_ENDPOINT = typeof window !== "undefined" && window.EMBER_API_PROXY || "/api/messages";
   const STATUS_ENDPOINT = /\/messages$/.test(API_ENDPOINT) ? API_ENDPOINT.replace(/\/messages$/, "/connectors/status") : "/api/connectors/status";
   const OPS_FEEDS = [
@@ -1582,7 +1582,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
     const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
     const audioRef = useRef(null), options = useRef(null);
     options.current = { onSend, onDraft, blocked, enabled };
-    const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
+    const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, audioEpoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
     const c = control.current;
     const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     const production = location.hostname === "ember.baxstarfishing.com";
@@ -1692,10 +1692,10 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
     }
     async function playWeb(blob, epoch) {
       var _a;
-      const ctx = c.ctx;
+      const ctx = c.ctx, audioEpoch = c.audioEpoch;
       try {
         const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
-        if (!c.live || c.epoch !== epoch || c.rec || document.hidden || c.ctx !== ctx || ctx.state !== "running") return true;
+        if (!c.live || c.epoch !== epoch || c.audioEpoch !== audioEpoch || c.rec || document.hidden || c.ctx !== ctx || ctx.state !== "running") return true;
         stopWeb();
         const src = ctx.createBufferSource();
         src.buffer = buffer;
@@ -1776,6 +1776,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       }
     }
     function clearAudio() {
+      c.audioEpoch++;
       const audio = audioRef.current;
       if (audio) {
         audio.pause();
@@ -2108,13 +2109,35 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         patch({ phrase: c.phrases[index], phraseKey: ++c.phraseKey });
       }
     }
+    async function playElement(epoch, pauseOnFail = false) {
+      const audioEpoch = c.audioEpoch;
+      let timeout;
+      try {
+        const deadline = new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("playback-timeout")), 5e3);
+          c.timers.play = timeout;
+        });
+        await Promise.race([audioRef.current.play(), deadline]);
+      } catch {
+        if (c.live && c.epoch === epoch && c.audioEpoch === audioEpoch) {
+          session("auto");
+          releaseWake();
+          if (pauseOnFail) pauseConversation();
+          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
+        }
+      } finally {
+        clearTimeout(timeout);
+        if (c.timers.play === timeout) delete c.timers.play;
+      }
+    }
     async function playReply(epoch) {
       var _a;
       if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
       const audio = audioRef.current;
       clearAudio();
+      const audioEpoch = c.audioEpoch;
       if (webReady() && await playWeb(c.blob, epoch)) return;
-      if (!c.live || c.epoch !== epoch || c.rec || document.hidden) return;
+      if (!c.live || c.epoch !== epoch || c.audioEpoch !== audioEpoch || c.rec || document.hidden) return;
       c.url = URL.createObjectURL(c.blob);
       c.out = "element";
       if (c.trace) (_a = c.trace).out || (_a.out = "element");
@@ -2122,17 +2145,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       audio.load();
       patch({ audioReady: true, phase: "ready", note: "Aria is ready. Tap Play if playback does not start." });
       session("playback");
-      try {
-        await Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5e3))]);
-      } catch {
-        if (c.live && c.epoch === epoch) {
-          session("auto");
-          releaseWake();
-          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
-        }
-      } finally {
-        clearTimeout(c.timers.play);
-      }
+      await playElement(epoch);
     }
     const FIRST_CLIP_MIN = 1, CLIP_MIN = 160, SPOKEN_MAX = 1e3;
     const TURN_SENTENCES = 4, TURN_TIMES = 3, TURN_SPOKEN_MAX = 420;
@@ -2152,10 +2165,10 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           const pre = text.slice(0, m.index + 1 - tok.length);
           if (/^[A-Z]\.$/.test(tok) || ABBREV.test(tok) || /^\d\.$/.test(tok) && (!pre.trim() || /[.!?…]\s*$|\n\s*$/.test(pre))) continue;
         }
-        const joined = m.index === prev;
+        const joined = prev >= 0 && !/[\p{L}\p{N}]/u.test(text.slice(prev, m.index));
         if (m[0][0] === "\n" && /:\s*$/.test(before)) continue;
         prev = at;
-        if (joined || !before.trim()) {
+        if (joined || !/[\p{L}\p{N}]/u.test(before)) {
           if (inside >= 0) inside = at;
           continue;
         }
@@ -2238,9 +2251,12 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
         s.streamed = true;
         mark("first-text");
       }
-      if (base > (s.base || 0) && base <= text.length && s.said <= (s.base || 0)) {
+      if (base > (s.base || 0) && base <= text.length && (s.said <= (s.base || 0) || s.lookups === 1 && s.spoken < 24)) {
         s.base = base;
         s.said = base;
+        s.spoken = 0;
+        s.capped = false;
+        s.lead = s.clips.length;
       }
       const from = s.base || 0;
       const found = spokenStop(text.slice(from), final);
@@ -2264,7 +2280,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
           piece = piece.slice(0, room - 1).replace(/\s+\S*$/, "") + "\u2026";
           s.capped = true;
         }
-        if (piece) {
+        if (/[\p{L}\p{N}]/u.test(piece)) {
           s.spoken += piece.length;
           queueClip(s, piece);
         }
@@ -2324,10 +2340,10 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       c.phrases = emberPhrases(clip.text);
       c.phraseIndex = -1;
       if (webReady()) {
-        const epoch = c.epoch;
+        const epoch = c.epoch, audioEpoch = c.audioEpoch;
         keepAwake();
         playWeb(clip.blob, epoch).then((ok) => {
-          if (!ok && c.stream === s && s.playing === index && c.epoch === epoch) playClipElement(s, index);
+          if (!ok && c.stream === s && s.playing === index && c.epoch === epoch && c.audioEpoch === audioEpoch) playClipElement(s, index);
         });
         return;
       }
@@ -2346,15 +2362,7 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       session("playback");
       keepAwake();
       if (index === 0) patch({ audioReady: true });
-      const epoch = c.epoch;
-      Promise.race([audio.play(), new Promise((_, reject) => timer("play", () => reject(new Error("playback-timeout")), 5e3))]).catch(() => {
-        if (c.live && c.epoch === epoch) {
-          session("auto");
-          releaseWake();
-          pauseConversation();
-          patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
-        }
-      }).finally(() => clearTimeout(c.timers.play));
+      playElement(c.epoch, true);
     }
     async function speak(turn = false, source) {
       const full = typeof source === "string" ? source : c.answer;
@@ -2372,6 +2380,14 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
       }
       const long = full.length > 1e3;
       const spoken = part ? part.text : long ? full.slice(0, 997).replace(/\s+\S*$/, "") + "\u2026" : full;
+      if (!/[\p{L}\p{N}]/u.test(spoken)) {
+        endStream();
+        pauseConversation();
+        clearAudio();
+        releaseWake();
+        patch({ phase: "ready", note: "The reply is on screen; there are no words to read aloud." });
+        return;
+      }
       c.spokenShort = part ? part.capped : false;
       const whole = !part || !part.capped && full === c.answer;
       c.phrases = emberPhrases(spoken);
@@ -2453,12 +2469,16 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
             }
           },
           onVoiceMeta: ({ headers, ...meta }) => {
+            var _a2;
             if (headers) {
               mark("reply-headers");
               return;
             }
             if (c.trace) c.trace.reply = { ...c.trace.reply || {}, ...meta };
-            if (meta.tool) mark("tool-result");
+            if (meta.tool) {
+              mark("tool-result");
+              if (((_a2 = c.stream) == null ? void 0 : _a2.epoch) === epoch) c.stream.lookups = (c.stream.lookups || 0) + 1;
+            }
           }
         });
         if (!c.live || epoch !== c.epoch) return;
@@ -3196,10 +3216,8 @@ Weather rules: answer weather, wind and outdoor-conditions questions only from t
               if (need === "files" && toolServers.get(block.tool_use_id) !== "gdrive") return;
               onVoiceMeta == null ? void 0 : onVoiceMeta({ tool: true });
               answerFrom = latest.length;
-              if (held) {
-                held = false;
-                if (latest) onVoiceText == null ? void 0 : onVoiceText(latest, answerFrom);
-              }
+              held = false;
+              if (latest) onVoiceText == null ? void 0 : onVoiceText(latest, answerFrom);
             }
           });
         };

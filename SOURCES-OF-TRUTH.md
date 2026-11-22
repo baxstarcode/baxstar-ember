@@ -1,5 +1,13 @@
 # Ember — Sources of Truth & Build Provenance
 
+**Voice review repairs — November 22, 2026:** Claude's review-only handoff exposed
+a pre-tool narration regression and two audio cancellation races, reproduced by
+Codex. The first lookup may discard a short acknowledgement without allowing later
+lookups to reset the answer cap. Cleared audio invalidates pending decode/play
+work while chat text is retained. Decorative-only clips are not synthesized.
+The earlier two-second speed comparison was a deliberately stalled simulation,
+not a general or measured phone-speed improvement; see `docs/CURRENT-STATE.md`.
+
 **Voice hardening — November 21, 2026:** Short complete opening sentences stream
 without waiting for a 24-character minimum. Stop cancels pending microphone
 retries, and speech/chat failure stops all reply audio. Space interrupts an active

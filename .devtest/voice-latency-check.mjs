@@ -75,6 +75,19 @@ async function measure(run, scenario = "latency") {
           async start(ctl) {
             const wait = (ms) => new Promise((r) => setTimeout(r, ms));
             ctl.enqueue(sse({ type: "message_start", message: { model: body.model } }));
+            if (["intro", "tinytools", "symbol"].includes(SCENARIO)) {
+              let index = 0;
+              const text = value => { ctl.enqueue(sse({type:"content_block_start",index,content_block:{type:"text",text:""}})); ctl.enqueue(sse({type:"content_block_delta",index,delta:{type:"text_delta",text:value}})); ctl.enqueue(sse({type:"content_block_stop",index:index++})); };
+              const tool = id => { ctl.enqueue(sse({type:"content_block_start",index,content_block:{type:"mcp_tool_use",id,name:"read_file_content",server_name:"gdrive",input:{}}})); ctl.enqueue(sse({type:"content_block_stop",index:index++})); ctl.enqueue(sse({type:"content_block_start",index,content_block:{type:"mcp_tool_result",tool_use_id:id,is_error:false,content:[]}})); ctl.enqueue(sse({type:"content_block_stop",index:index++})); };
+              if (SCENARIO === "intro") {
+                text("Sure. Let me check your files."); await wait(900); tool("drive1");
+                text("You have three proposals in Drive. The newest is the Sallie dock plan. It was edited Tuesday. Mike left two comments. Sarah has not opened it.");
+              } else if (SCENARIO === "tinytools") {
+                tool("drive1"); text("Yes. No. "); await wait(900); tool("drive2");
+                text("Maybe. Certainly. A fifth sentence must stay on screen.");
+              } else { text("🔥\n"); await wait(600); text("Take a short walk to clear your head. Drink some water. Rest your eyes. Then come back. A fifth sentence stays on screen."); }
+              ctl.enqueue(sse({type:"message_delta",delta:{stop_reason:"end_turn"}})); ctl.enqueue(sse({type:"message_stop"})); ctl.close(); return;
+            }
             if (SCENARIO === "short" || SCENARIO === "abbrev") {
               await wait(MODEL.firstTokenMs);
               marks.firstToken = performance.now();
@@ -163,7 +176,7 @@ async function measure(run, scenario = "latency") {
   await page.goto(origin);
   await page.getByRole("button", { name: "Talk to Ember", exact: true }).click();
   await page.locator('[data-voice-phase="listening"]').waitFor();
-  await page.evaluate((q) => say(q), ["short", "abbrev"].includes(scenario) ? "Would a short walk be a good break?" : scenario === "caveat" ? "What did Sarah want?" : "What does tomorrow look like?");
+  await page.evaluate((q) => say(q), ["intro", "tinytools", "symbol"].includes(scenario) ? "Tell me something useful." : ["short", "abbrev"].includes(scenario) ? "Would a short walk be a good break?" : scenario === "caveat" ? "What did Sarah want?" : "What does tomorrow look like?");
   await page.waitForFunction(() => window.marks.firstAudio, null, { timeout: 30000 });
   if (scenario === "latency") {
     // The answer's first clip follows the hold line; play the hold line out.
@@ -186,7 +199,7 @@ async function measure(run, scenario = "latency") {
     const m = await page.evaluate(() => ({ phase: document.querySelector('[data-voice-phase]')?.dataset.voicePhase, paused: document.querySelector('audio[aria-label="Ember reply"]').paused, source: document.querySelector('audio[aria-label="Ember reply"]').getAttribute('src'), active: recs.some(r => r.active), recs: recs.length, note: document.querySelector('.voice-status')?.textContent, replyPreserved: document.querySelector('.home-thread')?.textContent.includes('Nothing needs a reply before your first trip.') }));
     await context.close(); return m;
   }
-  if (scenario === "sequence" || scenario === "narration" || scenario === "caveat" || scenario === "twotools") {
+  if (["sequence", "narration", "caveat", "twotools", "intro", "tinytools", "symbol"].includes(scenario)) {
     // Play every clip to its end; the turn must finish and the mic re-arm once.
     for (let i = 0; i < 20 && !(await page.locator('[data-voice-phase="listening"]').count()); i++) {
       await page.locator('audio[aria-label="Ember reply"]').evaluate((a) => { if (a.duration) a.currentTime = a.duration - 0.05; });
@@ -210,7 +223,24 @@ async function measure(run, scenario = "latency") {
   return { run, sent: at("sent"), toolResult: at("toolResult"), firstToken: at("firstToken"), lastToken: at("lastToken"), firstTtsRequest: at("firstTtsRequest"), firstTtsReply: at("firstTtsReply"), firstAudio: at("firstAudio"), answerAudio: answerAudio === undefined ? null : Math.round(answerAudio - m.speechEnd), ttsCalls: m.ttsCalls };
 }
 
+async function reviewScenario(scenario) {
+  const m = await measure(0, scenario), said = m.ttsTexts.join(" ").replace(/\s+/g," ").trim();
+  console.log(`REVIEW ${scenario}: ${said}`);
+  if (scenario === "intro") {
+    assert.ok(!said.includes("Let me check your files"), "two-sentence pre-tool narration is skipped");
+    assert.equal(said.replace(/^Sure\.\s*/, ""), "You have three proposals in Drive. The newest is the Sallie dock plan. It was edited Tuesday. Mike left two comments.", "all four answer sentences survive a short acknowledgement");
+  } else if (scenario === "tinytools") assert.equal(said.replace(/^One moment, checking your files\.\s*/, ""), "Yes. No. Maybe. Certainly.", "a second lookup never resets the cap even after tiny answer sentences");
+  else {
+    assert.ok(m.ttsTexts.every(t => /[\p{L}\p{N}]/u.test(t)), "decorative-only clips never go to TTS");
+    assert.equal(said, "Take a short walk to clear your head. Drink some water. Rest your eyes. Then come back.", "decorations leave all four answer sentences available");
+  }
+  assert.equal(m.phase, "listening", "review scenario returns to one listening turn");
+  assert.equal(m.recs, 2, "review scenario rearms once");
+}
 try {
+  if (process.env.EMBER_REVIEW_SCENARIO) {
+    await reviewScenario(process.env.EMBER_REVIEW_SCENARIO);
+  } else
   if (process.env.EMBER_SHORT_REPLY_ONLY) {
     console.log(JSON.stringify(await measure(0, "short")));
   } else if (process.env.EMBER_CLIP_FAILURE_ONLY) {
@@ -218,6 +248,7 @@ try {
     assert.ok(failed.paused && failed.source === null && !failed.active && failed.recs === 1, "speech failure silences every clip and leaves the microphone off");
     assert.ok(failed.replyPreserved, "the completed text reply survives the speech failure");
   } else {
+  for (const scenario of ["intro", "tinytools", "symbol"]) await reviewScenario(scenario);
   const short = await measure(0, "short"), abbrev = await measure(0, "abbrev");
   assert.equal(short.firstClip, "Yes.", "a complete short first sentence is not held for the next sentence");
   assert.ok(short.startedBeforeFullText, "the short answer starts before the rest is generated");
@@ -225,7 +256,7 @@ try {
   const failed = await measure(0, "clipfail");
   assert.ok(failed.paused && failed.source === null && !failed.active && failed.recs === 1, "speech failure silences every clip and leaves the microphone off");
   assert.ok(failed.replyPreserved, "the completed text reply survives the speech failure");
-  console.log(`PASS short opening: ${short.firstAudioMs}ms to first sound, before full text at ${short.fullTextMs}ms; abbreviation kept intact; failed clip silences playback`);
+  console.log(`PASS stalled short-opening fixture (1800 ms pause after Yes.): ${short.firstAudioMs}ms to first sound, before full text at ${short.fullTextMs}ms; not a general speedup measurement. Abbreviation kept intact; failed clip silences playback.`);
   const runs = [];
   for (let i = 1; i <= 3; i++) runs.push(await measure(i));
   console.log(`build: ${root}`);

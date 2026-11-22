@@ -1,10 +1,19 @@
 # Foreground voice hardening — November 21, 2026
 
+**Review update, November 22:** Claude's findings were repaired on
+`codex/ember-voice-review-fixes` from `77096b1`. The pre-tool lead-in regression
+and both delayed-audio races were reproduced before repair. The first-lookup
+allowance is guarded against a second lookup after tiny real answers. An audio
+generation counter prevents stale playback without invalidating chat completion.
+Decorative-only speech clips and extra sentence counts are filtered. See
+`docs/CURRENT-STATE.md` for verification and the corrected speed qualification.
+
 Brady wants faster, more natural conversation with no new paid voice service.
 Keep Aria, the chosen model/effort, Google Drive reads, the large skull and the
 desktop layout. The current task is not a native app, background voice rebuild,
-or booking-app task. Changes are on `codex/ember-voice-hardening`, based on
-`d89baf9`; the executable authority is `src/baxstar-ember.jsx`.
+or booking-app task. The November 21 changes were built on
+`codex/ember-voice-hardening` from `d89baf9`; the executable authority is
+`src/baxstar-ember.jsx`.
 
 ## This pass
 
@@ -21,9 +30,11 @@ or booking-app task. Changes are on `codex/ember-voice-hardening`, based on
   retain their normal behavior. Keyboard hints are on existing controls.
 
 The original retry race and continued-playback bug were reproduced against the
-old build. The controlled short-answer test measured about 6051 ms before and
-4143 ms after to first sound, with unchanged simulated provider timings. These
-are not measurements of Brady's phone, real model latency or real speech service.
+old build. The 6051 ms → 4143 ms short-answer measurement used a deliberate 1800 ms
+pause after “Yes.” It proves earlier first sound in that stalled fixture, not a
+general two-second improvement; playback can then fall silent awaiting the rest.
+Claude's supplied continuous-stream comparison improved about 420 ms, and a
+single sentence showed no meaningful improvement. Nothing measured phone speed.
 
 ## Focused second opinion for Claude
 

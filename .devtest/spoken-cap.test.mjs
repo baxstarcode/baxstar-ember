@@ -55,6 +55,22 @@ test("four sentences at most; a 5th waits for 'keep going'", () => {
   assert.equal(spokenPart("Today: 41. Tonight: 28. Sunday: 46. Sunday night: 33. Monday: 51.").rest, "Monday: 51.");
 });
 
+test("whitespace and block breaks after punctuation do not consume extra sentences", () => {
+  for (const gap of ["\n", " \n", "  \n\n", "\t\n"]) {
+    const p = spokenPart(`Yes. No.${gap}Maybe. Certainly. A fifth sentence stays on screen.`);
+    assert.equal(p.text, `Yes. No.${gap}Maybe. Certainly.`);
+    assert.equal(p.rest, "A fifth sentence stays on screen.");
+  }
+});
+
+test("decorative-only lines leave all four spoken answer sentences available", () => {
+  for (const text of ["🔥\nYes. No. Maybe. Certainly. Fifth.", "Yes.\n🔥\nNo. Maybe. Certainly. Fifth."]) {
+    const p = spokenPart(text);
+    assert.ok(p.text.endsWith("Certainly."));
+    assert.equal(p.rest, "Fifth.");
+  }
+});
+
 test("an alert in the 4th short sentence is still spoken", () => {
   const text = "Mostly cloudy with a high of 38. Northwest wind 20 to 30 mph, gusting to 45. Snow is likely after 3 PM. A Wind Advisory is in effect until 7 PM.";
   assert.deepEqual(spokenPart(text), { text, capped: false, rest: "" });

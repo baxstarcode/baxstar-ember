@@ -25,13 +25,13 @@ function wav(seconds) {
 }
 const clip = wav(0.35);
 
-async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeconds = 0.35 } = {}) {
+async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeconds = 0.35, delayDecode = false, delayPlay = false } = {}) {
   const audio = clipSeconds === 0.35 ? clip : wav(clipSeconds);
   const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, userAgent: ua, hasTouch: width < 600 });
   const page = await context.newPage(), calls = [], errors = [];
   const state = { mode: 'tool' };
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(({ decodeFails }) => {
+  await page.addInitScript(({ decodeFails, delayDecode, delayPlay }) => {
     window.recs = []; window.deadAudio = 0; window.audioStart = true; window.ctxMade = 0; window.micDuringPlay = 0;
     class Rec {
       start() { this.active = true; recs.push(this); setTimeout(() => { this.onstart?.(); const dead = window.deadAudio > 0 && recs.length > 1; if (dead) window.deadAudio--; else if (window.audioStart) this.onaudiostart?.(); }, 0); }
@@ -43,13 +43,16 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeco
     Object.defineProperty(navigator, 'wakeLock', { value: { request: async () => { const l = new EventTarget(); l.release = async () => l.dispatchEvent(new Event('release')); return l; } } });
     Object.defineProperty(navigator, 'audioSession', { value: Object.assign(new EventTarget(), { type: 'auto', state: 'active' }) });
     const Real = window.AudioContext;
+    window.webStarts = 0;
+    if (delayPlay) HTMLMediaElement.prototype.play = function() { return new Promise((resolve, reject) => { window.rejectPendingPlay = () => reject(new DOMException('late rejection', 'NotAllowedError')); }); };
     window.AudioContext = class extends Real {
       constructor(...a) { super(...a); window.ctxMade++; window.lastCtx = this; }
-      decodeAudioData(data) { return decodeFails ? Promise.reject(new DOMException('bad', 'EncodingError')) : super.decodeAudioData(data); }
+      async decodeAudioData(data) { if (decodeFails) throw new DOMException('bad', 'EncodingError'); const buffer = await super.decodeAudioData(data); if (delayDecode) await new Promise(resolve => window.releaseDecode = resolve); return buffer; }
+      createBufferSource() { const source = super.createBufferSource(), start = source.start.bind(source); source.start = (...args) => { window.webStarts++; return start(...args); }; return source; }
     };
     window.webkitAudioContext = undefined;
     setInterval(() => { if (document.querySelector('[data-voice-phase="playing"]') && recs.some((r) => r.active)) window.micDuringPlay++; }, 30);
-  }, { decodeFails });
+  }, { decodeFails, delayDecode, delayPlay });
   const origin = 'https://ember.baxstarfishing.com';
   await page.route('**/*', async (route) => {
     const u = new URL(route.request().url());
@@ -59,12 +62,14 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeco
       calls.push({ path: u.pathname, body, at: Date.now() });
       if (u.pathname === '/api/connectors/status') return route.fulfill({ json: { connectors: {} } });
       if (u.pathname === '/api/voice/trace') return route.fulfill({ status: 204, body: '' });
-      if (u.pathname === '/api/tts') return route.fulfill({ contentType: 'audio/wav', body: audio }).catch(() => {});
+      if (u.pathname === '/api/tts') return route.fulfill(state.mode === 'race' && calls.filter(c => c.path === '/api/tts').length > 1 ? { status:502, json:{error:'Fixture speech failure'} } : { contentType: 'audio/wav', body: audio }).catch(() => {});
       const q = body.messages?.at(-1)?.content || '';
       if (/ONLY valid JSON/.test(q)) return route.fulfill({ json: { content: [{ type: 'text', text: '{"voicemails":[],"emails":[],"events":[]}' }], stop_reason: 'end_turn' } });
       const retry = q.includes('[Ember check');
       const tools = [{ type: 'mcp_tool_use', id: 't1', name: 'list_events', server_name: 'calendar' }, { type: 'mcp_tool_result', tool_use_id: 't1', is_error: false, content: [] }];
       const reply = (text, withTools) => route.fulfill({ json: { model: body.model, content: [...(withTools ? tools : []), { type: 'text', text }], stop_reason: 'end_turn' } }).catch(() => {});
+      if (state.mode === 'race') { await new Promise(resolve => setTimeout(resolve, 1800)); return reply('Your next trip is at 6 AM tomorrow.', true); }
+      if (state.mode === 'symbolsOnly') return reply('🔥\n', false);
       if (state.mode === 'noTool') return reply('You have a 2 PM charter with Dale and a birthday on Friday.', false);
       if (state.mode === 'toolOnRetry') return reply(retry ? 'Your 2 PM charter with Dale is on the calendar.' : 'You have a 2 PM charter with Dale.', retry);
       if (state.mode === 'claimNoTool') return reply('Sure. Also, your calendar shows a meeting at 3.', false);
@@ -84,6 +89,27 @@ async function fixture({ ua = IPHONE, width = 390, decodeFails = false, clipSeco
   return { page, context, panel, calls, errors, state, tap, chats };
 }
 try {
+  for (const kind of process.env.EMBER_AUDIO_RACE ? [process.env.EMBER_AUDIO_RACE] : ['decode','play']) {
+    const f = await fixture({delayDecode:kind === 'decode',delayPlay:kind === 'play',decodeFails:kind === 'play'});
+    f.state.mode = 'race'; await f.tap(); await f.page.evaluate(() => say('What is on my calendar?'));
+    await f.page.waitForFunction(kind => typeof window[kind === 'decode' ? 'releaseDecode' : 'rejectPendingPlay'] === 'function', kind);
+    await f.page.getByText(/speech service returned HTTP 502/).waitFor();
+    const note = await f.panel.locator('.voice-status').innerText();
+    await f.page.evaluate(kind => window[kind === 'decode' ? 'releaseDecode' : 'rejectPendingPlay'](), kind);
+    await f.page.waitForTimeout(150);
+    console.log(`RACE ${kind}:`, await f.page.evaluate(() => ({starts:webStarts,note:document.querySelector('.voice-status').textContent})));
+    check(`${kind}: late audio work cannot revive playback after failure`, await f.page.evaluate(() => webStarts === 0) && await f.page.locator('[data-voice-phase="playing"]').count() === 0);
+    check(`${kind}: late audio work cannot replace the failure note`, await f.panel.locator('.voice-status').innerText() === note);
+    check(`${kind}: completed text remains available`, (await f.page.locator('.home-thread').innerText()).includes('Your next trip is at 6 AM tomorrow.'));
+    await f.context.close();
+  }
+  if (!process.env.EMBER_AUDIO_RACE) {
+  {
+    const f = await fixture(); f.state.mode = 'symbolsOnly'; await f.tap(); await f.page.evaluate(() => say('Show me an emoji'));
+    await f.page.getByText(/no words to read aloud/).waitFor();
+    check('symbol-only reply stays on screen without a speech request', !f.calls.some(c => c.path === '/api/tts') && (await f.page.locator('.home-thread').innerText()).includes('🔥'));
+    await f.context.close();
+  }
   {
     // Five spoken turns from one tap, Aria through Web Audio, no tap in between.
     const f = await fixture();
@@ -311,6 +337,7 @@ try {
     const t = await f.page.evaluate(() => emberVoiceTraces.filter((x) => x.outcome === 'spoke').at(-1));
     check('the trace times the reply headers and the lookup', t.marks['reply-headers'] > 0 && t.marks['tool-result'] > t.marks['reply-headers']);
     await f.context.close();
+  }
   }
   console.log(`iPhone voice path and live-data guard: ${checks} checks passed.`);
 } finally {
