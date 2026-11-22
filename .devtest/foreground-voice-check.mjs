@@ -79,10 +79,11 @@ try{
   await f.page.locator('body').click({position:{x:1,y:1}});await f.page.keyboard.press('Space');
   await f.panel.locator('[data-phase="listening"]').waitFor({timeout:4000});
   check('Space cuts off the reply and opens one listening turn',await f.page.evaluate(()=>recs.length===2&&recs[1].active&&document.querySelector('audio').paused));
-  await f.page.keyboard.press('Escape');await f.panel.locator('[data-phase="ready"]').waitFor({state:'attached'});await f.page.waitForTimeout(1000);
-  check('Escape stops voice without restarting',await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
+  await f.page.getByRole('button',{name:'Talk to Ember',exact:true}).focus();await f.page.keyboard.press('Escape');await f.panel.locator('[data-phase="ready"]').waitFor({state:'attached'});await f.page.waitForTimeout(1000);
+  check('Escape stops voice from the focused mouth without restarting',await f.page.evaluate(()=>recs.length===2&&recs.every(r=>!r.active)));
   await f.context.close();
  }
+ if(!process.env.EMBER_HARDENING_ONLY){
  for(const [width,command] of [[1440,'Stop.'],[390,'STOP LISTENING!'],[390,'Ember, stop.']]){
   const f=await fixture({width});await f.start();
   await f.page.evaluate(t=>{window.lateStopResult=recs.at(-1).onresult;say(t)},command);
@@ -384,6 +385,7 @@ try{
   check('closing returns keyboard focus to the mouth',await f.page.evaluate(()=>document.activeElement.classList.contains('reactor-stage')));
   await f.start();await f.page.locator('.console-dock').getByRole('button',{name:'Caption Studio',exact:true}).click();
   check('changing Ember workspace stops voice',await f.page.evaluate(()=>recs.every(r=>!r.active)&&wakes.every(w=>w.released)));await f.context.close();
+ }
  }
  console.log(`Foreground voice: ${checks} checks passed.`);
 }finally{await browser.close()}

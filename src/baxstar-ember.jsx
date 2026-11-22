@@ -2171,8 +2171,8 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     document.addEventListener("visibilitychange", hidden); window.addEventListener("pagehide", exit); navigator.audioSession?.addEventListener?.("statechange", audioInterrupted);
     const keys = event => {
       if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || document.hidden || !options.current.enabled) return;
-      if (event.target?.closest?.('input, textarea, select, button, a, [contenteditable], [role="button"], [role="dialog"]')) return;
-      if (event.code === "Space" && c.phase === "playing" && c.conversation) { event.preventDefault(); interrupt(); }
+      if (event.target?.closest?.('input, textarea, select, [contenteditable], [role="dialog"]')) return;
+      if (event.code === "Space" && c.phase === "playing" && c.conversation && !event.target?.closest?.('button, a, [role="button"]')) { event.preventDefault(); interrupt(); }
       else if (event.key === "Escape" && (c.conversation || c.rec || c.request || c.phase === "playing")) { event.preventDefault(); c.rest = ""; stop("Voice stopped. Tap the mouth to talk again."); }
     };
     window.addEventListener("keydown", keys);

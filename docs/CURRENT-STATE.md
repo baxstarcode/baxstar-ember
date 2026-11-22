@@ -13,7 +13,8 @@ retry could reopen capture, and a failed later speech clip could leave earlier
 audio playing behind an error state. Stop now clears retry state; failed speech
 or chat turns cancel queued/current audio and retain the text response. Space
 interrupts an active spoken conversation and listens; Escape stops voice. These
-keyboard shortcuts leave text editing, existing controls and modified keys alone.
+keyboard shortcuts leave text editing and modified keys alone. Space preserves
+focused control activation; Escape also stops voice from the focused skull.
 The physical no-touch spoken-interruption question remains open; this change
 does not listen over Aria or change the foreground-only policy.
 
@@ -21,6 +22,8 @@ Validation: Pages build, 167 foreground checks, 54 WebKit-path checks, 87 layout
 checks, nine spoken-cap tests and the streaming/latency suite passed using
 simulated recognition/providers. Includes short-answer timing, abbreviation
 boundaries, delayed retry cancellation, text preservation and keyboard controls.
+The final Escape/focused-skull correction was rebuilt and passed the six focused
+keyboard/retry checks (`EMBER_HARDENING_ONLY=1`).
 No Worker/connector/native-app change or additional paid service.
 See `docs/HANDOFF-VOICE-HARDENING.md` for a focused independent-review handoff.
 

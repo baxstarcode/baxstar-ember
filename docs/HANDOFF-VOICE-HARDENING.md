@@ -16,8 +16,9 @@ or booking-app task. Changes are on `codex/ember-voice-hardening`, based on
 - A failed speech clip or chat turn cancels queued speech and stops current audio.
   Previously the UI could say the turn failed while an earlier clip kept playing.
 - During active conversation, Space interrupts playback and listens; Escape
-  stops voice. Editing fields, buttons, links, dialogs, modified keys and key
-  repeat retain their normal behavior. Keyboard hints are on existing controls.
+  stops voice, including while the skull has focus. Space preserves focused
+  button/link activation; editing fields, dialogs, modified keys and key repeat
+  retain their normal behavior. Keyboard hints are on existing controls.
 
 The original retry race and continued-playback bug were reproduced against the
 old build. The controlled short-answer test measured about 6051 ms before and
