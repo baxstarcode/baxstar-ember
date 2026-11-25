@@ -311,7 +311,7 @@ try{
   const turn=f.calls.find(c=>c.path==='/api/messages'&&c.body.messages?.at(-1)?.content==="What's the weather?");
   check('a spoken weather question carries the forecast',turn?.body.messages[0].content.includes('LIVE WEATHER: National Weather Service forecast for Detroit Lakes, MN'));
   check('a spoken weather question carries the voice-only weather rule',turn?.body.messages[0].content.includes('Weather by voice: answer the question asked in one or two short sentences, leading with any active alert.'));
-  check('the spoken prompt says where Aria stops',turn?.body.messages[0].content.includes('Aria stops speaking after 4 sentences or 3 times of day'));
+  check('the spoken prompt describes the reply limit',turn?.body.messages[0].content.includes('stops speaking after 4 sentences or 3 times of day'));
   await f.context.close();
  }
  {
