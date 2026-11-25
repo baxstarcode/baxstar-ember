@@ -36,10 +36,9 @@
  *   QUO_CLIENT_ID (optional)                 set after the first Quo run to skip
  *                                            re-registering the client
  *
- * POST /tts — Ember's natural voice. Relays Microsoft Edge's free neural TTS
- * (the Read Aloud voices) over an outbound WebSocket and returns raw MP3.
- * No provider key is required. The same CORS policy applies; Access protection
- * is still needed to prevent a direct client from farming the endpoint.
+ * POST /api/tts — returns MP3 from Microsoft Edge Read Aloud or, when selected,
+ * ElevenLabs using the Worker's ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID.
+ * Both providers use the same Access-protected Pages gateway and origin policy.
  *
  * POST /api/outbox — accepts Caption Studio's bounded publish payload and relays it
  * to the private Drive outbox URL held in OUTBOX_URL. OUTBOX_TOKEN is optional.
@@ -107,7 +106,7 @@ function readOnlyToolset(name) {
   };
 }
 
-import { handleVoice } from "./voice.mjs";
+import { handleVoice, VOICE_AUDIO_BYTES } from "./voice.mjs";
 import { handleVoiceTrace, VOICE_TRACE_BYTES } from "./voice-trace.mjs";
 import { handleWeather } from "./weather.mjs";
 import { edgeGecV2 } from "./vendor/edge-gec-v2.mjs";
@@ -1466,10 +1465,58 @@ function xmlEscape(s) {
     .replace(/"/g, "&quot;");
 }
 
-async function handleTts(body, cors, fetchImpl, now) {
+async function elevenLabsTts(text, env, cors, fetchImpl, signal) {
+  const key = env.ELEVENLABS_API_KEY?.trim();
+  const voiceId = env.ELEVENLABS_VOICE_ID?.trim();
+  if (!key || !voiceId || !/^[A-Za-z0-9_-]+$/.test(voiceId)) {
+    return json({ error: "ElevenLabs voice is not configured." }, 503, cors);
+  }
+  const deadline = AbortSignal.timeout(12000);
+  try {
+    const response = await fetchImpl(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+      method: "POST",
+      redirect: "manual",
+      signal: AbortSignal.any([signal, deadline]),
+      headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
+      body: JSON.stringify({ text, model_id: "eleven_flash_v2_5" }),
+    });
+    if (response.status !== 200 || response.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "audio/mpeg" || !response.body) {
+      response.body?.cancel().catch(() => {});
+      return json({ error: "ElevenLabs could not produce speech." }, 502, cors);
+    }
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > VOICE_AUDIO_BYTES) {
+          reader.cancel().catch(() => {});
+          return json({ error: "ElevenLabs returned too much audio." }, 502, cors);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (!size) return json({ error: "ElevenLabs returned empty audio." }, 502, cors);
+    return new Response(new Blob(chunks, { type: "audio/mpeg" }), {
+      headers: { ...cors, "Content-Type": "audio/mpeg", "Cache-Control": "no-store", "X-Ember-TTS-Provider": "elevenlabs" },
+    });
+  } catch {
+    if (signal.aborted) return json({ error: "Speech request cancelled." }, 499, cors);
+    if (deadline.aborted) return json({ error: "ElevenLabs took too long." }, 504, cors);
+    return json({ error: "ElevenLabs could not produce speech." }, 502, cors);
+  }
+}
+
+async function handleTts(body, env, cors, fetchImpl, now, signal) {
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) return json({ error: "No text to speak." }, 400, cors);
   if (text.length > TTS_MAX_CHARS) return json({ error: "Text too long." }, 400, cors);
+  if (body.voice === "elevenlabs") return elevenLabsTts(text, env, cors, fetchImpl, signal);
   const voice = TTS_VOICES.has(body.voice) ? body.voice : TTS_DEFAULT_VOICE;
 
   const connId = crypto.randomUUID().replace(/-/g, "");
@@ -1627,7 +1674,7 @@ export default {
     // The natural voice needs no Anthropic key — routed after the origin gate
     // but before the key check, so a voice-only misconfiguration still speaks.
     if (route === "tts") {
-      return handleTts(body, cors, fetchImpl, now);
+      return handleTts(body, env, cors, fetchImpl, now, request.signal);
     }
     if (route === "connectors") {
       return connectorStatus(body, env, cors, fetchImpl, now);

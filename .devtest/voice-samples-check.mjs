@@ -15,9 +15,11 @@ try {
    const u=new URL(route.request().url());
    if(u.origin!==origin)return route.abort();
    if(u.pathname.startsWith('/api/')){
-    calls.push({path:u.pathname,body:route.request().postDataJSON()});
+    const body=route.request().postDataJSON();
+    calls.push({path:u.pathname,body});
     if(mode==='wait')await new Promise(r=>release=r);
-    try { return await route.fulfill(mode==='error'?{status:502,json:{error:'failed'}}:{contentType:'audio/wav',body:wav}); }catch{return}
+    const headers=body.voice==='elevenlabs'&&mode!=='legacyWorker'?{'X-Ember-TTS-Provider':'elevenlabs'}:{};
+    try { return await route.fulfill(mode==='error'?{status:502,json:{error:'failed'}}:{contentType:'audio/wav',headers,body:wav}); }catch{return}
    }
    const file=path.resolve(root,u.pathname.endsWith('/')?u.pathname.slice(1)+'index.html':u.pathname.slice(1));
    if(!file.startsWith(root+path.sep))return route.abort();
@@ -25,10 +27,10 @@ try {
   });
   await page.goto(origin+'/work/voice-samples/');
   check(`${width}: no automatic API call or microphone`,calls.length===0&&await page.locator('audio:not([hidden])').count()===0);
-  for(const name of ['Jenny','Aria','Michelle']){
+  for(const [name,voice] of [['Jenny','en-US-JennyNeural'],['Aria','en-US-AriaNeural'],['Michelle','en-US-MichelleNeural'],['ElevenLabs','elevenlabs']]){
    await page.getByRole('button',{name:'Play '+name,exact:true}).click();
    await page.getByRole('link',{name:'Download '+name+' sample'}).waitFor();
-   check(`${width}: real voice ID for ${name}`,calls.at(-1).body.voice===`en-US-${name}Neural`);
+   check(`${width}: API voice ID for ${name}`,calls.at(-1).body.voice===voice);
    check(`${width}: ${name} download is playable audio URL`,(await page.getByRole('link',{name:'Download '+name+' sample'}).getAttribute('href')).startsWith('blob:'));
   }
   check(`${width}: fair comparison uses identical words`,new Set(calls.map(c=>c.body.text)).size===1);
@@ -38,7 +40,10 @@ try {
   await page.getByRole('button',{name:'Stop',exact:true}).click();
   check(`${width}: Stop pauses all samples`,await page.locator('audio').evaluateAll(items=>items.every(a=>a.paused)));
   await page.screenshot({path:`/tmp/ember-voice-samples-${width}.png`});
-  await page.reload();mode='error';await page.getByRole('button',{name:'Play Aria',exact:true}).click();
+  await page.reload();mode='legacyWorker';await page.getByRole('button',{name:'Play ElevenLabs',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'ElevenLabs is unavailable'}).waitFor();
+  check(`${width}: a legacy audio response cannot play or be downloaded as ElevenLabs`,await page.locator('audio:not([hidden])').count()===0 && await page.getByRole('link',{name:'Download ElevenLabs sample'}).count()===0);
+  mode='error';await page.getByRole('button',{name:'Play Aria',exact:true}).click();
   await page.getByRole('status').filter({hasText:'HTTP 502'}).waitFor();
   check(`${width}: provider error is visible without fake playback`,await page.locator('audio:not([hidden])').count()===0);
   mode='wait';await page.getByRole('button',{name:'Play Michelle',exact:true}).click();

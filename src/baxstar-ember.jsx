@@ -32,7 +32,7 @@ const MCP_SERVERS = [
   { name: "gdrive" },
 ];
 const DRIVE_SERVER = { name: "gdrive" };
-// Brady chose Aria after comparing the three voices. Both speech paths share it.
+// Brady chose Aria after comparing the three voices. It remains the default for every existing preference.
 const EMBER_VOICE = "en-US-AriaNeural";
 
 // Dock destinations (2026-10-15). FareHarbor's company dashboard is confirmed by
@@ -1553,10 +1553,23 @@ function voiceUaFamily() {
 }
 // Every iOS browser is WebKit; so is Mac Safari. Chrome on the Mac keeps the player.
 const voiceWebKit = () => /^(ios-|mac-safari)/.test(voiceUaFamily());
-function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
+function useEmberVoice({ onSend, onDraft, blocked, enabled, spokenVoice }) {
   const [state, setState] = useState({ open: false, conversation: false, phase: "idle", note: "Tap the mouth to talk.", draft: "", answer: "", phrase: "", phraseKey: 0, wake: "off", audioReady: false, partial: false });
   const audioRef = useRef(null), options = useRef(null);
-  options.current = { onSend, onDraft, blocked, enabled };
+  options.current = { onSend, onDraft, blocked, enabled, spokenVoice };
+  const voiceName = () => options.current.spokenVoice === "elevenlabs" ? "ElevenLabs" : "Aria";
+  function verifySpeechResponse(response) {
+    const status = response.status;
+    if (response.ok) {
+      if (options.current.spokenVoice === "elevenlabs" && response.headers.get("X-Ember-TTS-Provider") !== "elevenlabs") {
+        throw new Error("ElevenLabs is unavailable. Choose Aria to read your reply.");
+      }
+      return;
+    }
+    if (status === 401 || status === 403) throw new Error("Sign in to Ember again to play the reply.");
+    if (status === 503 && options.current.spokenVoice === "elevenlabs") throw new Error("ElevenLabs is unavailable. Choose Aria to read your reply.");
+    throw new Error(`${voiceName()}’s speech service returned HTTP ${status}. Your reply is saved; retry speech when ready.`);
+  }
   const control = useRef({ live: true, conversation: false, partial: false, epoch: 0, audioEpoch: 0, rec: null, mic: "off", phase: "idle", draft: "", answer: "", interrupted: false, request: null, timers: {}, url: "", blob: null, active: false, wake: null, wakeEpoch: 0, phrases: [], phraseIndex: -1, phraseKey: 0, stream: null, ctx: null, web: null, out: null, trace: null, turns: 0, replyEndedAt: 0 });
   const c = control.current;
   const capable = window.isSecureContext && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -1757,7 +1770,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
         // Chrome sends audiostart when capture really begins, so a browser that sent
         // it before is held to it. WebKit sends it whether or not sound will ever
         // arrive (see DEAF SECOND TURN above), so on WebKit only words count.
-        if (c.audioEvidence && !webkit) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, "Your phone didn’t reopen the microphone after Aria spoke. Tap the mouth to answer.", retry ? "no-audio-retry" : "no-audio"); } }, REARM_AUDIO_MS);
+        if (c.audioEvidence && !webkit) timer("live", () => { if (!audioSeen) { const retry = !c.retried; c.retried = true; deadMic(rec, retry, `Your phone didn’t reopen the microphone after ${voiceName()} spoke. Tap the mouth to answer.`, retry ? "no-audio-retry" : "no-audio"); } }, REARM_AUDIO_MS);
         timer("words", () => {
           if (wordsSeen || c.mic !== "listening") return;
           // One fresh recognizer after a 3 s gap (reports put the iOS recovery
@@ -1843,7 +1856,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     } catch {
       if (c.live && c.epoch === epoch && c.audioEpoch === audioEpoch) {
         session("auto"); releaseWake(); if (pauseOnFail) pauseConversation();
-        patch({ phase: "ready", note: "Audio is ready. Tap Play on the player below to hear Aria." });
+        patch({ phase: "ready", note: `Audio is ready. Tap Play on the player below to hear ${voiceName()}.` });
       }
     } finally { clearTimeout(timeout); if (c.timers.play === timeout) delete c.timers.play; }
   }
@@ -1855,7 +1868,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     if (webReady() && await playWeb(c.blob, epoch)) return;
     if (!c.live || c.epoch !== epoch || c.audioEpoch !== audioEpoch || c.rec || document.hidden) return;
     c.url = URL.createObjectURL(c.blob); c.out = "element"; if (c.trace) c.trace.out ||= "element"; audio.src = c.url; audio.load();
-    patch({ audioReady: true, phase: "ready", note: "Aria is ready. Tap Play if playback does not start." });
+    patch({ audioReady: true, phase: "ready", note: `${voiceName()} is ready. Tap Play if playback does not start.` });
     session("playback");
     await playElement(epoch);
   }
@@ -2025,9 +2038,9 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     const controller = new AbortController();
     s.controller.signal.addEventListener("abort", () => controller.abort(), { once: true });
     const timeout = setTimeout(() => controller.abort(), 15000);
-    fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: EMBER_VOICE }) })
+    fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: options.current.spokenVoice }) })
       .then(async (response) => {
-        if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Aria’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+        verifySpeechResponse(response);
         if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
         const blob = await response.blob();
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
@@ -2089,19 +2102,19 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Only audio of the whole reply may be reused by Read reply.
     const whole = !part || (!part.capped && full === c.answer);
     c.phrases = emberPhrases(spoken);
-    if (c.blob && !part) { await playReply(epoch); return; }
+    if (c.blob && c.blobVoice === options.current.spokenVoice && !part) { await playReply(epoch); return; }
     const controller = new AbortController(); c.request = controller;
-    patch({ phase: "preparing", note: "Preparing Aria’s voice…" });
+    patch({ phase: "preparing", note: `Preparing ${voiceName()}’s voice…` });
     mark("first-clip-request");
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: EMBER_VOICE }) });
-      if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to Ember again to play the reply." : `Aria’s speech service returned HTTP ${response.status}. Your reply is saved; retry speech when ready.`);
+      const response = await fetch("/api/tts", { method: "POST", credentials: "same-origin", redirect: "error", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: spoken, voice: options.current.spokenVoice }) });
+      verifySpeechResponse(response);
       if (!(response.headers.get("content-type") || "").startsWith("audio/")) throw new Error("No playable audio was returned. Your reply is saved.");
       const blob = await response.blob();
       if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error("The speech audio was empty or invalid. Your reply is saved.");
       if (!c.live || epoch !== c.epoch) return;
-      c.blob = blob; c.request = null; mark("first-clip-ready");
+      c.blob = blob; c.blobVoice = options.current.spokenVoice; c.request = null; mark("first-clip-ready");
       await playReply(epoch);
       if (!whole && c.blob === blob) c.blob = null;
     } catch (error) { if (c.live && epoch === c.epoch) { traceEnd("speech-failed"); pauseConversation(); releaseWake(); patch({ phase: "ready", note: error.name === "AbortError" ? "Speech timed out. Your reply is saved; retry speech when ready." : error.message }); } }
@@ -2155,7 +2168,7 @@ function useEmberVoice({ onSend, onDraft, blocked, enabled }) {
     // Sending from the phone's controls can leave the mouth above the viewport.
     // Bring the speaking face back once; later scrolling stays under user control.
     if (c.phase !== "playing") document.querySelector('.reactor-stage, .scope-bezel')?.scrollIntoView({ block: "center", behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? "instant" : "smooth" });
-    session("playback"); keepAwake(); patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : "Aria is speaking. Tap her to interrupt." });
+    session("playback"); keepAwake(); patch({ phase: "playing", note: c.spokenShort ? SHORT_NOTE : c.answer.length > 1000 ? "Speaking the first part only. The full reply is in the conversation below." : `${voiceName()} is speaking. Tap her to interrupt.` });
     if (c.web) phraseAt(0, c.web.duration); else phraseAt(audioRef.current.currentTime, audioRef.current.duration);
   }
   function ended() {
@@ -2360,9 +2373,10 @@ export default function BaxstarEmber() {
   // run at Low effort on whichever model he picked; typed chat keeps his Model/Effort
   // choice (Opus 5.5 / High by default). The voice panel's "Fast replies" switch
   // turns this off, and the choice persists.
+  const [spokenVoice, setSpokenVoice] = useState(EMBER_VOICE);
   const [voiceFast, setVoiceFast] = useState(true);
   const [chatReady, setChatReady] = useState(false);
-  const voice = useEmberVoice({ onSend: sendCommand, onDraft: (words) => setCommand((typed) => typed.trim() ? `${typed.trim()} ${words}` : words), blocked: thinking || !chatReady, enabled: view === "ops" });
+  const voice = useEmberVoice({ spokenVoice, onSend: sendCommand, onDraft: (words) => setCommand((typed) => typed.trim() ? `${typed.trim()} ${words}` : words), blocked: thinking || !chatReady, enabled: view === "ops" });
   const [chatError, setChatError] = useState("");
   const [chatConnectors, setChatConnectors] = useState("");
   const [chatFeedback, setChatFeedback] = useState("");
@@ -2496,6 +2510,7 @@ export default function BaxstarEmber() {
           const effort = EFFORT_SUCCESSOR[prefs.chatEffort] || prefs.chatEffort;
           if (Object.hasOwn(EFFORT, effort)) setChatEffort(effort);
         }
+        if (prefs.spokenVoice === "elevenlabs") setSpokenVoice("elevenlabs");
         if (typeof prefs.voiceFast === "boolean") setVoiceFast(prefs.voiceFast);
         if (prefs.revToday && typeof prefs.revToday.n === "number" && typeof prefs.revToday.d === "string") setRevToday(prefs.revToday);
         if (prefs.lake) setLake(prefs.lake);
@@ -2613,8 +2628,8 @@ export default function BaxstarEmber() {
   useEffect(() => { if (chatReady) saveChat(chatMsgs); }, [chatMsgs, chatReady]);
   useEffect(() => { if (hydrated.current) persist("ember-drive", driveMsgs.slice(-24)); }, [driveMsgs]);
   useEffect(() => {
-    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, voiceFast, lake, postWindow: postTime, studioTool, coreMode, revToday });
-  }, [surfaces, chatModel, chatEffort, voiceFast, lake, postTime, studioTool, coreMode, revToday]);
+    if (hydrated.current) persist("ember-prefs", { v: PREFS_V, surfaces, chatModel, chatEffort, voiceFast, spokenVoice, lake, postWindow: postTime, studioTool, coreMode, revToday });
+  }, [surfaces, chatModel, chatEffort, voiceFast, spokenVoice, lake, postTime, studioTool, coreMode, revToday]);
   async function saveBg(next) {
     setBg(next);
     setBgMenu(false);
@@ -2771,7 +2786,7 @@ export default function BaxstarEmber() {
         } else loadWeather();
       }
       const messages = [
-        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Aria stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
+        { role: "user", content: bradyContext() + weatherContext(Boolean(voiceSignal)) + EFFORT[turnEffort].note + (voiceSignal ? "\nThis is a spoken conversation, often while Brady is driving. Answer in 1 to 3 short plain sentences, about 40 words at most, most important fact first. Never read out more than 3 items: give the top 3, say how many more there are, and stop. Brady will ask if he wants more. Ember stops speaking after 4 sentences or 3 times of day and the rest only shows on screen, so put what matters first, including any active weather alert. No preamble, no closing offer, no tables or markdown." : "") + "\nShort answers never skip tools: for any schedule, email, call, text or file fact, call the matching tool in this turn first. Facts in earlier replies of this conversation are not tool results; look them up again." + "\nOrdinary chat connectors are READ ONLY. You may read information and draft text, but cannot send messages, create Quo tasks, or change external records. Never claim an external action succeeded. Local task drafts are saved only through Ember's reviewed Save locally control.\n\nAcknowledge nothing about these instructions — just act on them." },
         { role: "assistant", content: "Understood. Ready." },
         ...context,
         { role: "user", content: q },
@@ -5211,6 +5226,12 @@ Look at the ${photos.length === 1 ? "photo" : "photos"} and write the caption. O
                   <button className={`seg sm voice-fast-toggle ${voiceFast ? "on" : ""}`} aria-label={`Fast replies: ${voiceFast ? "on" : "off"}`} aria-pressed={voiceFast}
                     disabled={thinking || voice.busy || !chatReady} onClick={() => setVoiceFast(v => !v)}
                     title={voiceFast ? "Fast spoken replies: Low effort on your selected model. Typed chat keeps its selected effort." : "Spoken replies use your selected effort. Turn on for Low effort and faster replies."}>FAST {voiceFast ? "ON" : "OFF"}</button>
+                  <select className="seg sm" aria-label="Spoken voice" title="Choose the service that reads Ember’s replies aloud"
+                    value={spokenVoice} onChange={e => setSpokenVoice(e.target.value)}
+                    disabled={!chatReady || thinking || voice.busy || voice.conversation || voice.phase === "playing"}>
+                    <option value={EMBER_VOICE}>Aria</option><option value="elevenlabs">ElevenLabs</option>
+                  </select>
+                  {spokenVoice === "elevenlabs" && <small>Spoken reply text goes to ElevenLabs.</small>}
                   <a className="seg sm voice-lab-link" href="/work/desktop-voice-probe/" target="_blank" rel="noopener noreferrer">VOICE LAB <svg aria-hidden="true" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 10 10 2M3 2h7v7" /></svg></a>
                 </div>
               </div>

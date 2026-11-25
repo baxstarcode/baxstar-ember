@@ -1123,6 +1123,16 @@ const ttsPost = (body, headers = {}) =>
   check("tts works without an Anthropic key — it never touches the API", res.status === 200);
 }
 
+{
+  const f = stubFetch([]);
+  for (const bindings of [{ ELEVENLABS_API_KEY: "fixture" }, { ELEVENLABS_VOICE_ID: "fixture" }]) {
+    const res = await worker.fetch(ttsPost({ text: "Hi.", voice: "elevenlabs" }),
+      { ...baseEnv, ...bindings }, {}, { fetch: f });
+    check(`ElevenLabs with only ${Object.keys(bindings)[0]} configured makes no provider request`,
+      res.status === 503 && f.calls.length === 0);
+  }
+}
+
 // --- report ---------------------------------------------------------------
 
 {

@@ -35,7 +35,11 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
    if(u.pathname==='/api/connectors/status')return route.fulfill({json:{connectors:{}}});
    if(u.pathname==='/api/weather')return route.fulfill({json:{place:'Detroit Lakes, MN',source:'National Weather Service',fetchedAt:new Date().toISOString(),periods:[{name:'Today',day:true,temp:41,unit:'F',wind:'SSE 7 to 10 mph',pop:0,short:'Mostly Sunny',detail:'Mostly sunny. High near 41.'}],hours:[],alertsChecked:true,alerts:[]}});
    if((mode==='chatPending'&&u.pathname==='/api/messages')||(mode==='ttsPending'&&u.pathname==='/api/tts'))await new Promise(r=>pending.push(r));
-   if(u.pathname==='/api/tts')return route.fulfill(mode==='ttsFailure'?{status:502,json:{error:'provider-refused'}}:{contentType:'audio/wav',body:wav}).catch(()=>{});
+   if(u.pathname==='/api/tts'){
+    if(mode==='elevenUnavailable'&&body.voice==='elevenlabs')return route.fulfill({status:503,json:{error:'ElevenLabs unavailable'}});
+    const headers=body.voice==='elevenlabs'?{'X-Ember-TTS-Provider':'elevenlabs'}:{};
+    return route.fulfill(mode==='ttsFailure'?{status:502,json:{error:'provider-refused'}}:{contentType:'audio/wav',headers,body:wav}).catch(()=>{});
+   }
    const q=body.messages?.at(-1)?.content||'';
    const text=/ONLY valid JSON/.test(q)?'{"voicemails":[],"emails":[],"events":[]}':mode==='long'?'This is the complete long reply. '.repeat(45):mode==='hourly'?'Next 12 hours: 9 AM 32° S 7 mph 0%; 10 AM 35° S 8 mph 0%; 11 AM 37° S 9 mph 0%; 12 PM 39° S 10 mph 0%; 1 PM 41° S 10 mph 0%; 2 PM 42° S 12 mph 5%; 3 PM 41° S 12 mph 5%; 4 PM 40° S 11 mph 5%; 5 PM 37° S 10 mph 5%; 6 PM 35° S 9 mph 5%; 7 PM 33° S 8 mph 10%; 8 PM 30° S 6 mph 10%.':mode==='claim'?"Sarah wanted to move Saturday's charter to 9. She said so in her voicemail. She would like a call back today. She also asked about the pontoon. She sounded happy.":'Your voice is connected. The boat is ready, and your next trip is on the calendar.';
    // A verified lookup: the live-data guard requires a real connector result.
@@ -55,6 +59,45 @@ async function fixture({width=1440,height,prefs,preview=false,recognition=true,w
  return {page,context,panel,calls,errors,start,finish,ask,mode:v=>mode=v,resolve:()=>{pending.splice(0).forEach(r=>r())},async end(){await page.locator('audio[aria-label="Ember reply"]').evaluate(a=>a.currentTime=a.duration-.05);await page.locator('.foreground-voice [data-phase="ready"]').waitFor({state:'attached'})}};
 }
 try{
+ for (const width of [1440, 390]) {
+  const f = await fixture({ width });
+  const voice = f.page.getByRole('combobox', { name: 'Spoken voice', exact: true });
+  const speechCalls = () => f.calls.filter(call => call.path === '/api/tts');
+  const aria = 'en-US-AriaNeural';
+  check(`${width}: Aria is the default spoken voice`, await voice.inputValue() === aria);
+  await voice.selectOption('elevenlabs');
+  await f.page.reload();
+  await f.page.waitForFunction(() => document.querySelector('select[aria-label="Spoken voice"]')?.value === 'elevenlabs');
+  check(`${width}: selecting and restoring ElevenLabs does not synthesize audio`, speechCalls().length === 0);
+  await f.start();
+  check(`${width}: the voice selection is locked during capture`, await voice.isDisabled());
+  await f.ask();
+  await f.panel.locator('[data-phase="playing"]').waitFor();
+  check(`${width}: spoken turn uses the saved ElevenLabs selection`, speechCalls().length === 1 && speechCalls()[0].body.voice === 'elevenlabs');
+  await f.panel.getByRole('button', { name: 'Stop voice' }).click();
+  await voice.selectOption(aria);
+  await f.panel.getByRole('button', { name: 'Read reply', exact: true }).click();
+  await f.panel.locator('[data-phase="playing"]').waitFor();
+  const calls = speechCalls();
+  check(`${width}: replaying the same reply after switching to Aria requests fresh Aria audio`, calls.length === 2 && calls[1].body.voice === aria && calls[1].body.text === calls[0].body.text);
+  await f.context.close();
+ }
+ {
+  const f = await fixture();
+  const voice = f.page.getByRole('combobox', { name: 'Spoken voice', exact: true });
+  await voice.selectOption('elevenlabs');
+  f.mode('elevenUnavailable');
+  await f.start();
+  await f.ask();
+  await f.panel.getByText(/ElevenLabs is unavailable\. Choose Aria/).waitFor();
+  const messages = f.calls.filter(call => call.path === '/api/messages').length;
+  await voice.selectOption('en-US-AriaNeural');
+  await f.panel.getByRole('button', { name: 'Read reply', exact: true }).click();
+  await f.panel.locator('[data-phase="playing"]').waitFor();
+  const voices = f.calls.filter(call => call.path === '/api/tts').map(call => call.body.voice);
+  check('after ElevenLabs is unavailable, Aria can read the existing answer', voices.join(',') === 'elevenlabs,en-US-AriaNeural' && f.calls.filter(call => call.path === '/api/messages').length === messages);
+  await f.context.close();
+ }
  for(const action of ['stop','hide']){
   const f=await fixture();await f.page.evaluate(()=>{window.audioStart=true;window.deadAudio=1});await f.start();await f.ask('First turn');
   await f.panel.locator('[data-phase="playing"]').waitFor();await f.panel.locator('audio').evaluate(a=>a.currentTime=a.duration-.05);
@@ -182,7 +225,7 @@ try{
   check(`${width}: the panel has no review box, Send or Type instead`,await f.panel.locator('textarea').count()===0&&await f.panel.getByRole('button',{name:/^(Send|Type instead)$/}).count()===0);
   check(`${width}: spoken turn keeps the selected Opus model at Fast-replies Low effort`,f.calls.some(c=>c.path==='/api/messages'&&c.body.model==='claude-opus-5-5'&&c.body.output_config?.effort==='low'&&c.body.max_tokens===4000&&c.body.messages[0]?.content.includes('Effort: LOW')&&!c.body.messages[0]?.content.includes('Effort: HIGH')&&c.body.messages.at(-1)?.content==='Check my next trip.'));
   check(`${width}: Aria uses tested endpoint`,f.calls.some(c=>c.path==='/api/tts'&&c.body.voice==='en-US-AriaNeural'));
-  check(`${width}: new voice providers never used`,!f.calls.some(c=>c.path.includes('/voice/')&&c.path!=='/api/voice/trace'));
+  check(`${width}: default Aria turn uses no alternate voice endpoint`,!f.calls.some(c=>c.path.includes('/voice/')&&c.path!=='/api/voice/trace'));
   check(`${width}: reply reaches persistent normal conversation`,await f.page.locator('.home-thread [data-role="assistant"]').innerText().then(t=>t.includes('Your voice is connected')));
   const after=await hero.boundingBox();check(`${width}: skull does not shrink after reply`,Math.abs(before.width-after.width)<1&&after.width>250);
   check(`${width}: transcript remains bounded`,await f.page.locator('.home-thread').evaluate(e=>e.clientHeight>=90&&e.clientHeight<=180));

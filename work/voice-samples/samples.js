@@ -1,4 +1,4 @@
-const voices = { jenny: 'en-US-JennyNeural', aria: 'en-US-AriaNeural', michelle: 'en-US-MichelleNeural' };
+const voices = { jenny: 'en-US-JennyNeural', aria: 'en-US-AriaNeural', michelle: 'en-US-MichelleNeural', elevenlabs: 'elevenlabs' };
 const status = document.querySelector('#status');
 const players = [...document.querySelectorAll('audio')];
 const urls = new Map();
@@ -15,7 +15,7 @@ for (const button of document.querySelectorAll('[data-voice]')) {
     stop();
     const key = button.dataset.voice, turn = epoch;
     const card = document.getElementById(key), player = card.querySelector('audio');
-    const name = key[0].toUpperCase() + key.slice(1);
+    const name = key === 'elevenlabs' ? 'ElevenLabs' : key[0].toUpperCase() + key.slice(1);
     status.textContent = `Preparing ${name}…`;
     const controller = new AbortController(); pending = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -27,6 +27,7 @@ for (const button of document.querySelectorAll('[data-voice]')) {
           body: JSON.stringify({ text: document.querySelector('#sample').textContent, voice: voices[key] })
         });
         if (!response.ok) throw new Error([401, 403].includes(response.status) ? 'Open Ember and sign in, then return here.' : `Speech service returned HTTP ${response.status}. Try again later.`);
+        if (key === 'elevenlabs' && response.headers.get('X-Ember-TTS-Provider') !== 'elevenlabs') throw new Error('ElevenLabs is unavailable.');
         if (!(response.headers.get('content-type') || '').startsWith('audio/')) throw new Error('No audio returned. Open Ember and check your sign-in.');
         const blob = await response.blob();
         if (blob.size < 200 || blob.size > 2 * 1024 * 1024) throw new Error('The voice sample was empty or invalid.');

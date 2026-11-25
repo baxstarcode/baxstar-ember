@@ -1,5 +1,25 @@
 # Deploying Ember
 
+## Optional ElevenLabs voice
+
+OPS → **Spoken voice** selects the provider on this device. Aria is the default.
+Choosing ElevenLabs sends the text Ember speaks to ElevenLabs through the private
+Worker. This includes any private information in that reply. Microphone capture
+and chat continue through their existing paths.
+
+Configure these bindings on `ember-claude-proxy` in Cloudflare Worker Settings →
+Variables and Secrets. Use Secret for both so Workers Builds preserve the values.
+
+* `ELEVENLABS_API_KEY` — an ElevenLabs key with text-to-speech access.
+* `ELEVENLABS_VOICE_ID` — the voice ID copied from your ElevenLabs library.
+
+Use the existing main-branch Worker and Pages builds. After both finish, open
+`/work/voice-samples/#elevenlabs` on signed-in Ember and play Aria and ElevenLabs
+on the same sentence. In OPS, select ElevenLabs, ask one question, wait for the
+microphone to reopen, then ask a follow-up. Confirm the selected voice on both
+turns and tap Stop. Select Aria to switch back. A missing binding or a failed
+provider request leaves the text available.
+
 **Foreground voice integration:** the approved large-skull release is Pages-only.
 It reuses the already-live `/api/messages` and Jenny `/api/tts` routes, replacing
 the recording-only modal. Do not deploy the Worker, coordinator, or unused
