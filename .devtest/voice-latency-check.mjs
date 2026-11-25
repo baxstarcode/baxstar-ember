@@ -27,7 +27,7 @@ const PREINSTALLED = "/opt/pw-browsers/chromium";
 const executablePath = process.env.CHROME_PATH || (fs.existsSync(PREINSTALLED) ? PREINSTALLED : undefined);
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const CLAIM = "Sarah wanted to move Saturday's charter to 9. She said so in her voicemail. She would like a call back today. She also asked about the pontoon. She sounded happy.";
-async function measure(run, scenario = "latency") {
+async function measure(run, scenario = "latency", voice) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   await page.addInitScript(({ MODEL, TTS, REPLY, SPEECH_CHARS_PER_SECOND, TOOL, SCENARIO, CLAIM }) => {
@@ -53,9 +53,10 @@ async function measure(run, scenario = "latency") {
       const url = new URL(typeof input === "string" ? input : input.url, location.href);
       if (url.pathname === "/api/connectors/status") return Response.json({ connectors: {} });
       if (url.pathname === "/api/tts") {
-        const text = JSON.parse(init.body).text;
+        const { text, voice } = JSON.parse(init.body);
         marks.ttsCalls = (marks.ttsCalls || 0) + 1;
         (marks.ttsTexts ||= []).push(text);
+        (marks.ttsVoices ||= []).push(voice);
         if (init.signal?.aborted) throw new DOMException("aborted", "AbortError");
         marks.firstTtsRequest ??= performance.now();
         await new Promise((r) => setTimeout(r, TTS.baseMs + TTS.msPerChar * text.length));
@@ -64,7 +65,9 @@ async function measure(run, scenario = "latency") {
           return Response.json({ error: "Fixture speech failure" }, { status: 502 });
         }
         marks.firstTtsReply ??= performance.now();
-        return new Response(wav(text.length / SPEECH_CHARS_PER_SECOND), { headers: { "Content-Type": "audio/wav" } });
+        const headers = { "Content-Type": "audio/wav" };
+        if (voice === "elevenlabs") headers["X-Ember-TTS-Provider"] = "elevenlabs";
+        return new Response(wav(text.length / SPEECH_CHARS_PER_SECOND), { headers });
       }
       if (url.pathname === "/api/messages") {
         const body = JSON.parse(init.body);
@@ -174,6 +177,7 @@ async function measure(run, scenario = "latency") {
     try { await route.fulfill({ path: file }); } catch { await route.abort(); }
   });
   await page.goto(origin);
+  if (voice) await page.getByRole("combobox", { name: "Spoken voice", exact: true }).selectOption(voice);
   await page.getByRole("button", { name: "Talk to Ember", exact: true }).click();
   await page.locator('[data-voice-phase="listening"]').waitFor();
   await page.evaluate((q) => say(q), ["intro", "tinytools", "symbol"].includes(scenario) ? "Tell me something useful." : ["short", "abbrev"].includes(scenario) ? "Would a short walk be a good break?" : scenario === "caveat" ? "What did Sarah want?" : "What does tomorrow look like?");
@@ -223,8 +227,12 @@ async function measure(run, scenario = "latency") {
   return { run, sent: at("sent"), toolResult: at("toolResult"), firstToken: at("firstToken"), lastToken: at("lastToken"), firstTtsRequest: at("firstTtsRequest"), firstTtsReply: at("firstTtsReply"), firstAudio: at("firstAudio"), answerAudio: answerAudio === undefined ? null : Math.round(answerAudio - m.speechEnd), ttsCalls: m.ttsCalls };
 }
 
-async function reviewScenario(scenario) {
-  const m = await measure(0, scenario), said = m.ttsTexts.join(" ").replace(/\s+/g," ").trim();
+async function reviewScenario(scenario, voice) {
+  const m = await measure(0, scenario, voice), said = m.ttsTexts.join(" ").replace(/\s+/g," ").trim();
+  if (voice) {
+    assert.ok(m.ttsVoices.length > 1 && m.ttsVoices.every(requested => requested === voice), "every streamed clip uses the selected voice");
+    console.log(`PASS all ${m.ttsVoices.length} streamed clips used ${voice}`);
+  }
   console.log(`REVIEW ${scenario}: ${said}`);
   if (scenario === "intro") {
     assert.ok(!said.includes("Let me check your files"), "two-sentence pre-tool narration is skipped");
@@ -239,7 +247,7 @@ async function reviewScenario(scenario) {
 }
 try {
   if (process.env.EMBER_REVIEW_SCENARIO) {
-    await reviewScenario(process.env.EMBER_REVIEW_SCENARIO);
+    await reviewScenario(process.env.EMBER_REVIEW_SCENARIO, process.env.EMBER_SPOKEN_VOICE);
   } else
   if (process.env.EMBER_SHORT_REPLY_ONLY) {
     console.log(JSON.stringify(await measure(0, "short")));
@@ -266,6 +274,7 @@ try {
   console.log(`median end-of-speech → first answer audio (after the calendar lookup): ${median("answerAudio")}ms`);
   console.log(`median end-of-speech → first audio: ${median("firstAudio")}ms (send ${median("sent")}ms, first token ${median("firstToken")}ms, first TTS request ${median("firstTtsRequest")}ms, first TTS reply ${median("firstTtsReply")}ms)`);
   if (process.env.EMBER_STREAM_CHECKS) {
+    await reviewScenario("intro", "elevenlabs");
     const seq = await measure(0, "sequence");
     const said = seq.ttsTexts.join(" ").replace(/\s+/g, " ").trim();
     // The lookup took over 0.9 s, so Jenny first says she is checking; nothing of
