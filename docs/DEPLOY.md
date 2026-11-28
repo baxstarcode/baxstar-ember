@@ -7,11 +7,10 @@ Choosing ElevenLabs sends the text Ember speaks to ElevenLabs through the privat
 Worker. This includes any private information in that reply. Microphone capture
 and chat continue through their existing paths.
 
-Configure these bindings on `ember-claude-proxy` in Cloudflare Worker Settings →
-Variables and Secrets. Use Secret for both so Workers Builds preserve the values.
-
-* `ELEVENLABS_API_KEY` — an ElevenLabs key with text-to-speech access.
-* `ELEVENLABS_VOICE_ID` — the voice ID copied from your ElevenLabs library.
+Store `ELEVENLABS_API_KEY` as a production Secret on `ember-claude-proxy`.
+The key needs text-to-speech access. The public `ELEVENLABS_VOICE_ID` in
+`proxy/wrangler.toml` selects Talia (Warm Soft Guide). To change the ElevenLabs
+voice, update that ID and deploy the Worker.
 
 Use the existing main-branch Worker and Pages builds. After both finish, open
 `/work/voice-samples/#elevenlabs` on signed-in Ember and play Aria and ElevenLabs
