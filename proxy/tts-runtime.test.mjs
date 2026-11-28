@@ -109,6 +109,11 @@ test("workerd: ElevenLabs sends only the configured voice and bounded text, and 
     assert.equal(call.headers.get("accept"), "audio/mpeg");
     assert.deepEqual(call.body, { text: "Fixture reply.", model_id: "eleven_flash_v2_5" });
 
+    result = () => Response.json({ detail: { status: "quota_exceeded", message: "private text" } }, { status: 401 });
+    const denied = await speak();
+    assert.equal(denied.status, 502);
+    assert.deepEqual(await denied.json(), { error: "The ElevenLabs account has reached its speech credit limit." });
+
     for (const failedResponse of [
       () => new Response("private error details", { status: 401 }),
       () => Response.redirect("https://other.example"),

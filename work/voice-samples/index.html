@@ -23,14 +23,22 @@
 <body>
   <a href="/">← Back to Ember</a>
   <h1>Compare spoken voices</h1>
-  <p>Each voice reads the same sample. These samples use no microphone and do not change Ember’s voice.</p>
+  <p>Compare the voices reading this sentence. These samples use no microphone and do not change Ember’s voice.</p>
   <blockquote id="sample">Hi Brady. Your next trip is ready, and the weather looks good. Let’s take a look at your day and make a plan.</blockquote>
   <button id="stop" class="stop" type="button">Stop</button>
   <p id="status" role="status" aria-live="polite">Tap a voice to hear the sample.</p>
+  <section id="elevenlabs">
+    <h2>Talia <small>ElevenLabs</small></h2>
+    <p>Recorded preview · “Slow and steady. Control the movement.”</p>
+    <audio data-preview src="./talia-preview.mp3" aria-label="Talia recorded preview" controls playsinline preload="none"></audio>
+    <p><button type="button" data-voice="elevenlabs" data-name="Talia">Play Talia reading Ember’s sample</button></p>
+    <audio controls playsinline preload="none" hidden aria-label="Talia sample"></audio>
+    <a class="download" hidden download="ember-talia.mp3">Download Talia sample</a>
+  </section>
   <section id="jenny"><h2>Jenny</h2><button type="button" data-voice="jenny">Play Jenny</button><audio controls playsinline preload="none" hidden aria-label="Jenny sample"></audio><a class="download" hidden download="ember-jenny.mp3">Download Jenny sample</a></section>
   <section id="aria"><h2>Aria <small>Default Ember voice</small></h2><button type="button" data-voice="aria">Play Aria</button><audio controls playsinline preload="none" hidden aria-label="Aria sample"></audio><a class="download" hidden download="ember-aria.mp3">Download Aria sample</a></section>
   <section id="michelle"><h2>Michelle</h2><button type="button" data-voice="michelle">Play Michelle</button><audio controls playsinline preload="none" hidden aria-label="Michelle sample"></audio><a class="download" hidden download="ember-michelle.mp3">Download Michelle sample</a></section>
-  <section id="elevenlabs"><h2>ElevenLabs</h2><button type="button" data-voice="elevenlabs">Play ElevenLabs</button><audio controls playsinline preload="none" hidden aria-label="ElevenLabs sample"></audio><a class="download" hidden download="ember-elevenlabs.mp3">Download ElevenLabs sample</a></section>
-  <script type="module" src="./samples.js?v=elevenlabs-1"></script>
+
+  <script type="module" src="./samples.js?v=talia-2"></script>
 </body>
 </html>

@@ -14,8 +14,8 @@ for (const button of document.querySelectorAll('[data-voice]')) {
   button.addEventListener('click', async () => {
     stop();
     const key = button.dataset.voice, turn = epoch;
-    const card = document.getElementById(key), player = card.querySelector('audio');
-    const name = key === 'elevenlabs' ? 'ElevenLabs' : key[0].toUpperCase() + key.slice(1);
+    const card = document.getElementById(key), player = card.querySelector('audio:not([data-preview])');
+    const name = button.dataset.name || button.textContent.replace(/^Play /, '');
     status.textContent = `Preparing ${name}…`;
     const controller = new AbortController(); pending = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -26,7 +26,14 @@ for (const button of document.querySelectorAll('[data-voice]')) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: document.querySelector('#sample').textContent, voice: voices[key] })
         });
-        if (!response.ok) throw new Error([401, 403].includes(response.status) ? 'Open Ember and sign in, then return here.' : `Speech service returned HTTP ${response.status}. Try again later.`);
+        if (!response.ok) {
+          if ([401, 403].includes(response.status)) throw new Error('Open Ember and sign in, then return here.');
+          if (key === 'elevenlabs' && response.headers.get('Content-Type')?.includes('application/json')) {
+            const body = await response.json().catch(() => null);
+            if (typeof body?.error === 'string') throw new Error(body.error);
+          }
+          throw new Error(`Speech service returned HTTP ${response.status}. Try again later.`);
+        }
         if (key === 'elevenlabs' && response.headers.get('X-Ember-TTS-Provider') !== 'elevenlabs') throw new Error('ElevenLabs is unavailable.');
         if (!(response.headers.get('content-type') || '').startsWith('audio/')) throw new Error('No audio returned. Open Ember and check your sign-in.');
         const blob = await response.blob();

@@ -34,6 +34,8 @@ const files = [
   "work/desktop-voice-probe/style.css",
   "work/voice-samples/index.html",
   "work/voice-samples/samples.js",
+  "work/voice-samples/talia-preview.mp3",
+  "work/voice-samples/talia-preview.LICENSE.txt",
   "assets/ember/icon.svg",
   "assets/ember/icon-192.png",
   "assets/ember/icon-512.png",
