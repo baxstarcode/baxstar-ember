@@ -26,9 +26,14 @@ try {
    try{await route.fulfill({path:file})}catch{await route.abort()}
   });
   await page.goto(origin+'/work/voice-samples/');
-  check(`${width}: no automatic API call or microphone`,calls.length===0&&await page.locator('audio:not([hidden])').count()===0);
-  for(const [name,voice] of [['Jenny','en-US-JennyNeural'],['Aria','en-US-AriaNeural'],['Michelle','en-US-MichelleNeural'],['ElevenLabs','elevenlabs']]){
-   await page.getByRole('button',{name:'Play '+name,exact:true}).click();
+  check(`${width}: no automatic API call or microphone`,calls.length===0&&await page.locator('audio:not([data-preview]):not([hidden])').count()===0);
+  const preview = page.getByLabel('Talia recorded preview');
+  await preview.evaluate(player => player.play());
+  await page.waitForFunction(() => document.querySelector('audio[data-preview]').currentTime > 0.1);
+  check(`${width}: real Talia MP3 plays without a synthesis request`, calls.length === 0 && await preview.evaluate(player => player.duration > 2));
+  await page.getByRole('button',{name:'Stop',exact:true}).click();
+  for(const [name,voice] of [['Jenny','en-US-JennyNeural'],['Aria','en-US-AriaNeural'],['Michelle','en-US-MichelleNeural'],['Talia','elevenlabs']]){
+   await page.getByRole('button',{name:name==='Talia'?'Play Talia reading Ember’s sample':'Play '+name,exact:true}).click();
    await page.getByRole('link',{name:'Download '+name+' sample'}).waitFor();
    check(`${width}: API voice ID for ${name}`,calls.at(-1).body.voice===voice);
    check(`${width}: ${name} download is playable audio URL`,(await page.getByRole('link',{name:'Download '+name+' sample'}).getAttribute('href')).startsWith('blob:'));
@@ -40,16 +45,20 @@ try {
   await page.getByRole('button',{name:'Stop',exact:true}).click();
   check(`${width}: Stop pauses all samples`,await page.locator('audio').evaluateAll(items=>items.every(a=>a.paused)));
   await page.screenshot({path:`/tmp/ember-voice-samples-${width}.png`});
-  await page.reload();mode='legacyWorker';await page.getByRole('button',{name:'Play ElevenLabs',exact:true}).click();
+  await page.reload();mode='legacyWorker';await page.getByRole('button',{name:'Play Talia reading Ember’s sample',exact:true}).click();
   await page.getByRole('status').filter({hasText:'ElevenLabs is unavailable'}).waitFor();
-  check(`${width}: a legacy audio response cannot play or be downloaded as ElevenLabs`,await page.locator('audio:not([hidden])').count()===0 && await page.getByRole('link',{name:'Download ElevenLabs sample'}).count()===0);
+  check(`${width}: a legacy audio response cannot play or be downloaded as ElevenLabs`,await page.locator('audio:not([data-preview]):not([hidden])').count()===0 && await page.getByRole('link',{name:'Download Talia sample'}).count()===0);
+  mode='error';await page.getByRole('button',{name:'Play Talia reading Ember’s sample',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'failed'}).waitFor();
+  await preview.evaluate(player => player.play());
+  check(`${width}: recorded preview remains playable after live synthesis fails`, await preview.evaluate(player => !player.paused));
   mode='error';await page.getByRole('button',{name:'Play Aria',exact:true}).click();
   await page.getByRole('status').filter({hasText:'HTTP 502'}).waitFor();
-  check(`${width}: provider error is visible without fake playback`,await page.locator('audio:not([hidden])').count()===0);
+  check(`${width}: provider error is visible without fake playback`,await page.locator('audio:not([data-preview]):not([hidden])').count()===0);
   mode='wait';await page.getByRole('button',{name:'Play Michelle',exact:true}).click();
   await page.waitForTimeout(100);await page.getByRole('button',{name:'Stop',exact:true}).click();mode='ok';release();
   await page.waitForTimeout(150);
-  check(`${width}: late response cannot start after Stop`,await page.locator('audio:not([hidden])').count()===0&&await page.getByRole('status').innerText()==='Stopped.');
+  check(`${width}: late response cannot start after Stop`,await page.locator('audio:not([data-preview]):not([hidden])').count()===0&&await page.getByRole('status').innerText()==='Stopped.');
   check(`${width}: no runtime errors`,errors.length===0);
   await context.close();
  }

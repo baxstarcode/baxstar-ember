@@ -1465,6 +1465,25 @@ function xmlEscape(s) {
     .replace(/"/g, "&quot;");
 }
 
+// ElevenLabs can include private request details in an error. Only expose
+// explanations selected here from the provider's machine-readable codes.
+async function elevenLabsSpeechError(response) {
+  const body = await readJsonBody(response, false, 8192).catch(() => null);
+  const code = body?.detail?.status ?? body?.detail?.code ?? body?.error?.code;
+  switch (code) {
+    case "invalid_api_key": return "ElevenLabs rejected Ember’s API key.";
+    case "missing_permissions": return "The ElevenLabs key needs Text to Speech access.";
+    case "quota_exceeded": return "The ElevenLabs account has reached its speech credit limit.";
+    case "voice_not_found": return "ElevenLabs could not find this voice for the connected account.";
+    case "paid_plan_required":
+    case "payment_required": return "ElevenLabs requires a paid plan for this speech request.";
+    case "detected_unusual_activity": return "ElevenLabs restricted requests from this connection.";
+    default:
+      if (response.status === 429) return "ElevenLabs is limiting speech requests. Try again shortly.";
+      return `ElevenLabs declined the speech request (HTTP ${response.status}).`;
+  }
+}
+
 async function elevenLabsTts(text, env, cors, fetchImpl, signal) {
   const key = env.ELEVENLABS_API_KEY?.trim();
   const voiceId = env.ELEVENLABS_VOICE_ID?.trim();
@@ -1480,6 +1499,9 @@ async function elevenLabsTts(text, env, cors, fetchImpl, signal) {
       headers: { "xi-api-key": key, "Content-Type": "application/json", Accept: "audio/mpeg" },
       body: JSON.stringify({ text, model_id: "eleven_flash_v2_5" }),
     });
+    if (response.status >= 400) {
+      return json({ error: await elevenLabsSpeechError(response) }, 502, cors);
+    }
     if (response.status !== 200 || response.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "audio/mpeg" || !response.body) {
       response.body?.cancel().catch(() => {});
       return json({ error: "ElevenLabs could not produce speech." }, 502, cors);
